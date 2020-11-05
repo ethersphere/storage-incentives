@@ -1,23 +1,20 @@
 import { expect } from './util/chai';
-import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
-import func from '../deploy/000_deploy_postage';
+import { ethers, deployments, getNamedAccounts } from 'hardhat';
 
 // Named accounts used by tests.
 let stamper: string;
 let deployer: string;
-let others: string[];
 
 // Before the tests, set named accounts and read deployments.
 before(async function () {
   const namedAccounts = await getNamedAccounts();
-  others = await getUnnamedAccounts();
   deployer = namedAccounts.deployer;
   stamper = namedAccounts.stamper;
 });
 
-function computeBatchId(sender : string, nonce : string): string {
+function computeBatchId(sender: string, nonce: string): string {
   const abi = new ethers.utils.AbiCoder();
-  const encoded = abi.encode(["address", "bytes32"], [sender, nonce]);
+  const encoded = abi.encode(['address', 'bytes32'], [sender, nonce]);
   return ethers.utils.keccak256(encoded);
 }
 
@@ -43,13 +40,12 @@ describe('PostageStamp', function () {
     beforeEach(async function () {
       await deployments.fixture();
     });
-    
-    describe('when creating a batch', function() {
-      it('should create the batch', async function() {
+
+    describe('when creating a batch', function () {
+      it('should create the batch', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', stamper);
         const token = await ethers.getContract('ERC20PresetMinterPauser', deployer);
-        const nonce =
-          "0x000000000000000000000000000000000000000000000000000000000000abcd";
+        const nonce = '0x000000000000000000000000000000000000000000000000000000000000abcd';
         const initialPayment = 20;
         const depth = 5;
         const batchId = computeBatchId(stamper, nonce);
@@ -57,17 +53,12 @@ describe('PostageStamp', function () {
         await token.mint(stamper, initialPayment);
         (await ethers.getContract('ERC20PresetMinterPauser', stamper)).approve(postageStamp.address, initialPayment);
 
-        await expect(
-          postageStamp.createBatch(stamper, initialPayment, depth, nonce)
-        )
-          .to.emit(postageStamp, "BatchCreated")
+        await expect(postageStamp.createBatch(stamper, initialPayment, depth, nonce))
+          .to.emit(postageStamp, 'BatchCreated')
           .withArgs(batchId, initialPayment, stamper, depth);
 
-        expect(await postageStamp.batches(batchId)).to.deep.equal([
-          stamper,
-          depth,
-        ]);
-      })
-    })
+        expect(await postageStamp.batches(batchId)).to.deep.equal([stamper, depth]);
+      });
+    });
   });
 });
