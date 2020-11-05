@@ -3,18 +3,21 @@ import { DeployFunction } from 'hardhat-deploy/types';
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
-  const { deploy, read, log } = deployments;
+  const { deploy } = deployments;
 
   const { deployer } = await getNamedAccounts();
 
-  await deploy('Greeter', {
+  const token = await deploy('ERC20PresetMinterPauser', {
     from: deployer,
-    args: [deployer, 'Hello World!'],
+    args: ['Test', 'TST'],
     log: true,
   });
 
-  const currentGreeting = await read('Greeter', 'getGreeting');
-  log(`Curent greeting set to: ${currentGreeting}`);
+  await deploy('PostageStamp', {
+    from: deployer,
+    args: [token.address],
+    log: true,
+  });
 };
 
 export default func;

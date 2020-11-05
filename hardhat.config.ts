@@ -16,10 +16,11 @@ const accounts = { mnemonic };
 
 // Config for hardhat.
 const config: HardhatUserConfig = {
-  solidity: { version: '0.6.5' },
+  solidity: { version: '0.7.4' },
   namedAccounts: {
     deployer: 0,
     admin: 1,
+    stamper: 2,
   },
   networks: {
     hardhat: {
