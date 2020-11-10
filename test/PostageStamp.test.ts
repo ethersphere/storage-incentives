@@ -44,7 +44,6 @@ describe('PostageStamp', function () {
     beforeEach(async function () {
       await deployments.fixture();
     });
-
     describe('when creating a batch', function () {
       beforeEach(async function () {
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
@@ -84,13 +83,13 @@ describe('PostageStamp', function () {
       });
 
       it('should not create batch if insufficient funds', async function () {
-        expect(
+        await expect(
           this.postageStamp.createBatch(stamper, this.batch.initialPayment + 100, this.batch.depth, this.batch.nonce)
         ).to.be.revertedWith('ERC20: transfer amount exceeds balance');
       });
 
       it('should not allow zero address as owner', async function () {
-        expect(
+        await expect(
           this.postageStamp.createBatch(zeroAddress, this.batch.initialPayment, this.batch.depth, this.batch.nonce)
         ).to.be.revertedWith('owner cannot be the zero address');
       });
