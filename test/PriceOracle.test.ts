@@ -22,7 +22,7 @@ describe('PriceOracle', function () {
 
     it('should deploy PriceOracle', async function () {
       const priceOracle = await ethers.getContract('PriceOracle');
-      expect(priceOracle.address).to.be.a('string');
+      expect(priceOracle.address).to.be.properAddress;
     });
 
     it('should set the default admin role', async function () {

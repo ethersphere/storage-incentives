@@ -30,7 +30,7 @@ describe('PostageStamp', function () {
 
     it('should deploy PostageStamp', async function () {
       const postageStamp = await ethers.getContract('PostageStamp');
-      expect(postageStamp.address).to.be.a('string');
+      expect(postageStamp.address).to.be.properAddress;
     });
 
     it('should set the correct token', async function () {
@@ -139,8 +139,9 @@ describe('PostageStamp', function () {
       });
 
       it('should not top up non-existing batches', async function () {
+        const nonExistingBatchId = computeBatchId(deployer, this.batch.nonce)
         await expect(
-          this.postageStamp.topUp(computeBatchId(deployer, this.batch.nonce), this.topupAmount)
+          this.postageStamp.topUp(nonExistingBatchId, this.topupAmount)
         ).to.be.revertedWith('batch does not exist');
       });
 
