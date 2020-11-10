@@ -50,7 +50,7 @@ describe('PriceOracle', function () {
         await expect(priceOracle.setPrice(price)).to.emit(priceOracle, 'PriceUpdate').withArgs(price);
       });
 
-      it('should fail if not  priace updater', async function () {
+      it('should fail if not price updater', async function () {
         const priceOracle = await ethers.getContract('PriceOracle', others[0]);
         const price = 100;
         await expect(priceOracle.setPrice(price)).to.be.revertedWith('caller is not a price updater');
