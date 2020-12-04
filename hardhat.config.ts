@@ -21,6 +21,7 @@ const config: HardhatUserConfig = {
     deployer: 0,
     admin: 1,
     stamper: 2,
+    oracle: 3,
   },
   networks: {
     hardhat: {
