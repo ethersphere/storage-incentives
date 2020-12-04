@@ -30,6 +30,12 @@ describe('PriceOracle', function () {
       const updaterRole = await priceOracle.DEFAULT_ADMIN_ROLE();
       expect(await priceOracle.hasRole(updaterRole, deployer)).to.be.true;
     });
+
+    it('should set the postage stamp contract', async function () {
+      const priceOracle = await ethers.getContract('PriceOracle');
+      const postageStamp = await priceOracle.postageStamp();
+      expect(postageStamp).to.be.eq((await ethers.getContract('PostageStamp')).address);
+    });
   });
 
   describe('with deployed contract', async function () {
@@ -54,6 +60,28 @@ describe('PriceOracle', function () {
         const priceOracle = await ethers.getContract('PriceOracle', others[0]);
         const price = 100;
         await expect(priceOracle.setPrice(price)).to.be.revertedWith('caller is not a price updater');
+      });
+
+      it('should update the outpayments', async function () {
+        const priceOracle = await ethers.getContract('PriceOracle', updater);
+        const postageStamp = await ethers.getContract('PostageStamp');
+
+        const price1 = 100;
+        await priceOracle.setPrice(price1);
+        // the price initially is 0, therefore nothing is charged
+        expect(await postageStamp.totalOutPayment()).to.be.eq(0);
+
+        const price2 = 200;
+        await priceOracle.setPrice(price2);
+        // price1 should be charged for 1 block
+        expect(await postageStamp.totalOutPayment()).to.be.eq(price1);
+
+        // mine 2 blocks
+        await ethers.provider.send('evm_mine', []);
+        await ethers.provider.send('evm_mine', []);
+        await priceOracle.setPrice(0);
+        // price2 should be charged for 3 blocks (the 2 mined blocks and the new block setPrice is in)
+        expect(await postageStamp.totalOutPayment()).to.be.eq(price1 + 3 * price2);
       });
     });
   });
