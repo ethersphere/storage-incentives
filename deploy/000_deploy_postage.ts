@@ -7,9 +7,9 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const { deployer, oracle } = await getNamedAccounts();
 
-  const token = await deploy('ERC20PresetMinterPauser', {
+  const token = await deploy('TestToken', {
     from: deployer,
-    args: ['Test', 'TST'],
+    args: [],
     log: true,
   });
 

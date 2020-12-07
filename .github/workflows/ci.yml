@@ -39,3 +39,6 @@ jobs:
       
       - name: Test
         run: yarn test
+
+      - name: Coverage
+        run: yarn hardhat coverage
