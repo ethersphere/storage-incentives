@@ -342,5 +342,14 @@ describe('PostageStamp', function () {
         );
       });
     });
+
+    describe('when getting remaining balance', function() {
+      it('should revert if the batch does not exist', async function () {
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        await expect(postageStamp.remainingBalance('0x000000000000000000000000000000000000000000000000000000000000abcd')).to.be.revertedWith(
+          'batch does not exist'
+        );
+      })
+    });
   });
 });
