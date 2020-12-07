@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.7.4;
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "./PostageStamp.sol";
 
 /**
  * @title PriceOracle contract.
@@ -15,8 +16,16 @@ contract PriceOracle is AccessControl {
 
     bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
 
-    constructor() {
+    // the address of the postageStamp contract
+    PostageStamp public postageStamp;
+    // the price from the last update
+    uint256 public lastPrice;
+    // the block at which the last update occured
+    uint256 public lastUpdatedBlock;
+
+    constructor(address _postageStamp) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        postageStamp = PostageStamp(_postageStamp);
     }
 
     /**
@@ -27,7 +36,15 @@ contract PriceOracle is AccessControl {
     function setPrice(uint256 _price) external {
         require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-        // NOTE: price is not stored in the contract, only shared via events.
+        // if there was a last price, charge for the time since the last update with the last price
+        if(lastPrice != 0) {
+            uint256 blocks = block.number - lastUpdatedBlock;
+            postageStamp.increaseTotalOutPayment(lastPrice * blocks);
+        }
+
+        lastPrice = _price;
+        lastUpdatedBlock = block.number;
+
         emit PriceUpdate(_price);
     }
 }
