@@ -74,6 +74,7 @@ contract PostageStamp is AccessControl {
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
 
+        // per chunk balance times the batch size is what we need to transfer in
         uint256 totalAmount = _initialBalancePerChunk.mul(1 << _depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
@@ -99,6 +100,7 @@ contract PostageStamp is AccessControl {
         require(batch.owner != address(0), "batch does not exist");
         require(batch.normalisedBalance >= totalOutPayment, "batch already expired");
 
+        // per chunk topup amount times the batch size is what we need to transfer in
         uint256 totalAmount = _topupAmountPerChunk.mul(1 << batch.depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
@@ -120,6 +122,7 @@ contract PostageStamp is AccessControl {
         require(batch.normalisedBalance >= totalOutPayment, "batch already expired");
 
         uint8 depthChange = _newDepth - batch.depth;
+        // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId).div(1 << depthChange);
 
         batch.depth = _newDepth;
