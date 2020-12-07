@@ -3,9 +3,9 @@ import { DeployFunction } from 'hardhat-deploy/types';
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
-  const { deploy } = deployments;
+  const { deploy, execute, read } = deployments;
 
-  const { deployer } = await getNamedAccounts();
+  const { deployer, oracle } = await getNamedAccounts();
 
   const token = await deploy('ERC20PresetMinterPauser', {
     from: deployer,
@@ -18,6 +18,9 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     args: [token.address],
     log: true,
   });
+
+  const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+  await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
 };
 
 export default func;
