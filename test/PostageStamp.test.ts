@@ -41,7 +41,7 @@ describe('PostageStamp', function () {
 
     it('should set the correct token', async function () {
       const postageStamp = await ethers.getContract('PostageStamp');
-      const token = await ethers.getContract('ERC20PresetMinterPauser');
+      const token = await ethers.getContract('TestToken');
       expect(await postageStamp.bzzToken()).to.be.eq(token.address);
     });
 
@@ -59,7 +59,7 @@ describe('PostageStamp', function () {
     describe('when creating a batch', function () {
       beforeEach(async function () {
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
-        this.token = await ethers.getContract('ERC20PresetMinterPauser', deployer);
+        this.token = await ethers.getContract('TestToken', deployer);
 
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
@@ -74,7 +74,7 @@ describe('PostageStamp', function () {
         this.batch.id = computeBatchId(stamper, this.batch.nonce);
 
         await this.token.mint(stamper, this.transferAmount);
-        (await ethers.getContract('ERC20PresetMinterPauser', stamper)).approve(
+        (await ethers.getContract('TestToken', stamper)).approve(
           this.postageStamp.address,
           this.transferAmount
         );
@@ -163,7 +163,7 @@ describe('PostageStamp', function () {
     describe('when topping up a batch', function () {
       beforeEach(async function () {
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
-        this.token = await ethers.getContract('ERC20PresetMinterPauser', deployer);
+        this.token = await ethers.getContract('TestToken', deployer);
 
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
@@ -179,7 +179,7 @@ describe('PostageStamp', function () {
         this.expectedNormalisedBalance = this.initialNormalisedBalance + this.topupAmountPerChunk;
 
         await this.token.mint(stamper, (this.batch.initialPaymentPerChunk + this.topupAmountPerChunk) * this.batchSize);
-        (await ethers.getContract('ERC20PresetMinterPauser', stamper)).approve(
+        (await ethers.getContract('TestToken', stamper)).approve(
           this.postageStamp.address,
           (this.batch.initialPaymentPerChunk + this.topupAmountPerChunk) * this.batchSize
         );
@@ -235,7 +235,7 @@ describe('PostageStamp', function () {
     describe('when increasing the depth', function () {
       beforeEach(async function () {
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
-        this.token = await ethers.getContract('ERC20PresetMinterPauser', deployer);
+        this.token = await ethers.getContract('TestToken', deployer);
 
         this.totalOutPayment = 100;
         await increaseTotalOutPayment(this.totalOutPayment);
@@ -256,7 +256,7 @@ describe('PostageStamp', function () {
         this.expectedNormalisedBalance = this.totalOutPayment + Math.floor(transferAmount / this.newBatchSize);
 
         await this.token.mint(stamper, transferAmount);
-        (await ethers.getContract('ERC20PresetMinterPauser', stamper)).approve(
+        (await ethers.getContract('TestToken', stamper)).approve(
           this.postageStamp.address,
           transferAmount
         );
