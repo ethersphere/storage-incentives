@@ -22,7 +22,7 @@ package postageabi
 
 const PostageStampABI$VERSION = \`$POSTAGE_STAMP_ABI\`
 
-const PRICE_ORACLE_ABI$VERSION = \`$PRICE_ORACLE_ABI\`
+const PriceOracleABI$VERSION = \`$PRICE_ORACLE_ABI\`
 
 const PostageStampBin$VERSION = $POSTAGE_STAMP_BYTECODE
 const PostageStampDeployedBin$VERSION = $POSTAGE_STAMP_DEPLOYED_BYTECODE
