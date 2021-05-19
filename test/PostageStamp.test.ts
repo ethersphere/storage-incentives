@@ -22,8 +22,8 @@ function computeBatchId(sender: string, nonce: string): string {
   return ethers.utils.keccak256(encoded);
 }
 
-async function increaseTotalOutPayment(outPayment: number) {
-  return await (await ethers.getContract('PostageStamp', oracle)).increaseTotalOutPayment(outPayment);
+async function setPrice(price: number) {
+  return await (await ethers.getContract('PostageStamp', oracle)).setPrice(price);
 }
 
 const zeroAddress = '0x0000000000000000000000000000000000000000';
@@ -51,7 +51,6 @@ describe('PostageStamp', function () {
       expect(await postageStamp.hasRole(adminRole, deployer)).to.be.true;
     });
   });
-
   describe('with deployed contract', async function () {
     beforeEach(async function () {
       await deployments.fixture();
@@ -74,10 +73,7 @@ describe('PostageStamp', function () {
         this.batch.id = computeBatchId(stamper, this.batch.nonce);
 
         await this.token.mint(stamper, this.transferAmount);
-        (await ethers.getContract('TestToken', stamper)).approve(
-          this.postageStamp.address,
-          this.transferAmount
-        );
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
       });
 
       it('should fire the BatchCreated event', async function () {
@@ -141,8 +137,8 @@ describe('PostageStamp', function () {
       });
 
       it('should include totalOutpayment in the normalised balance', async function () {
-        const outPayment = 100;
-        await increaseTotalOutPayment(100);
+        const price = 100;
+        await setPrice(price);
 
         await expect(
           this.postageStamp.createBatch(stamper, this.batch.initialPaymentPerChunk, this.batch.depth, this.batch.nonce)
@@ -151,12 +147,35 @@ describe('PostageStamp', function () {
           .withArgs(
             this.batch.id,
             this.transferAmount,
-            outPayment + this.expectedNormalisedBalance,
+            price + this.expectedNormalisedBalance,
             stamper,
             this.batch.depth
           );
         const stamp = await this.postageStamp.batches(this.batch.id);
-        expect(stamp[2]).to.equal(outPayment + this.expectedNormalisedBalance);
+        expect(stamp[2]).to.equal(price + this.expectedNormalisedBalance);
+      });
+
+      it('should include pending totalOutpayment in the normalised balance', async function () {
+        const price = 100;
+        await setPrice(price);
+
+        // mine two blocks, therefore when the next createBatch happens the totalOutpayment increased 3 times
+        await ethers.provider.send('evm_mine', []);
+        await ethers.provider.send('evm_mine', []);
+
+        await expect(
+          this.postageStamp.createBatch(stamper, this.batch.initialPaymentPerChunk, this.batch.depth, this.batch.nonce)
+        )
+          .to.emit(this.postageStamp, 'BatchCreated')
+          .withArgs(
+            this.batch.id,
+            this.transferAmount,
+            3 * price + this.expectedNormalisedBalance,
+            stamper,
+            this.batch.depth
+          );
+        const stamp = await this.postageStamp.batches(this.batch.id);
+        expect(stamp[2]).to.equal(3 * price + this.expectedNormalisedBalance);
       });
     });
 
@@ -225,7 +244,7 @@ describe('PostageStamp', function () {
       });
 
       it('should not top up expired batches', async function () {
-        await increaseTotalOutPayment(this.initialNormalisedBalance + 1);
+        await setPrice(this.batch.initialPaymentPerChunk);
         await expect(this.postageStamp.topUp(this.batch.id, this.topupAmountPerChunk)).to.be.revertedWith(
           'batch already expired'
         );
@@ -237,8 +256,8 @@ describe('PostageStamp', function () {
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
         this.token = await ethers.getContract('TestToken', deployer);
 
-        this.totalOutPayment = 100;
-        await increaseTotalOutPayment(this.totalOutPayment);
+        this.price = 100;
+        this.totalOutPayment = this.price;
 
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
@@ -251,21 +270,26 @@ describe('PostageStamp', function () {
 
         this.batchSize = 2 ** this.batch.depth;
         this.newBatchSize = 2 ** this.newDepth;
+        this.increaseFactor = this.newBatchSize / this.batchSize;
         this.initialNormalisedBalance = this.totalOutPayment + this.batch.initialPaymentPerChunk;
         const transferAmount = this.batch.initialPaymentPerChunk * this.batchSize;
-        this.expectedNormalisedBalance = this.totalOutPayment + Math.floor(transferAmount / this.newBatchSize);
 
         await this.token.mint(stamper, transferAmount);
-        (await ethers.getContract('TestToken', stamper)).approve(
-          this.postageStamp.address,
-          transferAmount
-        );
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, transferAmount);
+
+        await setPrice(this.price);
+        // totalOutpayment: 0, pending: price
         await this.postageStamp.createBatch(
           stamper,
           this.batch.initialPaymentPerChunk,
           this.batch.depth,
           this.batch.nonce
         );
+
+        // at the moment of the depth increase the currentTotalOutpayment is already 2*price
+        // 1 * price of the batch value was already used up
+        this.expectedNormalisedBalance =
+          2 * this.price + Math.floor((this.batch.initialPaymentPerChunk - this.price) / this.increaseFactor);
       });
 
       it('should fire the BatchDepthIncrease event', async function () {
@@ -300,21 +324,23 @@ describe('PostageStamp', function () {
       });
 
       it('should not increase depth of expired batches', async function () {
-        await increaseTotalOutPayment(this.batch.initialPaymentPerChunk + 1);
+        // one price applied so far, this ensures the currentTotalOutpayment will be exactly the batch value when increaseDepth is called
+        await setPrice(this.batch.initialPaymentPerChunk - this.price);
         await expect(this.postageStamp.increaseDepth(this.batch.id, this.newDepth)).to.be.revertedWith(
           'batch already expired'
         );
       });
 
       it('should compute correct balance if outpayments changed since creation', async function () {
-        const outPaymentIncrease = 64;
-        await increaseTotalOutPayment(outPaymentIncrease);
+        const newPrice = 64;
+        await setPrice(newPrice);
 
-        const unusedPart = this.batch.initialPaymentPerChunk - outPaymentIncrease;
-        const currentOutPayment = this.totalOutPayment + outPaymentIncrease;
-
+        // at the moment of the depth increase the currentTotalOutpayment is already 2*price + 1*newPrice
+        // 1 * price and 1 * newPrice of the batch value was already used up
         const expectedNormalisedBalance =
-          currentOutPayment + Math.floor((unusedPart * this.batchSize) / this.newBatchSize);
+          2 * this.price +
+          newPrice +
+          Math.floor((this.batch.initialPaymentPerChunk - this.price - newPrice) / this.increaseFactor);
 
         await expect(this.postageStamp.increaseDepth(this.batch.id, this.newDepth))
           .to.emit(this.postageStamp, 'BatchDepthIncrease')
@@ -322,34 +348,54 @@ describe('PostageStamp', function () {
       });
     });
 
-    describe('when increasing outpayment', function () {
+    describe('when setting the price', function () {
       it('should increase the outpayment if called by oracle', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', oracle);
 
-        const increase1 = 100;
-        await postageStamp.increaseTotalOutPayment(increase1);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(increase1);
+        const price1 = 100;
+        await postageStamp.setPrice(price1);
 
-        const increase2 = 200;
-        await postageStamp.increaseTotalOutPayment(increase2);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(increase1 + increase2);
+        await ethers.provider.send('evm_mine', []);
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(price1);
+        expect(await postageStamp.totalOutPayment()).to.be.eq(0);
+
+        await ethers.provider.send('evm_mine', []);
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(2 * price1);
+        expect(await postageStamp.totalOutPayment()).to.be.eq(0);
+
+        const price2 = 200;
+        await postageStamp.setPrice(price2);
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1);
+        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
+
+        await ethers.provider.send('evm_mine', []);
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1 + 1 * price2);
+        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
+
+        await ethers.provider.send('evm_mine', []);
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1 + 2 * price2);
+        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
+      });
+
+      it('should emit event if called by oracle', async function () {
+        const postageStamp = await ethers.getContract('PostageStamp', oracle);
+        const price = 100;
+        await expect(postageStamp.setPrice(price)).to.emit(postageStamp, 'PriceUpdate').withArgs(price);
       });
 
       it('should revert if not called by oracle', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await expect(postageStamp.increaseTotalOutPayment(100)).to.be.revertedWith(
-          'only price oracle can increase totalOutpayment'
-        );
+        await expect(postageStamp.setPrice(100)).to.be.revertedWith('only price oracle can set the price');
       });
     });
 
-    describe('when getting remaining balance', function() {
+    describe('when getting remaining balance', function () {
       it('should revert if the batch does not exist', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await expect(postageStamp.remainingBalance('0x000000000000000000000000000000000000000000000000000000000000abcd')).to.be.revertedWith(
-          'batch does not exist'
-        );
-      })
+        await expect(
+          postageStamp.remainingBalance('0x000000000000000000000000000000000000000000000000000000000000abcd')
+        ).to.be.revertedWith('batch does not exist');
+      });
     });
   });
 });

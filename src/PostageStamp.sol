@@ -26,6 +26,11 @@ contract PostageStamp is AccessControl {
      */
     event BatchDepthIncrease(bytes32 indexed batchId, uint8 newDepth, uint256 normalisedBalance);
 
+    /**
+     *@dev Emitted on every price update.
+     */
+    event PriceUpdate(uint256 price);
+
     struct Batch {
         // Owner of this batch (0 if not valid).
         address owner;
@@ -44,7 +49,12 @@ contract PostageStamp is AccessControl {
     // The address of the BZZ ERC20 token this contract references.
     address public bzzToken;
     // The total out payment per chunk
-    uint256 public totalOutPayment;    
+    uint256 public totalOutPayment;
+
+    // the price from the last update
+    uint256 public lastPrice;
+    // the block at which the last update occured
+    uint256 public lastUpdatedBlock;
 
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
@@ -78,7 +88,7 @@ contract PostageStamp is AccessControl {
         uint256 totalAmount = _initialBalancePerChunk.mul(1 << _depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
-        uint256 normalisedBalance = totalOutPayment.add(_initialBalancePerChunk);
+        uint256 normalisedBalance = currentTotalOutPayment().add(_initialBalancePerChunk);
 
         batches[batchId] = Batch({
             owner: _owner,
@@ -98,7 +108,7 @@ contract PostageStamp is AccessControl {
     function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external {
         Batch storage batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist");
-        require(batch.normalisedBalance >= totalOutPayment, "batch already expired");
+        require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
         // per chunk topup amount times the batch size is what we need to transfer in
         uint256 totalAmount = _topupAmountPerChunk.mul(1 << batch.depth);
@@ -119,14 +129,14 @@ contract PostageStamp is AccessControl {
         Batch storage batch = batches[_batchId];
         require(batch.owner == msg.sender, "not batch owner");
         require(_newDepth > batch.depth, "depth not increasing");
-        require(batch.normalisedBalance >= totalOutPayment, "batch already expired");
+        require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
         uint8 depthChange = _newDepth - batch.depth;
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId).div(1 << depthChange);
 
         batch.depth = _newDepth;
-        batch.normalisedBalance = totalOutPayment.add(newRemainingBalance);
+        batch.normalisedBalance = currentTotalOutPayment().add(newRemainingBalance);
 
         emit BatchDepthIncrease(_batchId, _newDepth, batch.normalisedBalance);
     }
@@ -138,16 +148,34 @@ contract PostageStamp is AccessControl {
     function remainingBalance(bytes32 _batchId) view public returns (uint256) {
         Batch storage batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist");
-        return batch.normalisedBalance.sub(totalOutPayment);
+        return batch.normalisedBalance.sub(currentTotalOutPayment());
     }
 
     /**
-    * @notice Increase totalOutPayment
+    * @notice set a new price
     * @dev can only be called by the price oracle
-    * @param _totalOutPaymentIncrease the size of the increase
+    * @param _price the new price
     */
-    function increaseTotalOutPayment(uint256 _totalOutPaymentIncrease) external {
-        require(hasRole(PRICE_ORACLE_ROLE, msg.sender), "only price oracle can increase totalOutpayment");
-        totalOutPayment = totalOutPayment.add(_totalOutPaymentIncrease);
+    function setPrice(uint256 _price) external {
+        require(hasRole(PRICE_ORACLE_ROLE, msg.sender), "only price oracle can set the price");
+
+        // if there was a last price, charge for the time since the last update with the last price
+        if(lastPrice != 0) {
+            totalOutPayment = currentTotalOutPayment();
+        }
+
+        lastPrice = _price;
+        lastUpdatedBlock = block.number;
+
+        emit PriceUpdate(_price);
+    }
+
+    /**
+    * @notice Returns the current total outpayment
+    */
+    function currentTotalOutPayment() view public returns (uint256) {
+        uint256 blocks = block.number - lastUpdatedBlock;
+        uint256 increaseSinceLastUpdate = lastPrice.mul(blocks);
+        return totalOutPayment.add(increaseSinceLastUpdate);
     }
 }

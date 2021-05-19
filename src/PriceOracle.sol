@@ -18,10 +18,6 @@ contract PriceOracle is AccessControl {
 
     // the address of the postageStamp contract
     PostageStamp public postageStamp;
-    // the price from the last update
-    uint256 public lastPrice;
-    // the block at which the last update occured
-    uint256 public lastUpdatedBlock;
 
     constructor(address _postageStamp) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -35,16 +31,7 @@ contract PriceOracle is AccessControl {
      */
     function setPrice(uint256 _price) external {
         require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
-
-        // if there was a last price, charge for the time since the last update with the last price
-        if(lastPrice != 0) {
-            uint256 blocks = block.number - lastUpdatedBlock;
-            postageStamp.increaseTotalOutPayment(lastPrice * blocks);
-        }
-
-        lastPrice = _price;
-        lastUpdatedBlock = block.number;
-
+        postageStamp.setPrice(_price);
         emit PriceUpdate(_price);
     }
 }
