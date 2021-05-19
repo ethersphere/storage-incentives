@@ -3,13 +3,14 @@ pragma solidity ^0.7.4;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
 
 /**
  * @title PostageStamp contract
  * @author The Swarm Authors
  * @dev The postage stamp contracts allows users to create and manage postage stamp batches.
  */
-contract PostageStamp is AccessControl {
+contract PostageStamp is AccessControl, Pausable {
     using SafeMath for uint256;
     /**
      * @dev Emitted when a new batch is created.
@@ -42,6 +43,9 @@ contract PostageStamp is AccessControl {
 
     // The role allowed to increase totalOutPayment
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
+    // The role allowed to pause
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+
 
     // Associate every batch id with batch data.
     mapping(bytes32 => Batch) public batches;
@@ -62,6 +66,7 @@ contract PostageStamp is AccessControl {
     constructor(address _bzzToken) {
         bzzToken = _bzzToken;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _setupRole(PAUSER_ROLE, msg.sender);
     }
 
     /**
@@ -77,7 +82,7 @@ contract PostageStamp is AccessControl {
         uint256 _initialBalancePerChunk,
         uint8 _depth,
         bytes32 _nonce
-    ) external {
+    ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
 
         // Derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
@@ -105,7 +110,7 @@ contract PostageStamp is AccessControl {
      * @param _batchId The id of the existing batch.
      * @param _topupAmountPerChunk The amount of additional tokens to add per chunk.
      */
-    function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external {
+    function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external whenNotPaused {
         Batch storage batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
@@ -125,7 +130,7 @@ contract PostageStamp is AccessControl {
      * @param _batchId the id of the existing batch
      * @param _newDepth the new (larger than the previous one) depth for this batch
      */
-    function increaseDepth(bytes32 _batchId, uint8 _newDepth) external {
+    function increaseDepth(bytes32 _batchId, uint8 _newDepth) external whenNotPaused {
         Batch storage batch = batches[_batchId];
         require(batch.owner == msg.sender, "not batch owner");
         require(_newDepth > batch.depth, "depth not increasing");
@@ -177,5 +182,23 @@ contract PostageStamp is AccessControl {
         uint256 blocks = block.number - lastUpdatedBlock;
         uint256 increaseSinceLastUpdate = lastPrice.mul(blocks);
         return totalOutPayment.add(increaseSinceLastUpdate);
+    }
+
+    /**
+    * @notice Pause the contract. The contract is provably stopped by renouncing the pauser role and the admin role after pausing
+    * @dev can only be called by the pauser when not paused
+    */
+    function pause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause the contract");
+        _pause();
+    }
+
+    /**
+    * @notice Unpause the contract.
+    * @dev can only be called by the pauser when paused
+    */
+    function unPause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
+        _unpause();
     }
 }
