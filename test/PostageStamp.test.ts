@@ -50,6 +50,12 @@ describe('PostageStamp', function () {
       const adminRole = await postageStamp.DEFAULT_ADMIN_ROLE();
       expect(await postageStamp.hasRole(adminRole, deployer)).to.be.true;
     });
+
+    it('should assign the pauser role', async function() {
+      const postageStamp = await ethers.getContract('PostageStamp');
+      const pauserRole = await postageStamp.PAUSER_ROLE();
+      expect(await postageStamp.hasRole(pauserRole, deployer)).to.be.true;
+    });
   });
   describe('with deployed contract', async function () {
     beforeEach(async function () {
@@ -133,6 +139,14 @@ describe('PostageStamp', function () {
         await this.postageStamp.createBatch(stamper, 0, this.batch.depth, this.batch.nonce);
         await expect(this.postageStamp.createBatch(stamper, 0, this.batch.depth, this.batch.nonce)).to.be.revertedWith(
           'batch already exists'
+        );
+      });
+
+      it('should not allow batch creation when paused', async function () {
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        await postageStamp.pause()
+        await expect(this.postageStamp.createBatch(stamper, 0, this.batch.depth, this.batch.nonce)).to.be.revertedWith(
+          'Pausable: paused'
         );
       });
 
@@ -249,6 +263,13 @@ describe('PostageStamp', function () {
           'batch already expired'
         );
       });
+      it('should not top up when paused', async function () {
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        await postageStamp.pause()
+        await expect(this.postageStamp.topUp(this.batch.id, this.topupAmountPerChunk)).to.be.revertedWith(
+          'Pausable: paused'
+        );
+      });
     });
 
     describe('when increasing the depth', function () {
@@ -331,6 +352,14 @@ describe('PostageStamp', function () {
         );
       });
 
+      it('should not increasing the detph when paused', async function () {
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        await postageStamp.pause()
+        await expect(this.postageStamp.increaseDepth(this.batch.id, this.newDepth)).to.be.revertedWith(
+          'Pausable: paused'
+        );
+      });
+
       it('should compute correct balance if outpayments changed since creation', async function () {
         const newPrice = 64;
         await setPrice(newPrice);
@@ -386,6 +415,33 @@ describe('PostageStamp', function () {
       it('should revert if not called by oracle', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await expect(postageStamp.setPrice(100)).to.be.revertedWith('only price oracle can set the price');
+      });
+    });
+
+    describe('when pausing', function() {
+      it('should not allow anybody but the pauser to pause', async function() {
+        const postageStamp = await ethers.getContract('PostageStamp', stamper);
+        await expect(postageStamp.pause()).to.be.revertedWith(
+          'only pauser can pause the contract'
+        );
+      });
+    });
+
+    describe('when unpausing', function() {
+
+      it('should unpause when pause and then unpause', async function() {
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        await postageStamp.pause()
+        await postageStamp.unPause()
+        expect(await postageStamp.paused()).to.be.false
+
+      })
+
+      it('should not allow unpausing when not paused', async function () {
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        await expect(postageStamp.unPause()).to.be.revertedWith(
+          'Pausable: not paused'
+        );
       });
     });
 
