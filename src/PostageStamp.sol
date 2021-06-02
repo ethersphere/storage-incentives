@@ -5,6 +5,11 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
+// - TODO:
+// - introduce a batch-scoped boolean flag persisted and never changeable. This ensures that dilution is not accepted.
+// - add bucket depth (same as depth). smaller than batch depth.
+//     - add to creation event
+// - make pausable
 /**
  * @title PostageStamp contract
  * @author The Swarm Authors
@@ -15,7 +20,14 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @dev Emitted when a new batch is created.
      */
-    event BatchCreated(bytes32 indexed batchId, uint256 totalAmount, uint256 normalisedBalance, address owner, uint8 depth);
+    event BatchCreated(
+        bytes32 indexed batchId,
+        uint256 totalAmount,
+        uint256 normalisedBalance,
+        address owner,
+        uint8 depth,
+        bool immutableFlag
+    );
 
     /**
      * @dev Emitted when an existing batch is topped up.
@@ -37,6 +49,8 @@ contract PostageStamp is AccessControl, Pausable {
         address owner;
         // Current depth of this batch.
         uint8 depth;
+        // Whether this batch is immutable
+        bool immutableFlag;
         // Normalised balance per chunk.
         uint256 normalisedBalance;
     }
@@ -45,7 +59,6 @@ contract PostageStamp is AccessControl, Pausable {
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
     // The role allowed to pause
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-
 
     // Associate every batch id with batch data.
     mapping(bytes32 => Batch) public batches;
@@ -76,12 +89,14 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _initialBalancePerChunk The initial balance per chunk of the batch.
      * @param _depth The initial depth of the new batch.
      * @param _nonce A random value used in the batch id derivation to allow multiple batches per owner.
+     * @param _immutable Whether the batch is mutable.
      */
     function createBatch(
         address _owner,
         uint256 _initialBalancePerChunk,
         uint8 _depth,
-        bytes32 _nonce
+        bytes32 _nonce,
+        bool _immutable
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
 
@@ -98,10 +113,11 @@ contract PostageStamp is AccessControl, Pausable {
         batches[batchId] = Batch({
             owner: _owner,
             depth: _depth,
+            immutableFlag: _immutable,
             normalisedBalance: normalisedBalance
         });
 
-        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth);
+        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _immutable);
     }
 
     /**
@@ -120,7 +136,7 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         batch.normalisedBalance = batch.normalisedBalance.add(_topupAmountPerChunk);
-        
+
         emit BatchTopUp(_batchId, totalAmount, batch.normalisedBalance);
     }
 
@@ -133,6 +149,7 @@ contract PostageStamp is AccessControl, Pausable {
     function increaseDepth(bytes32 _batchId, uint8 _newDepth) external whenNotPaused {
         Batch storage batch = batches[_batchId];
         require(batch.owner == msg.sender, "not batch owner");
+        require(!batch.immutableFlag, "batch is immutable");
         require(_newDepth > batch.depth, "depth not increasing");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
@@ -147,10 +164,10 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-    * @notice Returns the per chunk balance not used up yet
-    * @param _batchId the id of the existing batch
-    */
-    function remainingBalance(bytes32 _batchId) view public returns (uint256) {
+     * @notice Returns the per chunk balance not used up yet
+     * @param _batchId the id of the existing batch
+     */
+    function remainingBalance(bytes32 _batchId) public view returns (uint256) {
         Batch storage batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist");
         return batch.normalisedBalance.sub(currentTotalOutPayment());
@@ -185,18 +202,18 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-    * @notice Pause the contract. The contract is provably stopped by renouncing the pauser role and the admin role after pausing
-    * @dev can only be called by the pauser when not paused
-    */
+     * @notice Pause the contract. The contract is provably stopped by renouncing the pauser role and the admin role after pausing
+     * @dev can only be called by the pauser when not paused
+     */
     function pause() public {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause the contract");
         _pause();
     }
 
     /**
-    * @notice Unpause the contract.
-    * @dev can only be called by the pauser when paused
-    */
+     * @notice Unpause the contract.
+     * @dev can only be called by the pauser when paused
+     */
     function unPause() public {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
         _unpause();
