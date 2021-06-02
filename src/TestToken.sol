@@ -4,8 +4,5 @@ pragma solidity ^0.7.4;
 import "@openzeppelin/contracts/presets/ERC20PresetMinterPauser.sol";
 
 contract TestToken is ERC20PresetMinterPauser {
-
-  constructor() ERC20PresetMinterPauser("Test", "TST") {    
-  }
-
+    constructor() ERC20PresetMinterPauser("Test", "TST") {}
 }
