@@ -51,7 +51,7 @@ describe('PostageStamp', function () {
       expect(await postageStamp.hasRole(adminRole, deployer)).to.be.true;
     });
 
-    it('should assign the pauser role', async function() {
+    it('should assign the pauser role', async function () {
       const postageStamp = await ethers.getContract('PostageStamp');
       const pauserRole = await postageStamp.PAUSER_ROLE();
       expect(await postageStamp.hasRole(pauserRole, deployer)).to.be.true;
@@ -70,6 +70,8 @@ describe('PostageStamp', function () {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200,
           depth: 5,
+          immutable: false,
+          bucketDepth: 4,
         };
 
         this.batchSize = 2 ** this.batch.depth;
@@ -84,10 +86,25 @@ describe('PostageStamp', function () {
 
       it('should fire the BatchCreated event', async function () {
         await expect(
-          this.postageStamp.createBatch(stamper, this.batch.initialPaymentPerChunk, this.batch.depth, this.batch.nonce)
+          this.postageStamp.createBatch(
+            stamper,
+            this.batch.initialPaymentPerChunk,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
         )
           .to.emit(this.postageStamp, 'BatchCreated')
-          .withArgs(this.batch.id, this.transferAmount, this.expectedNormalisedBalance, stamper, this.batch.depth);
+          .withArgs(
+            this.batch.id,
+            this.transferAmount,
+            this.expectedNormalisedBalance,
+            stamper,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.immutable
+          );
       });
 
       it('should store the batch', async function () {
@@ -95,12 +112,15 @@ describe('PostageStamp', function () {
           stamper,
           this.batch.initialPaymentPerChunk,
           this.batch.depth,
-          this.batch.nonce
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
         );
         const stamp = await this.postageStamp.batches(this.batch.id);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(this.batch.depth);
-        expect(stamp[2]).to.equal(this.expectedNormalisedBalance);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
       });
 
       it('should transfer the token', async function () {
@@ -108,7 +128,9 @@ describe('PostageStamp', function () {
           stamper,
           this.batch.initialPaymentPerChunk,
           this.batch.depth,
-          this.batch.nonce
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
         );
         expect(await this.token.balanceOf(stamper)).to.equal(0);
       });
@@ -119,7 +141,9 @@ describe('PostageStamp', function () {
             stamper,
             this.batch.initialPaymentPerChunk + 1,
             this.batch.depth,
-            this.batch.nonce
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
           )
         ).to.be.revertedWith('ERC20: transfer amount exceeds balance');
       });
@@ -130,24 +154,86 @@ describe('PostageStamp', function () {
             zeroAddress,
             this.batch.initialPaymentPerChunk,
             this.batch.depth,
-            this.batch.nonce
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
           )
         ).to.be.revertedWith('owner cannot be the zero address');
       });
 
+      it('should not allow zero as bucket depth', async function () {
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            this.batch.initialPaymentPerChunk,
+            this.batch.depth,
+            0,
+            this.batch.nonce,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith('invalid bucket depth');
+      });
+
+      it('should not allow bucket depth larger than depth', async function () {
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            this.batch.initialPaymentPerChunk,
+            this.batch.depth,
+            this.batch.depth + 1,
+            this.batch.nonce,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith('invalid bucket depth');
+      });
+
+      it('should not allow bucket depth equal to depth', async function () {
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            this.batch.initialPaymentPerChunk,
+            this.batch.depth,
+            this.batch.depth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith('invalid bucket depth');
+      });
+
       it('should not allow duplicate batch', async function () {
-        await this.postageStamp.createBatch(stamper, 0, this.batch.depth, this.batch.nonce);
-        await expect(this.postageStamp.createBatch(stamper, 0, this.batch.depth, this.batch.nonce)).to.be.revertedWith(
-          'batch already exists'
+        await this.postageStamp.createBatch(
+          stamper,
+          0,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
         );
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            0,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith('batch already exists');
       });
 
       it('should not allow batch creation when paused', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await postageStamp.pause()
-        await expect(this.postageStamp.createBatch(stamper, 0, this.batch.depth, this.batch.nonce)).to.be.revertedWith(
-          'Pausable: paused'
-        );
+        await postageStamp.pause();
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            0,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith('Pausable: paused');
       });
 
       it('should include totalOutpayment in the normalised balance', async function () {
@@ -155,7 +241,14 @@ describe('PostageStamp', function () {
         await setPrice(price);
 
         await expect(
-          this.postageStamp.createBatch(stamper, this.batch.initialPaymentPerChunk, this.batch.depth, this.batch.nonce)
+          this.postageStamp.createBatch(
+            stamper,
+            this.batch.initialPaymentPerChunk,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
         )
           .to.emit(this.postageStamp, 'BatchCreated')
           .withArgs(
@@ -163,10 +256,12 @@ describe('PostageStamp', function () {
             this.transferAmount,
             price + this.expectedNormalisedBalance,
             stamper,
-            this.batch.depth
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.immutable
           );
         const stamp = await this.postageStamp.batches(this.batch.id);
-        expect(stamp[2]).to.equal(price + this.expectedNormalisedBalance);
+        expect(stamp[3]).to.equal(price + this.expectedNormalisedBalance);
       });
 
       it('should include pending totalOutpayment in the normalised balance', async function () {
@@ -178,7 +273,14 @@ describe('PostageStamp', function () {
         await ethers.provider.send('evm_mine', []);
 
         await expect(
-          this.postageStamp.createBatch(stamper, this.batch.initialPaymentPerChunk, this.batch.depth, this.batch.nonce)
+          this.postageStamp.createBatch(
+            stamper,
+            this.batch.initialPaymentPerChunk,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
         )
           .to.emit(this.postageStamp, 'BatchCreated')
           .withArgs(
@@ -186,10 +288,12 @@ describe('PostageStamp', function () {
             this.transferAmount,
             3 * price + this.expectedNormalisedBalance,
             stamper,
-            this.batch.depth
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.immutable
           );
         const stamp = await this.postageStamp.batches(this.batch.id);
-        expect(stamp[2]).to.equal(3 * price + this.expectedNormalisedBalance);
+        expect(stamp[3]).to.equal(3 * price + this.expectedNormalisedBalance);
       });
     });
 
@@ -202,6 +306,8 @@ describe('PostageStamp', function () {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200,
           depth: 5,
+          bucketDepth: 4,
+          immutable: false,
         };
 
         this.batch.id = computeBatchId(stamper, this.batch.nonce);
@@ -220,7 +326,9 @@ describe('PostageStamp', function () {
           stamper,
           this.batch.initialPaymentPerChunk,
           this.batch.depth,
-          this.batch.nonce
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
         );
       });
 
@@ -233,7 +341,7 @@ describe('PostageStamp', function () {
       it('should update the normalised balance', async function () {
         await this.postageStamp.topUp(this.batch.id, this.topupAmountPerChunk);
         const stamp = await this.postageStamp.batches(this.batch.id);
-        expect(stamp[2]).to.equal(this.expectedNormalisedBalance);
+        expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
       });
 
       it('should transfer the token', async function () {
@@ -265,7 +373,7 @@ describe('PostageStamp', function () {
       });
       it('should not top up when paused', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await postageStamp.pause()
+        await postageStamp.pause();
         await expect(this.postageStamp.topUp(this.batch.id, this.topupAmountPerChunk)).to.be.revertedWith(
           'Pausable: paused'
         );
@@ -284,6 +392,8 @@ describe('PostageStamp', function () {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200000,
           depth: 5,
+          bucketDepth: 4,
+          immutable: false,
         };
 
         this.batch.id = computeBatchId(stamper, this.batch.nonce);
@@ -304,7 +414,9 @@ describe('PostageStamp', function () {
           stamper,
           this.batch.initialPaymentPerChunk,
           this.batch.depth,
-          this.batch.nonce
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
         );
 
         // at the moment of the depth increase the currentTotalOutpayment is already 2*price
@@ -324,7 +436,8 @@ describe('PostageStamp', function () {
         const stamp = await this.postageStamp.batches(this.batch.id);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(this.newDepth);
-        expect(stamp[2]).to.equal(this.expectedNormalisedBalance);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
       });
 
       it('should not allow other accounts to increase depth', async function () {
@@ -354,7 +467,7 @@ describe('PostageStamp', function () {
 
       it('should not increasing the detph when paused', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await postageStamp.pause()
+        await postageStamp.pause();
         await expect(this.postageStamp.increaseDepth(this.batch.id, this.newDepth)).to.be.revertedWith(
           'Pausable: paused'
         );
@@ -374,6 +487,50 @@ describe('PostageStamp', function () {
         await expect(this.postageStamp.increaseDepth(this.batch.id, this.newDepth))
           .to.emit(this.postageStamp, 'BatchDepthIncrease')
           .withArgs(this.batch.id, this.newDepth, expectedNormalisedBalance);
+      });
+    });
+
+    describe('when increasing the depth of immutable batches', function () {
+      beforeEach(async function () {
+        this.postageStamp = await ethers.getContract('PostageStamp', stamper);
+        this.token = await ethers.getContract('TestToken', deployer);
+
+        this.price = 100;
+        this.totalOutPayment = this.price;
+
+        this.batch = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
+          initialPaymentPerChunk: 200000,
+          depth: 5,
+          bucketDepth: 4,
+          immutable: true,
+        };
+
+        this.batch.id = computeBatchId(stamper, this.batch.nonce);
+        this.newDepth = 10;
+
+        this.batchSize = 2 ** this.batch.depth;
+        const transferAmount = this.batch.initialPaymentPerChunk * this.batchSize;
+
+        await this.token.mint(stamper, transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, transferAmount);
+
+        await setPrice(this.price);
+        // totalOutpayment: 0, pending: price
+        await this.postageStamp.createBatch(
+          stamper,
+          this.batch.initialPaymentPerChunk,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
+        );
+      });
+
+      it('should revert', async function () {
+        await expect(this.postageStamp.increaseDepth(this.batch.id, this.newDepth)).to.be.revertedWith(
+          'batch is immutable'
+        );
       });
     });
 
@@ -418,30 +575,31 @@ describe('PostageStamp', function () {
       });
     });
 
-    describe('when pausing', function() {
-      it('should not allow anybody but the pauser to pause', async function() {
+    describe('when pausing', function () {
+      it('should not allow anybody but the pauser to pause', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', stamper);
-        await expect(postageStamp.pause()).to.be.revertedWith(
-          'only pauser can pause the contract'
-        );
+        await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause the contract');
       });
     });
 
-    describe('when unpausing', function() {
-
-      it('should unpause when pause and then unpause', async function() {
+    describe('when unpausing', function () {
+      it('should unpause when pause and then unpause', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await postageStamp.pause()
-        await postageStamp.unPause()
-        expect(await postageStamp.paused()).to.be.false
+        await postageStamp.pause();
+        await postageStamp.unPause();
+        expect(await postageStamp.paused()).to.be.false;
+      });
 
-      })
+      it('should not allow anybody but the pauser to unpause', async function () {
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        await postageStamp.pause();
+        const postageStamp2 = await ethers.getContract('PostageStamp', stamper);
+        await expect(postageStamp2.unPause()).to.be.revertedWith('only pauser can unpause the contract');
+      });
 
       it('should not allow unpausing when not paused', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await expect(postageStamp.unPause()).to.be.revertedWith(
-          'Pausable: not paused'
-        );
+        await expect(postageStamp.unPause()).to.be.revertedWith('Pausable: not paused');
       });
     });
 

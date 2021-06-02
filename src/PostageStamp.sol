@@ -172,15 +172,15 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-    * @notice set a new price
-    * @dev can only be called by the price oracle
-    * @param _price the new price
-    */
+     * @notice set a new price
+     * @dev can only be called by the price oracle
+     * @param _price the new price
+     */
     function setPrice(uint256 _price) external {
         require(hasRole(PRICE_ORACLE_ROLE, msg.sender), "only price oracle can set the price");
 
         // if there was a last price, charge for the time since the last update with the last price
-        if(lastPrice != 0) {
+        if (lastPrice != 0) {
             totalOutPayment = currentTotalOutPayment();
         }
 
@@ -191,9 +191,9 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-    * @notice Returns the current total outpayment
-    */
-    function currentTotalOutPayment() view public returns (uint256) {
+     * @notice Returns the current total outpayment
+     */
+    function currentTotalOutPayment() public view returns (uint256) {
         uint256 blocks = block.number - lastUpdatedBlock;
         uint256 increaseSinceLastUpdate = lastPrice.mul(blocks);
         return totalOutPayment.add(increaseSinceLastUpdate);
