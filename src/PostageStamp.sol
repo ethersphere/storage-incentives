@@ -5,11 +5,6 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 
-// - TODO:
-// - introduce a batch-scoped boolean flag persisted and never changeable. This ensures that dilution is not accepted.
-// - add bucket depth (same as depth). smaller than batch depth.
-//     - add to creation event
-// - make pausable
 /**
  * @title PostageStamp contract
  * @author The Swarm Authors
@@ -26,6 +21,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 normalisedBalance,
         address owner,
         uint8 depth,
+        uint8 bucketDepth,
         bool immutableFlag
     );
 
@@ -95,11 +91,13 @@ contract PostageStamp is AccessControl, Pausable {
         address _owner,
         uint256 _initialBalancePerChunk,
         uint8 _depth,
+        uint8 _bucketDepth,
         bytes32 _nonce,
         bool _immutable
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
-
+        // bucket depth should be non-zero and smaller than the depth
+        require(_bucketDepth != 0 && _bucketDepth < _depth, "invalid bucket depth");
         // Derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
@@ -117,7 +115,7 @@ contract PostageStamp is AccessControl, Pausable {
             normalisedBalance: normalisedBalance
         });
 
-        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _immutable);
+        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
     }
 
     /**
