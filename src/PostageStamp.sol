@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.7.4;
+pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
  * @title PostageStamp contract
@@ -11,7 +10,6 @@ import "@openzeppelin/contracts/utils/Pausable.sol";
  * @dev The postage stamp contracts allows users to create and manage postage stamp batches.
  */
 contract PostageStamp is AccessControl, Pausable {
-    using SafeMath for uint256;
     /**
      * @dev Emitted when a new batch is created.
      */
@@ -103,10 +101,10 @@ contract PostageStamp is AccessControl, Pausable {
         require(batches[batchId].owner == address(0), "batch already exists");
 
         // per chunk balance times the batch size is what we need to transfer in
-        uint256 totalAmount = _initialBalancePerChunk.mul(1 << _depth);
+        uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
-        uint256 normalisedBalance = currentTotalOutPayment().add(_initialBalancePerChunk);
+        uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
         batches[batchId] = Batch({
             owner: _owner,
@@ -130,10 +128,10 @@ contract PostageStamp is AccessControl, Pausable {
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
         // per chunk topup amount times the batch size is what we need to transfer in
-        uint256 totalAmount = _topupAmountPerChunk.mul(1 << batch.depth);
+        uint256 totalAmount = _topupAmountPerChunk * (1 << batch.depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
-        batch.normalisedBalance = batch.normalisedBalance.add(_topupAmountPerChunk);
+        batch.normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
 
         emit BatchTopUp(_batchId, totalAmount, batch.normalisedBalance);
     }
@@ -153,10 +151,10 @@ contract PostageStamp is AccessControl, Pausable {
 
         uint8 depthChange = _newDepth - batch.depth;
         // divide by the change in batch size (2^depthChange)
-        uint256 newRemainingBalance = remainingBalance(_batchId).div(1 << depthChange);
+        uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
         batch.depth = _newDepth;
-        batch.normalisedBalance = currentTotalOutPayment().add(newRemainingBalance);
+        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);
 
         emit BatchDepthIncrease(_batchId, _newDepth, batch.normalisedBalance);
     }
@@ -168,7 +166,7 @@ contract PostageStamp is AccessControl, Pausable {
     function remainingBalance(bytes32 _batchId) public view returns (uint256) {
         Batch storage batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist");
-        return batch.normalisedBalance.sub(currentTotalOutPayment());
+        return batch.normalisedBalance - currentTotalOutPayment();
     }
 
     /**
@@ -195,8 +193,8 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function currentTotalOutPayment() public view returns (uint256) {
         uint256 blocks = block.number - lastUpdatedBlock;
-        uint256 increaseSinceLastUpdate = lastPrice.mul(blocks);
-        return totalOutPayment.add(increaseSinceLastUpdate);
+        uint256 increaseSinceLastUpdate = lastPrice * (blocks);
+        return totalOutPayment + (increaseSinceLastUpdate);
     }
 
     /**
