@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity >=0.6.0 <0.8.13;
+pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
  * @title PostageStamp contract

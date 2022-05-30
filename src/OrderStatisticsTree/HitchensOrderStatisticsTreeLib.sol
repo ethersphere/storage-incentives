@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.6.0 <0.8.13;
+pragma solidity ^0.8.1;
 
 /* 
 Hitchens Order Statistics Tree v0.99
