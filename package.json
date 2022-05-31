@@ -38,6 +38,7 @@
     "prettier-plugin-solidity": "^1.0.0-alpha.59",
     "solidity-coverage": "^0.7.13",
     "ts-node": "^9.0.0",
+    "ethereumjs-abi": "^0.6.8",
     "typescript": "^4.0.5"
   },
   "scripts": {
@@ -55,8 +56,5 @@
     "staging:export": "hardhat --network staging export",
     "staging:seed": "cross-env HARDHAT_NETWORK=staging ts-node --files scripts/seed.ts",
     "hardhat": "hardhat"
-  },
-  "dependencies": {
-    "ethereumjs-abi": "^0.6.8"
   }
 }
