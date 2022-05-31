@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.7.4;
+pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./PostageStamp.sol";
 
