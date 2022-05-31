@@ -203,12 +203,25 @@ describe('PostageStamp', function () {
       it('should not allow duplicate batch', async function () {
         await this.postageStamp.createBatch(
           stamper,
-          0,
+          1,
           this.batch.depth,
           this.batch.bucketDepth,
           this.batch.nonce,
           this.batch.immutable
         );
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            1,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith('batch already exists');
+      });
+
+      it('should not allow normalized balance to be zero', async function () {
         await expect(
           this.postageStamp.createBatch(
             stamper,
@@ -218,7 +231,7 @@ describe('PostageStamp', function () {
             this.batch.nonce,
             this.batch.immutable
           )
-        ).to.be.revertedWith('batch already exists');
+        ).to.be.revertedWith('normalised balance cannot be zero');
       });
 
       it('should not allow batch creation when paused', async function () {
