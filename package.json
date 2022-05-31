@@ -55,5 +55,8 @@
     "staging:export": "hardhat --network staging export",
     "staging:seed": "cross-env HARDHAT_NETWORK=staging ts-node --files scripts/seed.ts",
     "hardhat": "hardhat"
+  },
+  "dependencies": {
+    "ethereumjs-abi": "^0.6.8"
   }
 }
