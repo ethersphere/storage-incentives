@@ -248,13 +248,8 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function firstBatchId() public view returns (bytes32) {
         uint val = tree.first();
-        (,,,,uint keyCount,) = tree.getNode(val);
-        if (keyCount > 0)
-        {
-            return tree.valueKeyAtIndex(val, 0);
-        } else {
-            revert();
-        }
+        require(val > 0);
+        return tree.valueKeyAtIndex(val, 0);
     }
 
     
