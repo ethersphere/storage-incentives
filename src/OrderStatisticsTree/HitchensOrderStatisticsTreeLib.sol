@@ -51,6 +51,9 @@ library HitchensOrderStatisticsTreeLib {
         uint root;
         mapping(uint => Node) nodes;
     }
+    function empty(Tree storage self) internal view returns (bool) {
+        return self.root == EMPTY;
+    }
     function first(Tree storage self) internal view returns (uint _value) {
         _value = self.root;
         if(_value == EMPTY) return 0;
