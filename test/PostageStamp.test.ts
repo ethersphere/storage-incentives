@@ -123,6 +123,41 @@ describe('PostageStamp', function () {
         expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
       });
 
+      it('should ordered the tree with lowest value', async function () {
+        // this is the lowest value
+        await this.postageStamp.createBatch(
+          stamper,
+          11,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          '0x0000000000000000000000000000000000000000000000000000000000001234',
+          this.batch.immutable
+        );
+        await this.postageStamp.createBatch(
+          stamper,
+          22,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          '0x0000000000000000000000000000000000000000000000000000000000001235',
+          this.batch.immutable
+        );
+        await this.postageStamp.createBatch(
+          stamper,
+          33,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          '0x0000000000000000000000000000000000000000000000000000000000001236',
+          this.batch.immutable
+        );
+        const value = await this.postageStamp.firstBatchId();
+        expect(value).equal('0xd7f850635df6f20e10c792847ba7fd8226a37700ca1d73ddbeb5a6aabd5f8c70');
+        const stamp = await this.postageStamp.batches(value);
+        expect(stamp[0]).to.equal(stamper);
+        expect(stamp[1]).to.equal(this.batch.depth);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(11);
+      });
+
       it('should transfer the token', async function () {
         await this.postageStamp.createBatch(
           stamper,
