@@ -234,6 +234,24 @@ describe('PostageStamp', function () {
         ).to.be.revertedWith('normalised balance cannot be zero');
       });
 
+      it('should not return empty batches', async function () {
+        await this.postageStamp.createBatch(
+          stamper,
+          this.batch.initialPaymentPerChunk,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
+        );
+        const stamp = await this.postageStamp.batches(this.batch.id);
+        expect(stamp[0]).to.equal(stamper);
+        expect(stamp[1]).to.equal(this.batch.depth);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
+        const isEmpty = await this.postageStamp.empty();
+        expect(isEmpty).equal(false);
+      });
+
       it('should not allow batch creation when paused', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
