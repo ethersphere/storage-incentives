@@ -124,36 +124,52 @@ describe('PostageStamp', function () {
       });
 
       it('should ordered the tree with lowest value', async function () {
-        // this is the lowest value
-        await this.postageStamp.createBatch(
-          stamper,
-          11,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          '0x0000000000000000000000000000000000000000000000000000000000001234',
-          this.batch.immutable
-        );
-        await this.postageStamp.createBatch(
-          stamper,
-          22,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          '0x0000000000000000000000000000000000000000000000000000000000001235',
-          this.batch.immutable
-        );
+        let counter = 0;
         await this.postageStamp.createBatch(
           stamper,
           33,
           this.batch.depth,
           this.batch.bucketDepth,
+          '0x0000000000000000000000000000000000000000000000000000000000001234',
+          this.batch.immutable
+        );
+        let value = await this.postageStamp.firstBatchId();
+        let query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
+        let logs = await this.postageStamp.queryFilter(query);
+        let { batchId } = logs[counter].args;
+        counter++;
+        expect(value).equal(batchId);
+        expect(logs.length).equal(counter);
+        await this.postageStamp.createBatch(
+          stamper,
+          11,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          '0x0000000000000000000000000000000000000000000000000000000000001235',
+          this.batch.immutable
+        );
+        value = await this.postageStamp.firstBatchId();
+        query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
+        logs = await this.postageStamp.queryFilter(query);
+        batchId = logs[counter].args.batchId;
+        counter++;
+        expect(value).equal(batchId);
+        expect(logs.length).equal(counter);
+        await this.postageStamp.createBatch(
+          stamper,
+          22,
+          this.batch.depth,
+          this.batch.bucketDepth,
           '0x0000000000000000000000000000000000000000000000000000000000001236',
           this.batch.immutable
         );
-        const query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
-        const logs = await this.postageStamp.queryFilter(query);
-        const { batchId } = logs[0].args;
-        const value = await this.postageStamp.firstBatchId();
-        expect(value).equal(batchId);
+        value = await this.postageStamp.firstBatchId();
+        query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
+        logs = await this.postageStamp.queryFilter(query);
+        batchId = logs[counter].args.batchId;
+        counter++;
+        expect(value).not.equal(batchId);
+        expect(logs.length).equal(counter);
         const stamp = await this.postageStamp.batches(value);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(this.batch.depth);
