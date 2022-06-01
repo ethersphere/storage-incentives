@@ -123,7 +123,7 @@ describe('PostageStamp', function () {
         expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
       });
 
-      it('should ordered the tree with lowest value', async function () {
+      it('should keep batches ordered by normalisedBalance', async function () {
         let counter = 0;
         await this.postageStamp.createBatch(
           stamper,
