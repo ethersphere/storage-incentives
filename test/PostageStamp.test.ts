@@ -149,8 +149,11 @@ describe('PostageStamp', function () {
           '0x0000000000000000000000000000000000000000000000000000000000001236',
           this.batch.immutable
         );
+        const query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
+        const logs = await this.postageStamp.queryFilter(query);
+        const { batchId } = logs[0].args;
         const value = await this.postageStamp.firstBatchId();
-        expect(value).equal('0xd7f850635df6f20e10c792847ba7fd8226a37700ca1d73ddbeb5a6aabd5f8c70');
+        expect(value).equal(batchId);
         const stamp = await this.postageStamp.batches(value);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(this.batch.depth);
