@@ -487,11 +487,10 @@ describe('PostageStamp', function () {
         query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
         logs = await this.postageStamp.queryFilter(query);
         const { batchId } = logs[1].args;
-        let value = await this.postageStamp.firstBatchId();
         await this.postageStamp.topUp(batchId, 2);
 
         // this will return the previous batch id
-        value = await this.postageStamp.firstBatchId();
+        const value = await this.postageStamp.firstBatchId();
         expect(value).equal(previousBatchId);
       });
     });
