@@ -464,17 +464,16 @@ describe('PostageStamp', function () {
         );
       });
       it('should keep batches ordered by normalisedBalance', async function () {
-        let indexAt = 0;
+        // mint more tokens
         await this.token.mint(stamper, 100000000000);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, 100000000000);
 
-        let value = await this.postageStamp.firstBatchId();
+        // get last log and store batch id
         let query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
         let logs = await this.postageStamp.queryFilter(query);
-        let { batchId } = logs[indexAt].args;
-        indexAt = 1;
-        expect(value).equal(batchId);
-        expect(logs.length).equal(indexAt);
+        const previousBatchId = logs[0].args.batchId;
+
+        // create 2nd batch
         await this.postageStamp.createBatch(
           stamper,
           199,
@@ -483,17 +482,20 @@ describe('PostageStamp', function () {
           '0x0000000000000000000000000000000000000000000000000000000000001235',
           this.batch.immutable
         );
-        value = await this.postageStamp.firstBatchId();
+
+        // get last log and used that batch id to top up
         query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
         logs = await this.postageStamp.queryFilter(query);
+        const { batchId } = logs[1].args;
+        let value = await this.postageStamp.firstBatchId();
+        await this.postageStamp.topUp(batchId, 2);
 
-        // store previous batch id
-        const previousBatchId = batchId;
-        batchId = logs[indexAt].args.batchId;
-        indexAt++;
-        expect(value).equal(batchId);
-        expect(logs.length).equal(indexAt);
-        await this.postageStamp.topUp(value, 2);
+        // query again and it returns the previous batch id
+        query = this.postageStamp.filters.BatchTopUp(null, null, null);
+        logs = await this.postageStamp.queryFilter(query);
+        expect(logs[0].args.batchId).equal(batchId);
+
+        // this will return the previous batch id
         value = await this.postageStamp.firstBatchId();
         expect(value).equal(previousBatchId);
       });
@@ -609,15 +611,17 @@ describe('PostageStamp', function () {
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
-        let indexAt = 0;
+        // get last log and should match with lowest batch id
         let query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
         let logs = await this.postageStamp.queryFilter(query);
-        let { batchId } = logs[indexAt].args;
+        let { batchId } = logs[0].args;
         let value = await this.postageStamp.firstBatchId();
         expect(value).equal(batchId);
-        const previousBatchId = batchId;
-        console.log(previousBatchId);
 
+        // store previous batch id
+        const previousBatchId = batchId;
+
+        // mint more tokens
         await this.token.mint(stamper, 100000000000);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, 100000000000);
         await this.postageStamp.createBatch(
@@ -628,19 +632,24 @@ describe('PostageStamp', function () {
           '0x0000000000000000000000000000000000000000000000000000000000001234',
           this.batch.immutable
         );
-        logs = await this.postageStamp.queryFilter(query);
-        indexAt = 1;
-        batchId = logs[indexAt].args.batchId;
 
+        // get last log from createBatch
+        logs = await this.postageStamp.queryFilter(query);
+        batchId = logs[1].args.batchId;
+
+        // lowest should be last added batch with balance = this.batch.initialPaymentPerChunk / 2
         value = await this.postageStamp.firstBatchId();
         expect(value).equal(batchId);
         expect(logs.length).equal(2);
 
+        // increase depth to previous batch id and fetch log
         await this.postageStamp.increaseDepth(previousBatchId, 8);
         query = this.postageStamp.filters.BatchDepthIncrease(null, null, null);
         logs = await this.postageStamp.queryFilter(query);
         batchId = logs[0].args.batchId;
         expect(logs.length).equal(1);
+
+        // lowest batch id matches batch where increased happened
         value = await this.postageStamp.firstBatchId();
         expect(value).equal(batchId);
       });
