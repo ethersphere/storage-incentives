@@ -483,10 +483,11 @@ describe('PostageStamp', function () {
           this.batch.immutable
         );
 
-        // get last log and used that batch id to top up
         query = this.postageStamp.filters.BatchCreated(null, null, null, null, null, null, null);
         logs = await this.postageStamp.queryFilter(query);
+        // get last log and used that batch id to top up
         const { batchId } = logs[1].args;
+        expect(batchId).equal(await this.postageStamp.firstBatchId());
         await this.postageStamp.topUp(batchId, 2);
 
         // this will return the previous batch id
