@@ -616,12 +616,13 @@ describe('PostageStamp', function () {
         let value = await this.postageStamp.firstBatchId();
         expect(value).equal(batchId);
         const previousBatchId = batchId;
+        console.log(previousBatchId);
 
         await this.token.mint(stamper, 100000000000);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, 100000000000);
         await this.postageStamp.createBatch(
           stamper,
-          201,
+          this.batch.initialPaymentPerChunk / 2,
           this.batch.depth,
           this.batch.bucketDepth,
           '0x0000000000000000000000000000000000000000000000000000000000001234',
@@ -635,11 +636,11 @@ describe('PostageStamp', function () {
         expect(value).equal(batchId);
         expect(logs.length).equal(2);
 
-        await this.postageStamp.increaseDepth(previousBatchId, 88);
+        await this.postageStamp.increaseDepth(previousBatchId, 8);
         query = this.postageStamp.filters.BatchDepthIncrease(null, null, null);
         logs = await this.postageStamp.queryFilter(query);
         batchId = logs[0].args.batchId;
-
+        expect(logs.length).equal(1);
         value = await this.postageStamp.firstBatchId();
         expect(value).equal(batchId);
       });
