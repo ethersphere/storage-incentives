@@ -616,15 +616,12 @@ describe('PostageStamp', function () {
         value = await this.postageStamp.firstBatchId();
         expect(value).equal(batchB);
 
-        // increase depth to previous batch id and fetch log
+        // increase depth to previous batch id
         await this.postageStamp.increaseDepth(batchA, 8);
-        const query = this.postageStamp.filters.BatchDepthIncrease(null, null, null);
-        const logs = await this.postageStamp.queryFilter(query);
-        expect(logs.length).equal(1);
 
-        // lowest batch id matches batch where increased happened
+        // lowest batch id is the one with increased depth
         value = await this.postageStamp.firstBatchId();
-        expect(value).equal(logs[0].args.batchId);
+        expect(value).equal(batchA);
       });
     });
 
