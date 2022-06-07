@@ -3,6 +3,7 @@ pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 
 /**
  * @title PostageStamp contract
@@ -10,6 +11,10 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @dev The postage stamp contracts allows users to create and manage postage stamp batches.
  */
 contract PostageStamp is AccessControl, Pausable {
+    using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
+
+    HitchensOrderStatisticsTreeLib.Tree tree;
+
     /**
      * @dev Emitted when a new batch is created.
      */
@@ -112,7 +117,9 @@ contract PostageStamp is AccessControl, Pausable {
             immutableFlag: _immutable,
             normalisedBalance: normalisedBalance
         });
-
+        require(normalisedBalance > 0, "normalised balance cannot be zero");
+        // insert into ordered statistic tree
+        tree.insert(batchId, normalisedBalance);
         emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
     }
 
@@ -131,7 +138,12 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 totalAmount = _topupAmountPerChunk * (1 << batch.depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
+        // updates by removing and then inserting
+        // removed normalised balance in ordered tree
+        tree.remove(_batchId, batch.normalisedBalance);
         batch.normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
+        // insert normalised balance in ordered tree
+        tree.insert(_batchId, batch.normalisedBalance);
 
         emit BatchTopUp(_batchId, totalAmount, batch.normalisedBalance);
     }
@@ -153,8 +165,13 @@ contract PostageStamp is AccessControl, Pausable {
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
+        // updates by removing and then inserting
+        // removed normalised balance in ordered tree
+        tree.remove(_batchId, batch.normalisedBalance);        
         batch.depth = _newDepth;
-        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);
+        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);        
+        // insert normalised balance in ordered tree
+        tree.insert(_batchId, batch.normalisedBalance);
 
         emit BatchDepthIncrease(_batchId, _newDepth, batch.normalisedBalance);
     }
@@ -166,6 +183,9 @@ contract PostageStamp is AccessControl, Pausable {
     function remainingBalance(bytes32 _batchId) public view returns (uint256) {
         Batch storage batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist");
+        if (batch.normalisedBalance <= currentTotalOutPayment()){
+            return 0;
+        }
         return batch.normalisedBalance - currentTotalOutPayment();
     }
 
@@ -214,4 +234,23 @@ contract PostageStamp is AccessControl, Pausable {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
         _unpause();
     }
+
+    /**
+     * @notice Returns true if no batches
+     */
+    function empty() public view returns(bool) {
+        return tree.empty();
+    }
+
+    /**
+     * @notice Gets the first batch id
+     * @dev if more than one batch id, returns index at 0, if no batches, reverts
+     */
+    function firstBatchId() public view returns (bytes32) {
+        uint val = tree.first();
+        require(val > 0);
+        return tree.valueKeyAtIndex(val, 0);
+    }
+
+    
 }

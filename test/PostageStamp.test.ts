@@ -123,6 +123,51 @@ describe('PostageStamp', function () {
         expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
       });
 
+      it('should keep batches ordered by normalisedBalance', async function () {
+        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          33,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceA,
+          this.batch.immutable
+        );
+        const batchA = computeBatchId(stamper, nonceA);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
+        await this.postageStamp.createBatch(
+          stamper,
+          11,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceB,
+          this.batch.immutable
+        );
+        const batchB = computeBatchId(stamper, nonceB);
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+
+        const nonceC = '0x0000000000000000000000000000000000000000000000000000000000001236';
+        await this.postageStamp.createBatch(
+          stamper,
+          22,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceC,
+          this.batch.immutable
+        );
+        const batchC = computeBatchId(stamper, nonceC);
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+        expect(batchC).not.equal(await this.postageStamp.firstBatchId());
+
+        const stamp = await this.postageStamp.batches(batchB);
+        expect(stamp[0]).to.equal(stamper);
+        expect(stamp[1]).to.equal(this.batch.depth);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(11);
+      });
+
       it('should transfer the token', async function () {
         await this.postageStamp.createBatch(
           stamper,
@@ -203,12 +248,25 @@ describe('PostageStamp', function () {
       it('should not allow duplicate batch', async function () {
         await this.postageStamp.createBatch(
           stamper,
-          0,
+          1,
           this.batch.depth,
           this.batch.bucketDepth,
           this.batch.nonce,
           this.batch.immutable
         );
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            1,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            this.batch.nonce,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith('batch already exists');
+      });
+
+      it('should not allow normalized balance to be zero', async function () {
         await expect(
           this.postageStamp.createBatch(
             stamper,
@@ -218,7 +276,25 @@ describe('PostageStamp', function () {
             this.batch.nonce,
             this.batch.immutable
           )
-        ).to.be.revertedWith('batch already exists');
+        ).to.be.revertedWith('normalised balance cannot be zero');
+      });
+
+      it('should not return empty batches', async function () {
+        await this.postageStamp.createBatch(
+          stamper,
+          this.batch.initialPaymentPerChunk,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          this.batch.nonce,
+          this.batch.immutable
+        );
+        const stamp = await this.postageStamp.batches(this.batch.id);
+        expect(stamp[0]).to.equal(stamper);
+        expect(stamp[1]).to.equal(this.batch.depth);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(this.expectedNormalisedBalance);
+        const isEmpty = await this.postageStamp.empty();
+        expect(isEmpty).equal(false);
       });
 
       it('should not allow batch creation when paused', async function () {
@@ -378,6 +454,32 @@ describe('PostageStamp', function () {
           'Pausable: paused'
         );
       });
+      it('should keep batches ordered by normalisedBalance', async function () {
+        // mint more tokens
+        await this.token.mint(stamper, 100000000000);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, 100000000000);
+        const batchA = computeBatchId(stamper, this.batch.nonce);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+        // create 2nd batch
+        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
+        await this.postageStamp.createBatch(
+          stamper,
+          199,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceB,
+          this.batch.immutable
+        );
+
+        const batchB = computeBatchId(stamper, nonceB);
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+
+        await this.postageStamp.topUp(batchB, 2);
+
+        // this will return the previous batch id
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+      });
     });
 
     describe('when increasing the depth', function () {
@@ -487,6 +589,39 @@ describe('PostageStamp', function () {
         await expect(this.postageStamp.increaseDepth(this.batch.id, this.newDepth))
           .to.emit(this.postageStamp, 'BatchDepthIncrease')
           .withArgs(this.batch.id, this.newDepth, expectedNormalisedBalance);
+      });
+
+      it('should keep batches ordered by normalisedBalance', async function () {
+        // compute batch A, which should match lowest batch from firstBatchId()
+        const batchA = computeBatchId(stamper, this.batch.nonce);
+        let value = await this.postageStamp.firstBatchId();
+        expect(value).equal(batchA);
+
+        // mint more tokens
+        await this.token.mint(stamper, 100000000000);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, 100000000000);
+
+        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          this.batch.initialPaymentPerChunk / 2,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceB,
+          this.batch.immutable
+        );
+        const batchB = computeBatchId(stamper, nonceB);
+
+        // lowest should be last added batch with balance = this.batch.initialPaymentPerChunk / 2
+        value = await this.postageStamp.firstBatchId();
+        expect(value).equal(batchB);
+
+        // increase depth to previous batch id
+        await this.postageStamp.increaseDepth(batchA, 8);
+
+        // lowest batch id is the one with increased depth
+        value = await this.postageStamp.firstBatchId();
+        expect(value).equal(batchA);
       });
     });
 
