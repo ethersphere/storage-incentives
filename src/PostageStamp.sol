@@ -239,7 +239,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Returns true if no batches
      */
     function empty() public view returns(bool) {
-        return tree.empty();
+        return tree.count() == 0;
     }
 
     /**
