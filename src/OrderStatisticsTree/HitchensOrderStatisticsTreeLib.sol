@@ -115,6 +115,9 @@ library HitchensOrderStatisticsTreeLib {
     function count(Tree storage self) internal view returns(uint _count) {
         return getNodeCount(self,self.root);
     }
+
+/* We don't use this functionality, so it is commented out to make audit easier
+
     function percentile(Tree storage self, uint value) internal view returns(uint _percentile) {
         uint denominator = count(self);
         uint numerator = rank(self, value);
@@ -234,6 +237,8 @@ library HitchensOrderStatisticsTreeLib {
             }
         }
     }
+*/
+
     function insert(Tree storage self, bytes32 key, uint value) internal {
         require(value != EMPTY, "OrderStatisticsTree(405) - Value to insert cannot be zero");
         require(!keyExists(self,key,value), "OrderStatisticsTree(406) - Value and Key pair exists. Cannot be inserted again.");
