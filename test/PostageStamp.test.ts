@@ -26,6 +26,12 @@ async function setPrice(price: number) {
   return await (await ethers.getContract('PostageStamp', oracle)).setPrice(price);
 }
 
+async function mineNBlocks(n: number) {
+  for (let index = 0; index < n; index++) {
+    await ethers.provider.send('evm_mine', []);
+  }
+}
+
 const zeroAddress = '0x0000000000000000000000000000000000000000';
 
 describe('PostageStamp', function () {
@@ -371,6 +377,7 @@ describe('PostageStamp', function () {
         const stamp = await this.postageStamp.batches(this.batch.id);
         expect(stamp[3]).to.equal(3 * price + this.expectedNormalisedBalance);
       });
+
     });
 
     describe('when topping up a batch', function () {
