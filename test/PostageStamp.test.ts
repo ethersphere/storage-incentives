@@ -378,6 +378,69 @@ describe('PostageStamp', function () {
         expect(stamp[3]).to.equal(3 * price + this.expectedNormalisedBalance);
       });
 
+      it('should delete expired batches', async function () {
+        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          8,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceA,
+          this.batch.immutable
+        );
+        const batchA = computeBatchId(stamper, nonceA);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
+        await this.postageStamp.createBatch(
+          stamper,
+          4,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceB,
+          this.batch.immutable
+        );
+        const batchB = computeBatchId(stamper, nonceB);
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+
+        const nonceC = '0x0000000000000000000000000000000000000000000000000000000000001236';
+        await this.postageStamp.createBatch(
+          stamper,
+          6,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceC,
+          this.batch.immutable
+        );
+        const batchC = computeBatchId(stamper, nonceC);
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+        expect(batchC).not.equal(await this.postageStamp.firstBatchId());
+
+        const stamp = await this.postageStamp.batches(batchB);
+        expect(stamp[0]).to.equal(stamper);
+        expect(stamp[1]).to.equal(this.batch.depth);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(4);
+
+        await mineNBlocks(5);
+
+        const nonceD = '0x0000000000000000000000000000000000000000000000000000000000001237';
+        await this.postageStamp.createBatch(
+          stamper,
+          9,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceD,
+          this.batch.immutable
+        );
+        const batchD = computeBatchId(stamper, nonceD);
+
+        expect(batchB).not.equal(await this.postageStamp.firstBatchId());
+        expect(batchD).not.equal(await this.postageStamp.firstBatchId());
+        expect(batchC).equal(await this.postageStamp.firstBatchId());
+
+      });
+
     });
 
     describe('when topping up a batch', function () {
