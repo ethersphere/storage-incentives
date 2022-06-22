@@ -177,7 +177,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
         expire();
-        validChunkCount += (1 << newDepth) - (1 << batch.depth);
+        validChunkCount += (1 << _newDepth) - (1 << batch.depth);
 
         // updates by removing and then inserting
         // removed normalised balance in ordered tree
@@ -280,7 +280,7 @@ contract PostageStamp is AccessControl, Pausable {
             uint256 batchSize = 1 << batch.depth;
             validChunkCount -= batchSize;
             pot += batchSize * (batch.normalisedBalance - leb);
-            tree.remove(fbi);
+            tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
         }
         pot += validChunkCount * (lastExpiryBalance - leb);
@@ -289,7 +289,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Returns the total lottery pot so far
      */
-    function totalPot() public {
+    function totalPot() public returns(uint256) {
         expire();
         uint256 balance = ERC20(bzzToken).balanceOf(address(this));
         return pot < balance ? pot : balance;
