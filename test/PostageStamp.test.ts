@@ -379,10 +379,13 @@ describe('PostageStamp', function () {
       });
 
       it('should delete expired batches', async function () {
+        const price = 1;
+        await setPrice(price);
+
         const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
         await this.postageStamp.createBatch(
           stamper,
-          8,
+          18,
           this.batch.depth,
           this.batch.bucketDepth,
           nonceA,
@@ -406,7 +409,7 @@ describe('PostageStamp', function () {
         const nonceC = '0x0000000000000000000000000000000000000000000000000000000000001236';
         await this.postageStamp.createBatch(
           stamper,
-          6,
+          15,
           this.batch.depth,
           this.batch.bucketDepth,
           nonceC,
@@ -420,14 +423,14 @@ describe('PostageStamp', function () {
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(this.batch.depth);
         expect(stamp[2]).to.equal(this.batch.immutable);
-        expect(stamp[3]).to.equal(4);
+        expect(stamp[3]).to.equal(6);
 
-        await mineNBlocks(5);
+        //await mineNBlocks(1);
 
         const nonceD = '0x0000000000000000000000000000000000000000000000000000000000001237';
         await this.postageStamp.createBatch(
           stamper,
-          9,
+          19,
           this.batch.depth,
           this.batch.bucketDepth,
           nonceD,

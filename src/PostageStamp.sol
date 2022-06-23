@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
-import 'hardhat/console.sol';
+// import 'hardhat/console.sol';
 
 /**
  * @title PostageStamp contract
@@ -271,13 +271,15 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Reclaims expired batches and adds their value to pot
      */
     function expire() public {
-        console.log("#######");
+        //console.log("#######");
         uint256 leb = lastExpiryBalance;
         lastExpiryBalance = currentTotalOutPayment();
         for(;;) {
             if(empty()) break;
             bytes32 fbi = firstBatchId();
-            console.logBytes32(fbi);
+            //console.logBytes32(fbi);
+            //console.log("left:");
+            //console.log(remainingBalance(fbi));
             if (remainingBalance(fbi) > 0) break;
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
