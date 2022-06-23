@@ -394,10 +394,12 @@ describe('PostageStamp', function () {
         const batchA = computeBatchId(stamper, nonceA);
         expect(batchA).equal(await this.postageStamp.firstBatchId());
 
+        expect(await this.postageStamp.pot()).equal(0);
+
         const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
         await this.postageStamp.createBatch(
           stamper,
-          4,
+          5,
           this.batch.depth,
           this.batch.bucketDepth,
           nonceB,
@@ -405,6 +407,8 @@ describe('PostageStamp', function () {
         );
         const batchB = computeBatchId(stamper, nonceB);
         expect(batchB).equal(await this.postageStamp.firstBatchId());
+
+        expect(await this.postageStamp.pot()).equal(1 << this.batch.depth);
 
         const nonceC = '0x0000000000000000000000000000000000000000000000000000000000001236';
         await this.postageStamp.createBatch(
@@ -423,9 +427,12 @@ describe('PostageStamp', function () {
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(this.batch.depth);
         expect(stamp[2]).to.equal(this.batch.immutable);
-        expect(stamp[3]).to.equal(6);
+        expect(stamp[3]).to.equal(7);
 
-        //await mineNBlocks(1);
+
+        expect(await this.postageStamp.pot()).equal(3 * 2 ** this.batch.depth);
+
+        await mineNBlocks(4);
 
         const nonceD = '0x0000000000000000000000000000000000000000000000000000000000001237';
         await this.postageStamp.createBatch(
@@ -437,6 +444,11 @@ describe('PostageStamp', function () {
           this.batch.immutable
         );
         const batchD = computeBatchId(stamper, nonceD);
+
+
+
+        expect(await this.postageStamp.pot()).equal(17 * 2 ** this.batch.depth);
+
 
         expect(batchB).not.equal(await this.postageStamp.firstBatchId());
         expect(batchD).not.equal(await this.postageStamp.firstBatchId());
