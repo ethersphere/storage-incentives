@@ -299,4 +299,19 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 balance = ERC20(bzzToken).balanceOf(address(this));
         return pot < balance ? pot : balance;
     }
+
+
+    function expireLimited(uint256 limit) public {
+        for(i = 0; i < limit; i++) {
+            if(empty()) break;
+            bytes32 fbi = firstBatchId();
+            if (remainingBalance(fbi) > 0) break;
+            Batch storage batch = batches[fbi];
+            uint256 batchSize = 1 << batch.depth;
+            validChunkCount -= batchSize;
+            pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
+            tree.remove(fbi, batch.normalisedBalance);
+            delete batches[fbi];
+        }
+    }
 }

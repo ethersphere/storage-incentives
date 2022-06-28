@@ -445,10 +445,7 @@ describe('PostageStamp', function () {
         );
         const batchD = computeBatchId(stamper, nonceD);
 
-
-
         expect(await this.postageStamp.pot()).equal(17 * 2 ** this.batch.depth);
-
 
         expect(batchB).not.equal(await this.postageStamp.firstBatchId());
         expect(batchD).not.equal(await this.postageStamp.firstBatchId());
@@ -590,7 +587,7 @@ describe('PostageStamp', function () {
         this.newBatchSize = 2 ** this.newDepth;
         this.increaseFactor = this.newBatchSize / this.batchSize;
         this.initialNormalisedBalance = this.totalOutPayment + this.batch.initialPaymentPerChunk;
-        const transferAmount = this.batch.initialPaymentPerChunk * this.batchSize;
+        const transferAmount = 2 *this.batch.initialPaymentPerChunk * this.batchSize;
 
         await this.token.mint(stamper, transferAmount);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, transferAmount);
@@ -707,6 +704,94 @@ describe('PostageStamp', function () {
         // lowest batch id is the one with increased depth
         value = await this.postageStamp.firstBatchId();
         expect(value).equal(batchA);
+      });
+
+      it('should delete expired batches', async function () {
+        const price = 1;
+        await setPrice(price);
+
+        const initialExpectedPot = this.price * 2 ** this.batch.depth + price * 2 ** this.batch.depth
+        var numberOfBatches = 1
+        var newBlocks = 0
+        var expectedPot = initialExpectedPot
+
+        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          8,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceA,
+          this.batch.immutable
+        );
+        const batchA = computeBatchId(stamper, nonceA);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+        expect(await this.postageStamp.pot()).equal(expectedPot);
+
+        numberOfBatches++
+        newBlocks = 1
+
+        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
+        await this.postageStamp.createBatch(
+          stamper,
+          3,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceB,
+          this.batch.immutable
+        );
+        const batchB = computeBatchId(stamper, nonceB);
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+
+        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth
+        expect(await this.postageStamp.pot()).equal(expectedPot);
+
+        numberOfBatches++
+        newBlocks = 1
+
+        const nonceC = '0x0000000000000000000000000000000000000000000000000000000000001236';
+        await this.postageStamp.createBatch(
+          stamper,
+          7,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceC,
+          this.batch.immutable
+        );
+        const batchC = computeBatchId(stamper, nonceC);
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+        expect(batchC).not.equal(await this.postageStamp.firstBatchId());
+
+        const stamp = await this.postageStamp.batches(batchB);
+        expect(stamp[0]).to.equal(stamper);
+        expect(stamp[1]).to.equal(this.batch.depth);
+        expect(stamp[2]).to.equal(this.batch.immutable);
+        expect(stamp[3]).to.equal(205);
+
+        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth
+        expect(await this.postageStamp.pot()).equal(expectedPot);
+
+        numberOfBatches++
+        newBlocks = 1
+
+        await mineNBlocks(2);
+        newBlocks = 3
+
+        expect(await this.postageStamp.pot()).equal(expectedPot);
+
+        expect(batchB).equal(await this.postageStamp.firstBatchId());
+
+        await this.postageStamp.increaseDepth(batchC, this.batch.depth + 1);
+
+        var expiredEarlier = 1 
+
+        expectedPot += (numberOfBatches * newBlocks - expiredEarlier  ) * 2 ** this.batch.depth
+        expect(await this.postageStamp.pot()).equal(expectedPot);
+
+        expect(batchB).not.equal(await this.postageStamp.firstBatchId());
+        expect(batchC).equal(await this.postageStamp.firstBatchId());
+
       });
     });
 
