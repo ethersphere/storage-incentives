@@ -57,6 +57,8 @@ contract PostageStamp is AccessControl, Pausable {
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
     // The role allowed to pause
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    // The role allowed to withdraw pot
+    bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
     // Associate every batch id with batch data.
     mapping(bytes32 => Batch) public batches;
@@ -315,4 +317,21 @@ contract PostageStamp is AccessControl, Pausable {
             delete batches[fbi];
         }
     }
+
+    function withdraw() public {
+        require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
+        require(ERC20(bzzToken).transferFrom(address(this), msg.sender, totalPot()), "failed transfer");
+        pot = 0;
+    }
+
+    function addRedistributor(address redistributor) public {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only admin can set redistributor");
+        grantRole(REDISTRIBUTOR_ROLE, redistributor);
+    }
+
+    function removeRedistributor(address redistributor) public {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only admin can set redistributor");
+        revokeRole(REDISTRIBUTOR_ROLE, redistributor);
+    }
+
 }
