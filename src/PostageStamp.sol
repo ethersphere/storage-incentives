@@ -302,6 +302,7 @@ contract PostageStamp is AccessControl, Pausable {
 
 
     function expireLimited(uint256 limit) public {
+	uint256 i;
         for(i = 0; i < limit; i++) {
             if(empty()) break;
             bytes32 fbi = firstBatchId();
