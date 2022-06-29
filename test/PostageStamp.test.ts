@@ -970,9 +970,11 @@ describe('PostageStamp', function () {
 
         await postageStamp.addRedistributor(receiver.getAddress());
 
-        let expectedAmount = 10 * 10 * 2 ** this.batch.depth;
+        let expectedAmount = 12 * 10 * 2 ** this.batch.depth;
 
-        expect(await postageStamp.connect(receiver).withdraw(beneficiary.getAddress())).to.emit(this.postageStamp, 'Transfer').withArgs(beneficiary.getAddress(), expectedAmount);
+        await expect(postageStamp.connect(receiver).withdraw(beneficiary.getAddress()));
+
+        expect(await this.token.balanceOf(beneficiary.getAddress())).to.equal(expectedAmount);
 
       });
     });
