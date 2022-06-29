@@ -302,7 +302,10 @@ contract PostageStamp is AccessControl, Pausable {
         return pot < balance ? pot : balance;
     }
 
-
+    /**
+     * @notice Reclaims a limited number of expired batches
+     * @dev Might be needed if reclaiming all expired batches would exceed the block gas limit.
+     */
     function expireLimited(uint256 limit) public {
         uint256 i;
         for(i = 0; i < limit; i++) {
@@ -318,17 +321,26 @@ contract PostageStamp is AccessControl, Pausable {
         }
     }
 
-    function withdraw() public {
+    /**
+     * @notice Withdraw the pot, authorised callers only
+     */
+    function withdraw(address beneficiary) public {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
-        require(ERC20(bzzToken).transferFrom(address(this), msg.sender, totalPot()), "failed transfer");
+        require(ERC20(bzzToken).transferFrom(address(this), beneficiary, totalPot()), "failed transfer");
         pot = 0;
     }
 
+    /**
+     * @notice Authorise withdrawal
+     */
     function addRedistributor(address redistributor) public {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only admin can set redistributor");
         grantRole(REDISTRIBUTOR_ROLE, redistributor);
     }
 
+    /**
+     * @notice Revoke withdrawal authorisation
+     */
     function removeRedistributor(address redistributor) public {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only admin can set redistributor");
         revokeRole(REDISTRIBUTOR_ROLE, redistributor);
