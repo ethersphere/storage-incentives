@@ -1,5 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
+import { Signer } from "ethers";
 
 // Named accounts used by tests.
 let stamper: string;
@@ -916,5 +917,64 @@ describe('PostageStamp', function () {
         ).to.be.revertedWith('batch does not exist');
       });
     });
+
+    describe('when redistributor withdraws pot', function () {
+      let receiver: Signer;
+      let beneficiary: Signer;
+
+      beforeEach(async function () {
+        const accounts = await ethers.getSigners();
+        receiver = accounts[0];
+        beneficiary = accounts[1];
+        this.postageStamp = await ethers.getContract('PostageStamp', stamper);
+        this.token = await ethers.getContract('TestToken', deployer);
+
+        this.batch = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
+          initialPaymentPerChunk: 200,
+          depth: 5,
+          immutable: false,
+          bucketDepth: 4,
+        };
+
+        this.batchSize = 2 ** this.batch.depth;
+        this.transferAmount = 2 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
+
+        this.batch.id = computeBatchId(stamper, this.batch.nonce);
+
+        await this.token.mint(stamper, this.transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
+      });
+      it('should transfer the pot to the redistributor', async function () {
+        const price = 10;
+        await setPrice(price);
+
+        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          200,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceA,
+          this.batch.immutable
+        );
+        const batchA = computeBatchId(stamper, nonceA);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+        expect(await this.postageStamp.pot()).equal(0 * 2 ** this.batch.depth);
+
+        await mineNBlocks(10);
+
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+
+        await postageStamp.addRedistributor(receiver.getAddress());
+
+        expect(await postageStamp.connect(receiver).withdraw(beneficiary.getAddress()));
+
+
+      });
+    });
+
   });
 });

@@ -324,9 +324,10 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Withdraw the pot, authorised callers only
      */
+
     function withdraw(address beneficiary) public {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
-        require(ERC20(bzzToken).transferFrom(address(this), beneficiary, totalPot()), "failed transfer");
+        require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
         pot = 0;
     }
 
@@ -345,5 +346,4 @@ contract PostageStamp is AccessControl, Pausable {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only admin can set redistributor");
         revokeRole(REDISTRIBUTOR_ROLE, redistributor);
     }
-
 }
