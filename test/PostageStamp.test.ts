@@ -947,7 +947,7 @@ describe('PostageStamp', function () {
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
       });
       it('should transfer the pot to the redistributor', async function () {
-        const price = 10;
+        const price = 15;
         await setPrice(price);
 
         const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
@@ -970,7 +970,9 @@ describe('PostageStamp', function () {
 
         await postageStamp.addRedistributor(receiver.getAddress());
 
-        let expectedAmount = 12 * 10 * 2 ** this.batch.depth;
+        let numberOfNewBlocks = 12;
+
+        let expectedAmount = numberOfNewBlocks * price * 2 ** this.batch.depth;
 
         await expect(postageStamp.connect(receiver).withdraw(beneficiary.getAddress()));
 
