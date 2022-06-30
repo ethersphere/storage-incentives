@@ -58,37 +58,6 @@ library HitchensOrderStatisticsTreeLib {
             _value = self.nodes[_value].left;
         }
     }
-    function last(Tree storage self) internal view returns (uint _value) {
-        _value = self.root;
-        if(_value == EMPTY) return 0;
-        while (self.nodes[_value].right != EMPTY) {
-            _value = self.nodes[_value].right;
-        }
-    }
-    function next(Tree storage self, uint value) internal view returns (uint _cursor) {
-        require(value != EMPTY, "OrderStatisticsTree(401) - Starting value cannot be zero");
-        if (self.nodes[value].right != EMPTY) {
-            _cursor = treeMinimum(self, self.nodes[value].right);
-        } else {
-            _cursor = self.nodes[value].parent;
-            while (_cursor != EMPTY && value == self.nodes[_cursor].right) {
-                value = _cursor;
-                _cursor = self.nodes[_cursor].parent;
-            }
-        }
-    }
-    function prev(Tree storage self, uint value) internal view returns (uint _cursor) {
-        require(value != EMPTY, "OrderStatisticsTree(402) - Starting value cannot be zero");
-        if (self.nodes[value].left != EMPTY) {
-            _cursor = treeMaximum(self, self.nodes[value].left);
-        } else {
-            _cursor = self.nodes[value].parent;
-            while (_cursor != EMPTY && value == self.nodes[_cursor].left) {
-                value = _cursor;
-                _cursor = self.nodes[_cursor].parent;
-            }
-        }
-    }
     function exists(Tree storage self, uint value) internal view returns (bool _exists) {
         if(value == EMPTY) return false;
         if(value == self.root) return true;

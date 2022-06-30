@@ -29,8 +29,10 @@
     "eslint-config-prettier": "^6.15.0",
     "eslint-plugin-prettier": "^3.1.4",
     "ethereum-waffle": "^3.2.0",
+    "ethereumjs-abi": "^0.6.8",
     "ethers": "^5.0.19",
     "hardhat": "^2.9.9",
+    "hardhat-contract-sizer": "^2.6.1",
     "hardhat-deploy": "^0.7.0-beta.25",
     "hardhat-deploy-ethers": "^0.3.0-beta.5",
     "mocha": "^8.2.0",
@@ -38,7 +40,6 @@
     "prettier-plugin-solidity": "^1.0.0-alpha.59",
     "solidity-coverage": "^0.7.13",
     "ts-node": "^10.8.1",
-    "ethereumjs-abi": "^0.6.8",
     "typescript": "^4.0.5"
   },
   "scripts": {
