@@ -967,8 +967,10 @@ describe('PostageStamp', function () {
         await mineNBlocks(10);
 
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        const redistributorRole = await postageStamp.REDISTRIBUTOR_ROLE();
 
-        await postageStamp.addRedistributor(receiver.getAddress());
+
+        await postageStamp.grantRole(redistributorRole, receiver.getAddress());
 
         const numberOfNewBlocks = 12;
 
