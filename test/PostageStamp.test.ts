@@ -712,9 +712,9 @@ describe('PostageStamp', function () {
         await setPrice(price);
 
         const initialExpectedPot = this.price * 2 ** this.batch.depth + price * 2 ** this.batch.depth
-        var numberOfBatches = 1
-        var newBlocks = 0
-        var expectedPot = initialExpectedPot
+        let numberOfBatches = 1
+        let newBlocks = 0
+        let expectedPot = initialExpectedPot
 
         const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
         await this.postageStamp.createBatch(
@@ -785,7 +785,7 @@ describe('PostageStamp', function () {
 
         await this.postageStamp.increaseDepth(batchC, this.batch.depth + 1);
 
-        var expiredEarlier = 1 
+        const expiredEarlier = 1 
 
         expectedPot += (numberOfBatches * newBlocks - expiredEarlier  ) * 2 ** this.batch.depth
         expect(await this.postageStamp.pot()).equal(expectedPot);
@@ -970,9 +970,9 @@ describe('PostageStamp', function () {
 
         await postageStamp.addRedistributor(receiver.getAddress());
 
-        let numberOfNewBlocks = 12;
+        const numberOfNewBlocks = 12;
 
-        let expectedAmount = numberOfNewBlocks * price * 2 ** this.batch.depth;
+        const expectedAmount = numberOfNewBlocks * price * 2 ** this.batch.depth;
 
         await expect(postageStamp.connect(receiver).withdraw(beneficiary.getAddress()));
 
