@@ -36,6 +36,7 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
+      initialBaseFeePerGas: 0,
       accounts,
     },
     localhost: {
