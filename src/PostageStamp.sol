@@ -122,7 +122,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
-        expire(0);
+        expire();
         validChunkCount += 1 << _depth;
 
         batches[batchId] = Batch({
@@ -179,7 +179,7 @@ contract PostageStamp is AccessControl, Pausable {
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
-        expire(0);
+        expire();
         validChunkCount += (1 << _newDepth) - (1 << batch.depth);
 
         // updates by removing and then inserting
@@ -272,20 +272,11 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Reclaims expired batches and adds their value to pot
      */
-    function expire(uint256 limit) public {
+    function expire() public {
         //console.log("#######");
         uint256 leb = lastExpiryBalance;
-        if (limit == 0) {
-            lastExpiryBalance = currentTotalOutPayment();
-        }
-        uint i = 0;
+        lastExpiryBalance = currentTotalOutPayment();
         for(;;) {
-            if (limit > 0) {
-                i++;
-                if (i > limit) {
-                    return;
-                }
-            }
             if(empty()) break;
             bytes32 fbi = firstBatchId();
             //console.logBytes32(fbi);
@@ -299,8 +290,25 @@ contract PostageStamp is AccessControl, Pausable {
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
         }
-        if (limit == 0) {
-            pot += validChunkCount * (lastExpiryBalance - leb);
+        pot += validChunkCount * (lastExpiryBalance - leb);
+    }
+
+    /**
+     * @notice Reclaims a limited number of expired batches
+     * @dev Might be needed if reclaiming all expired batches would exceed the block gas limit.
+     */
+    function expireLimited(uint256 limit) public {
+        uint256 i;
+        for(i = 0; i < limit; i++) {
+            if(empty()) break;
+            bytes32 fbi = firstBatchId();
+            if (remainingBalance(fbi) > 0) break;
+            Batch storage batch = batches[fbi];
+            uint256 batchSize = 1 << batch.depth;
+            validChunkCount -= batchSize;
+            pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
+            tree.remove(fbi, batch.normalisedBalance);
+            delete batches[fbi];
         }
     }
 
@@ -308,7 +316,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Returns the total lottery pot so far
      */
     function totalPot() public returns(uint256) {
-        expire(0);
+        expire();
         uint256 balance = ERC20(bzzToken).balanceOf(address(this));
         return pot < balance ? pot : balance;
     }
