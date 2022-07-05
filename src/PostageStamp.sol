@@ -13,8 +13,6 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 contract PostageStamp is AccessControl, Pausable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
-    HitchensOrderStatisticsTreeLib.Tree tree;
-
     /**
      * @dev Emitted when a new batch is created.
      */
@@ -58,19 +56,31 @@ contract PostageStamp is AccessControl, Pausable {
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
     // The role allowed to pause
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    // The role allowed to withdraw pot
+    bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
     // Associate every batch id with batch data.
     mapping(bytes32 => Batch) public batches;
+    // Store every batch id ordered by normalisedBalance
+    HitchensOrderStatisticsTreeLib.Tree tree;
 
     // The address of the BZZ ERC20 token this contract references.
     address public bzzToken;
     // The total out payment per chunk
     uint256 public totalOutPayment;
 
+    // Combined chunk capacity of valid batches
+    uint256 public validChunkCount;
+
+    // Lottery pot at last update
+    uint256 public pot;
+
     // the price from the last update
     uint256 public lastPrice;
     // the block at which the last update occured
     uint256 public lastUpdatedBlock;
+    // the normalised balance at which the last expiry occured
+    uint256 public lastExpiryBalance;
 
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
@@ -110,6 +120,9 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
+
+        expire();
+        validChunkCount += 1 << _depth;
 
         batches[batchId] = Batch({
             owner: _owner,
@@ -164,6 +177,9 @@ contract PostageStamp is AccessControl, Pausable {
         uint8 depthChange = _newDepth - batch.depth;
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
+
+        expire();
+        validChunkCount += (1 << _newDepth) - (1 << batch.depth);
 
         // updates by removing and then inserting
         // removed normalised balance in ordered tree
@@ -252,5 +268,61 @@ contract PostageStamp is AccessControl, Pausable {
         return tree.valueKeyAtIndex(val, 0);
     }
 
-    
+    /**
+     * @notice Reclaims expired batches and adds their value to pot
+     */
+    function expire() public {
+        uint256 leb = lastExpiryBalance;
+        lastExpiryBalance = currentTotalOutPayment();
+        for(;;) {
+            if(empty()) break;
+            bytes32 fbi = firstBatchId();
+            if (remainingBalance(fbi) > 0) break;
+            Batch storage batch = batches[fbi];
+            uint256 batchSize = 1 << batch.depth;
+            validChunkCount -= batchSize;
+            pot += batchSize * (batch.normalisedBalance - leb);
+            tree.remove(fbi, batch.normalisedBalance);
+            delete batches[fbi];
+        }
+        pot += validChunkCount * (lastExpiryBalance - leb);
+    }
+
+    /**
+     * @notice Reclaims a limited number of expired batches
+     * @dev Might be needed if reclaiming all expired batches would exceed the block gas limit.
+     */
+    function expireLimited(uint256 limit) external {
+        uint256 i;
+        for(i = 0; i < limit; i++) {
+            if(empty()) break;
+            bytes32 fbi = firstBatchId();
+            if (remainingBalance(fbi) > 0) break;
+            Batch storage batch = batches[fbi];
+            uint256 batchSize = 1 << batch.depth;
+            validChunkCount -= batchSize;
+            pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
+            tree.remove(fbi, batch.normalisedBalance);
+            delete batches[fbi];
+        }
+    }
+
+    /**
+     * @notice Returns the total lottery pot so far
+     */
+    function totalPot() public returns(uint256) {
+        expire();
+        uint256 balance = ERC20(bzzToken).balanceOf(address(this));
+        return pot < balance ? pot : balance;
+    }
+
+    /**
+     * @notice Withdraw the pot, authorised callers only
+     */
+
+    function withdraw(address beneficiary) external {
+        require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
+        require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
+        pot = 0;
+    }
 }
