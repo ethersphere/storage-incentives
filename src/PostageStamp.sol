@@ -181,8 +181,8 @@ contract PostageStamp is AccessControl, Pausable {
         });
         require(normalisedBalance > 0, "normalised balance cannot be zero");
         // insert into ordered statistic tree
-        tree.insert(batchId, normalisedBalance);
-        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+        tree.insert(_batchId, normalisedBalance);
+        emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
     }
 
     /**
