@@ -149,7 +149,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _owner The owner of the new batch.
      * @param _initialBalancePerChunk The initial balance per chunk of the batch.
      * @param _depth The initial depth of the new batch.
-     * @param batchId A random value used in the batch id derivation to allow multiple batches per owner.
+     * @param _batchId A random value used in the batch id derivation to allow multiple batches per owner.
      * @param _immutable Whether the batch is mutable.
      */
     function copyBatch(
