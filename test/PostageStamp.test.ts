@@ -983,5 +983,63 @@ describe('PostageStamp', function () {
       });
     });
 
+    describe('when expireLimited is called', function () {
+      let receiver: Signer;
+      let beneficiary: Signer;
+
+      beforeEach(async function () {
+        const accounts = await ethers.getSigners();
+        receiver = accounts[0];
+        beneficiary = accounts[1];
+        this.postageStamp = await ethers.getContract('PostageStamp', stamper);
+        this.token = await ethers.getContract('TestToken', deployer);
+
+        this.batch = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
+          initialPaymentPerChunk: 200,
+          depth: 5,
+          immutable: false,
+          bucketDepth: 4,
+        };
+
+        this.batchSize = 2 ** this.batch.depth;
+        this.transferAmount = 2 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
+
+        this.batch.id = computeBatchId(stamper, this.batch.nonce);
+
+        await this.token.mint(stamper, this.transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
+      });
+      it('should update the pot and delete expired batches', async function () {
+        const price = 15;
+        await setPrice(price);
+
+        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          100,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceA,
+          this.batch.immutable
+        );
+        const batchA = computeBatchId(stamper, nonceA);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+//        expect(await this.postageStamp.pot()).equal(0 * 2 ** this.batch.depth);
+
+        await mineNBlocks(10);
+
+        const expectedAmount = 100 * 2 ** this.batch.depth;
+
+        expect(await this.postageStamp.expireLimited(1));
+
+        expect(await this.postageStamp.pot()).equal(expectedAmount);
+
+
+      });
+    });
+
   });
 });
