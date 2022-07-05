@@ -4,7 +4,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
-// import 'hardhat/console.sol';
 
 /**
  * @title PostageStamp contract
@@ -273,15 +272,11 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Reclaims expired batches and adds their value to pot
      */
     function expire() public {
-        //console.log("#######");
         uint256 leb = lastExpiryBalance;
         lastExpiryBalance = currentTotalOutPayment();
         for(;;) {
             if(empty()) break;
             bytes32 fbi = firstBatchId();
-            //console.logBytes32(fbi);
-            //console.log("left:");
-            //console.log(remainingBalance(fbi));
             if (remainingBalance(fbi) > 0) break;
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
@@ -297,7 +292,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Reclaims a limited number of expired batches
      * @dev Might be needed if reclaiming all expired batches would exceed the block gas limit.
      */
-    function expireLimited(uint256 limit) public {
+    function expireLimited(uint256 limit) external {
         uint256 i;
         for(i = 0; i < limit; i++) {
             if(empty()) break;
@@ -325,7 +320,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Withdraw the pot, authorised callers only
      */
 
-    function withdraw(address beneficiary) public {
+    function withdraw(address beneficiary) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
         require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
         pot = 0;

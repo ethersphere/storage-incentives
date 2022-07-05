@@ -4,8 +4,6 @@ import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 
-require('hardhat-contract-sizer');
-
 // Define mnemonic for accounts.
 let mnemonic = process.env.MNEMONIC;
 if (!mnemonic) {
