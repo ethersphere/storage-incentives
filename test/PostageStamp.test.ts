@@ -82,7 +82,7 @@ describe('PostageStamp', function () {
         };
 
         this.batchSize = 2 ** this.batch.depth;
-        this.transferAmount = this.batch.initialPaymentPerChunk * this.batchSize;
+        this.transferAmount = 2000 * this.batch.initialPaymentPerChunk * this.batchSize;
         this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
 
         this.batch.id = computeBatchId(stamper, this.batch.nonce);
@@ -451,6 +451,57 @@ describe('PostageStamp', function () {
         expect(batchB).not.equal(await this.postageStamp.firstBatchId());
         expect(batchD).not.equal(await this.postageStamp.firstBatchId());
         expect(batchC).equal(await this.postageStamp.firstBatchId());
+
+      });
+
+      it('should delete many expired batches', async function () {
+        const price = 1;
+        await setPrice(price);
+
+          const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000003333';
+          await this.postageStamp.createBatch(
+            stamper,
+            35,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            nonce0,
+            this.batch.immutable
+          );
+
+
+        for(let i = 0; i < 20; i++) {
+
+          const nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
+          await this.postageStamp.createBatch(
+            stamper,
+            24 - i,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            nonce,
+            this.batch.immutable
+          );
+          // const batchA = computeBatchId(stamper, nonceA);
+          // expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+          // expect(await this.postageStamp.pot()).equal(0);
+        };
+
+        await mineNBlocks(5);
+
+        const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
+        let result = await this.postageStamp.createBatch(
+          stamper,
+          19,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceD,
+          this.batch.immutable
+        );
+
+        console.log("create batch result: ", result);
+        const batchD = computeBatchId(stamper, nonceD);
+
+        expect(await this.postageStamp.pot()).equal(17 * 2 ** this.batch.depth);
 
       });
 
