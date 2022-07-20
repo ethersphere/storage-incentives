@@ -82,7 +82,7 @@ describe('PostageStamp', function () {
         };
 
         this.batchSize = 2 ** this.batch.depth;
-        this.transferAmount = 2000 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.transferAmount = this.batch.initialPaymentPerChunk * this.batchSize;
         this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
 
         this.batch.id = computeBatchId(stamper, this.batch.nonce);
@@ -458,6 +458,12 @@ describe('PostageStamp', function () {
         const price = 1;
         await setPrice(price);
 
+        this.transferAmount = 2000 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
+
+        await this.token.mint(stamper, this.transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
+
           const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000003333';
           await this.postageStamp.createBatch(
             stamper,
@@ -471,7 +477,7 @@ describe('PostageStamp', function () {
 
         for(let i = 0; i < 20; i++) {
 
-          const nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
+          let nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
           await this.postageStamp.createBatch(
             stamper,
             24 - i,
