@@ -68,6 +68,10 @@ library HitchensOrderStatisticsTreeLib {
     }
     function keyExists(Tree storage self, bytes32 key, uint value) internal view returns (bool _exists) {
         if(!exists(self, value)) return false;
+        console.log("###:");
+        console.log(self.nodes[value].keyMap[key]);
+        console.log("####:");
+        //console.log(self.nodes[value].keys[self.nodes[value].keyMap[key]]);
         return self.nodes[value].keys[self.nodes[value].keyMap[key]] == key;
     } 
     function getNode(Tree storage self, uint value) internal view returns (uint _parent, uint _left, uint _right, bool _red, uint keyCount, uint __count) {
@@ -246,6 +250,7 @@ library HitchensOrderStatisticsTreeLib {
     }
     function remove(Tree storage self, bytes32 key, uint value) internal {
         require(value != EMPTY, "OrderStatisticsTree(407) - Value to delete cannot be zero");
+        console.logBytes32(key);
         require(keyExists(self,key,value), "OrderStatisticsTree(408) - Value to delete does not exist.");
         Node storage nValue = self.nodes[value];
         uint rowToDelete = nValue.keyMap[key];
