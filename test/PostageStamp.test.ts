@@ -474,12 +474,12 @@ describe('PostageStamp', function () {
           //   this.batch.immutable
           // );
 
-        for(let i = 0; i < 2000; i++) {
+        for(let i = 0; i < 20; i++) {
 
           let nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
           await this.postageStamp.createBatch(
             stamper,
-            2000,
+            20,
             this.batch.depth,
             this.batch.bucketDepth,
             nonce,
@@ -491,7 +491,7 @@ describe('PostageStamp', function () {
           // expect(await this.postageStamp.pot()).equal(0);
         };
 
-        await mineNBlocks(275);
+        await mineNBlocks(2);
 
         const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
         let result = await this.postageStamp.createBatch(
