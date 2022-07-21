@@ -491,7 +491,7 @@ describe('PostageStamp', function () {
           // expect(await this.postageStamp.pot()).equal(0);
         };
 
-        await mineNBlocks(3);
+        await mineNBlocks(5);
 
         const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
         let result = await this.postageStamp.createBatch(
@@ -506,7 +506,7 @@ describe('PostageStamp', function () {
         console.log("create batch result: ", result);
         const batchD = computeBatchId(stamper, nonceD);
 
-        expect(await this.postageStamp.pot()).equal(17 * 2 ** this.batch.depth);
+        expect(await this.postageStamp.pot()).equal(210 * 2 ** this.batch.depth);
 
       });
 
