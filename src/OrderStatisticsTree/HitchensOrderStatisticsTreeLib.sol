@@ -248,14 +248,13 @@ library HitchensOrderStatisticsTreeLib {
         }
         insertFixup(self, value);
     }
-    function remove(Tree storage self, bytes32 key, uint value) internal {
+      function remove(Tree storage self, bytes32 key, uint value) internal {
         require(value != EMPTY, "OrderStatisticsTree(407) - Value to delete cannot be zero");
-        console.logBytes32(key);
         require(keyExists(self,key,value), "OrderStatisticsTree(408) - Value to delete does not exist.");
         Node storage nValue = self.nodes[value];
         uint rowToDelete = nValue.keyMap[key];
         nValue.keys[rowToDelete] = nValue.keys[nValue.keys.length - uint(1)];
-        nValue.keyMap[key]=rowToDelete;
+        nValue.keyMap[nValue.keys[nValue.keys.length - uint(1)]]=rowToDelete;
         nValue.keys.pop();
         uint probe;
         uint cursor;
