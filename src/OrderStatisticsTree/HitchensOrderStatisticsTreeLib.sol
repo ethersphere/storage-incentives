@@ -66,12 +66,8 @@ library HitchensOrderStatisticsTreeLib {
     }
     function keyExists(Tree storage self, bytes32 key, uint value) internal view returns (bool _exists) {
         if(!exists(self, value)) return false;
-        if ( self.nodes[value].keys.length > self.nodes[value].keyMap[key] ) {
-            return self.nodes[value].keys[self.nodes[value].keyMap[key]] == key;
-        } else {
-            return false;
-        }
-    }
+        return self.nodes[value].keys[self.nodes[value].keyMap[key]] == key;
+    } 
     function getNode(Tree storage self, uint value) internal view returns (uint _parent, uint _left, uint _right, bool _red, uint keyCount, uint __count) {
         require(exists(self,value), "OrderStatisticsTree(403) - Value does not exist.");
         Node storage gn = self.nodes[value];

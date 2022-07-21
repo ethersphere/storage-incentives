@@ -458,29 +458,28 @@ describe('PostageStamp', function () {
         const price = 1;
         await setPrice(price);
 
-        this.transferAmount = 2000 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.transferAmount = 20000000 * this.batch.initialPaymentPerChunk * this.batchSize;
         this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
 
         await this.token.mint(stamper, this.transferAmount);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
 
-          const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000003333';
-          await this.postageStamp.createBatch(
-            stamper,
-            35,
-            this.batch.depth,
-            this.batch.bucketDepth,
-            nonce0,
-            this.batch.immutable
-          );
+          // const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000003333';
+          // await this.postageStamp.createBatch(
+          //   stamper,
+          //   35,
+          //   this.batch.depth,
+          //   this.batch.bucketDepth,
+          //   nonce0,
+          //   this.batch.immutable
+          // );
 
-
-        for(let i = 0; i < 20; i++) {
+        for(let i = 0; i < 2000; i++) {
 
           let nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
           await this.postageStamp.createBatch(
             stamper,
-            24 - i,
+            2000,
             this.batch.depth,
             this.batch.bucketDepth,
             nonce,
@@ -492,7 +491,7 @@ describe('PostageStamp', function () {
           // expect(await this.postageStamp.pot()).equal(0);
         };
 
-        await mineNBlocks(5);
+        await mineNBlocks(275);
 
         const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
         let result = await this.postageStamp.createBatch(
