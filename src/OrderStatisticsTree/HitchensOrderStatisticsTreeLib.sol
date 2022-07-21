@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.1;
 
-import "hardhat/console.sol";
+// import "hardhat/console.sol";
 
 /* 
 Hitchens Order Statistics Tree v0.99
@@ -68,10 +68,6 @@ library HitchensOrderStatisticsTreeLib {
     }
     function keyExists(Tree storage self, bytes32 key, uint value) internal view returns (bool _exists) {
         if(!exists(self, value)) return false;
-        console.log("###:");
-        console.log(self.nodes[value].keyMap[key]);
-        console.log("####:");
-        //console.log(self.nodes[value].keys[self.nodes[value].keyMap[key]]);
         return self.nodes[value].keys[self.nodes[value].keyMap[key]] == key;
     } 
     function getNode(Tree storage self, uint value) internal view returns (uint _parent, uint _left, uint _right, bool _red, uint keyCount, uint __count) {
