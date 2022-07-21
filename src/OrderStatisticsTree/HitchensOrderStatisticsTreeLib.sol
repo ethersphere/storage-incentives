@@ -253,8 +253,9 @@ library HitchensOrderStatisticsTreeLib {
         require(keyExists(self,key,value), "OrderStatisticsTree(408) - Value to delete does not exist.");
         Node storage nValue = self.nodes[value];
         uint rowToDelete = nValue.keyMap[key];
-        nValue.keys[rowToDelete] = nValue.keys[nValue.keys.length - uint(1)];
-        nValue.keyMap[nValue.keys[nValue.keys.length - uint(1)]]=rowToDelete;
+        bytes32 last = nValue.keys[nValue.keys.length - uint(1)];
+        nValue.keys[rowToDelete] = last;
+        nValue.keyMap[last] = rowToDelete;
         nValue.keys.pop();
         uint probe;
         uint cursor;
