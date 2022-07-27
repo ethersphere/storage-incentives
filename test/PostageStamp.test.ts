@@ -379,137 +379,6 @@ describe('PostageStamp', function () {
         expect(stamp[3]).to.equal(3 * price + this.expectedNormalisedBalance);
       });
 
-      it('should delete expired batches', async function () {
-        const price = 1;
-        await setPrice(price);
-
-        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
-        await this.postageStamp.createBatch(
-          stamper,
-          18,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceA,
-          this.batch.immutable
-        );
-        const batchA = computeBatchId(stamper, nonceA);
-        expect(batchA).equal(await this.postageStamp.firstBatchId());
-
-        expect(await this.postageStamp.pot()).equal(0);
-
-        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
-        await this.postageStamp.createBatch(
-          stamper,
-          5,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceB,
-          this.batch.immutable
-        );
-        const batchB = computeBatchId(stamper, nonceB);
-        expect(batchB).equal(await this.postageStamp.firstBatchId());
-
-        expect(await this.postageStamp.pot()).equal(1 << this.batch.depth);
-
-        const nonceC = '0x0000000000000000000000000000000000000000000000000000000000001236';
-        await this.postageStamp.createBatch(
-          stamper,
-          15,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceC,
-          this.batch.immutable
-        );
-        const batchC = computeBatchId(stamper, nonceC);
-        expect(batchB).equal(await this.postageStamp.firstBatchId());
-        expect(batchC).not.equal(await this.postageStamp.firstBatchId());
-
-        const stamp = await this.postageStamp.batches(batchB);
-        expect(stamp[0]).to.equal(stamper);
-        expect(stamp[1]).to.equal(this.batch.depth);
-        expect(stamp[2]).to.equal(this.batch.immutable);
-        expect(stamp[3]).to.equal(7);
-
-
-        expect(await this.postageStamp.pot()).equal(3 * 2 ** this.batch.depth);
-
-        await mineNBlocks(4);
-
-        const nonceD = '0x0000000000000000000000000000000000000000000000000000000000001237';
-        await this.postageStamp.createBatch(
-          stamper,
-          19,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceD,
-          this.batch.immutable
-        );
-        const batchD = computeBatchId(stamper, nonceD);
-
-        expect(await this.postageStamp.pot()).equal(17 * 2 ** this.batch.depth);
-
-        expect(batchB).not.equal(await this.postageStamp.firstBatchId());
-        expect(batchD).not.equal(await this.postageStamp.firstBatchId());
-        expect(batchC).equal(await this.postageStamp.firstBatchId());
-
-      });
-
-      it('should delete many expired batches', async function () {
-        const price = 1;
-        await setPrice(price);
-
-        this.transferAmount = 20000000 * this.batch.initialPaymentPerChunk * this.batchSize;
-        this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
-
-        await this.token.mint(stamper, this.transferAmount);
-        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
-
-          // const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000003333';
-          // await this.postageStamp.createBatch(
-          //   stamper,
-          //   35,
-          //   this.batch.depth,
-          //   this.batch.bucketDepth,
-          //   nonce0,
-          //   this.batch.immutable
-          // );
-
-        for(let i = 0; i < 20; i++) {
-
-          let nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
-          await this.postageStamp.createBatch(
-            stamper,
-            20 - i,
-            this.batch.depth,
-            this.batch.bucketDepth,
-            nonce,
-            this.batch.immutable
-          );
-          // const batchA = computeBatchId(stamper, nonceA);
-          // expect(batchA).equal(await this.postageStamp.firstBatchId());
-
-          // expect(await this.postageStamp.pot()).equal(0);
-        };
-
-        await mineNBlocks(5);
-
-        const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
-        let result = await this.postageStamp.createBatch(
-          stamper,
-          19,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceD,
-          this.batch.immutable
-        );
-
-        console.log("create batch result: ", result);
-        const batchD = computeBatchId(stamper, nonceD);
-
-        expect(await this.postageStamp.pot()).equal(210 * 2 ** this.batch.depth);
-
-      });
-
     });
 
     describe('when topping up a batch', function () {
@@ -763,93 +632,6 @@ describe('PostageStamp', function () {
         expect(value).equal(batchA);
       });
 
-      it('should delete expired batches', async function () {
-        const price = 1;
-        await setPrice(price);
-
-        const initialExpectedPot = this.price * 2 ** this.batch.depth + price * 2 ** this.batch.depth
-        let numberOfBatches = 1;
-        let newBlocks = 0;
-        let expectedPot = initialExpectedPot;
-
-        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
-        await this.postageStamp.createBatch(
-          stamper,
-          8,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceA,
-          this.batch.immutable
-        );
-        const batchA = computeBatchId(stamper, nonceA);
-        expect(batchA).equal(await this.postageStamp.firstBatchId());
-
-        expect(await this.postageStamp.pot()).equal(expectedPot);
-
-        numberOfBatches++;
-        newBlocks = 1;
-
-        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
-        await this.postageStamp.createBatch(
-          stamper,
-          3,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceB,
-          this.batch.immutable
-        );
-        const batchB = computeBatchId(stamper, nonceB);
-        expect(batchB).equal(await this.postageStamp.firstBatchId());
-
-        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth
-        expect(await this.postageStamp.pot()).equal(expectedPot);
-
-        numberOfBatches++;
-        newBlocks = 1;
-
-        const nonceC = '0x0000000000000000000000000000000000000000000000000000000000001236';
-        await this.postageStamp.createBatch(
-          stamper,
-          7,
-          this.batch.depth,
-          this.batch.bucketDepth,
-          nonceC,
-          this.batch.immutable
-        );
-        const batchC = computeBatchId(stamper, nonceC);
-        expect(batchB).equal(await this.postageStamp.firstBatchId());
-        expect(batchC).not.equal(await this.postageStamp.firstBatchId());
-
-        const stamp = await this.postageStamp.batches(batchB);
-        expect(stamp[0]).to.equal(stamper);
-        expect(stamp[1]).to.equal(this.batch.depth);
-        expect(stamp[2]).to.equal(this.batch.immutable);
-        expect(stamp[3]).to.equal(205);
-
-        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth
-        expect(await this.postageStamp.pot()).equal(expectedPot);
-
-        numberOfBatches++;
-        newBlocks = 1;
-
-        await mineNBlocks(2);
-        newBlocks = 3;
-
-        expect(await this.postageStamp.pot()).equal(expectedPot);
-
-        expect(batchB).equal(await this.postageStamp.firstBatchId());
-
-        await this.postageStamp.increaseDepth(batchC, this.batch.depth + 1);
-
-        const expiredEarlier = 1;
-
-        expectedPot += (numberOfBatches * newBlocks - expiredEarlier  ) * 2 ** this.batch.depth
-        expect(await this.postageStamp.pot()).equal(expectedPot);
-
-        expect(batchB).not.equal(await this.postageStamp.firstBatchId());
-        expect(batchC).equal(await this.postageStamp.firstBatchId());
-
-      });
     });
 
     describe('when increasing the depth of immutable batches', function () {
@@ -1037,6 +819,63 @@ describe('PostageStamp', function () {
         expect(await this.token.balanceOf(beneficiary.getAddress())).to.equal(expectedAmount);
 
       });
+
+      it('should delete many expired batches', async function () {
+        const price = 1;
+        await setPrice(price);
+
+        this.transferAmount = 20000000 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
+
+        await this.token.mint(stamper, this.transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
+
+          // const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000003333';
+          // await this.postageStamp.createBatch(
+          //   stamper,
+          //   35,
+          //   this.batch.depth,
+          //   this.batch.bucketDepth,
+          //   nonce0,
+          //   this.batch.immutable
+          // );
+
+        for(let i = 0; i < 20; i++) {
+
+          let nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
+          await this.postageStamp.createBatch(
+            stamper,
+            20 - i,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            nonce,
+            this.batch.immutable
+          );
+          // const batchA = computeBatchId(stamper, nonceA);
+          // expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+          // expect(await this.postageStamp.pot()).equal(0);
+        };
+
+        await mineNBlocks(5);
+
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        const redistributorRole = await postageStamp.REDISTRIBUTOR_ROLE();
+
+        await postageStamp.grantRole(redistributorRole, receiver.getAddress());
+
+        const numberOfNewBlocks = 12;
+
+        const expectedAmount = numberOfNewBlocks * price * 2 ** this.batch.depth;
+
+        await expect(postageStamp.connect(receiver).withdraw(beneficiary.getAddress()));
+
+        expect(await this.token.balanceOf(beneficiary.getAddress())).to.equal(210 * 2 ** this.batch.depth);
+
+        expect(await this.postageStamp.pot()).equal(0);
+
+      });
+
     });
 
     describe('when expireLimited is called', function () {
@@ -1089,12 +928,13 @@ describe('PostageStamp', function () {
 
         const expectedAmount = 100 * 2 ** this.batch.depth;
 
-        expect(await this.postageStamp.expireLimited(1));
+        expect(await this.postageStamp.expireLimited(5));
 
         expect(await this.postageStamp.pot()).equal(expectedAmount);
 
 
       });
+
     });
 
   });
