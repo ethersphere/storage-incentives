@@ -476,7 +476,7 @@ describe('PostageStamp', function () {
 
         for(let i = 0; i < 20; i++) {
 
-          let nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
+          const nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
           await this.postageStamp.createBatch(
             stamper,
             20 - i,
@@ -494,7 +494,7 @@ describe('PostageStamp', function () {
         await mineNBlocks(5);
 
         const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
-        let result = await this.postageStamp.createBatch(
+        const result = await this.postageStamp.createBatch(
           stamper,
           19,
           this.batch.depth,
@@ -504,7 +504,6 @@ describe('PostageStamp', function () {
         );
 
         console.log("create batch result: ", result);
-        const batchD = computeBatchId(stamper, nonceD);
 
         expect(await this.postageStamp.pot()).equal(210 * 2 ** this.batch.depth);
 
@@ -1040,13 +1039,8 @@ describe('PostageStamp', function () {
     });
 
     describe('when expireLimited is called', function () {
-      let receiver: Signer;
-      let beneficiary: Signer;
-
       beforeEach(async function () {
         const accounts = await ethers.getSigners();
-        receiver = accounts[0];
-        beneficiary = accounts[1];
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
         this.token = await ethers.getContract('TestToken', deployer);
 
