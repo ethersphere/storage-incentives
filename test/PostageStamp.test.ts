@@ -464,16 +464,6 @@ describe('PostageStamp', function () {
         await this.token.mint(stamper, this.transferAmount);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
 
-          // const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000003333';
-          // await this.postageStamp.createBatch(
-          //   stamper,
-          //   35,
-          //   this.batch.depth,
-          //   this.batch.bucketDepth,
-          //   nonce0,
-          //   this.batch.immutable
-          // );
-
         for(let i = 0; i < 20; i++) {
 
           const nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
@@ -485,10 +475,6 @@ describe('PostageStamp', function () {
             nonce,
             this.batch.immutable
           );
-          // const batchA = computeBatchId(stamper, nonceA);
-          // expect(batchA).equal(await this.postageStamp.firstBatchId());
-
-          // expect(await this.postageStamp.pot()).equal(0);
         };
 
         await mineNBlocks(5);
