@@ -454,6 +454,47 @@ describe('PostageStamp', function () {
 
       });
 
+      it('should delete many expired batches', async function () {
+        const price = 1;
+        await setPrice(price);
+
+        this.transferAmount = 20000000 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
+
+        await this.token.mint(stamper, this.transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
+
+        for(let i = 0; i < 20; i++) {
+
+          const nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
+          await this.postageStamp.createBatch(
+            stamper,
+            20 - i,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            nonce,
+            this.batch.immutable
+          );
+        };
+
+        await mineNBlocks(5);
+
+        const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
+        const result = await this.postageStamp.createBatch(
+          stamper,
+          19,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceD,
+          this.batch.immutable
+        );
+
+        console.log("create batch result: ", result);
+
+        expect(await this.postageStamp.pot()).equal(210 * 2 ** this.batch.depth);
+
+      });
+
     });
 
     describe('when topping up a batch', function () {
@@ -984,13 +1025,8 @@ describe('PostageStamp', function () {
     });
 
     describe('when expireLimited is called', function () {
-      let receiver: Signer;
-      let beneficiary: Signer;
-
       beforeEach(async function () {
         const accounts = await ethers.getSigners();
-        receiver = accounts[0];
-        beneficiary = accounts[1];
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
         this.token = await ethers.getContract('TestToken', deployer);
 

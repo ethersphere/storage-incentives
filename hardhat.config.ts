@@ -26,6 +26,9 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  mocha: {
+    timeout: 100000000
+  },
   namedAccounts: {
     deployer: 0,
     admin: 1,

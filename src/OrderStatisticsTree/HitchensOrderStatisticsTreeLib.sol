@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.1;
 
+// import "hardhat/console.sol";
+
 /* 
 Hitchens Order Statistics Tree v0.99
 
@@ -242,13 +244,14 @@ library HitchensOrderStatisticsTreeLib {
         }
         insertFixup(self, value);
     }
-    function remove(Tree storage self, bytes32 key, uint value) internal {
+      function remove(Tree storage self, bytes32 key, uint value) internal {
         require(value != EMPTY, "OrderStatisticsTree(407) - Value to delete cannot be zero");
         require(keyExists(self,key,value), "OrderStatisticsTree(408) - Value to delete does not exist.");
         Node storage nValue = self.nodes[value];
         uint rowToDelete = nValue.keyMap[key];
-        nValue.keys[rowToDelete] = nValue.keys[nValue.keys.length - uint(1)];
-        nValue.keyMap[key]=rowToDelete;
+        bytes32 last = nValue.keys[nValue.keys.length - uint(1)];
+        nValue.keys[rowToDelete] = last;
+        nValue.keyMap[last] = rowToDelete;
         nValue.keys.pop();
         uint probe;
         uint cursor;
