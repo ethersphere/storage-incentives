@@ -76,9 +76,9 @@ describe('PostageStamp', function () {
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200,
-          depth: 5,
+          depth: 17,
           immutable: false,
-          bucketDepth: 4,
+          bucketDepth: 16,
         };
 
         this.batchSize = 2 ** this.batch.depth;
@@ -505,8 +505,8 @@ describe('PostageStamp', function () {
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200,
-          depth: 5,
-          bucketDepth: 4,
+          depth: 17,
+          bucketDepth: 16,
           immutable: false,
         };
 
@@ -617,13 +617,13 @@ describe('PostageStamp', function () {
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200000,
-          depth: 5,
-          bucketDepth: 4,
+          depth: 17,
+          bucketDepth: 16,
           immutable: false,
         };
 
         this.batch.id = computeBatchId(stamper, this.batch.nonce);
-        this.newDepth = 10;
+        this.newDepth = 18;
 
         this.batchSize = 2 ** this.batch.depth;
         this.newBatchSize = 2 ** this.newDepth;
@@ -741,7 +741,7 @@ describe('PostageStamp', function () {
         expect(value).equal(batchB);
 
         // increase depth to previous batch id
-        await this.postageStamp.increaseDepth(batchA, 8);
+        await this.postageStamp.increaseDepth(batchA, 18);
 
         // lowest batch id is the one with increased depth
         value = await this.postageStamp.firstBatchId();
@@ -848,8 +848,8 @@ describe('PostageStamp', function () {
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200000,
-          depth: 5,
-          bucketDepth: 4,
+          depth: 17,
+          bucketDepth: 16,
           immutable: true,
         };
 
@@ -973,9 +973,9 @@ describe('PostageStamp', function () {
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200,
-          depth: 5,
+          depth: 17,
           immutable: false,
-          bucketDepth: 4,
+          bucketDepth: 16,
         };
 
         this.batchSize = 2 ** this.batch.depth;
@@ -1032,9 +1032,9 @@ describe('PostageStamp', function () {
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           initialPaymentPerChunk: 200,
-          depth: 5,
+          depth: 17,
           immutable: false,
-          bucketDepth: 4,
+          bucketDepth: 16,
         };
 
         this.batchSize = 2 ** this.batch.depth;
@@ -1101,6 +1101,114 @@ describe('PostageStamp', function () {
       });
     });
 
+    describe('when batch depth limit changes', function () {
+      let receiver: Signer;
+      beforeEach(async function () {
+        const accounts = await ethers.getSigners();
+        receiver = accounts[0];
+        this.postageStamp = await ethers.getContract('PostageStamp', stamper);
+        this.token = await ethers.getContract('TestToken', deployer);
+
+
+        this.batch = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
+          initialPaymentPerChunk: 200,
+          depth: 17,
+          immutable: false,
+          bucketDepth: 16,
+        };
+
+        this.batchSize = 2 ** this.batch.depth;
+        this.transferAmount = 200 * 2 * this.batch.initialPaymentPerChunk * this.batchSize;
+        this.expectedNormalisedBalance = this.batch.initialPaymentPerChunk;
+
+        this.batch.id = computeBatchId(stamper, this.batch.nonce);
+
+        await this.token.mint(stamper, this.transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
+      });
+      it('should not allow creating a small batch', async function () {
+
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        const updaterRole = await postageStamp.DEPTH_ORACLE_ROLE();
+
+        await postageStamp.grantRole(updaterRole, receiver.getAddress());
+
+
+        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          100,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceA,
+          this.batch.immutable
+        );
+        const batchA = computeBatchId(stamper, nonceA);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+        await mineNBlocks(10);
+
+        await expect(postageStamp.connect(receiver).setMinimumBatchDepth(16));
+
+        const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
+
+        await expect(
+          this.postageStamp.createBatch(
+            stamper,
+            100,
+            this.batch.depth,
+            this.batch.bucketDepth,
+            nonceB,
+            this.batch.immutable
+          )
+        ).to.be.revertedWith("invalid bucket depth");
+
+
+      });
+
+      it('should not allow topping up a small batch', async function () {
+
+        const postageStamp = await ethers.getContract('PostageStamp', deployer);
+        const updaterRole = await postageStamp.DEPTH_ORACLE_ROLE();
+
+        await postageStamp.grantRole(updaterRole, receiver.getAddress());
+
+
+        const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        await this.postageStamp.createBatch(
+          stamper,
+          100,
+          this.batch.depth,
+          this.batch.bucketDepth,
+          nonceA,
+          this.batch.immutable
+        );
+        const batchA = computeBatchId(stamper, nonceA);
+        expect(batchA).equal(await this.postageStamp.firstBatchId());
+
+        await mineNBlocks(10);
+
+        await expect(postageStamp.connect(receiver).setMinimumBatchDepth(20));
+
+        await expect(
+          this.postageStamp.topUp(batchA, 100)
+        ).to.be.revertedWith("batch too small to renew");
+
+        await expect(
+          this.postageStamp.increaseDepth(batchA, 18)
+        ).to.be.revertedWith("depth not increasing");
+
+        await expect(
+          this.postageStamp.increaseDepth(batchA, 21)
+        );
+
+        await expect(
+          this.postageStamp.topUp(batchA, 100)
+        );
+
+      });
+    });
 
   });
 });
