@@ -1026,7 +1026,6 @@ describe('PostageStamp', function () {
 
     describe('when expireLimited is called', function () {
       beforeEach(async function () {
-        const accounts = await ethers.getSigners();
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
         this.token = await ethers.getContract('TestToken', deployer);
 
@@ -1076,6 +1075,32 @@ describe('PostageStamp', function () {
 
       });
     });
+
+    describe('when topupPot is called', function () {
+      beforeEach(async function () {
+        this.postageStamp = await ethers.getContract('PostageStamp', stamper);
+        this.token = await ethers.getContract('TestToken', deployer);
+
+        this.transferAmount = 2 ** 20;
+
+        await this.token.mint(stamper, this.transferAmount);
+        (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
+      });
+      it('should add to pot', async function () {
+
+
+        const expectedAmount = this.transferAmount;
+
+        expect(await this.postageStamp.pot()).equal(0);
+
+        expect(await this.postageStamp.topupPot(this.transferAmount));
+
+        expect(await this.postageStamp.pot()).equal(expectedAmount);
+
+
+      });
+    });
+
 
   });
 });
