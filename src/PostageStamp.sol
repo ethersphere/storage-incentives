@@ -326,4 +326,14 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
         pot = 0;
     }
+
+
+    /**
+     * @notice Topup the pot
+     */
+
+    function topupPot(uint256 amount) external {
+        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
+        pot += amount;
+    }
 }
