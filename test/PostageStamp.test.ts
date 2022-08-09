@@ -1149,7 +1149,7 @@ describe('PostageStamp', function () {
 
         await mineNBlocks(10);
 
-        await expect(postageStamp.connect(receiver).setMinimumBatchDepth(16));
+        expect(await postageStamp.connect(receiver).setMinimumBatchDepth(16));
 
         const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
 
@@ -1189,26 +1189,19 @@ describe('PostageStamp', function () {
 
         await mineNBlocks(10);
 
-        await expect(postageStamp.connect(receiver).setMinimumBatchDepth(20));
+        expect(await postageStamp.connect(receiver).setMinimumBatchDepth(20));
 
-        await expect(
-          this.postageStamp.topUp(batchA, 100)
-        ).to.be.revertedWith("batch too small to renew");
+        await expect(this.postageStamp.topUp(batchA, 100)).to.be.revertedWith("batch too small to renew");
 
-        await expect(
-          this.postageStamp.increaseDepth(batchA, 18)
-        ).to.be.revertedWith("depth not increasing");
+        await expect(this.postageStamp.increaseDepth(batchA, 18)).to.be.revertedWith("depth not increasing");
 
-        await expect(
-          this.postageStamp.increaseDepth(batchA, 21)
-        );
+        expect(await this.postageStamp.increaseDepth(batchA, 21));
 
-        await expect(
-          this.postageStamp.topUp(batchA, 100)
-        );
+        expect(await this.postageStamp.topUp(batchA, 100));
 
       });
     });
+
 
   });
 });
