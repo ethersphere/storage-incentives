@@ -489,8 +489,6 @@ describe('PostageStamp', function () {
           this.batch.immutable
         );
 
-        console.log("create batch result: ", result);
-
         expect(await this.postageStamp.pot()).equal(210 * 2 ** this.batch.depth);
 
       });
