@@ -144,6 +144,48 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
+     * @notice Create a new batch.
+     * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
+     * @param _owner The owner of the new batch.
+     * @param _initialBalancePerChunk The initial balance per chunk of the batch.
+     * @param _depth The initial depth of the new batch.
+     * @param _batchId The batchId being copied (from previous version contract data).
+     * @param _immutable Whether the batch is mutable.
+     */
+    function copyBatch(
+        address _owner,
+        uint256 _initialBalancePerChunk,
+        uint8 _depth,
+        uint8 _bucketDepth,
+        bytes32 _batchId,
+        bool _immutable
+    ) external whenNotPaused {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only administrator can use copy method");
+        require(_owner != address(0), "owner cannot be the zero address");
+        // bucket depth should be non-zero and smaller than the depth
+        require(_bucketDepth != 0 && _bucketDepth < _depth, "invalid bucket depth");
+        // Derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
+        require(batches[_batchId].owner == address(0), "batch already exists");
+
+        // per chunk balance times the batch size is what we need to transfer in
+        uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
+        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
+
+        uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
+
+        batches[_batchId] = Batch({
+            owner: _owner,
+            depth: _depth,
+            immutableFlag: _immutable,
+            normalisedBalance: normalisedBalance
+        });
+        require(normalisedBalance > 0, "normalised balance cannot be zero");
+        // insert into ordered statistic tree
+        tree.insert(_batchId, normalisedBalance);
+        emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+    }
+
+    /**
      * @notice Top up an existing batch.
      * @dev At least `topupAmount*2^depth` number of tokens need to be preapproved for this contract.
      * @param _batchId The id of the existing batch.
