@@ -499,16 +499,6 @@ describe('PostageStamp', function () {
 
 describe('when copyBatch creates a batch', function () {
 
-// this.postageStamp = await ethers.getContract('PostageStamp', stamper);
-//         this.token = await ethers.getContract('TestToken', deployer);
-// 
-//        
-// 
-//         await this.token.mint(stamper, this.transferAmount);
-//         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
-//       })
-
-
       beforeEach(async function () {
         this.postageStampContract = await ethers.getContract('PostageStamp', deployer);
 
