@@ -3,7 +3,6 @@ pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 // import "hardhat/console.sol";
-import "./Math64x64/abdkMath64x64.sol";
 
 /**
  * @title Redistribution contract
@@ -43,7 +42,7 @@ contract Redistribution is AccessControl, Pausable {
     Reveal[] public currentReveals;
 
     //
-    bytes32 maxH = bytes32(0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+    bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
     //
     bytes32 currentRoundAnchor;
     //
@@ -184,6 +183,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 currentWinnerSelectionSum;
         address winner;
         bytes32 randomNumber;
+        uint256 randomNumberTrunc;
 
         uint commitsArrayLength = currentCommits.length;
         uint revealsArrayLength = currentReveals.length;
@@ -206,16 +206,19 @@ contract Redistribution is AccessControl, Pausable {
             if ( revealed ) {
                 stakeDensity = currentReveals[revealIndex].stake * uint256(2 ** currentReveals[revealIndex].depth);
                 currentSum += stakeDensity;
-                int128 probability = ABDKMath64x64.divu(stakeDensity, currentSum);
+                // int128 probability = ABDKMath64x64.divu(stakeDensity, currentSum);
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, revealIndex));
-                int128 chance = ABDKMath64x64.divu(uint256(randomNumber), uint256(maxH));
+                // int128 chance = ABDKMath64x64.divu(uint256(randomNumber), uint256(maxH));
+
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
                 // question is whether randomNumber / MaxH < probability 
                 // where probability is stakeDensity / currentSum
                 // to avoid resorting to floating points all divisions should be simplified with multiplying both sides (as long as divisor > 0)
                 // randomNumber / MaxH < stakeDensity / currentSum
                 // randomNumber / MaxH * currentSum < stakeDensity
                 // randomNumber * currentSum < stakeDensity * MaxH
-                if ( chance < probability ) {
+                if ( randomNumberTrunc * currentSum < stakeDensity * uint256(MaxH) ) {
                     // truthRevealIndex = revealIndex
                     truthRevealedHash = currentReveals[revealIndex].hash;
                     truthRevealedDepth = currentReveals[revealIndex].depth;
@@ -232,12 +235,14 @@ contract Redistribution is AccessControl, Pausable {
 
                 stakeDensity = currentReveals[i].stake * uint256(2 ** currentReveals[revealIndex].depth);
                 currentWinnerSelectionSum += stakeDensity;
-                int128 probability = ABDKMath64x64.divu(stakeDensity, currentWinnerSelectionSum);
+                // int128 probability = ABDKMath64x64.divu(stakeDensity, currentWinnerSelectionSum);
                 // probability = stakeDensity / currentWinnerSelectionSum
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-                int128 chance = ABDKMath64x64.divu(uint256(randomNumber), uint256(maxH));
+                // int128 chance = ABDKMath64x64.divu(uint256(randomNumber), uint256(maxH));
 
-                if ( chance < probability ) {
+                randomNumberTrunc = uint256( randomNumber & MaxH );
+
+                if ( randomNumberTrunc * currentWinnerSelectionSum < stakeDensity * uint256(MaxH) ) {
                     // truthRevealIndex = revealIndex
                     winner = currentReveals[i].owner;
                 }
