@@ -27,16 +27,17 @@ task("copy", "A sample task with params")
     "0x07456430a9878626ba42d4A26D5AfDa0A0Ca9D26" // goerli address of new postage stamp contract
   );
 
-  // const MyToken = await ethers.getContractFactory("TestToken");
-  // const token = await MyContract.attach(
-  //   "0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335"
-  // );
-
-  let bid = ethers.utils.hexValue(taskArgs.batchid);
+  const MyToken = await ethers.getContractFactory("TestToken");
+  const token = await MyToken.attach(
+   "0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335"
+  );
 
   let transferAmount = taskArgs.initialbalance * 2 ** taskArgs.depth;
 
-  // let appr = await token.approve(deployer.address, transferAmount);
+  let presult = await token.connect(deployer).approve(contract.address, 2 * transferAmount);
+  console.log("allow Trx hash:", presult.hash);
+
+  let bid = ethers.utils.hexValue(taskArgs.batchid);
 
   // Now you can call functions of the contract
   let result = await contract.copyBatch(ethers.utils.getAddress(taskArgs.owner), taskArgs.initialbalance, taskArgs.depth, taskArgs.bucketdepth, bid, taskArgs.immutable);
@@ -51,8 +52,8 @@ module.exports = {
     goerli: {
       url: `https://goerli.prylabs.net/`,
       accounts: [`${GOERLI_PRIVATE_KEY}`],
-      gasPrice: 9_690_000,
-      gas: 30_000_000
+      gasPrice: 14_690_000,
+      gas: 20_000_000
     }
   },
   etherscan: {
