@@ -52,8 +52,8 @@ module.exports = {
     goerli: {
       url: `https://goerli.prylabs.net/`,
       accounts: [`${GOERLI_PRIVATE_KEY}`],
-      gasPrice: 14_690_000,
-      gas: 20_000_000
+      gasPrice: 9_690_000,
+      gas: 30_000_000
     }
   },
   etherscan: {
