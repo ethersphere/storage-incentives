@@ -8,60 +8,44 @@ import { task } from "hardhat/config";
 require("@nomiclabs/hardhat-ethers");
 
 const GOERLI_PRIVATE_KEY = "/";
-const GBZZ_TOKEN = "2ac3c1d3e24b45c6c310534bc2dd84b5ed576335";
+const PRIVATE_KEY = "/";
 task("copy", "A sample task with params")
   .addParam("owner", "")
+  .addParam("batchid", "")
   .addParam("initialbalance", "")
   .addParam("depth", "")
-  .addParam("bucketdepth", "")
-  .addParam("batchid", "")
-  .addParam("immutable", "")
+  .addParam("bucketdepth", "", "16")
+  .addParam("immutable", "", "0")
+  .addParam("postagecontract", "")
+  .addParam("tokenaddress", "")
   .setAction(async (taskArgs, { ethers }) => {
 
-  const bytes32 = require('bytes32');
+    const [deployer] = await ethers.getSigners();
 
-  const [deployer] = await ethers.getSigners();
+    const PostageStamp = await ethers.getContractFactory("PostageStamp");
+    const contract = PostageStamp.attach(taskArgs.postagecontract);
 
-  const MyContract = await ethers.getContractFactory("PostageStamp");
-  const contract = await MyContract.attach(
-    "0x07456430a9878626ba42d4A26D5AfDa0A0Ca9D26" // goerli address of new postage stamp contract
-  );
+    const TestToken = await ethers.getContractFactory("TestToken");
+    const token = TestToken.attach(taskArgs.tokenaddress);
 
-  const MyToken = await ethers.getContractFactory("TestToken");
-  const token = await MyToken.attach(
-   "0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335"
-  );
+    let transferAmount = taskArgs.initialbalance * 2 ** taskArgs.depth;
 
-  let transferAmount = taskArgs.initialbalance * 2 ** taskArgs.depth;
+    let presult = await token.connect(deployer).approve(contract.address, 2 * transferAmount);
+    console.log("allow trx hash", presult.hash);
 
-  let presult = await token.connect(deployer).approve(contract.address, 2 * transferAmount);
-  console.log("allow Trx hash:", presult.hash);
+    let batchid = `${taskArgs.batchid}`;
+    if (!batchid.startsWith("0x")) {
+      batchid = "0x" + batchid
+    }
 
-  let bid = ethers.utils.hexValue(taskArgs.batchid);
-
-  // Now you can call functions of the contract
-  let result = await contract.copyBatch(ethers.utils.getAddress(taskArgs.owner), taskArgs.initialbalance, taskArgs.depth, taskArgs.bucketdepth, bid, taskArgs.immutable);
-  console.log("copy Trx hash:", result.hash);
-  console.log("error:", result.error);
+    // Now you can call functions of the contract
+    let result = await contract.copyBatch(ethers.utils.getAddress(taskArgs.owner), taskArgs.initialbalance, taskArgs.depth, taskArgs.bucketdepth, batchid, taskArgs.immutable);
+    console.log(result)
+    console.log("copy Trx hash:", result.hash);
+    console.log("error:", result.error);
 
   });
 
-module.exports = {
-  solidity: "0.8.1",
-  networks: {
-    goerli: {
-      url: `https://goerli.prylabs.net/`,
-      accounts: [`${GOERLI_PRIVATE_KEY}`],
-      gasPrice: 9_690_000,
-      gas: 30_000_000
-    }
-  },
-  etherscan: {
-    apiKey: {
-      goerli: '8BG68Q43RV7P7VPQ2QGWGHHTBAIU9MNSA1'
-    }
-  }
-};
 
 // Define mnemonic for accounts.
 let mnemonic = process.env.MNEMONIC;
@@ -94,6 +78,7 @@ const config: HardhatUserConfig = {
     stamper: 2,
     oracle: 3,
   },
+  defaultNetwork: "private",
   networks: {
     hardhat: {
       initialBaseFeePerGas: 0,
@@ -107,6 +92,12 @@ const config: HardhatUserConfig = {
       url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
       accounts,
     },
+    private: {
+      url: 'http://geth-incentives-test.testnet.internal',
+      accounts: [process.env.PRIVATE_KEY as string],
+      gas: 3_000_000,
+      gasPrice: 1_000_000,
+    }
   },
   paths: {
     sources: 'src',
@@ -114,3 +105,24 @@ const config: HardhatUserConfig = {
 };
 
 export default config;
+
+// module.exports = {
+//   solidity: "0.8.1",
+//   networks: {
+//     // goerli: {
+//     //   url: `https://goerli.prylabs.net/`,
+//     //   accounts: [`${GOERLI_PRIVATE_KEY}`],
+//     //   gasPrice: 9_690_000,
+//     //   gas: 30_000_000
+//     // }
+//     private: {
+//       url: `http://geth-incentives-test.testnet.internal`,
+//       accounts: [`${PRIVATE_KEY}`]
+//     }
+//   },
+//   etherscan: {
+//     apiKey: {
+//       goerli: '8BG68Q43RV7P7VPQ2QGWGHHTBAIU9MNSA1'
+//     }
+//   }
+// };
