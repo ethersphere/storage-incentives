@@ -5,6 +5,7 @@ import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import { task } from "hardhat/config";
 import { ethers } from 'ethers';
+import { boolean } from 'hardhat/internal/core/params/argumentTypes';
 
 require("@nomiclabs/hardhat-ethers");
 
@@ -16,12 +17,15 @@ task("copy", "A sample task with params")
   .addParam("initialbalance", "")
   .addParam("depth", "")
   .addParam("bucketdepth", "", "16")
-  .addParam("immutable", "", "false")
+  .addParam("immutable", "", false, boolean)
   .addParam("postagecontract", "")
   .addParam("tokenaddress", "")
   .setAction(async (taskArgs, { ethers }) => {
 
     const [deployer] = await ethers.getSigners();
+
+    console.log(taskArgs.immutable)
+    console.log(typeof taskArgs.immutable)
 
     const PostageStamp = await ethers.getContractFactory("PostageStamp");
     const contract = PostageStamp.attach(taskArgs.postagecontract);
