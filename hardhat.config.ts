@@ -4,8 +4,8 @@ import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import { task } from "hardhat/config";
-import { ethers, ContractTransaction, ContractReceipt } from 'ethers';
-import { boolean, int, string } from 'hardhat/internal/core/params/argumentTypes';
+import { ContractTransaction, ContractReceipt } from 'ethers';
+import { boolean, int, string  } from 'hardhat/internal/core/params/argumentTypes';
 
 require("@nomiclabs/hardhat-ethers");
 
@@ -35,32 +35,18 @@ task("copy", "A sample task with params")
     let result: ContractTransaction;
     let receipt: ContractReceipt;
 
-    // // result = await token.connect(deployer).mint(deployer.address, "1000000000000000000");
-    // result = await token.connect(deployer).balanceOf(deployer.address);
-    // // receipt = await result.wait();
-    // console.log("approve receipt", result);
-    // return
-
-    result = await token.connect(deployer).balanceOf(deployer.address);
-    // result = await token.connect(deployer).balanceOf(deployer.address);
-    // let receipt: ContractReceipt = await result.wait();
-    console.log("approve receipt", result);
-    return
-
-    result = await token.connect(deployer).approve(contract.address, 2 * transferAmount);
+    result = await token.connect(deployer).approve(contract.address, transferAmount);
     receipt = await result.wait();
-    console.log("approve receipt", receipt);
 
     let batchid = `${taskArgs.batchid}`;
     if (!batchid.startsWith("0x")) {
       batchid = "0x" + batchid
     }
 
+
     // Now you can call functions of the contract
     result = await contract.copyBatch(ethers.utils.getAddress(taskArgs.owner), taskArgs.initialbalance, taskArgs.depth, taskArgs.bucketdepth, batchid, taskArgs.immutable);
     receipt = await result.wait();
-    console.log(result)
-    console.log(receipt)
   });
 
 
@@ -122,6 +108,18 @@ const config: HardhatUserConfig = {
 };
 
 export default config;
+
+// // result = await token.connect(deployer).mint(deployer.address, "1000000000000000000");
+// result = await token.connect(deployer).balanceOf(deployer.address);
+// // receipt = await result.wait();
+// console.log("approve receipt", result);
+// return
+
+// result = await token.connect(deployer).balanceOf(deployer.address);
+// result = await token.connect(deployer).balanceOf(deployer.address);
+// let receipt: ContractReceipt = await result.wait();
+// console.log("approve receipt", result);
+// return
 
 // module.exports = {
 //   solidity: "0.8.1",
