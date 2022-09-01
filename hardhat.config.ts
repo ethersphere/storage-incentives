@@ -4,6 +4,7 @@ import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import { task } from "hardhat/config";
+import { ethers } from 'ethers';
 
 require("@nomiclabs/hardhat-ethers");
 
@@ -15,7 +16,7 @@ task("copy", "A sample task with params")
   .addParam("initialbalance", "")
   .addParam("depth", "")
   .addParam("bucketdepth", "", "16")
-  .addParam("immutable", "", "0")
+  .addParam("immutable", "", "false")
   .addParam("postagecontract", "")
   .addParam("tokenaddress", "")
   .setAction(async (taskArgs, { ethers }) => {
@@ -39,11 +40,10 @@ task("copy", "A sample task with params")
     }
 
     // Now you can call functions of the contract
-    let result = await contract.copyBatch(ethers.utils.getAddress(taskArgs.owner), taskArgs.initialbalance, taskArgs.depth, taskArgs.bucketdepth, batchid, taskArgs.immutable);
+    let result: ethers.ContractTransaction = await contract.copyBatch(ethers.utils.getAddress(taskArgs.owner), taskArgs.initialbalance, taskArgs.depth, taskArgs.bucketdepth, batchid, taskArgs.immutable);
+    let receipt: ethers.ContractReceipt = await result.wait();
     console.log(result)
-    console.log("copy Trx hash:", result.hash);
-    console.log("error:", result.error);
-
+    console.log(receipt)
   });
 
 
