@@ -34,6 +34,7 @@ const config: HardhatUserConfig = {
     admin: 1,
     stamper: 2,
     oracle: 3,
+    redistributor: 4
   },
   networks: {
     hardhat: {
