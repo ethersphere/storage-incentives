@@ -59,7 +59,7 @@ contract StakeRegistry is AccessControl, Pausable {
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 
-    function overlayNotFreezed(bytes32 overlay) internal view returns (bool) {
+    function overlayNotFrozen(bytes32 overlay) internal view returns (bool) {
         return stakes[overlay].lastUpdatedBlockNumber < block.number;
     }
 
@@ -81,7 +81,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 updatedAmount = amount;
 
         if (stakes[overlay].isValue) {
-            require(overlayNotFreezed(overlay), "overlay currently frozen");
+            require(overlayNotFrozen(overlay), "overlay currently frozen");
             updatedAmount = amount + stakes[overlay].stakeAmount;
         }
 
