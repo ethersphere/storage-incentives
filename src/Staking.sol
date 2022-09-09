@@ -87,6 +87,8 @@ contract StakeRegistry is AccessControl, Pausable {
 
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
 
+        emit StakeUpdated(overlay, updatedAmount, _owner, block.number);
+
         stakes[overlay] = Stake({
             owner: _owner,
             overlay: overlay,
