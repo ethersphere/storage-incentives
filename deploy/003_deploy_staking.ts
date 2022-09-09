@@ -14,6 +14,11 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     log: true,
   });
 
+  const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+  await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, deployer);
+
+  const redistributorRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
+  await execute('StakeRegistry', { from: deployer }, 'grantRole', redistributorRole, (await get('Redistribution')).address);
 };
 
 export default func;
