@@ -6,9 +6,13 @@ import { strictEqual } from 'assert';
 // Named accounts used by tests.
 let deployer: string;
 let redistributor: string;
+let pauser: string;
 let others: string[];
-let zeroAddress = '0x0000000000000000000000000000000000000000';
-let zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+const zeroAddress = '0x0000000000000000000000000000000000000000';
+const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+const freezeTime = 3;
 
 let errors = {
   deposit: {
@@ -16,10 +20,16 @@ let errors = {
     noZeroAddress: 'owner cannot be the zero address',
   },
   slash: {
-    noRole: 'only redistributor can slash stake'
+    noRole: 'only redistributor can slash stake',
   },
   freeze: {
-    noRole: 'only redistributor can freeze stake'
+    noRole: 'only redistributor can freeze stake',
+    currentlyFrozen: 'overlay currently frozen',
+  },
+  pause: {
+    noRole: 'only pauser can pause the contract',
+    currentlyPaused: 'Pausable: paused',
+    onlyPauseCanUnPause: 'only pauser can unpause the contract'
   }
 };
 
@@ -50,6 +60,7 @@ before(async function () {
   const namedAccounts = await getNamedAccounts();
   deployer = namedAccounts.deployer;
   redistributor = namedAccounts.redistributor;
+  pauser = namedAccounts.pauser;
 
   others = await getUnnamedAccounts();
   staker_0 = others[0];
@@ -81,7 +92,7 @@ describe('Staking', function () {
 
     it('should set the pauser role', async function () {
       const pauserRole = await stakeRegistry.PAUSER_ROLE();
-      expect(await stakeRegistry.hasRole(pauserRole, deployer)).to.be.true;
+      expect(await stakeRegistry.hasRole(pauserRole, pauser)).to.be.true;
     });
 
     it('should set the redistributor role', async function () {
@@ -110,16 +121,12 @@ describe('Staking', function () {
     });
 
     it('should not deposit stake if funds are unavailable', async function () {
-      let owner = others[0];
-      let transferAmount = 1000000;
-      let nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-      await expect(stakeRegistry.depositStake(owner, nonce, transferAmount)).to.be.revertedWith(
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
         errors.deposit.noBalance
       );
     });
 
-    //it is not possible to have funds in the zero address, so this will fail anyway, can we remove this?
+    //it is not possible to have funds in the zero address, so this will fail anyway, can we remove this from the contract?
     // it('should not deposit stake to the zero address', async function () {
     //   let owner = zeroAddress;
     //   let transferAmount = 1000000;
@@ -136,7 +143,7 @@ describe('Staking', function () {
     // });
 
     it('should deposit stake correctly if funds are available', async function () {
-      let lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
+      let updatedBlockNumber = (await getBlockNumber()) + 3;
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
@@ -144,25 +151,24 @@ describe('Staking', function () {
       //event is emitted
       await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(overlay_0, stakeAmount_0, staker_0, lastUpdatedBlockNumber);
+        .withArgs(overlay_0, stakeAmount_0, staker_0, updatedBlockNumber);
 
       //correct values are persisted
       let staked = await stakeRegistry.stakes(overlay_0);
       expect(staked.overlay).to.be.eq(overlay_0);
       expect(staked.owner).to.be.eq(staker_0);
       expect(staked.stakeAmount).to.be.eq(stakeAmount_0);
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
       //tokens are successfully transferred
       expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(stakeAmount_0);
     });
 
     it('should update stake correctly if funds are available', async function () {
-
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)
+      stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
 
       let lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
       let updateStakeAmount = 633633;
@@ -228,21 +234,21 @@ describe('Staking', function () {
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
+
+      let stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+      const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+      await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
     });
 
     it('should not slash staked deposit without redistributor role', async function () {
       let stakeRegistry = await ethers.getContract('StakeRegistry', staker_1);
-      await expect(stakeRegistry.slashDeposit(overlay_0)).to.be.revertedWith(
-        errors.slash.noRole
-      );
+      await expect(stakeRegistry.slashDeposit(overlay_0)).to.be.revertedWith(errors.slash.noRole);
     });
 
     it('should slash staked deposit with redistributor role', async function () {
       let stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-      await stakeRegistryRedistributor.slashDeposit(overlay_0)
+      await stakeRegistryRedistributor.slashDeposit(overlay_0);
 
-      let stakeRegistry = await ethers.getContract('StakeRegistry', deployer);
-      const redistributorRole = await stakeRegistry.REDISTRIBUTOR_ROLE();
       let staked = await stakeRegistry.stakes(overlay_0);
       expect(staked.overlay).to.be.eq(zeroBytes32);
       // expect(staked.owner).to.be.eq(owner);
@@ -252,10 +258,8 @@ describe('Staking', function () {
 
     // other nodes stake and check they are unslashed
     // other sequences of staking/slashing...
-      // restaking after slashing
-      // ...
-
-      await stakeRegistry.grantRole(redistributorRole, redistributor);
+    // restaking after slashing
+    // ...
   });
 
   describe('freezing stake', function () {
@@ -266,47 +270,115 @@ describe('Staking', function () {
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
+
+      let stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+      const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+      await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
     });
 
     it('should not freeze staked deposit without redistributor role', async function () {
       let stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_1);
-      await expect(stakeRegistryStaker1.freezeDeposit(overlay_0)).to.be.revertedWith(
-        errors.freeze.noRole
-      );
+      await expect(stakeRegistryStaker1.freezeDeposit(overlay_0, freezeTime)).to.be.revertedWith(errors.freeze.noRole);
     });
 
     it('should freeze staked deposit with redistributor role', async function () {
       let overlay = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
 
       let stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-      await stakeRegistryRedistributor.freezeDeposit(overlay_0);
+      await stakeRegistryRedistributor.freezeDeposit(overlay_0, freezeTime);
 
-      // let staked = await stakeRegistryRedistributor.stakes(overlay);
-      // expect(staked.overlay).to.be.eq("0x0000000000000000000000000000000000000000000000000000000000000000");
-      // expect(staked.owner).to.be.eq(owner);
-      // expect(staked.stakeAmount).to.be.eq(stakeAmount);
-      // expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
+      let staked = await stakeRegistryRedistributor.stakes(overlay);
+      let updatedBlockNumber = (await getBlockNumber()) + 3;
+
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
     });
 
-    // other nodes stake and check they are unslashed
-    // other sequences of staking/slashing...
-      // restaking after slashing
-      // ...
+    it('should not allow update of a frozen staked deposit', async function () {
+      let overlay = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
 
+      let stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+      await stakeRegistryRedistributor.freezeDeposit(overlay_0, freezeTime);
+
+      let staked = await stakeRegistryRedistributor.stakes(overlay);
+      let updatedBlockNumber = (await getBlockNumber()) + 3;
+
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
+        errors.freeze.currentlyFrozen
+      );
+
+      mineNBlocks(3);
+
+      // should this be +2 ?!
+      let newUpdatedBlockNumber = (await getBlockNumber()) + 2;
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
+        .to.emit(stakeRegistry, 'StakeUpdated')
+        .withArgs(overlay_0, stakeAmount_0*2, staker_0, newUpdatedBlockNumber);
+    });
+
+    // should we emit an event here?
+    // ...
   });
 
-  // freeze staked deposit
-  // should freeze staked deposit with redistributor role
-  // should not freeze staked deposit without redistributor role
-  // staked deposit should be frozen
-  // should not update a stake if funds are unavailable
-  // staked deposit should be unfrozen after x blocks
-  // should update a stake once the deposit is unfrozen
+  describe('pause contract', function () {
+    beforeEach(async function () {
+      token = await ethers.getContract('TestToken', deployer);
+      stakeRegistry = await ethers.getContract('StakeRegistry');
+      await deployments.fixture();
 
-  // pause contract
-  // should pause contract with pauser role
-  // should not create deposit when paused
-  // should unpause contract with pauser role
-  // should not pause contract with non-pauser role
-  // should not unpause contract with non-pauser role
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
+
+      let stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+      const pauserRole = await stakeRegistryDeployer.PAUSER_ROLE();
+      await stakeRegistryDeployer.grantRole(pauserRole, pauser);
+    });
+
+    it('should not pause contract without pauser role', async function () {
+      let stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+      await expect(stakeRegistryStaker1.pause()).to.be.revertedWith(errors.pause.noRole);
+    });
+
+    it('should pause contract with pauser role', async function () {
+      let stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+      await stakeRegistryPauser.pause();
+
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
+        errors.pause.currentlyPaused
+      );
+    });
+
+    it('should not unpause contract without pauser role', async function () {
+      let stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+      await stakeRegistryPauser.pause();
+
+      let stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+      await expect(stakeRegistryStaker1.unPause()).to.be.revertedWith(errors.pause.onlyPauseCanUnPause);
+    });
+
+
+    it('should allow staking once unpaused', async function () {
+      let stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+      await stakeRegistryPauser.pause();
+
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
+        errors.pause.currentlyPaused
+      );
+
+      await stakeRegistryPauser.unPause();
+
+      let newUpdatedBlockNumber = (await getBlockNumber()) + 3;
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
+        .to.emit(stakeRegistry, 'StakeUpdated')
+        .withArgs(overlay_0, stakeAmount_0*2, staker_0, newUpdatedBlockNumber);
+    });
+
+    // ...
+  });
+
 });
