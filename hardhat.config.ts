@@ -3,6 +3,7 @@ import { HardhatUserConfig } from 'hardhat/types';
 import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
+import 'hardhat-tracer';
 
 // Define mnemonic for accounts.
 let mnemonic = process.env.MNEMONIC;
@@ -34,7 +35,8 @@ const config: HardhatUserConfig = {
     admin: 1,
     stamper: 2,
     oracle: 3,
-    redistributor: 4
+    redistributor: 4,
+    pauser: 5
   },
   networks: {
     hardhat: {
