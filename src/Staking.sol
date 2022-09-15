@@ -31,7 +31,7 @@ contract StakeRegistry is AccessControl, Pausable {
         address owner;
         //
         uint256 lastUpdatedBlockNumber;
-        // 
+        //
         bool isValue;
     }
 
@@ -146,5 +146,7 @@ contract StakeRegistry is AccessControl, Pausable {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
         _unpause();
     }
+
+    //slash stake
 
 }
