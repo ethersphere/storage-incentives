@@ -73,7 +73,7 @@ contract Redistribution is AccessControl, Pausable {
     event TruthSelected(address winner, bytes32 hash, uint8 depth);
 
     event SlashedNotRevealed(bytes32 slashed);
-
+    event SlashedDoesNotMatchTruth(bytes32 slashed);
     event CountCommits(uint256 _count);
     event CountReveals(uint256 _count);
     event Log(string l);
@@ -121,9 +121,15 @@ contract Redistribution is AccessControl, Pausable {
             currentRoundAnchor = blockhash( ( block.number / 152 ) * 152 );
     	}
 
-        // check the overlay is staked and
-        // that the msg sender is staked for that overlay? why? does leaving it open leave utility for hot/cold wallets? i.e. withdraw the pot to a cold wallet but run the node using a hot wallet
-        // // // require( staking.Stakes[_overlay].value != 0 && staking.Stakes[_overlay].ethAddress == msg.sender, "can not commit with overlay");
+        // <sig
+        // wrt to the below, it checks the overlay is non-zero staked, this makes sense
+        // however it also checks that the msg sender is staked for that overlay:
+        // why is this? i am not sure what extra guarantees we are given
+        // perhaps leaving it open would increase utility for user hot/cold wallets?
+        // eg. withdraw the winnings to a cold wallet but run the node using a hot wallet
+        // sig>
+
+        // require( staking.Stakes[_overlay].value != 0 && staking.Stakes[_overlay].ethAddress == msg.sender, "can not commit with overlay");
 
         // get overlay from msg
         // require get overlay from staking contract
@@ -162,16 +168,21 @@ contract Redistribution is AccessControl, Pausable {
 
         for(uint i=0; i<commitsArrayLength; i++) {
 
-            // Log("ZZZZZ");
-            // LogBytes32("ZZZZZ1", _overlay );
-            // LogBytes32("ZZZZZ2", currentCommits[i].overlay );
-            // LogBytes32("ZZZZZ3", commitHash );
-            // LogBytes32("ZZZZZ4", currentCommits[i].obfuscatedHash );
+            //<sig
+            //fails silently if there are no commits that fit the bill
+            //could we change it to fail with an appropriate error message
+            //sig>
 
-            //fails silently if there are no commits that fit the bill, change it so it scans for a match, stores in variable and requires that there is one?
             if ( currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash ) {
 
+                // <sig
+                // if using nonce source of randomness
                 // update currentRevealNonce with xor of currentRevealNonce with revealed nonce
+                // sig>
+
+                // <sig
+                // unsure why below is commented out, i think it is a useful guarantee
+                // sig>
 
                 // require currentCommits[i].owner == msg.sender
 
@@ -249,13 +260,10 @@ contract Redistribution is AccessControl, Pausable {
 
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
-                //leaving this alone for now but i would like to see a mathematical proof this is "fair" **
-                //i am concerned that later entries into the array have more chances of winning
-                //perhaps this could be alleviated by using the random seed to "shuffle" the array
-
                 // question is whether randomNumber / MaxH < probability
                 // where probability is stakeDensity / currentSum
-                // to avoid resorting to floating points all divisions should be simplified with multiplying both sides (as long as divisor > 0)
+                // to avoid resorting to floating points all divisions should be
+                // simplified with multiplying both sides (as long as divisor > 0)
                 // randomNumber / MaxH < stakeDensity / currentSum
                 // randomNumber / MaxH * currentSum < stakeDensity
                 // randomNumber * currentSum < stakeDensity * MaxH
@@ -271,7 +279,6 @@ contract Redistribution is AccessControl, Pausable {
 
         }
 
-        //see above **
         uint k = 0;
         for(uint i=0; i<revealsArrayLength; i++) {
             if ( truthRevealedHash == currentReveals[i].hash && truthRevealedDepth == currentReveals[i].depth ) {
@@ -300,7 +307,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        // why?
+        // <sig why? sig>
         // require(msg.sender == winner);
 
         // access the postage stamp contract to transfer pot to the winner
@@ -309,24 +316,6 @@ contract Redistribution is AccessControl, Pausable {
         // given the current "actual storage depth" vs "theoretical reserve depth"
         // change the price in the pricing oracle contract from the current price Pc to Pn using the formula Pn = kSPc
         // where Pn is determined by  multiplying the pricing signal S Ǝ -1 > S > 1 by some constant k Ǝ ℝ+ (eg. 1.1)
-
-
-    // for n round of lottery there is at least 4 + E nodes but the storage depth does not exist then there should be a signal because there
-    // is consistently more redundancy that is needed
-
-    // when the depth changes we record the number of truth revealers and as long as the storage depth stays the same
-    // maybe check that it will be balanced on split
-
-    // ? can it stand the attack where stake is split thus increasing cardinality and lowering price with a node running shared storage
-    // does it affect the redundancy vs. value
-
-    // average of last 10 rounds
-    //
-
-        // 4+E
-
-        //E excess nodes
-
 
         // go through the truth revealers, check they can split without violating the minimum nodes per neighbourhood constraint
         // if there is a zero continuation, then there there is a strong need for price increase to attract more nodes to the neighourhood
