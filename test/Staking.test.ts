@@ -11,6 +11,7 @@ let others: string[];
 
 const zeroAddress = '0x0000000000000000000000000000000000000000';
 const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
+const zeroStake = 0;
 
 const freezeTime = 3;
 
@@ -18,6 +19,7 @@ let errors = {
   deposit: {
     noBalance: 'ERC20: transfer amount exceeds balance',
     noZeroAddress: 'owner cannot be the zero address',
+    belowMinimum: 'cannot be below the minimum stake value'
   },
   slash: {
     noRole: 'only redistributor can slash stake',
@@ -51,7 +53,7 @@ let stakeAmount_0 = 1000000;
 let nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let staker_1: string;
-let overlay_1 = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
+let overlay_1 = '0x531b0865a82da516c606e5349b1477811d26ca2257bf09e40ec47eaa0b6c706c'; //check calc?
 let stakeAmount_1 = 1000000;
 let nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -126,35 +128,36 @@ describe('Staking', function () {
       );
     });
 
-    //it is not possible to have funds in the zero address, so this will fail anyway, can we remove this from the contract?
-    // it('should not deposit stake to the zero address', async function () {
-    //   let owner = zeroAddress;
-    //   let transferAmount = 1000000;
-    //   let nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+    it('should not deposit stake to the zero address', async function () {
+      let owner = zeroAddress;
+      let transferAmount = 1000000;
+      let nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
-    //   await mintAndApprove(owner, stakeRegistry.address, transferAmount);
+      await mintAndApprove(staker_0, stakeRegistry.address, transferAmount);
 
-    //   await expect(stakeRegistry.depositStake(owner, nonce, transferAmount)).to.be.revertedWith(
-    //     errors.deposit.noZeroAddress
-    //   );
-
-    //   // await stakeRegistry.depositStake(owner, nonce, transferAmount);
-    //   // console.log(await stakeRegistry.stakes(0));
-    // });
+      await expect(stakeRegistry.depositStake(owner, nonce, transferAmount)).to.be.revertedWith(
+        errors.deposit.noZeroAddress
+      );
+    });
 
     it('should deposit stake correctly if funds are available', async function () {
+      let sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
       let updatedBlockNumber = (await getBlockNumber()) + 3;
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
       //event is emitted
-      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
+      await expect(sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(overlay_0, stakeAmount_0, staker_0, updatedBlockNumber);
 
+      //the staker's balance has been decremented by the stake amount
+      expect(await token.balanceOf(staker_0)).to.be.eq(0);
+
       //correct values are persisted
-      let staked = await stakeRegistry.stakes(overlay_0);
+      let staked = await sr_staker_0.stakes(overlay_0);
       expect(staked.overlay).to.be.eq(overlay_0);
       expect(staked.owner).to.be.eq(staker_0);
       expect(staked.stakeAmount).to.be.eq(stakeAmount_0);
@@ -164,62 +167,64 @@ describe('Staking', function () {
       expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(stakeAmount_0);
     });
 
+    // add this?
+    // it('should not deposit zero stake', async function () {
+    //   let sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
+    //   let updatedBlockNumber = (await getBlockNumber())+1;
+
+    //   await expect(sr_staker_0.depositStake(staker_0, nonce_0, zeroStake)).to.be.revertedWith(errors.deposit.belowMinimum);
+    // });
+
     it('should update stake correctly if funds are available', async function () {
+      let sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
+      sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
 
       let lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
       let updateStakeAmount = 633633;
-      let nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount);
 
-      // commented out to allow tests to pass for now
+      //event is emitted
+      await expect(sr_staker_0.depositStake(staker_0, nonce_0, updateStakeAmount))
+        .to.emit(stakeRegistry, 'StakeUpdated')
+        .withArgs(overlay_0, stakeAmount_0+updateStakeAmount, staker_0, lastUpdatedBlockNumber+1);
 
-      // //event is emitted
-      // await expect(stakeRegistry.depositStake(staker_0, nonce_0, updateStakeAmount))
-      //   .to.emit(stakeRegistry, 'StakeUpdated')
-      //   .withArgs(overlay_0, stakeAmount_0+updateStakeAmount, staker_0, lastUpdatedBlockNumber);
-
-      // //correct values are persisted
-      // let staked = await stakeRegistry.stakes(overlay_0);
-      // expect(staked.overlay).to.be.eq(overlay_0);
-      // expect(staked.owner).to.be.eq(staker_0);
-      // expect(staked.stakeAmount).to.be.eq(stakeAmount_0+updateStakeAmount);
-      // expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
+      //correct values are persisted
+      let staked = await stakeRegistry.stakes(overlay_0);
+      expect(staked.overlay).to.be.eq(overlay_0);
+      expect(staked.owner).to.be.eq(staker_0);
+      expect(staked.stakeAmount).to.be.eq(stakeAmount_0+updateStakeAmount);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber+1);
 
       // //tokens are successfully transferred
-      // expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(stakeAmount_0+updateStakeAmount);
+      expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(stakeAmount_0+updateStakeAmount);
     });
 
-    //this doesn't work for some reason - tries to transfer more balance than is available - perhaps contract needs debugging
     it('should correctly deposit stake from another user if funds are available', async function () {
+      let sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
       let lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
-      let overlay = '0xb33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555';
-      let owner = others[1];
-      let stakeAmount = 100000;
-      let nonce = '0xb33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555';
 
-      await mintAndApprove(owner, stakeRegistry.address, stakeAmount);
-      expect(await token.balanceOf(owner)).to.be.eq(stakeAmount);
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_1);
+      expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_1);
 
-      // commented out to allow tests to pass for now
+      await expect(sr_staker_0.depositStake(staker_1, nonce_1, stakeAmount_1))
+        .to.emit(stakeRegistry, 'StakeUpdated')
+        .withArgs(overlay_1, stakeAmount_1, staker_1, lastUpdatedBlockNumber);
 
-      // await expect(stakeRegistry.depositStake(owner, nonce, stakeAmount))
-      //   .to.emit(stakeRegistry, 'StakeUpdated')
-      //   .withArgs(overlay, stakeAmount, owner, lastUpdatedBlockNumber);
-
-      // let staked = await stakeRegistry.stakes(overlay);
-      // expect(staked.overlay).to.be.eq(overlay);
-      // expect(staked.owner).to.be.eq(owner);
-      // expect(staked.stakeAmount).to.be.eq(stakeAmount);
-      // expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
+      let staked = await stakeRegistry.stakes(overlay_1);
+      expect(staked.overlay).to.be.eq(overlay_1);
+      expect(staked.owner).to.be.eq(staker_1);
+      expect(staked.stakeAmount).to.be.eq(stakeAmount_1);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
     });
 
-    // should not update a stake if funds are not available
     // should update a stake correctlly if funds are available a second time
     // should not allow non overlay owner to update stake?
     // other sequences of staking, updating...
@@ -247,21 +252,29 @@ describe('Staking', function () {
 
     it('should slash staked deposit with redistributor role', async function () {
       let stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+
+      let lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
+
       await stakeRegistryRedistributor.slashDeposit(overlay_0);
 
+      //is this what is expected?
       let staked = await stakeRegistry.stakes(overlay_0);
       expect(staked.overlay).to.be.eq(zeroBytes32);
-      // expect(staked.owner).to.be.eq(owner);
-      // expect(staked.stakeAmount).to.be.eq(stakeAmount);
-      // expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
+      expect(staked.owner).to.be.eq(zeroAddress);
+      expect(staked.stakeAmount).to.be.eq(0);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(0);
     });
 
-    // other nodes stake and check they are unslashed
-    // other sequences of staking/slashing...
-    // restaking after slashing
-    // ...
+    it('should restake deposit for same address after slashing', async function () {
+    });
+
+    it('should not slash other nodes stakes when slashing', async function () {
+    });
+
+    // other sequences of staking/slashing..?
   });
 
+  //tbc consensus will we include it?
   describe('freezing stake', function () {
     beforeEach(async function () {
       token = await ethers.getContract('TestToken', deployer);
@@ -282,24 +295,20 @@ describe('Staking', function () {
     });
 
     it('should freeze staked deposit with redistributor role', async function () {
-      let overlay = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
-
       let stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
       await stakeRegistryRedistributor.freezeDeposit(overlay_0, freezeTime);
 
-      let staked = await stakeRegistryRedistributor.stakes(overlay);
+      let staked = await stakeRegistryRedistributor.stakes(overlay_0);
       let updatedBlockNumber = (await getBlockNumber()) + 3;
 
       expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
     });
 
     it('should not allow update of a frozen staked deposit', async function () {
-      let overlay = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
-
       let stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
       await stakeRegistryRedistributor.freezeDeposit(overlay_0, freezeTime);
 
-      let staked = await stakeRegistryRedistributor.stakes(overlay);
+      let staked = await stakeRegistryRedistributor.stakes(overlay_0);
       let updatedBlockNumber = (await getBlockNumber()) + 3;
 
       expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
@@ -359,6 +368,15 @@ describe('Staking', function () {
       await expect(stakeRegistryStaker1.unPause()).to.be.revertedWith(errors.pause.onlyPauseCanUnPause);
     });
 
+    it('should not allow staking while paused', async function () {
+      let stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+      await stakeRegistryPauser.pause();
+
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
+        errors.pause.currentlyPaused
+      );
+    });
 
     it('should allow staking once unpaused', async function () {
       let stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
@@ -378,7 +396,12 @@ describe('Staking', function () {
         .withArgs(overlay_0, stakeAmount_0*2, staker_0, newUpdatedBlockNumber);
     });
 
-    // ...
+    it('should allow stake withdrawal while paused', async function () {
+    });
+
+    it('should not allow stake withdrawal while unpaused', async function () {
+    });
+
   });
 
 });

@@ -37,7 +37,7 @@ let revealNonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b
 let revealed_overlay_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 //correct
-let overlay_2 = '0x09111133b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+let overlay_2 = '0x00111133b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 let hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 let depth_2 = '0x0000000000000000000000000000000000000000000000000000000000000006';
 let revealNonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -231,6 +231,10 @@ describe('Redistribution', function () {
         );
       });
 
+      it('should only allow one commit per staked overlay', async function () {
+
+      });
+
       it('should create actual commit with successful reveal if within depth', async function () {
         let initialBlockNumber = await getBlockNumber();
 
@@ -238,7 +242,7 @@ describe('Redistribution', function () {
 
         let r_node_0 = await ethers.getContract('Redistribution', node_0);
 
-        console.log("Selection Anchor", await redistribution.SelectionAnchor())
+        // console.log("Selection Anchor", await redistribution.SelectionAnchor())
 
         let obsfucatedHash_2 = encodeAndHash(hash_2, depth_2, revealNonce_2, overlay_2);
 
@@ -248,26 +252,13 @@ describe('Redistribution', function () {
 
         await mineNBlocks(phaseLength);
 
-        const tx = await r_node_0.reveal(hash_2, depth_2, revealNonce_2, overlay_2);
+        await r_node_0.reveal(hash_2, depth_2, revealNonce_2, overlay_2);
 
-        expect((await r_node_0.currentReveals(0)).obfuscatedHash).to.be.eq(obsfucatedHash_2);
-
-
-        const receipt = await tx.wait()
-        for (const event of receipt.events) {
-          console.log(`Event ${event.event} with args ${event.args}`);
-        }
-
-        // expect((await r_node_0.currentReveals(0)).hash).to.be.eq(obsfucatedHash_2);
-
-        await mineNBlocks(phaseLength);
-
-        const tx2 = await r_node_0.claim();
-        const receipt2 = await tx2.wait()
-        for (const event of receipt2.events) {
-          console.log(`Event ${event.event} with args ${event.args}`);
-        }
-
+        expect((await r_node_0.currentReveals(0)).hash).to.be.eq(hash_2);
+        expect((await r_node_0.currentReveals(0)).overlay).to.be.eq(overlay_2);
+        // expect((await r_node_0.currentReveals(0)).owner).to.be.eq(...);
+        // expect((await r_node_0.currentReveals(0)).stake).to.be.eq(...);
+        // expect((await r_node_0.currentReveals(0)).depth).to.be.eq(depth_2);
       });
 
       // use real commit?
@@ -293,7 +284,7 @@ describe('Redistribution', function () {
 
         let r_node_0 = await ethers.getContract('Redistribution', node_0);
 
-        console.log("Selection Anchor", await redistribution.SelectionAnchor())
+        // console.log("Selection Anchor", await redistribution.SelectionAnchor())
 
         let obsfucatedHash_2 = encodeAndHash(hash_2, depth_2, revealNonce_2, overlay_2);
 
@@ -305,7 +296,7 @@ describe('Redistribution', function () {
 
         const tx = await r_node_0.reveal(hash_2, depth_2, revealNonce_2, overlay_2);
 
-        expect((await r_node_0.currentReveals(0)).obfuscatedHash).to.be.eq(obsfucatedHash_2);
+        expect((await r_node_0.currentReveals(0)).hash).to.be.eq(hash_2);
       });
 
       it('should allow honest single player to claim pot', async function () {
@@ -315,7 +306,7 @@ describe('Redistribution', function () {
 
         let r_node_0 = await ethers.getContract('Redistribution', node_0);
 
-        console.log("Selection Anchor", await redistribution.SelectionAnchor())
+        // console.log("Selection Anchor", await redistribution.SelectionAnchor())
 
         let obsfucatedHash_2 = encodeAndHash(hash_2, depth_2, revealNonce_2, overlay_2);
 
@@ -325,155 +316,47 @@ describe('Redistribution', function () {
 
         await mineNBlocks(phaseLength);
 
-        const tx = await r_node_0.reveal(hash_2, depth_2, revealNonce_2, overlay_2);
+        await r_node_0.reveal(hash_2, depth_2, revealNonce_2, overlay_2);
 
-        expect((await r_node_0.currentReveals(0)).obfuscatedHash).to.be.eq(obsfucatedHash_2);
-
-
-        const receipt = await tx.wait()
-        for (const event of receipt.events) {
-          console.log(`Event ${event.event} with args ${event.args}`);
-        }
-
-        // expect((await r_node_0.currentReveals(0)).hash).to.be.eq(obsfucatedHash_2);
+        expect((await r_node_0.currentReveals(0)).hash).to.be.eq(hash_2);
 
         await mineNBlocks(phaseLength);
 
         const tx2 = await r_node_0.claim();
         const receipt2 = await tx2.wait()
-        for (const event of receipt2.events) {
-          console.log(`Event ${event.event} with args ${event.args}`);
+
+        let truthSelectedEvent:any;
+        let winnerSelectedEvent:any;
+
+        let events2:any = {};
+        for (const e of receipt2.events) {
+          events2[e.event] = e;
         }
 
-        // await expect(
-        //   r_node_0.claim()
-        // )
-        // .to.emit(r_node_0, 'WinnerSelected')
-        // .withArgs(
-        //   node_0
-        // );
+        expect(events2.WinnerSelected.args[0]).to.be.eq(node_0)
+        expect(events2.TruthSelected.args[0]).to.be.eq(node_0)
+        expect(events2.TruthSelected.args[1]).to.be.eq(hash_0)
+        // expect(events.TruthSelected.args[2]).to.be.eq(depth_2)
 
-        // await expect(
-        //   r_node_0.claim()
-        // )
-        // .to.emit(r_node_0, 'TruthSelected')
-        // .withArgs(
-        //   node_0, obsfucatedHash_2, depth_2
-        // );
-
-
-
-        // console.log(encodeAndHash(hash_1, depth_1, revealNonce_1, overlay_1));
-
-        // let r_node_0 = await ethers.getContract('Redistribution', node_0);
-        // await r_node_0.commit(obsfucatedHash_0, overlay_0);
-
-        // let commit_0 = await r_node_0.currentCommits(0);
-        // expect(commit_0.overlay).to.be.eq(overlay_0);
-        // expect(commit_0.obfuscatedHash).to.be.eq(obsfucatedHash_0);
-
-        // expect(await getBlockNumber()).to.be.eq(initialBlockNumber+1);
-
-        // await mineNBlocks(phaseLength);
-
-        // expect(await getBlockNumber()).to.be.eq(initialBlockNumber+1+phaseLength);
-        // expect(await redistribution.currentPhaseReveal()).to.be.true;
-
-        // commented out to allow other tests to pass for now
-        // await expect(redistribution.reveal(hash_0, depth_0, revealNonce_0, revealed_overlay_0)).to.be.revertedWith(
-        //   errors.reveal.doNotMatch
-        // );
+        // correct value of pot is withdrawn
       });
 
       // should we add a method to allow us to deterministically assign the "random" number for testing
       // perhaps this could be the interface to the RNG
-
 
       // if there is two commit reveals with equal stakes
         // test the selection of truth is correct based on the truthSelectionAnchor
         // test the selection of the winner is correct based on the winnerSelectionAnchor
 
       // stats tests
-        // both are evenly selected
+        // both are evenly selected (do this in a separate test file)
 
       it('if there is two commit reveals with equal stakes', async function () {
-        let initialBlockNumber = await getBlockNumber();
-
-        expect(await redistribution.currentPhaseCommit()).to.be.true;
-
-        let r_node_0 = await ethers.getContract('Redistribution', node_0);
-
-        console.log("Selection Anchor", await redistribution.SelectionAnchor())
-
-        let obsfucatedHash_2 = encodeAndHash(hash_2, depth_2, revealNonce_2, overlay_2);
-
-        await r_node_0.commit(obsfucatedHash_2, overlay_2);
-
-        expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash_2);
-
-        await mineNBlocks(phaseLength);
-
-        const tx = await r_node_0.reveal(hash_2, depth_2, revealNonce_2, overlay_2);
-
-        expect((await r_node_0.currentReveals(0)).obfuscatedHash).to.be.eq(obsfucatedHash_2);
-
-
-        const receipt = await tx.wait()
-        for (const event of receipt.events) {
-          console.log(`Event ${event.event} with args ${event.args}`);
-        }
-
-        // expect((await r_node_0.currentReveals(0)).hash).to.be.eq(obsfucatedHash_2);
-
-        await mineNBlocks(phaseLength);
-
-        const tx2 = await r_node_0.claim();
-        const receipt2 = await tx2.wait()
-        for (const event of receipt2.events) {
-          console.log(`Event ${event.event} with args ${event.args}`);
-        }
-
-        // await expect(
-        //   r_node_0.claim()
-        // )
-        // .to.emit(r_node_0, 'WinnerSelected')
-        // .withArgs(
-        //   node_0
-        // );
-
-        // await expect(
-        //   r_node_0.claim()
-        // )
-        // .to.emit(r_node_0, 'TruthSelected')
-        // .withArgs(
-        //   node_0, obsfucatedHash_2, depth_2
-        // );
-
-
-
-        // console.log(encodeAndHash(hash_1, depth_1, revealNonce_1, overlay_1));
-
-        // let r_node_0 = await ethers.getContract('Redistribution', node_0);
-        // await r_node_0.commit(obsfucatedHash_0, overlay_0);
-
-        // let commit_0 = await r_node_0.currentCommits(0);
-        // expect(commit_0.overlay).to.be.eq(overlay_0);
-        // expect(commit_0.obfuscatedHash).to.be.eq(obsfucatedHash_0);
-
-        // expect(await getBlockNumber()).to.be.eq(initialBlockNumber+1);
-
-        // await mineNBlocks(phaseLength);
-
-        // expect(await getBlockNumber()).to.be.eq(initialBlockNumber+1+phaseLength);
-        // expect(await redistribution.currentPhaseReveal()).to.be.true;
-
-        // commented out to allow other tests to pass for now
-        // await expect(redistribution.reveal(hash_0, depth_0, revealNonce_0, revealed_overlay_0)).to.be.revertedWith(
-        //   errors.reveal.doNotMatch
-        // );
       });
     });
 
+    //should not be able to commit if frozen for X rounds if doesn't match truth oracle
+    //should be slashed if committed and not revealed
 
   });
 });
