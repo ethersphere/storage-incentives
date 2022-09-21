@@ -1,0 +1,50 @@
+
+//what is the cost of the attack given minimum stake
+//what is the minimum stake
+//we either put a lower bound in for the threshold or a minimum stake
+
+
+//check roles are not assigned wrongly too?
+
+//it would be perhaps better to explicitly declare the vars in the relevant scope rather than using (this) for convention/readibility
+//also would be good to add some comments so it's clear what is going on
+//there's an extra brackets here that aren't needed
+//it would be nice to perhaps define these values as what they are exlicitly for code reading purposes, or make an type/interface which will do so automatically
+//this would fail anyway because normalised balance would be zero, although with a different error message, maybe should change it to be a normally passing case
+//should this use the "mineNBlocks" function above?
+//could be good to roll this up into a function too - create N batches
+// this will return the previous batch id
+// at the moment of the depth increase the currentTotalOutpayment is already 2*price
+//perhaps should use the same pattern here to be consistent
+
+
+1. expire should perhaps use expirelimited?
+2. this approach means there will not be regular outpayments but that it will be sporadically distributed,
+the whole value of the batch gets dumped on the lucky winner, many rounds may have no value, some rounds
+will be extremely valuable.
+
+does:
+
+each time batches are expired, for each batch, if the batch remainingBalance is not more than zero
+    - removes the batch's chunks from the global validChunkChount
+    - the pot is adjusted by adding an amount equal to the (normalisedBalanced of the batch,
+    minus the global last expiry balance), multiplied by the number of chunks in that batch
+
+
+should:
+
+each time the batches are expired, each batch should be considered
+- if it is greater than zero in value, it is not processed in this run and will be considered in future runs
+- if it is not greater than zero in value,
+    - the chunks it represents are removed from the global validChunkChount
+    and the value it holds should be transferred to the pot
+    - the value in tokens it represents should be moved into the pot, which will be available to withdraw by the
+    redistributor
+
+
+
+notes:
+
+the total outpayment is the amount paid out over all time, normalised per chunk
+the last expiry balance is the balance at the point where the batches were last migrated, and the pot was updated
+the currentTotalOutpayment is the total outpayment since **the last time the batches were expired?**
