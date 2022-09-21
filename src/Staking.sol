@@ -63,6 +63,18 @@ contract StakeRegistry is AccessControl, Pausable {
         return stakes[overlay].lastUpdatedBlockNumber < block.number;
     }
 
+    function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
+        return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
+    }
+
+    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns(uint256) {
+        return stakes[overlay].lastUpdatedBlockNumber;
+    }
+
+    function ownerOfOverlay(bytes32 overlay) public view returns (address) {
+        return stakes[overlay].owner;
+    }
+
     /**
      * @notice Create a new stake or update an existing one.
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
@@ -126,9 +138,6 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
-
-
-
     /**
      * @notice Pause the contract. The contract is provably stopped by renouncing the pauser role and the admin role after pausing
      * @dev can only be called by the pauser when not paused
@@ -147,6 +156,5 @@ contract StakeRegistry is AccessControl, Pausable {
         _unpause();
     }
 
-    //slash stake
-
+    // stoppable ?
 }
