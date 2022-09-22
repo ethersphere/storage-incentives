@@ -16,7 +16,7 @@ let deployer: string;
 //fake
 let node_0: string;
 const overlay_0 = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
-const stakeAmount_0 = "10000000000000000";
+const stakeAmount_0 = '10000000000000000';
 
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const obsfucatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -53,7 +53,7 @@ before(async function () {
 
 const errors = {
   commit: {
-    notStaked: "node must have staked at least minimum stake"
+    notStaked: 'node must have staked at least minimum stake',
   },
   reveal: {
     noCommits: 'round received no commits',
@@ -70,7 +70,9 @@ async function mineNBlocks(n: number) {
 }
 
 async function setPrevRandDAO() {
-    await ethers.provider.send('hardhat_setPrevRandao', ["0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33"]);
+  await ethers.provider.send('hardhat_setPrevRandao', [
+    '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
+  ]);
 }
 
 async function getBlockNumber() {
@@ -96,26 +98,26 @@ function encodeAndHash(hash_1: string, depth_1: string, reveal_nonce_1: string, 
 }
 
 //dev purposes only
-async function createOverlay(address: string, networkID: string, nonce: string){
+async function createOverlay(address: string, networkID: string, nonce: string) {
   const encoded = new Uint8Array(53);
   encoded.set(arrayify(address));
-  encoded.set(arrayify(networkID),20);
-  encoded.set(arrayify(nonce),21);
+  encoded.set(arrayify(networkID), 20);
+  encoded.set(arrayify(nonce), 21);
   return keccak256(hexlify(encoded));
 }
 
 async function mineOverlaysInDepth(prefix: string, networkID: string, depth: number) {
   let found = false;
-  let w,o;
-  while(found == false){
+  let w, o;
+  while (found == false) {
     w = ethers.Wallet.createRandom();
     console.log(w.address);
     o = await createOverlay(w.address, networkID, nonce_0);
     //compare binary
     found = true;
   }
-  if(w !== undefined){
-    console.log("o",w.address, o, w.privateKey);
+  if (w !== undefined) {
+    console.log('o', w.address, o, w.privateKey);
   }
 }
 
@@ -154,7 +156,6 @@ describe('Redistribution', function () {
     });
   });
 
-
   describe('with deployed contract and staked node in next round', async function () {
     let redistribution: Contract;
     let sr_node_0: Contract;
@@ -163,8 +164,8 @@ describe('Redistribution', function () {
       await deployments.fixture();
       redistribution = await ethers.getContract('Redistribution');
 
-      let r_node_0 = await ethers.getContract('Redistribution', node_0);
-      let sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
+      const r_node_0 = await ethers.getContract('Redistribution', node_0);
+      const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(node_0, sr_node_0.address, stakeAmount_0);
       await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
       await mineNBlocks(roundLength);
@@ -210,182 +211,180 @@ describe('Redistribution', function () {
       //   expect(await redistribution.currentRoundAnchor()).to.be.eq(initialRoundAnchor);
       // });
 
-
       // it('should select a random seed in the second round based on the previous commit nonces', async function () {
       //   //awaiting solidity
       // });
 
-        //committing
+      //committing
 
-        it('should create actual commit with failed reveal if the overlay is out of the reported depth', async function () {
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+      it('should create actual commit with failed reveal if the overlay is out of the reported depth', async function () {
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-          const r_node_0 = await ethers.getContract('Redistribution', node_0);
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
 
-          // console.log("Selection Anchor", await redistribution.SelectionAnchor())
+        // console.log("Selection Anchor", await redistribution.SelectionAnchor())
 
-          const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
+        const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
 
-          await r_node_0.commit(obsfucatedHash, overlay_0);
+        await r_node_0.commit(obsfucatedHash, overlay_0);
 
-          expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+        expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
-          await mineNBlocks(phaseLength);
+        await mineNBlocks(phaseLength);
 
-          await expect(r_node_0.reveal(hash_0, depth_0, reveal_nonce_0, overlay_0)).to.be.revertedWith(
-            errors.reveal.outOfDepth
-          );
-        });
+        await expect(r_node_0.reveal(hash_0, depth_0, reveal_nonce_0, overlay_0)).to.be.revertedWith(
+          errors.reveal.outOfDepth
+        );
+      });
 
+      // it('should create actual commit with successful reveal if the overlay is within the reported depth', async function () {
+      //   expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        // it('should create actual commit with successful reveal if the overlay is within the reported depth', async function () {
-        //   expect(await redistribution.currentPhaseCommit()).to.be.true;
+      //   const r_node_0 = await ethers.getContract('Redistribution', node_0);
 
-        //   const r_node_0 = await ethers.getContract('Redistribution', node_0);
+      //   // console.log("Selection Anchor", await redistribution.SelectionAnchor())
+      //   let sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
 
-        //   // console.log("Selection Anchor", await redistribution.SelectionAnchor())
-        //   let sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
+      //   const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
 
-        //   const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
+      //   await r_node_0.commit(obsfucatedHash, overlay_0);
 
-        //   await r_node_0.commit(obsfucatedHash, overlay_0);
+      //   expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
-        //   expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+      //   await mineNBlocks(phaseLength);
 
-        //   await mineNBlocks(phaseLength);
+      //   await r_node_0.reveal(hash_0, depth_0, reveal_nonce_0, overlay_0);
 
-        //   await r_node_0.reveal(hash_0, depth_0, reveal_nonce_0, overlay_0);
+      //   // expect((await r_node_0.currentReveals(0)).hash).to.be.eq(hash_2);
+      //   // expect((await r_node_0.currentReveals(0)).overlay).to.be.eq(overlay_2);
+      //   // expect((await r_node_0.currentReveals(0)).owner).to.be.eq(...);
+      //   // expect((await r_node_0.currentReveals(0)).stake).to.be.eq(...);
+      //   // expect((await r_node_0.currentReveals(0)).depth).to.be.eq(depth_2);
+      // });
 
-        //   // expect((await r_node_0.currentReveals(0)).hash).to.be.eq(hash_2);
-        //   // expect((await r_node_0.currentReveals(0)).overlay).to.be.eq(overlay_2);
-        //   // expect((await r_node_0.currentReveals(0)).owner).to.be.eq(...);
-        //   // expect((await r_node_0.currentReveals(0)).stake).to.be.eq(...);
-        //   // expect((await r_node_0.currentReveals(0)).depth).to.be.eq(depth_2);
-        // });
+      it('should create a fake commit with failed reveal', async function () {
+        const initialBlockNumber = await getBlockNumber();
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        it('should create a fake commit with failed reveal', async function () {
-          const initialBlockNumber = await getBlockNumber();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+        await r_node_0.commit(obsfucatedHash_0, overlay_0);
 
-          const r_node_0 = await ethers.getContract('Redistribution', node_0);
-          await r_node_0.commit(obsfucatedHash_0, overlay_0);
+        const commit_0 = await r_node_0.currentCommits(0);
+        expect(commit_0.overlay).to.be.eq(overlay_0);
+        expect(commit_0.obfuscatedHash).to.be.eq(obsfucatedHash_0);
 
-          const commit_0 = await r_node_0.currentCommits(0);
-          expect(commit_0.overlay).to.be.eq(overlay_0);
-          expect(commit_0.obfuscatedHash).to.be.eq(obsfucatedHash_0);
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + 1);
 
-          expect(await getBlockNumber()).to.be.eq(initialBlockNumber + 1);
+        await mineNBlocks(phaseLength);
 
-          await mineNBlocks(phaseLength);
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + 1 + phaseLength);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-          expect(await getBlockNumber()).to.be.eq(initialBlockNumber + 1 + phaseLength);
-          expect(await redistribution.currentPhaseReveal()).to.be.true;
+        await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+          errors.reveal.doNotMatch
+        );
+      });
 
-          await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
-            errors.reveal.doNotMatch
-          );
-        });
+      it('should not allow an overlay to reveal without commits', async function () {
+        const initialBlockNumber = await getBlockNumber();
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        it('should not allow an overlay to reveal without commits', async function () {
-          const initialBlockNumber = await getBlockNumber();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+        await mineNBlocks(phaseLength);
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-          await mineNBlocks(phaseLength);
-          expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength);
-          expect(await redistribution.currentPhaseReveal()).to.be.true;
+        await ethers.getContract('Redistribution', node_0);
 
-          await ethers.getContract('Redistribution', node_0);
+        await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+          errors.reveal.noCommits
+        );
+      });
 
-          await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
-            errors.reveal.noCommits
-          );
-        });
+      it('should not allow reveal in commit phase', async function () {
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        it('should not allow reveal in commit phase', async function () {
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+        await ethers.getContract('Redistribution', node_0);
 
-          await ethers.getContract('Redistribution', node_0);
+        // commented out to allow other tests to pass for now
+        // await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+        //   errors.reveal.wrongPhaseCommit
+        // );
+      });
 
-          // commented out to allow other tests to pass for now
-          // await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
-          //   errors.reveal.wrongPhaseCommit
-          // );
-        });
+      it('should not allow reveal in claim phase', async function () {
+        const initialBlockNumber = await getBlockNumber();
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        it('should not allow reveal in claim phase', async function () {
-          const initialBlockNumber = await getBlockNumber();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber);
+        expect(await redistribution.currentPhaseReveal()).to.be.false;
 
-          expect(await getBlockNumber()).to.be.eq(initialBlockNumber);
-          expect(await redistribution.currentPhaseReveal()).to.be.false;
+        await ethers.getContract('Redistribution', node_0);
 
-          await ethers.getContract('Redistribution', node_0);
+        await mineNBlocks(phaseLength * 2);
+        expect(await redistribution.currentPhaseClaim()).to.be.true;
 
-          await mineNBlocks(phaseLength * 2);
-          expect(await redistribution.currentPhaseClaim()).to.be.true;
+        // commented out to allow other tests to pass for now
+        // await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+        //   errors.reveal.wrongPhaseClaim
+        // );
+      });
 
-          // commented out to allow other tests to pass for now
-          // await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
-          //   errors.reveal.wrongPhaseClaim
-          // );
-        });
+      it('should not allow an overlay to reveal without with the incorrect nonce', async function () {
+        const initialBlockNumber = await getBlockNumber();
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        it('should not allow an overlay to reveal without with the incorrect nonce', async function () {
-          const initialBlockNumber = await getBlockNumber();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+        const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
+        await r_node_0.commit(obsfucatedHash, overlay_0);
 
-          const r_node_0 = await ethers.getContract('Redistribution', node_0);
-          const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
-          await r_node_0.commit(obsfucatedHash, overlay_0);
+        await mineNBlocks(phaseLength);
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-          await mineNBlocks(phaseLength);
-          expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
-          expect(await redistribution.currentPhaseReveal()).to.be.true;
+        await ethers.getContract('Redistribution', node_0);
 
-          await ethers.getContract('Redistribution', node_0);
+        await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_f, revealed_overlay_0)).to.be.revertedWith(
+          errors.reveal.doNotMatch
+        );
+      });
 
-          await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_f, revealed_overlay_0)).to.be.revertedWith(
-            errors.reveal.doNotMatch
-          );
-        });
+      it('should not allow an overlay to reveal without with the incorrect overlay', async function () {
+        const initialBlockNumber = await getBlockNumber();
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        it('should not allow an overlay to reveal without with the incorrect overlay', async function () {
-          const initialBlockNumber = await getBlockNumber();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+        const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
+        await r_node_0.commit(obsfucatedHash, overlay_0);
 
-          const r_node_0 = await ethers.getContract('Redistribution', node_0);
-          const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
-          await r_node_0.commit(obsfucatedHash, overlay_0);
+        await mineNBlocks(phaseLength);
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-          await mineNBlocks(phaseLength);
-          expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
-          expect(await redistribution.currentPhaseReveal()).to.be.true;
+        await ethers.getContract('Redistribution', node_0);
 
-          await ethers.getContract('Redistribution', node_0);
+        await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_f)).to.be.revertedWith(
+          errors.reveal.doNotMatch
+        );
+      });
 
-          await expect(redistribution.reveal(hash_0, depth_0, reveal_nonce_0, revealed_overlay_f)).to.be.revertedWith(
-            errors.reveal.doNotMatch
-          );
-        });
+      it('should not allow an overlay to reveal without with the incorrect depth', async function () {
+        const initialBlockNumber = await getBlockNumber();
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        it('should not allow an overlay to reveal without with the incorrect depth', async function () {
-          const initialBlockNumber = await getBlockNumber();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+        const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
+        await r_node_0.commit(obsfucatedHash, overlay_0);
 
-          const r_node_0 = await ethers.getContract('Redistribution', node_0);
-          const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
-          await r_node_0.commit(obsfucatedHash, overlay_0);
+        await mineNBlocks(phaseLength);
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-          await mineNBlocks(phaseLength);
-          expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
-          expect(await redistribution.currentPhaseReveal()).to.be.true;
+        await ethers.getContract('Redistribution', node_0);
 
-          await ethers.getContract('Redistribution', node_0);
-
-          await expect(redistribution.reveal(hash_0, depth_f, reveal_nonce_0, overlay_0)).to.be.revertedWith(
-            errors.reveal.doNotMatch
-          );
-        });
+        await expect(redistribution.reveal(hash_0, depth_f, reveal_nonce_0, overlay_0)).to.be.revertedWith(
+          errors.reveal.doNotMatch
+        );
+      });
 
       //   // it('should only allow one commit per staked overlay', async function () {});
 
