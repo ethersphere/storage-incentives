@@ -47,12 +47,14 @@ async function getBlockNumber() {
 
 let staker_0: string;
 const overlay_0 = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
-const stakeAmount_0 = 1000000;
+const stakeAmount_0 = "10000000000000000";
+const updatedStakeAmount = "10000000000633633"
+const twice_stakeAmount_0 = "20000000000000000";
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let staker_1: string;
 const overlay_1 = '0x531b0865a82da516c606e5349b1477811d26ca2257bf09e40ec47eaa0b6c706c'; //check calc?
-const stakeAmount_1 = 1000000;
+const stakeAmount_1 = "10000000000000000";
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 // Before the tests, set named accounts and read deployments.
@@ -72,7 +74,8 @@ let token: Contract;
 
 // let networkID = 0; //test network
 
-async function mintAndApprove(payee: string, beneficiary: string, transferAmount: number) {
+//todo DRY this
+async function mintAndApprove(payee: string, beneficiary: string, transferAmount: string) {
   const minterTokenInstance = await ethers.getContract('TestToken', deployer);
   await minterTokenInstance.mint(payee, transferAmount);
   const payeeTokenInstance = await ethers.getContract('TestToken', payee);
@@ -127,12 +130,11 @@ describe('Staking', function () {
 
     it('should not deposit stake to the zero address', async function () {
       const owner = zeroAddress;
-      const transferAmount = 1000000;
       const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
-      await mintAndApprove(staker_0, stakeRegistry.address, transferAmount);
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
 
-      await expect(stakeRegistry.depositStake(owner, nonce, transferAmount)).to.be.revertedWith(
+      await expect(stakeRegistry.depositStake(owner, nonce, stakeAmount_0)).to.be.revertedWith(
         errors.deposit.noZeroAddress
       );
     });
@@ -182,7 +184,7 @@ describe('Staking', function () {
       sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
 
       const lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
-      const updateStakeAmount = 633633;
+      const updateStakeAmount = "633633";
 
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount);
@@ -190,7 +192,7 @@ describe('Staking', function () {
       //event is emitted
       await expect(sr_staker_0.depositStake(staker_0, nonce_0, updateStakeAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(overlay_0, stakeAmount_0 + updateStakeAmount, staker_0, lastUpdatedBlockNumber + 1);
+        .withArgs(overlay_0, updatedStakeAmount, staker_0, lastUpdatedBlockNumber + 1);
 
       //correct values are persisted
       const staked = await stakeRegistry.stakes(overlay_0);
@@ -317,7 +319,7 @@ describe('Staking', function () {
       const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
       await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(overlay_0, stakeAmount_0 * 2, staker_0, newUpdatedBlockNumber);
+        .withArgs(overlay_0, twice_stakeAmount_0, staker_0, newUpdatedBlockNumber);
     });
 
     // should we emit an event here?
@@ -386,7 +388,7 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(overlay_0, stakeAmount_0 * 2, staker_0, newUpdatedBlockNumber);
+        .withArgs(overlay_0, stakeAmount_0, staker_0, newUpdatedBlockNumber);
     });
 
     // it('should allow stake withdrawal while paused', async function () {});
