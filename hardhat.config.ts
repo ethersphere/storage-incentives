@@ -42,6 +42,7 @@ const config: HardhatUserConfig = {
     hardhat: {
       initialBaseFeePerGas: 0,
       accounts,
+      hardfork: "merge"
     },
     localhost: {
       url: 'http://localhost:8545',
