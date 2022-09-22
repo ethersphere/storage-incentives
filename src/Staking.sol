@@ -64,6 +64,10 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
+        return stakes[overlay].stakeAmount;
+    }
+
+    function usableStakeOfOverlay(bytes32 overlay) public view returns (uint256) {
         return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
     }
 

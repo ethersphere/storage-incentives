@@ -83,6 +83,8 @@ contract Redistribution is AccessControl, Pausable {
     address truthRevealedOwner;
     //
     address public Winner;
+    //
+    uint256 roundLength = 152;
 
     /**
      * @param staking the registry used by this contract
@@ -112,26 +114,26 @@ contract Redistribution is AccessControl, Pausable {
     event LogBytes32(string l, bytes32 b);
 
     function currentRound() public view returns (uint256) {
-        return ( block.number / 152 );
+        return ( block.number / roundLength );
     }
 
     function currentPhaseCommit() public view returns (bool){
-        if ( block.number % 152 < 38 ) {
+        if ( block.number % roundLength < roundLength / 4 ) {
             return true;
         }
         return false;
     }
 
     function currentPhaseReveal() public view returns (bool){
-        uint256 number = block.number % 152;
-        if ( number >= 38 && number <= 76 ) {
+        uint256 number = block.number % roundLength;
+        if ( number >= roundLength / 4 && number <= roundLength / 2 ) {
             return true;
         }
         return false;
     }
 
     function currentPhaseClaim() public view returns (bool){
-        if ( block.number % 152 > 76 ) {
+        if ( block.number % roundLength > roundLength / 2 ) {
             return true;
         }
         return false;
@@ -144,6 +146,9 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The initial balance per chunk of the batch.
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay) external whenNotPaused {
+
+        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
+        require( Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength && nstake > minimumStake && Stakes.ownerOfOverlay(_overlay) == msg.sender, "can not commit with overlay");
 
     	uint256 cr = currentRound();
 
@@ -161,8 +166,6 @@ contract Redistribution is AccessControl, Pausable {
         // eg. withdraw the winnings to a cold wallet but run the node using a hot wallet
         // sig>
 
-        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
-        require( nstake > minimumStake && Stakes.ownerOfOverlay(_overlay) == msg.sender, "can not commit with overlay");
 
         // get overlay from msg
         // require get overlay from staking contract
@@ -216,6 +219,9 @@ contract Redistribution is AccessControl, Pausable {
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 
+    //
+    //
+
     function reveal(bytes32 _hash, uint8 _depth, bytes32 revealNonce, bytes32 _overlay) external whenNotPaused {
         uint256 cr = currentRound();
 
@@ -265,6 +271,8 @@ contract Redistribution is AccessControl, Pausable {
             }
 
         }
+
+        require(false, "no matching commit");
     }
 
     function claim() external whenNotPaused {
@@ -365,7 +373,7 @@ contract Redistribution is AccessControl, Pausable {
                 k++;
             } else {
                 emit FrozenDoesNotMatchTruth(currentReveals[i].overlay);
-                Stakes.freezeDeposit(currentReveals[i].overlay, 7 * 152 * uint256(2 ** truthRevealedDepth));
+                Stakes.freezeDeposit(currentReveals[i].overlay, 7 * roundLength * uint256(2 ** truthRevealedDepth));
                 // slash ph5
             }
         }
