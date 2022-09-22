@@ -187,6 +187,11 @@ contract Redistribution is AccessControl, Pausable {
 
     //
     function currentRandomValue() public returns (bytes32) {
+        //should not be a write function
+        //iterates at end of reveal period
+        //should have been set by the last reveal during the reveal period
+        //if there are any skipped rounds since the last claim round, increment
+        //the rounds-skipped nonce that is hashed together with the seed to create the current random value
 
         uint256 cr = currentRound();
 
@@ -227,6 +232,12 @@ contract Redistribution is AccessControl, Pausable {
     //
 
     function reveal(bytes32 _hash, uint8 _depth, bytes32 revealNonce, bytes32 _overlay) external whenNotPaused {
+        //on every reveal, update nextSelectionAnchorSeed
+        //once the reveal period is over, we now know that the currentSelectionAnchorSeed must be the nextSelectionAnchorSeed
+        //then, in the commit phase, for all commits, then if the currentSelectionAnchorSeed != nextSelectionAnchorSeed
+        //then let currentSelectionAnchorSeed = nextSelectionAnchorSeed
+        //and, there can be a view only accessor, which determines what phase we are in and selects either the currentSelectionAnchorSeed
+        //or the nextSelectionAnchorSeed based on whether there have been any commits
 
         require(currentPhaseReveal(), "not in reveal phase");
 
