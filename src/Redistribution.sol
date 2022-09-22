@@ -164,15 +164,6 @@ contract Redistribution is AccessControl, Pausable {
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require(nstake >= minimumStake, "node must have staked at least minimum stake");
 
-        // <sig
-        // wrt to the below, it checks the overlay is non-zero staked, this makes sense
-        // however it also checks that the msg sender is staked for that overlay:
-        // why is this? i am not sure what extra guarantees we are given
-        // perhaps leaving it open would increase utility for user hot/cold wallets?
-        // eg. withdraw the winnings to a cold wallet but run the node using a hot wallet
-        // sig>
-
-
         // get overlay from msg
         // require get overlay from staking contract
     	// write into a current committed nodes struct-array
@@ -190,11 +181,13 @@ contract Redistribution is AccessControl, Pausable {
 
     //
     function currentRandomValue() public returns (bytes32) {
+        // <sig
         //should not be a write function
         //iterates at end of reveal period
         //should have been set by the last reveal during the reveal period
         //if there are any skipped rounds since the last claim round, increment
         //the rounds-skipped nonce that is hashed together with the seed to create the current random value
+        // sig>
 
         uint256 cr = currentRound();
 
@@ -209,8 +202,9 @@ contract Redistribution is AccessControl, Pausable {
         return nonce;
     }
 
+    // <sig
     //set nonce function: random seed, reserve commitment hash, number of skipped rounds since claim, nonce for seed for different purpose?
-
+    // sig>
     //
 
     function updateRandomness2() public {
@@ -235,12 +229,14 @@ contract Redistribution is AccessControl, Pausable {
     //
 
     function reveal(bytes32 _hash, uint8 _depth, bytes32 revealNonce, bytes32 _overlay) external whenNotPaused {
+        // <sig
         //on every reveal, update nextSelectionAnchorSeed
         //once the reveal period is over, we now know that the currentSelectionAnchorSeed must be the nextSelectionAnchorSeed
         //then, in the commit phase, for all commits, then if the currentSelectionAnchorSeed != nextSelectionAnchorSeed
         //then let currentSelectionAnchorSeed = nextSelectionAnchorSeed
         //and, there can be a view only accessor, which determines what phase we are in and selects either the currentSelectionAnchorSeed
         //or the nextSelectionAnchorSeed based on whether there have been any commits
+        // sig>
 
         require(currentPhaseReveal(), "not in reveal phase");
 
@@ -293,6 +289,7 @@ contract Redistribution is AccessControl, Pausable {
         require(false, "no matching commit or hash");
     }
 
+    //<sig
     function isWinner(bytes32 _overlay) public view returns (bool) {
         //check if overlay has stake
         //check if overlay is slashed
@@ -309,6 +306,7 @@ contract Redistribution is AccessControl, Pausable {
     // }
 
     //use the same reveal seed for the neighbourhood selection
+    //sig>
 
     function claim() external whenNotPaused {
         require(currentPhaseClaim(), "not in claim phase");
@@ -416,7 +414,6 @@ contract Redistribution is AccessControl, Pausable {
         // <sig why? sig>
         // require(msg.sender == winner);
 
-
         // access the postage stamp contract to transfer pot to the winner
 
         emit WinnerSelected(winner);
@@ -432,6 +429,7 @@ contract Redistribution is AccessControl, Pausable {
         //should not be updated after the reveal function
         nonce = bytes32(block.difficulty);
 
+        //<sig
         // given the current "actual storage depth" vs "theoretical reserve depth"
         // change the price in the pricing oracle contract from the current price Pc to Pn using the formula Pn = kSPc
         // where Pn is determined by  multiplying the pricing signal S Ǝ -1 > S > 1 by some constant k Ǝ ℝ+ (eg. 1.1)
@@ -445,6 +443,7 @@ contract Redistribution is AccessControl, Pausable {
         // nnb: perhaps a linear progression is too strong, and we should implement functionality to prevent the price going exponential
         // nnnb: this could bear some modelling/testing
         // nnnnb: in fact, the hardhat testing env would be great to write these long running models in, separate to the unit tests for CI efficiency
+        //sig>
 
     }
 
