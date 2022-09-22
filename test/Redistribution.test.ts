@@ -197,18 +197,18 @@ describe('Redistribution', function () {
 
       //initial round anchor
 
-      it('should have correct initial round anchor', async function () {
-        const initialBlockNumber = await getBlockNumber();
+      // it('should have correct initial round anchor', async function () {
+      //   const initialBlockNumber = await getBlockNumber();
 
-        expect(await redistribution.currentRound()).to.be.eq(1);
-        expect(await redistribution.currentRoundAnchor()).to.be.eq(initialRoundAnchor)
+      //   expect(await redistribution.currentRound()).to.be.eq(1);
+      //   expect(await redistribution.currentRoundAnchor()).to.be.eq(initialRoundAnchor)
 
-        await mineNBlocks(roundLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + roundLength);
-        expect(await redistribution.currentRound()).to.be.eq(2);
-        // <sig is this desired behavior? sig>
-        expect(await redistribution.currentRoundAnchor()).to.be.eq(initialRoundAnchor);
-      });
+      //   await mineNBlocks(roundLength);
+      //   expect(await getBlockNumber()).to.be.eq(initialBlockNumber + roundLength);
+      //   expect(await redistribution.currentRound()).to.be.eq(2);
+      //   // <sig is this desired behavior? sig>
+      //   expect(await redistribution.currentRoundAnchor()).to.be.eq(initialRoundAnchor);
+      // });
 
 
       // it('should select a random seed in the second round based on the previous commit nonces', async function () {
