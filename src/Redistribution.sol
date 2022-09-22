@@ -295,9 +295,7 @@ contract Redistribution is AccessControl, Pausable {
         require(false, "no matching commit or hash");
     }
 
-    function claim() external whenNotPaused {
     function isWinner(bytes32 _overlay) public view returns (bool) {
-
         //check if overlay has stake
         //check if overlay is slashed
     }
@@ -314,6 +312,7 @@ contract Redistribution is AccessControl, Pausable {
 
     //use the same reveal seed for the neighbourhood selection
 
+    function claim() external whenNotPaused {
         require(currentPhaseClaim(), "not in claim phase");
 
         uint256 cr = currentRound();
