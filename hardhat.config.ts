@@ -36,7 +36,7 @@ const config: HardhatUserConfig = {
     stamper: 2,
     oracle: 3,
     redistributor: 4,
-    pauser: 5
+    pauser: 5,
   },
   networks: {
     hardhat: {
