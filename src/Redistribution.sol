@@ -147,7 +147,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay) external whenNotPaused {
 
-        require(currentPhaseCommit(), "not in reveal phase");
+        require(currentPhaseCommit(), "not in commit phase");
 
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require( Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength && nstake > minimumStake && Stakes.ownerOfOverlay(_overlay) == msg.sender, "can not commit with overlay");
