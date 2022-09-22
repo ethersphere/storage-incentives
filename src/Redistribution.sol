@@ -147,10 +147,11 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay) external whenNotPaused {
 
+        // should only allow one commit per staked overlay
+
         require(currentPhaseCommit(), "not in commit phase");
 
-        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
-        require( Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength && nstake > minimumStake && Stakes.ownerOfOverlay(_overlay) == msg.sender, "can not commit with overlay");
+        require(Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength, "node must have staked before last round");
 
     	uint256 cr = currentRound();
         //check can only commit once?
@@ -160,6 +161,8 @@ contract Redistribution is AccessControl, Pausable {
     		currentCommitRound = cr;
             currentRoundAnchor = currentRandomValue();
     	}
+        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
+        require(nstake >= minimumStake, "node must have staked at least minimum stake");
 
         // <sig
         // wrt to the below, it checks the overlay is non-zero staked, this makes sense
@@ -256,11 +259,6 @@ contract Redistribution is AccessControl, Pausable {
         uint commitsArrayLength = currentCommits.length;
 
         for(uint i=0; i<commitsArrayLength; i++) {
-
-            //<sig
-            //fails silently if there are no commits that fit the bill
-            //could we change it to fail with an appropriate error message
-            //sig>
 
             if ( currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash ) {
 
