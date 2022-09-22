@@ -153,6 +153,7 @@ contract Redistribution is AccessControl, Pausable {
         require( Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength && nstake > minimumStake && Stakes.ownerOfOverlay(_overlay) == msg.sender, "can not commit with overlay");
 
     	uint256 cr = currentRound();
+        //check can only commit once?
 
     	if ( cr != currentCommitRound ) {
     		delete currentCommits;
@@ -200,7 +201,8 @@ contract Redistribution is AccessControl, Pausable {
         return nonce;
     }
 
-    //
+    //set nonce function: random seed, reserve commitment hash, number of skipped rounds since claim, nonce for seed for different purpose?
+
     //
 
     function updateRandomness2() public {
@@ -233,6 +235,7 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentCommitRound, "round received no commits");
 
         if ( cr != currentRevealRound ) {
+        //check can only revealed once
             delete currentReveals;
             currentRevealRound = cr;
         }
@@ -258,6 +261,7 @@ contract Redistribution is AccessControl, Pausable {
                 // nonce = nonce^revealNonce;
                 // currentRandomnessRound = cr;
 
+                //should this be after we check if we are within depth
                 updateRandomness2();
 
                 require( inProximity(currentCommits[i].overlay, currentRoundAnchor, _depth), "anchor out of self reported depth");
@@ -281,6 +285,23 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function claim() external whenNotPaused {
+    function isWinner(bytes32 _overlay) public view returns (bool) {
+
+        //check if overlay has stake
+        //check if overlay is slashed
+    }
+
+    // function inSelectedNeighbourhood(bytes32 _overlay, uint8 _depth) public view returns (bool) {
+    //     //check if overlay has stake
+    //     //check if overlay is slashed
+    //     //check if is in claim phase and that, if rounds have been skipped since currentClaimRound, increment the nonce that is hashed together w
+
+    //     //uses inProximity
+    //     inProximity(_overlay, currentRoundAnchor, _depth);
+    //     return true;
+    // }
+
+    //use the same reveal seed for the neighbourhood selection
 
         require(currentPhaseClaim(), "not in claim phase");
 
@@ -392,10 +413,15 @@ contract Redistribution is AccessControl, Pausable {
 
         emit WinnerSelected(winner);
 
+
+        //add expire batches to update pot
+
         PostageContract.withdraw(winner);
 
         currentRandomnessRound = cr;
         currentClaimRound = cr;
+
+        //should not be updated after the reveal function
         nonce = bytes32(block.difficulty);
 
         // given the current "actual storage depth" vs "theoretical reserve depth"
