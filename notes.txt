@@ -1,3 +1,13 @@
+a bunch of stuff can't possibly function now that nodes have to have been staked
+in the round before the current round, so maybe we should add guards for sanity
+and to reduce attack surface?
+
+
+
+...................
+
+//provide real data
+
 
 //what is the cost of the attack given minimum stake
 //what is the minimum stake
