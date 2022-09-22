@@ -78,7 +78,7 @@ describe('Redistribution', function () {
   });
 
   describe('with deployed contract', async function () {
-    const redistribution: Contract;
+    let redistribution: Contract;
 
     beforeEach(async function () {
       await deployments.fixture();
@@ -253,6 +253,8 @@ describe('Redistribution', function () {
       it('should create actual commit with failed reveal if the overlay is out of the reported depth', async function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+
         const obsfucatedHash_1 = encodeAndHash(hash_1, depth_1, revealNonce_1, overlay_1);
 
         await r_node_0.commit(obsfucatedHash_1, overlay_1);
@@ -306,14 +308,18 @@ describe('Redistribution', function () {
         const tx2 = await r_node_0.claim();
         const receipt2 = await tx2.wait();
 
-        const events2: { [index: string]: Event };
+        const events2: { [index: string]: Event } = {};
         for (const e of receipt2.events) {
           events2[e.event] = e;
         }
 
+        // @ts-ignore
         expect(events2.WinnerSelected.args[0]).to.be.eq(node_0);
+        // @ts-ignore
         expect(events2.TruthSelected.args[0]).to.be.eq(node_0);
+        // @ts-ignore
         expect(events2.TruthSelected.args[1]).to.be.eq(hash_0);
+
         // expect(events.TruthSelected.args[2]).to.be.eq(depth_2)
 
         // correct value of pot is withdrawn
