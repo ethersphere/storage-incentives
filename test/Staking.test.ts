@@ -48,6 +48,7 @@ async function getBlockNumber() {
 let staker_0: string;
 const overlay_0 = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
 const stakeAmount_0 = "10000000000000000";
+const updateStakeAmount = "633633"
 const updatedStakeAmount = "10000000000633633"
 const twice_stakeAmount_0 = "20000000000000000";
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -184,7 +185,6 @@ describe('Staking', function () {
       sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
 
       const lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
-      const updateStakeAmount = "633633";
 
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount);
@@ -198,11 +198,11 @@ describe('Staking', function () {
       const staked = await stakeRegistry.stakes(overlay_0);
       expect(staked.overlay).to.be.eq(overlay_0);
       expect(staked.owner).to.be.eq(staker_0);
-      expect(staked.stakeAmount).to.be.eq(stakeAmount_0 + updateStakeAmount);
+      expect(staked.stakeAmount).to.be.eq(updatedStakeAmount);
       expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber + 1);
 
       // //tokens are successfully transferred
-      expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(stakeAmount_0 + updateStakeAmount);
+      expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(updatedStakeAmount);
     });
 
     it('should correctly deposit stake from another user if funds are available', async function () {
@@ -385,10 +385,10 @@ describe('Staking', function () {
       await stakeRegistryPauser.unPause();
 
       const newUpdatedBlockNumber = (await getBlockNumber()) + 3;
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
+      await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
+      await expect(stakeRegistry.depositStake(staker_0, nonce_0, updateStakeAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(overlay_0, stakeAmount_0, staker_0, newUpdatedBlockNumber);
+        .withArgs(overlay_0, updatedStakeAmount, staker_0, newUpdatedBlockNumber);
     });
 
     // it('should allow stake withdrawal while paused', async function () {});
