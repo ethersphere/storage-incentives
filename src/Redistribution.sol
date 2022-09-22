@@ -147,6 +147,8 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay) external whenNotPaused {
 
+        require(currentPhaseCommit(), "not in reveal phase");
+
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require( Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength && nstake > minimumStake && Stakes.ownerOfOverlay(_overlay) == msg.sender, "can not commit with overlay");
 
@@ -223,6 +225,9 @@ contract Redistribution is AccessControl, Pausable {
     //
 
     function reveal(bytes32 _hash, uint8 _depth, bytes32 revealNonce, bytes32 _overlay) external whenNotPaused {
+
+        require(currentPhaseReveal(), "not in reveal phase");
+
         uint256 cr = currentRound();
 
         require(cr == currentCommitRound, "round received no commits");
@@ -272,17 +277,18 @@ contract Redistribution is AccessControl, Pausable {
 
         }
 
-        require(false, "no matching commit");
+        require(false, "no matching commit or hash");
     }
 
     function claim() external whenNotPaused {
+
+        require(currentPhaseClaim(), "not in claim phase");
 
         uint256 cr = currentRound();
 
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        require(currentPhaseClaim(), "not in claim phase");
 
         bytes32 baseSelectionAnchor = currentRandomValue2();
 
@@ -380,6 +386,7 @@ contract Redistribution is AccessControl, Pausable {
 
         // <sig why? sig>
         // require(msg.sender == winner);
+
 
         // access the postage stamp contract to transfer pot to the winner
 
