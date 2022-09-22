@@ -47,15 +47,15 @@ async function getBlockNumber() {
 
 let staker_0: string;
 const overlay_0 = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
-const stakeAmount_0 = "10000000000000000";
-const updateStakeAmount = "633633"
-const updatedStakeAmount = "10000000000633633"
-const twice_stakeAmount_0 = "20000000000000000";
+const stakeAmount_0 = '10000000000000000';
+const updateStakeAmount = '633633';
+const updatedStakeAmount = '10000000000633633';
+const twice_stakeAmount_0 = '20000000000000000';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let staker_1: string;
 const overlay_1 = '0x531b0865a82da516c606e5349b1477811d26ca2257bf09e40ec47eaa0b6c706c'; //check calc?
-const stakeAmount_1 = "10000000000000000";
+const stakeAmount_1 = '10000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 // Before the tests, set named accounts and read deployments.
