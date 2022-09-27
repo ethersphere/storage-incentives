@@ -88,12 +88,12 @@ async function mintAndApprove(payee: string, beneficiary: string, transferAmount
   await payeeTokenInstance.approve(beneficiary, transferAmount);
 }
 
-function encodeAndHash(hash_1: string, depth_1: string, reveal_nonce_1: string, overlay_1: string) {
+function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, reveal_nonce_1: string) {
   const encoded = new Uint8Array(128);
-  encoded.set(arrayify(hash_1));
+  encoded.set(arrayify(overlay_1));
   encoded.set(arrayify(depth_1), 32);
-  encoded.set(arrayify(reveal_nonce_1), 64);
-  encoded.set(arrayify(overlay_1), 96);
+  encoded.set(arrayify(hash_1), 64);
+  encoded.set(arrayify(reveal_nonce_1), 96);
   return keccak256(hexlify(encoded));
 }
 
