@@ -224,7 +224,7 @@ describe('Redistribution', function () {
 
         // console.log("Selection Anchor", await redistribution.SelectionAnchor())
 
-        const obsfucatedHash = encodeAndHash(hash_0, depth_0, reveal_nonce_0, overlay_0);
+        const obsfucatedHash = encodeAndHash(overlay_0, depth_0, hash_0, reveal_nonce_0);
 
         await r_node_0.commit(obsfucatedHash, overlay_0);
 
@@ -232,7 +232,7 @@ describe('Redistribution', function () {
 
         await mineNBlocks(phaseLength);
 
-        await expect(r_node_0.reveal(hash_0, depth_0, reveal_nonce_0, overlay_0)).to.be.revertedWith(
+        await expect(r_node_0.reveal(overlay_0, depth_0, hash_0, reveal_nonce_0)).to.be.revertedWith(
           errors.reveal.outOfDepth
         );
       });
