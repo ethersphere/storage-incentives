@@ -56,11 +56,9 @@ contract Redistribution is AccessControl, Pausable {
     // can keccack256 actually produce all of the f's?
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
     //
-    bytes32 currentRoundAnchor;
+    bytes32 currentRevealRoundAnchor;
     //
-    bytes32 nonce;
-    //
-    bytes32 nonce2;
+    bytes32 seed;
     //
     uint256 public minimumStake = 10000000000000000;
     //
@@ -159,8 +157,8 @@ contract Redistribution is AccessControl, Pausable {
     	if ( cr != currentCommitRound ) {
     		delete currentCommits;
     		currentCommitRound = cr;
-            currentRoundAnchor = currentRandomValue();
     	}
+
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require(nstake >= minimumStake, "node must have staked at least minimum stake");
 
@@ -176,11 +174,9 @@ contract Redistribution is AccessControl, Pausable {
             obfuscatedHash: _obfuscatedHash
         }));
 
-        updateRandomness2();
     }
 
-    //
-    function currentRandomValue() public returns (bytes32) {
+    function currentSeed() public view returns (bytes32) {
         // <sig
         //should not be a write function
         //iterates at end of reveal period
@@ -190,16 +186,35 @@ contract Redistribution is AccessControl, Pausable {
         // sig>
 
         uint256 cr = currentRound();
+        bytes32 currentSeed = seed;
 
         if ( cr > currentRandomnessRound + 1 ) {
             uint256 difference = cr - currentRandomnessRound - 1;
-            for (uint i = 0; i < difference; i++) {
-                nonce = keccak256(abi.encode(nonce));
-            }
-            currentRandomnessRound = cr - 1;
+            currentSeed = keccak256(abi.encodePacked(currentSeed, difference));
         }
 
-        return nonce;
+        return currentSeed;
+    }
+
+
+    function nextSeed() public view returns (bytes32) {
+        // <sig
+        //should not be a write function
+        //iterates at end of reveal period
+        //should have been set by the last reveal during the reveal period
+        //if there are any skipped rounds since the last claim round, increment
+        //the rounds-skipped nonce that is hashed together with the seed to create the current random value
+        // sig>
+
+        uint256 cr = currentRound() + 1;
+        bytes32 currentSeed = seed;
+
+        if ( cr > currentRandomnessRound + 1 ) {
+            uint256 difference = cr - currentRandomnessRound - 1;
+            currentSeed = keccak256(abi.encodePacked(currentSeed, difference));
+        }
+
+        return currentSeed;
     }
 
     // <sig
@@ -207,15 +222,8 @@ contract Redistribution is AccessControl, Pausable {
     // sig>
     //
 
-    function updateRandomness2() public {
-        nonce2 = keccak256(abi.encode(nonce2, block.difficulty));
-    }
-
-    //
-    //
-
-    function currentRandomValue2() public view returns (bytes32) {
-        return nonce2;
+    function updateRandomness() public {
+        seed = keccak256(abi.encode(seed, block.difficulty));
     }
 
     //
@@ -243,9 +251,9 @@ contract Redistribution is AccessControl, Pausable {
         uint256 cr = currentRound();
 
         require(cr == currentCommitRound, "round received no commits");
-
         if ( cr != currentRevealRound ) {
-        //check can only revealed once
+            currentRevealRoundAnchor = currentRoundAnchor();
+            //check can only revealed once
             delete currentReveals;
             currentRevealRound = cr;
         }
@@ -267,9 +275,8 @@ contract Redistribution is AccessControl, Pausable {
                 // currentRandomnessRound = cr;
 
                 //should this be after we check if we are within depth
-                updateRandomness2();
 
-                require( inProximity(currentCommits[i].overlay, currentRoundAnchor, _depth), "anchor out of self reported depth");
+                require( inProximity(currentCommits[i].overlay, currentRevealRoundAnchor, _depth), "anchor out of self reported depth");
 
                 currentReveals.push(Reveal({
                     owner: currentCommits[i].owner,
@@ -279,6 +286,8 @@ contract Redistribution is AccessControl, Pausable {
                     hash: _hash,
                     depth: _depth
                 }));
+
+                updateRandomness();
 
                 return;
 
@@ -293,6 +302,38 @@ contract Redistribution is AccessControl, Pausable {
     function isWinner(bytes32 _overlay) public view returns (bool) {
         //check if overlay has stake
         //check if overlay is slashed
+    }
+
+    function currentTruthSelectionAnchor() public view returns (bytes32){
+        require(currentPhaseClaim(), "not determined for current round yet");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+
+        return string(abi.encodePacked(seed, "0"));
+    }
+
+    function currentWinnerSelectionAnchor() public view returns (bytes32){
+        require(currentPhaseClaim(), "not determined for current round yet");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+
+        return string(abi.encodePacked(seed, "1"));
+    }
+
+    function currentRoundAnchor() public view returns (bytes32){
+        uint256 cr = currentRound();
+
+        if (currentPhaseCommit() || cr > currentRevealRound){
+            return currentSeed();
+        }
+
+        if (currentPhaseReveal() && cr == currentRevealRound){
+            return currentRoundAnchor;
+        }
+
+        if (currentPhaseClaim()){
+            return nextSeed();
+        }
     }
 
     // function inSelectedNeighbourhood(bytes32 _overlay, uint8 _depth) public view returns (bool) {
@@ -317,10 +358,9 @@ contract Redistribution is AccessControl, Pausable {
         require(cr > currentClaimRound, "round already received successful claim");
 
 
-        bytes32 baseSelectionAnchor = currentRandomValue2();
+        bytes32 baseSelectionAnchor = seed;
 
-        truthSelectionAnchor = string(abi.encodePacked(baseSelectionAnchor, "0"));
-        winnerSelectionAnchor = string(abi.encodePacked(baseSelectionAnchor, "1"));
+        truthSelectionAnchor = currentTruthSelectionAnchor();
 
         bool revealed;
         uint revealIndex;
@@ -384,6 +424,8 @@ contract Redistribution is AccessControl, Pausable {
 
         emit TruthSelected(truthRevealedOwner, truthRevealedHash, truthRevealedDepth);
 
+        winnerSelectionAnchor = string(abi.encodePacked(baseSelectionAnchor, "1"));
+
         uint k = 0;
         for(uint i=0; i<revealsArrayLength; i++) {
             if ( truthRevealedHash == currentReveals[i].hash && truthRevealedDepth == currentReveals[i].depth ) {
@@ -425,9 +467,6 @@ contract Redistribution is AccessControl, Pausable {
 
         currentRandomnessRound = cr;
         currentClaimRound = cr;
-
-        //should not be updated after the reveal function
-        nonce = bytes32(block.difficulty);
 
         //<sig
         // given the current "actual storage depth" vs "theoretical reserve depth"
