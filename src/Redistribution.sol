@@ -186,14 +186,14 @@ contract Redistribution is AccessControl, Pausable {
         // sig>
 
         uint256 cr = currentRound();
-        bytes32 currentSeed = seed;
+        bytes32 currentSeedValue = seed;
 
         if ( cr > currentRandomnessRound + 1 ) {
             uint256 difference = cr - currentRandomnessRound - 1;
-            currentSeed = keccak256(abi.encodePacked(currentSeed, difference));
+            currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
         }
 
-        return currentSeed;
+        return currentSeedValue;
     }
 
 
@@ -207,14 +207,14 @@ contract Redistribution is AccessControl, Pausable {
         // sig>
 
         uint256 cr = currentRound() + 1;
-        bytes32 currentSeed = seed;
+        bytes32 currentSeedValue = seed;
 
         if ( cr > currentRandomnessRound + 1 ) {
             uint256 difference = cr - currentRandomnessRound - 1;
-            currentSeed = keccak256(abi.encodePacked(currentSeed, difference));
+            currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
         }
 
-        return currentSeed;
+        return currentSeedValue;
     }
 
     // <sig
@@ -304,7 +304,7 @@ contract Redistribution is AccessControl, Pausable {
         //check if overlay is slashed
     }
 
-    function currentTruthSelectionAnchor() public view returns (bytes32){
+    function currentTruthSelectionAnchor() public view returns (string memory){
         require(currentPhaseClaim(), "not determined for current round yet");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
@@ -312,7 +312,7 @@ contract Redistribution is AccessControl, Pausable {
         return string(abi.encodePacked(seed, "0"));
     }
 
-    function currentWinnerSelectionAnchor() public view returns (bytes32){
+    function currentWinnerSelectionAnchor() public view returns (string memory){
         require(currentPhaseClaim(), "not determined for current round yet");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
@@ -323,12 +323,12 @@ contract Redistribution is AccessControl, Pausable {
     function currentRoundAnchor() public view returns (bytes32){
         uint256 cr = currentRound();
 
-        if (currentPhaseCommit() || cr > currentRevealRound){
+        if (currentPhaseCommit() || cr > currentRevealRound && !currentPhaseClaim()){
             return currentSeed();
         }
 
         if (currentPhaseReveal() && cr == currentRevealRound){
-            return currentRoundAnchor;
+            return currentRevealRoundAnchor;
         }
 
         if (currentPhaseClaim()){
