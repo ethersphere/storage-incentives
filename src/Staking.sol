@@ -132,13 +132,18 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice slash and redistribute an existing stake
      * @dev can only be called by the redistributor
      * @param overlay the overlay selected
+     * @param amount the amount to be slashed
+     *
      */
-    function slashDeposit(bytes32 overlay) external {
+    function slashDeposit(bytes32 overlay, uint256 amount) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can slash stake");
         if ( stakes[overlay].isValue ) {
-            // pot.topupPot(stakes[overlay].stakeAmount)
-            // pot -= stakes[overlay].stakeAmount
-            delete stakes[overlay];
+            if ( stakes[overlay].stakeAmount > amount ) {
+                stakes[overlay].stakeAmount -= amount;
+                stakes[overlay].lastUpdatedBlockNumber = block.number;
+                } else {
+                delete stakes[overlay];
+            }
         }
     }
 
