@@ -246,13 +246,13 @@ describe('Staking', function () {
 
     it('should not slash staked deposit without redistributor role', async function () {
       const stakeRegistry = await ethers.getContract('StakeRegistry', staker_1);
-      await expect(stakeRegistry.slashDeposit(overlay_0)).to.be.revertedWith(errors.slash.noRole);
+      await expect(stakeRegistry.slashDeposit(overlay_0, stakeAmount_0)).to.be.revertedWith(errors.slash.noRole);
     });
 
     it('should slash staked deposit with redistributor role', async function () {
       const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
 
-      await stakeRegistryRedistributor.slashDeposit(overlay_0);
+      await stakeRegistryRedistributor.slashDeposit(overlay_0, stakeAmount_0);
 
       //is this what is expected?
       const staked = await stakeRegistry.stakes(overlay_0);

@@ -23,6 +23,8 @@ contract Redistribution is AccessControl, Pausable {
         uint256 stake;
         //
         bytes32 obfuscatedHash;
+        //
+        bool revealed;
     }
 
 
@@ -49,11 +51,9 @@ contract Redistribution is AccessControl, Pausable {
     Commit[] public currentCommits;
     //
     Reveal[] public currentReveals;
-
     //
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-
-    // can keccack256 actually produce all of the f's?
+    //
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
     //
     bytes32 currentRevealRoundAnchor;
@@ -135,46 +135,37 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay) external whenNotPaused {
 
-        // should only allow one commit per staked overlay
-
         require(currentPhaseCommit(), "not in commit phase");
+        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
+        require(nstake >= minimumStake, "node must have staked at least minimum stake");
 
         require(Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength, "node must have staked before last round");
 
     	uint256 cr = currentRound();
-        //check can only commit once?
 
     	if ( cr != currentCommitRound ) {
     		delete currentCommits;
     		currentCommitRound = cr;
     	}
 
-        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
-        require(nstake >= minimumStake, "node must have staked at least minimum stake");
+        uint commitsArrayLength = currentCommits.length;
 
-        // get overlay from msg
-        // require get overlay from staking contract
-    	// write into a current committed nodes struct-array
+        // check can only commit once
+        for(uint i=0; i<commitsArrayLength; i++) {
+            require(currentCommits[i].overlay != _overlay, "participant already committed in this round");
+        }
 
-        // map instead
         currentCommits.push(Commit({
             owner: msg.sender,
             overlay: _overlay,
             stake: nstake,
-            obfuscatedHash: _obfuscatedHash
+            obfuscatedHash: _obfuscatedHash,
+            revealed: false
         }));
 
     }
 
     function currentSeed() public view returns (bytes32) {
-        // <sig
-        //should not be a write function
-        //iterates at end of reveal period
-        //should have been set by the last reveal during the reveal period
-        //if there are any skipped rounds since the last claim round, increment
-        //the rounds-skipped nonce that is hashed together with the seed to create the current random value
-        // sig>
-
         uint256 cr = currentRound();
         bytes32 currentSeedValue = seed;
 
@@ -188,14 +179,6 @@ contract Redistribution is AccessControl, Pausable {
 
 
     function nextSeed() public view returns (bytes32) {
-        // <sig
-        //should not be a write function
-        //iterates at end of reveal period
-        //should have been set by the last reveal during the reveal period
-        //if there are any skipped rounds since the last claim round, increment
-        //the rounds-skipped nonce that is hashed together with the seed to create the current random value
-        // sig>
-
         uint256 cr = currentRound() + 1;
         bytes32 currentSeedValue = seed;
 
@@ -207,9 +190,7 @@ contract Redistribution is AccessControl, Pausable {
         return currentSeedValue;
     }
 
-    // <sig
-    //set nonce function: random seed, reserve commitment hash, number of skipped rounds since claim, nonce for seed for different purpose?
-    // sig>
+    //
     //
 
     function updateRandomness() public {
@@ -234,15 +215,6 @@ contract Redistribution is AccessControl, Pausable {
     //
 
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 revealNonce) external whenNotPaused {
-        // <sig
-        //on every reveal, update nextSelectionAnchorSeed
-        //once the reveal period is over, we now know that the currentSelectionAnchorSeed must be the nextSelectionAnchorSeed
-        //then, in the commit phase, for all commits, then if the currentSelectionAnchorSeed != nextSelectionAnchorSeed
-        //then let currentSelectionAnchorSeed = nextSelectionAnchorSeed
-        //and, there can be a view only accessor, which determines what phase we are in and selects either the currentSelectionAnchorSeed
-        //or the nextSelectionAnchorSeed based on whether there have been any commits
-        // sig>
-
         require(currentPhaseReveal(), "not in reveal phase");
 
         uint256 cr = currentRound();
@@ -264,17 +236,9 @@ contract Redistribution is AccessControl, Pausable {
 
             if ( currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash ) {
 
-                // <sig
-                // if using nonce source of randomness
-                // update currentRevealNonce with xor of currentRevealNonce with revealed nonce
-                // sig>
-
-                // nonce = nonce^revealNonce;
-                // currentRandomnessRound = cr;
-
-                //should this be after we check if we are within depth
-
                 require( inProximity(currentCommits[i].overlay, currentRevealRoundAnchor, _depth), "anchor out of self reported depth");
+                require( currentCommits[i].revealed == false, "participant already revealed");
+                currentCommits[i].revealed = true;
 
                 currentReveals.push(Reveal({
                     owner: currentCommits[i].owner,
@@ -296,10 +260,10 @@ contract Redistribution is AccessControl, Pausable {
         require(false, "no matching commit or hash");
     }
 
-    //<sig
+    //
+    //
+
     function isWinner(bytes32 _overlay) public view returns (bool) {
-        //check if overlay has stake
-        //check if overlay is slashed
         require(currentPhaseClaim(), "winner not determined yet");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
@@ -407,19 +371,6 @@ contract Redistribution is AccessControl, Pausable {
         }
     }
 
-    // function inSelectedNeighbourhood(bytes32 _overlay, uint8 _depth) public view returns (bool) {
-    //     //check if overlay has stake
-    //     //check if overlay is slashed
-    //     //check if is in claim phase and that, if rounds have been skipped since currentClaimRound, increment the nonce that is hashed together w
-
-    //     //uses inProximity
-    //     inProximity(_overlay, currentRoundAnchor, _depth);
-    //     return true;
-    // }
-
-    //use the same reveal seed for the neighbourhood selection
-    //sig>
-
     function claim() external whenNotPaused {
         require(currentPhaseClaim(), "not in claim phase");
 
@@ -463,15 +414,13 @@ contract Redistribution is AccessControl, Pausable {
             if ( !revealed ) {
                 //slash
                 emit SlashedNotRevealed(currentCommits[i].overlay);
-                Stakes.slashDeposit(currentCommits[i].overlay);
+                Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 continue;
             }
 
             if ( revealed ) {
                 currentSum += currentReveals[revealIndex].stakeDensity;
-                // int128 probability = ABDKMath64x64.divu(stakeDensity, currentSum);
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, revealIndex));
-                // int128 chance = ABDKMath64x64.divu(uint256(randomNumber), uint256(maxH));
 
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
@@ -483,10 +432,8 @@ contract Redistribution is AccessControl, Pausable {
                 // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
                 // randomNumber * currentSum < stakeDensity * (MaxH + 1)
                 if ( randomNumberTrunc * currentSum < currentReveals[revealIndex].stakeDensity * ( uint256(MaxH) + 1 ) ) {
-                    // truthRevealIndex = revealIndex
                     truthRevealedHash = currentReveals[revealIndex].hash;
                     truthRevealedDepth = currentReveals[revealIndex].depth;
-
                 }
             }
 
@@ -501,16 +448,12 @@ contract Redistribution is AccessControl, Pausable {
             if ( truthRevealedHash == currentReveals[i].hash && truthRevealedDepth == currentReveals[i].depth ) {
 
                 currentWinnerSelectionSum += currentReveals[i].stakeDensity;
-                // int128 probability = ABDKMath64x64.divu(stakeDensity, currentWinnerSelectionSum);
-                // probability = stakeDensity / currentWinnerSelectionSum
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-                // int128 chance = ABDKMath64x64.divu(uint256(randomNumber), uint256(maxH));
 
                 randomNumberTrunc = uint256( randomNumber & MaxH );
 
                 if ( randomNumberTrunc * currentWinnerSelectionSum < currentReveals[i].stakeDensity * (uint256(MaxH) + 1) ) {
 
-                    // truthRevealIndex = revealIndex
                     winner = currentReveals[i].owner;
 
                 }
@@ -523,14 +466,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        // <sig why? sig>
-        // require(msg.sender == winner);
-
-        // access the postage stamp contract to transfer pot to the winner
-
         emit WinnerSelected(winner);
-
-        //add expire batches to update pot
 
         PostageContract.withdraw(winner);
 
@@ -554,16 +490,7 @@ contract Redistribution is AccessControl, Pausable {
 
     }
 
-//    function bytes32ToString(bytes32 _bytes32) public pure returns (string memory) {
-//        uint8 i = 0;
-//        while(i < 32 && _bytes32[i] != 0) {
-//            i++;
-//        }
-//        bytes memory bytesArray = new bytes(i);
-//        for (i = 0; i < 32 && _bytes32[i] != 0; i++) {
-//            bytesArray[i] = _bytes32[i];
-//        }
-//        return string(bytesArray);
-//    }
+    //
+    //
 
 }
