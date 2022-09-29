@@ -93,6 +93,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     event TruthSelected(bytes32 hash, uint8 depth);
 
+    //these events to be removed after testing phase pending some other usefulness being found
     event CountCommits(uint256 _count);
     event CountReveals(uint256 _count);
     event Log(string l);
