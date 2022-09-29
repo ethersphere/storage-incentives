@@ -22,6 +22,9 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 lastUpdatedBlock
     );
 
+    event StakeSlashed(bytes32 slashed, uint256 amount);
+    event StakeFrozen(bytes32 slashed, uint256 time);
+
     struct Stake {
         //
         bytes32 overlay;
@@ -147,6 +150,7 @@ contract StakeRegistry is AccessControl, Pausable {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can freeze stake");
 
         if ( stakes[overlay].isValue ) {
+            emit StakeFrozen(overlay, time);
             stakes[overlay].lastUpdatedBlockNumber = block.number + time;
         }
     }
@@ -160,6 +164,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function slashDeposit(bytes32 overlay, uint256 amount) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can slash stake");
+        emit StakeSlashed(overlay, amount);
         if ( stakes[overlay].isValue ) {
             if ( stakes[overlay].stakeAmount > amount ) {
                 stakes[overlay].stakeAmount -= amount;
