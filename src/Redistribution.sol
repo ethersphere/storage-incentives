@@ -95,6 +95,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     event TruthSelected(bytes32 hash, uint8 depth);
 
+    //these events to be removed after testing phase pending some other usefulness being found
     event CountCommits(uint256 _count);
     event CountReveals(uint256 _count);
     event Log(string l);
@@ -145,7 +146,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require(nstake >= minimumStake, "node must have staked at least minimum stake");
 
-        require(Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2*roundLength, "node must have staked before last round");
+        require(Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - roundLength, "node must have staked before last round");
 
     	uint256 cr = currentRound();
 
@@ -171,6 +172,7 @@ contract Redistribution is AccessControl, Pausable {
 
     }
 
+    // <sig should be private / only available in commit phase? sig>
     function currentSeed() public view returns (bytes32) {
         uint256 cr = currentRound();
         bytes32 currentSeedValue = seed;
@@ -220,7 +222,7 @@ contract Redistribution is AccessControl, Pausable {
     //
     //
 
-    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 revealNonce) external whenNotPaused {
+    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
 
         uint256 cr = currentRound();
@@ -233,7 +235,7 @@ contract Redistribution is AccessControl, Pausable {
             currentRandomnessRound = cr;
         }
 
-        bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, revealNonce);
+        bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
 
         uint commitsArrayLength = currentCommits.length;
 
@@ -342,7 +344,7 @@ contract Redistribution is AccessControl, Pausable {
 
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool){
         require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
-        require(Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * roundLength, "stake updated recently");
+        require(Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - roundLength, "stake updated recently");
         return inProximity(overlay, currentRoundAnchor(), depth) && Stakes.stakeOfOverlay(overlay) >= minimumStake;
     }
 
@@ -471,7 +473,9 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        emit WinnerSelected(winner);
+        //iterate the through all the truth tellers and emit event with their overlay and stake
+
+        emit WinnerSelected(winner); //winner, pot amount, a table of truth tellers and their corresponding stake
 
         PostageContract.withdraw(winner.owner);
 

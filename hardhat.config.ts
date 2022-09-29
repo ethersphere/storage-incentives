@@ -37,11 +37,76 @@ const config: HardhatUserConfig = {
     oracle: 3,
     redistributor: 4,
     pauser: 5,
+    node_0: 6,
+    node_1: 7,
+    node_2: 8,
+    node_3: 9,
+    node_4: 10,
+    // node_5: 11,
+    // node_6: 12,
+    // node_7: 13,
+    // node_8: 14
   },
   networks: {
     hardhat: {
       initialBaseFeePerGas: 0,
-      accounts,
+      accounts: [
+        // deployer
+        {
+          privateKey: '0x0d8f0a76e88539c4ceaa6ad01372cce44fb621b56b34b2cc614b4c77fb081f20',
+          balance: '10000000000000000000000',
+        },
+        // admin
+        {
+          privateKey: '0x8d56d322a1bb1e94c7d64ccd62aa2e5cc9760f59575eda0f7fd392bab8d6ba0d',
+          balance: '10000000000000000000000',
+        },
+        // stamper
+        {
+          privateKey: '0x963893a36bd803209c07615b0650303706fb01158479a46fba4dea3fe8cf0734',
+          balance: '10000000000000000000000',
+        },
+        // oracle
+        {
+          privateKey: '0xee65b03b4dfdde207a44c6ff5da99201ee0642841ae9f2e07927e8d2ad523d55',
+          balance: '10000000000000000000000',
+        },
+        // redistributor
+        {
+          privateKey: '0x34777daf03381f4666635bff0e03720a49f62ba28daa3ab6cabe0922e8574422',
+          balance: '10000000000000000000000',
+        },
+        // pauser
+        {
+          privateKey: '0x4b2519006fefa239fcca606ab6f7d9d474023f6fa1bdab4a13d2fae44f97368d',
+          balance: '10000000000000000000000',
+        },
+        // node_0
+        {
+          privateKey: '0x12867a44d4537fd673b013e706009f3ed2e3e59388d7649866dc8768241fe59f',
+          balance: '10000000000000000000000',
+        },
+        // node_1
+        {
+          privateKey: '0x6700aab61c60ad39380f694762b751cb15c87d61d8711167a29036443db379cc',
+          balance: '10000000000000000000000',
+        },
+        // node_2
+        {
+          privateKey: '0x5ede819ae023448f600a4b2cde1a114fd2b48d1baa97e01d8f67b44896a77380',
+          balance: '10000000000000000000000',
+        },
+        // node_3
+        {
+          privateKey: '0x3d1870a4411478d65da5d44f167fba47f7a7d14d71ca4ae173f341243bb18a28',
+          balance: '10000000000000000000000',
+        },
+        // node_4
+        {
+          privateKey: '0x4d6650dd904672e8f0202ccacea3e94b96d4f37b76fd97bc47d2cc5649fa05b6',
+          balance: '10000000000000000000000',
+        }
+      ],
       hardfork: 'merge',
     },
     localhost: {
