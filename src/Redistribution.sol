@@ -468,7 +468,9 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        emit WinnerSelected(winner);
+        //iterate the through all the truth tellers and emit event with their overlay and stake
+
+        emit WinnerSelected(winner); //winner, pot amount, a table of truth tellers and their corresponding stake
 
         PostageContract.withdraw(winner.owner);
 
