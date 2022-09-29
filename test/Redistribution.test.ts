@@ -16,7 +16,7 @@ let deployer: string;
 //fake
 let node_0: string;
 const overlay_0 = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
-const stakeAmount_0 = '10000000000000000';
+const stakeAmount_0 = '100000000000000000';
 
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const obsfucatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';

@@ -60,7 +60,7 @@ contract Redistribution is AccessControl, Pausable {
     //
     bytes32 seed;
     //
-    uint256 public minimumStake = 10000000000000000;
+    uint256 public minimumStake = 100000000000000000;
     //
     uint256 public currentCommitRound;
     //
@@ -70,9 +70,10 @@ contract Redistribution is AccessControl, Pausable {
     //
     uint256 public currentRandomnessRound;
     //
-    address public Winner;
-    //
     uint256 public roundLength = 152;
+    //
+    Reveal public winner;
+
 
     /**
      * @param staking the registry used by this contract
@@ -87,15 +88,13 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Emitted when the winner of a round is selected in the claim phase.
      */
-    event WinnerSelected(address winner);
+    event WinnerSelected(Reveal winner);
 
     /**
      * @dev Emitted when the truth oracle of a round is selected in the claim phase.
      */
     event TruthSelected(bytes32 hash, uint8 depth);
 
-    event SlashedNotRevealed(bytes32 slashed);
-    event FrozenDoesNotMatchTruth(bytes32 slashed);
     event CountCommits(uint256 _count);
     event CountReveals(uint256 _count);
     event Log(string l);
@@ -125,6 +124,13 @@ contract Redistribution is AccessControl, Pausable {
             return true;
         }
         return false;
+    }
+
+    function currentRoundReveals() public view returns (Reveal[] memory ){
+        require(currentPhaseClaim() || currentPhaseCommit(), "not in commit or claim phase");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+        return currentReveals;
     }
 
     /**
@@ -277,7 +283,7 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 currentSum;
         uint256 currentWinnerSelectionSum;
-        bytes32 winner;
+        bytes32 winnerIs;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
@@ -308,6 +314,8 @@ contract Redistribution is AccessControl, Pausable {
                 }
             }
 
+
+
         }
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
@@ -322,14 +330,14 @@ contract Redistribution is AccessControl, Pausable {
                 randomNumberTrunc = uint256( randomNumber & MaxH);
 
                 if ( randomNumberTrunc * currentWinnerSelectionSum < currentReveals[i].stakeDensity * ( uint256(MaxH) + 1 ) ) {
-                    winner = currentReveals[i].overlay;
+                    winnerIs = currentReveals[i].overlay;
                 }
 
                 k++;
             }
         }
 
-        return (winner == _overlay);
+        return (winnerIs == _overlay);
     }
 
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool){
@@ -386,7 +394,6 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 currentSum;
         uint256 currentWinnerSelectionSum;
-        address winner;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
@@ -413,7 +420,6 @@ contract Redistribution is AccessControl, Pausable {
 
             if ( !revealed ) {
                 //slash
-                emit SlashedNotRevealed(currentCommits[i].overlay);
                 Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 continue;
             }
@@ -454,13 +460,12 @@ contract Redistribution is AccessControl, Pausable {
 
                 if ( randomNumberTrunc * currentWinnerSelectionSum < currentReveals[i].stakeDensity * (uint256(MaxH) + 1) ) {
 
-                    winner = currentReveals[i].owner;
+                    winner = currentReveals[i];
 
                 }
 
                 k++;
             } else {
-                emit FrozenDoesNotMatchTruth(currentReveals[i].overlay);
                 Stakes.freezeDeposit(currentReveals[i].overlay, 7 * roundLength * uint256(2 ** truthRevealedDepth));
                 // slash ph5
             }
@@ -468,7 +473,7 @@ contract Redistribution is AccessControl, Pausable {
 
         emit WinnerSelected(winner);
 
-        PostageContract.withdraw(winner);
+        PostageContract.withdraw(winner.owner);
 
         currentClaimRound = cr;
 
