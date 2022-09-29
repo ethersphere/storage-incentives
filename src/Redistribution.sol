@@ -193,7 +193,7 @@ contract Redistribution is AccessControl, Pausable {
     //
     //
 
-    function updateRandomness() public {
+    function updateRandomness() private {
         seed = keccak256(abi.encode(seed, block.difficulty));
     }
 
@@ -208,7 +208,7 @@ contract Redistribution is AccessControl, Pausable {
     //
 
     function wrapCommit(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 revealNonce) public pure returns(bytes32){
-        return keccak256(abi.encode(_overlay, _depth, _hash, revealNonce));
+        return keccak256(abi.encodePacked(_overlay, _depth, _hash, revealNonce));
     }
 
     //
@@ -222,7 +222,6 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentCommitRound, "round received no commits");
         if ( cr != currentRevealRound ) {
             currentRevealRoundAnchor = currentRoundAnchor();
-            //check can only revealed once
             delete currentReveals;
             currentRevealRound = cr;
             currentRandomnessRound = cr;
@@ -237,6 +236,7 @@ contract Redistribution is AccessControl, Pausable {
             if ( currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash ) {
 
                 require( inProximity(currentCommits[i].overlay, currentRevealRoundAnchor, _depth), "anchor out of self reported depth");
+                //check can only revealed once
                 require( currentCommits[i].revealed == false, "participant already revealed");
                 currentCommits[i].revealed = true;
 
@@ -319,7 +319,7 @@ contract Redistribution is AccessControl, Pausable {
                 currentWinnerSelectionSum += currentReveals[i].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
-                randomNumberTrunc = uint256( randomNumber & MaxH );
+                randomNumberTrunc = uint256( randomNumber & MaxH);
 
                 if ( randomNumberTrunc * currentWinnerSelectionSum < currentReveals[i].stakeDensity * ( uint256(MaxH) + 1 ) ) {
                     winner = currentReveals[i].overlay;
@@ -334,12 +334,12 @@ contract Redistribution is AccessControl, Pausable {
 
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool){
         require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
-        require(Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - roundLength, "stake updated recently");
+        require(Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * roundLength, "stake updated recently");
         return inProximity(overlay, currentRoundAnchor(), depth) && Stakes.stakeOfOverlay(overlay) >= minimumStake;
     }
 
 
-    function currentTruthSelectionAnchor() public view returns (string memory){
+    function currentTruthSelectionAnchor() private view returns (string memory){
         require(currentPhaseClaim(), "not determined for current round yet");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
@@ -347,7 +347,7 @@ contract Redistribution is AccessControl, Pausable {
         return string(abi.encodePacked(seed, "0"));
     }
 
-    function currentWinnerSelectionAnchor() public view returns (string memory){
+    function currentWinnerSelectionAnchor() private view returns (string memory){
         require(currentPhaseClaim(), "not determined for current round yet");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");

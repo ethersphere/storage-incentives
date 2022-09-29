@@ -115,6 +115,29 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /*
+     * @notice withdraw stake when staking contract paused
+     * @dev can only be called by the owner specifying the associated overlay
+     * @param overlay the overlay selected
+     * @param amount stake amount to be withdrawn
+     */
+    function withdrawFromStake(bytes32 overlay, uint256 amount) external whenPaused {
+        require(stakes[overlay].owner == msg.sender, "only owner can withdraw stake");
+        uint256 withDrawLimit = amount;
+        if (amount > stakes[overlay].stakeAmount) {
+            withDrawLimit = stakes[overlay].stakeAmount;
+        }
+
+        if (withDrawLimit < stakes[overlay].stakeAmount) {
+            stakes[overlay].stakeAmount -= withDrawLimit;
+            stakes[overlay].lastUpdatedBlockNumber = block.number;
+            require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
+        } else {
+            delete stakes[overlay];
+            require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
+        }
+    }
+
+    /*
      * @notice freeze an existing stake
      * @dev can only be called by the redistributor
      * @param overlay the overlay selected
@@ -165,5 +188,4 @@ contract StakeRegistry is AccessControl, Pausable {
         _unpause();
     }
 
-    // stoppable ?
 }
