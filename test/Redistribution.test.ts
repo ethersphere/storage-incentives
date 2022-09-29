@@ -23,7 +23,7 @@ const obsfucatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b555
 const revealed_overlay_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 const hash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_0 = '0x0000000000000000000000000000000000000000000000000000000000000006';
+const depth_0 = '0x06';
 const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 const reveal_nonce_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
@@ -89,11 +89,11 @@ async function mintAndApprove(payee: string, beneficiary: string, transferAmount
 }
 
 function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, reveal_nonce_1: string) {
-  const encoded = new Uint8Array(128);
+  const encoded = new Uint8Array(97);
   encoded.set(arrayify(overlay_1));
   encoded.set(arrayify(depth_1), 32);
-  encoded.set(arrayify(hash_1), 64);
-  encoded.set(arrayify(reveal_nonce_1), 96);
+  encoded.set(arrayify(hash_1), 33);
+  encoded.set(arrayify(reveal_nonce_1), 65);
   return keccak256(hexlify(encoded));
 }
 
