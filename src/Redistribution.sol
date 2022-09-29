@@ -181,7 +181,6 @@ contract Redistribution is AccessControl, Pausable {
         return currentSeedValue;
     }
 
-
     function nextSeed() public view returns (bytes32) {
         uint256 cr = currentRound() + 1;
         bytes32 currentSeedValue = seed;
@@ -339,7 +338,8 @@ contract Redistribution is AccessControl, Pausable {
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool){
         require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
         require(Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * roundLength, "stake updated recently");
-        return inProximity(overlay, currentRoundAnchor(), depth) && Stakes.stakeOfOverlay(overlay) >= minimumStake;
+        require(Stakes.stakeOfOverlay(overlay) >= minimumStake, "stake amount does not meet minimum");
+        return inProximity(overlay, currentRoundAnchor(), depth);
     }
 
 
