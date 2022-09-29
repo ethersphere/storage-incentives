@@ -68,8 +68,6 @@ contract Redistribution is AccessControl, Pausable {
     //
     uint256 public currentClaimRound;
     //
-    uint256 public currentRandomnessRound;
-    //
     uint256 public roundLength = 152;
     //
     Reveal public winner;
@@ -175,8 +173,8 @@ contract Redistribution is AccessControl, Pausable {
         uint256 cr = currentRound();
         bytes32 currentSeedValue = seed;
 
-        if ( cr > currentRandomnessRound + 1 ) {
-            uint256 difference = cr - currentRandomnessRound - 1;
+        if ( cr > currentRevealRound + 1 ) {
+            uint256 difference = cr - currentRevealRound - 1;
             currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
         }
 
@@ -188,8 +186,8 @@ contract Redistribution is AccessControl, Pausable {
         uint256 cr = currentRound() + 1;
         bytes32 currentSeedValue = seed;
 
-        if ( cr > currentRandomnessRound + 1 ) {
-            uint256 difference = cr - currentRandomnessRound - 1;
+        if ( cr > currentRevealRound + 1 ) {
+            uint256 difference = cr - currentRevealRound - 1;
             currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
         }
 
@@ -230,7 +228,7 @@ contract Redistribution is AccessControl, Pausable {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
             currentRevealRound = cr;
-            currentRandomnessRound = cr;
+            currentRevealRound = cr;
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, revealNonce);
@@ -313,8 +311,6 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedDepth = currentReveals[revealIndex].depth;
                 }
             }
-
-
 
         }
 
