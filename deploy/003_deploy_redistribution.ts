@@ -12,12 +12,21 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     log: true,
   });
 
-  const redistributorRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
+  const redistributorRoleStakeRegistry = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
   await execute(
     'StakeRegistry',
     { from: deployer },
     'grantRole',
-    redistributorRole,
+    redistributorRoleStakeRegistry,
+    (await get('Redistribution')).address
+  );
+
+  const redistributorRolePostageStamp = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
+  await execute(
+    'PostageStamp',
+    { from: deployer },
+    'grantRole',
+    redistributorRolePostageStamp,
     (await get('Redistribution')).address
   );
 };
