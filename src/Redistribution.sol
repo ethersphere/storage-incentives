@@ -217,7 +217,7 @@ contract Redistribution is AccessControl, Pausable {
     //
     //
 
-    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 revealNonce) external whenNotPaused {
+    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
 
         uint256 cr = currentRound();
@@ -230,7 +230,7 @@ contract Redistribution is AccessControl, Pausable {
             currentRevealRound = cr;
         }
 
-        bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, revealNonce);
+        bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
 
         uint commitsArrayLength = currentCommits.length;
 
