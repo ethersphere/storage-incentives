@@ -139,10 +139,10 @@ async function createOverlay(address: string, networkID: string, nonce: string) 
 
 function hexToBinaryArray(h: string) {
   h = h.substring(2);
-  let o = [];
+  const o = [];
   for (let i = 0; i < h.length; i++) {
-    let byte = h.substring(i, i + 1);
-    let binary = parseInt(byte, 16).toString(2).padStart(4, '0');
+    const byte = h.substring(i, i + 1);
+    const binary = parseInt(byte, 16).toString(2).padStart(4, '0');
     for (let j = 0; j < binary.length; j++) {
       o.push(parseInt(binary[j]));
     }
@@ -151,9 +151,9 @@ function hexToBinaryArray(h: string) {
 }
 
 function compareHexAsBinary(_a: string, _b: string, d: number) {
-  let a = hexToBinaryArray(_a);
-  let b = hexToBinaryArray(_b);
-  let match = false;
+  const a = hexToBinaryArray(_a);
+  const b = hexToBinaryArray(_b);
+  const match = false;
   for (let i = 0; i < d; i++) {
     if (a[i] != b[i]) {
       return false;
@@ -259,7 +259,7 @@ describe('Redistribution', function () {
       const price1 = 100;
       await postageStampOracle.setPrice(price1);
 
-      let batch = {
+      const batch = {
         nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
         initialPaymentPerChunk: 200000,
         depth: 17,
@@ -267,9 +267,9 @@ describe('Redistribution', function () {
         immutable: false,
       };
 
-      let batchSize = 2 ** batch.depth;
-      let transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
-      let expectedNormalisedBalance = batch.initialPaymentPerChunk;
+      const batchSize = 2 ** batch.depth;
+      const transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
+      const expectedNormalisedBalance = batch.initialPaymentPerChunk;
 
       postage = await ethers.getContract('PostageStamp', stamper);
 
@@ -649,7 +649,7 @@ describe('Redistribution', function () {
 
       // console.log(WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent);
 
-      let expectedPotPayout = 5216665600; //check this!
+      const expectedPotPayout = 5216665600; //check this!
       expect(await token.balanceOf(node_0)).to.be.eq(expectedPotPayout);
 
       // expect(WinnerSelectedEvent.Winner).to.be.eq(node_0);
