@@ -144,7 +144,7 @@ describe('Redistribution', function () {
     beforeEach(async function () {
       await deployments.fixture();
       redistribution = await ethers.getContract('Redistribution');
-      await mineNBlocks(roundLength);
+      await mineNBlocks(2* roundLength);
       // await setPrevRandDAO();
     });
 
@@ -168,7 +168,7 @@ describe('Redistribution', function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(node_0, sr_node_0.address, stakeAmount_0);
       await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
-      await mineNBlocks(roundLength);
+      await mineNBlocks(2*roundLength);
       // await setPrevRandDAO();
     });
 
@@ -176,11 +176,11 @@ describe('Redistribution', function () {
       it('should be in the correct round', async function () {
         const initialBlockNumber = await getBlockNumber();
 
-        expect(await redistribution.currentRound()).to.be.eq(1);
+        expect(await redistribution.currentRound()).to.be.eq(2);
 
         await mineNBlocks(roundLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + roundLength);
-        expect(await redistribution.currentRound()).to.be.eq(2);
+        expect(await redistribution.currentRound()).to.be.eq(3);
       });
 
       it('should be in the correct phase', async function () {
