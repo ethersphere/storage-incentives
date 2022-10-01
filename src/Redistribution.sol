@@ -276,9 +276,6 @@ contract Redistribution is AccessControl, Pausable {
 
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
 
-        bool revealed;
-        uint revealIndex;
-
         uint256 currentSum;
         uint256 currentWinnerSelectionSum;
         bytes32 winnerIs;
@@ -288,30 +285,15 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
 
-        for(uint i=0; i<currentCommits.length; i++) {
-            revealed = false;
+        for(uint i=0; i<currentReveals.length; i++) {
+            currentSum += currentReveals[i].stakeDensity;
+            randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
+            randomNumberTrunc = uint256(randomNumber & MaxH);
 
-            for(uint j=0; j<currentReveals.length; j++) {
-                if (currentReveals[j].overlay != currentCommits[i].overlay) {
-                    continue;
-                }
-                revealed = true;
-                revealIndex = j;
-                break;
+            if ( randomNumberTrunc * currentSum < currentReveals[i].stakeDensity * ( uint256(MaxH) + 1 ) ) {
+                truthRevealedHash = currentReveals[i].hash;
+                truthRevealedDepth = currentReveals[i].depth;
             }
-
-            if ( revealed ) {
-                currentSum += currentReveals[revealIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, revealIndex));
-
-                randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                if ( randomNumberTrunc * currentSum < currentReveals[revealIndex].stakeDensity * ( uint256(MaxH) + 1 ) ) {
-                    truthRevealedHash = currentReveals[revealIndex].hash;
-                    truthRevealedDepth = currentReveals[revealIndex].depth;
-                }
-            }
-
         }
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
@@ -323,7 +305,7 @@ contract Redistribution is AccessControl, Pausable {
                 currentWinnerSelectionSum += currentReveals[i].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
-                randomNumberTrunc = uint256( randomNumber & MaxH);
+                randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if ( randomNumberTrunc * currentWinnerSelectionSum < currentReveals[i].stakeDensity * ( uint256(MaxH) + 1 ) ) {
                     winnerIs = currentReveals[i].overlay;
@@ -386,9 +368,6 @@ contract Redistribution is AccessControl, Pausable {
 
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
 
-        bool revealed;
-        uint revealIndex;
-
         uint256 currentSum;
         uint256 currentWinnerSelectionSum;
         bytes32 randomNumber;
@@ -404,42 +383,30 @@ contract Redistribution is AccessControl, Pausable {
         emit CountReveals(revealsArrayLength);
 
         for(uint i=0; i<commitsArrayLength; i++) {
-            revealed = false;
-
-            for(uint j=0; j<revealsArrayLength; j++) {
-                if (currentReveals[j].overlay != currentCommits[i].overlay) {
-                    continue;
-                }
-                revealed = true;
-                revealIndex = j;
-                break;
-            }
-
-            if ( !revealed ) {
+            if ( !currentCommits[i].revealed ) {
                 //slash
                 Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 continue;
             }
+        }
 
-            if ( revealed ) {
-                currentSum += currentReveals[revealIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, revealIndex));
+        for(uint i=0; i<revealsArrayLength; i++){
+            currentSum += currentReveals[i].stakeDensity;
+            randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
 
-                randomNumberTrunc = uint256(randomNumber & MaxH);
+            randomNumberTrunc = uint256(randomNumber & MaxH);
 
-                // question is whether randomNumber / MaxH < probability
-                // where probability is stakeDensity / currentSum
-                // to avoid resorting to floating points all divisions should be
-                // simplified with multiplying both sides (as long as divisor > 0)
-                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
-                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
-                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-                if ( randomNumberTrunc * currentSum < currentReveals[revealIndex].stakeDensity * ( uint256(MaxH) + 1 ) ) {
-                    truthRevealedHash = currentReveals[revealIndex].hash;
-                    truthRevealedDepth = currentReveals[revealIndex].depth;
-                }
+            // question is whether randomNumber / MaxH < probability
+            // where probability is stakeDensity / currentSum
+            // to avoid resorting to floating points all divisions should be
+            // simplified with multiplying both sides (as long as divisor > 0)
+            // randomNumber / (MaxH + 1) < stakeDensity / currentSum
+            // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
+            // randomNumber * currentSum < stakeDensity * (MaxH + 1)
+            if ( randomNumberTrunc * currentSum < currentReveals[i].stakeDensity * ( uint256(MaxH) + 1 ) ) {
+                truthRevealedHash = currentReveals[i].hash;
+                truthRevealedDepth = currentReveals[i].depth;
             }
-
         }
 
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
@@ -468,9 +435,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        //iterate the through all the truth tellers and emit event with their overlay and stake
-
-        emit WinnerSelected(winner); //winner, pot amount, a table of truth tellers and their corresponding stake
+        emit WinnerSelected(winner);
 
         PostageContract.withdraw(winner.owner);
 
