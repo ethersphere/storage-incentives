@@ -126,7 +126,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function currentRoundReveals() public view returns (Reveal[] memory ){
-        require(currentPhaseClaim() || currentPhaseCommit(), "not in commit or claim phase");
+        require(currentPhaseClaim(), "not in claim phase");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
         return currentReveals;
@@ -143,6 +143,7 @@ contract Redistribution is AccessControl, Pausable {
         require(currentPhaseCommit(), "not in commit phase");
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require(nstake >= minimumStake, "node must have staked at least minimum stake");
+        require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner does not match sender to be able to commit");
 
         require(Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2*roundLength, "node must have staked before last round");
 
