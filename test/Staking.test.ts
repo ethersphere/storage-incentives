@@ -294,7 +294,10 @@ describe('Staking', function () {
 
     it('should freeze staked deposit with redistributor role', async function () {
       const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-      await stakeRegistryRedistributor.freezeDeposit(overlay_0, freezeTime);
+
+      await expect(stakeRegistryRedistributor.freezeDeposit(overlay_0, freezeTime))
+      .to.emit(stakeRegistry, 'StakeFrozen')
+      .withArgs(overlay_0, freezeTime);
 
       const staked = await stakeRegistryRedistributor.stakes(overlay_0);
       const updatedBlockNumber = (await getBlockNumber()) + 3;
