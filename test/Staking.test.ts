@@ -6,7 +6,6 @@ import { Contract } from 'ethers';
 let deployer: string;
 let redistributor: string;
 let pauser: string;
-let others: string[];
 
 const zeroAddress = '0x0000000000000000000000000000000000000000';
 const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
@@ -46,7 +45,7 @@ async function getBlockNumber() {
 }
 
 let staker_0: string;
-const overlay_0 = '0xd665e1fdc559f0987e10d70f0d3e6c877f64620f58d79c60b4742a3806555c48';
+const overlay_0 = '0xa67dc06e2a97991a1ace5628baf7a50efa00814b369e375475c059919f3cccaf';
 const stakeAmount_0 = '10000000000000000';
 const updateStakeAmount = '633633';
 const updatedStakeAmount = '10000000000633633';
@@ -54,7 +53,7 @@ const twice_stakeAmount_0 = '20000000000000000';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let staker_1: string;
-const overlay_1 = '0x531b0865a82da516c606e5349b1477811d26ca2257bf09e40ec47eaa0b6c706c'; //check calc?
+const overlay_1 = '0xa6da244c491646c1a8d60be1804e537ed77c90543815cac39f117bbe846bc665'; //check calc?
 const stakeAmount_1 = '10000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -64,10 +63,8 @@ before(async function () {
   deployer = namedAccounts.deployer;
   redistributor = namedAccounts.redistributor;
   pauser = namedAccounts.pauser;
-
-  others = await getUnnamedAccounts();
-  staker_0 = others[0];
-  staker_1 = others[1];
+  staker_0 = namedAccounts.node_0;
+  staker_1 = namedAccounts.node_1;
 });
 
 let stakeRegistry: Contract;
@@ -119,7 +116,7 @@ describe('Staking', function () {
   describe('depositing stake', function () {
     beforeEach(async function () {
       token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry', others[0]);
+      stakeRegistry = await ethers.getContract('StakeRegistry', staker_0);
       await deployments.fixture();
     });
 
@@ -189,7 +186,7 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount);
 
-      //event is emitted
+      // event is emitted
       await expect(sr_staker_0.depositStake(staker_0, nonce_0, updateStakeAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(overlay_0, updatedStakeAmount, staker_0, lastUpdatedBlockNumber + 1);
@@ -236,8 +233,10 @@ describe('Staking', function () {
       stakeRegistry = await ethers.getContract('StakeRegistry');
       await deployments.fixture();
 
+      const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
+      await sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
@@ -245,7 +244,7 @@ describe('Staking', function () {
     });
 
     it('should not slash staked deposit without redistributor role', async function () {
-      const stakeRegistry = await ethers.getContract('StakeRegistry', staker_1);
+      const stakeRegistry = await ethers.getContract('StakeRegistry', staker_0);
       await expect(stakeRegistry.slashDeposit(overlay_0, stakeAmount_0)).to.be.revertedWith(errors.slash.noRole);
     });
 
@@ -271,13 +270,17 @@ describe('Staking', function () {
 
   //tbc consensus will we include it?
   describe('freezing stake', function () {
+    let sr_staker_0:Contract;
+
     beforeEach(async function () {
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry');
       await deployments.fixture();
 
+      sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
+      await sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
@@ -309,7 +312,7 @@ describe('Staking', function () {
       expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
+      await expect(sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
         errors.freeze.currentlyFrozen
       );
 
@@ -317,7 +320,7 @@ describe('Staking', function () {
 
       // should this be +2 ?!
       const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
-      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0))
+      await expect(sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(overlay_0, twice_stakeAmount_0, staker_0, newUpdatedBlockNumber);
     });
@@ -327,13 +330,17 @@ describe('Staking', function () {
   });
 
   describe('pause contract', function () {
+    let sr_staker_0: Contract;
+
     beforeEach(async function () {
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry');
       await deployments.fixture();
 
+      sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0);
+      await sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const pauserRole = await stakeRegistryDeployer.PAUSER_ROLE();
@@ -378,7 +385,8 @@ describe('Staking', function () {
       await stakeRegistryPauser.pause();
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
+
+      await expect(sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0)).to.be.revertedWith(
         errors.pause.currentlyPaused
       );
 
@@ -386,7 +394,7 @@ describe('Staking', function () {
 
       const newUpdatedBlockNumber = (await getBlockNumber()) + 3;
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
-      await expect(stakeRegistry.depositStake(staker_0, nonce_0, updateStakeAmount))
+      await expect(sr_staker_0.depositStake(staker_0, nonce_0, updateStakeAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(overlay_0, updatedStakeAmount, staker_0, newUpdatedBlockNumber);
     });
