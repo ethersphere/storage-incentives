@@ -48,7 +48,6 @@ const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_2 = '0x06';
 const reveal_nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const address_2 = '0x61a270cBBD60a030b3399655F6a65E175cb9179f';
 
 let node_3: string;
 const overlay_3 = '0xae41f76f17b6bff2be63309297b8b65326548dce0df5cfdc09aebf6eaf1d76e1';
@@ -450,22 +449,22 @@ describe('Redistribution', function () {
       it('should create a commit with successful reveal if the overlay is within the reported depth', async function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+        const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-        await r_node_0.commit(obsfucatedHash, overlay_2);
+        await r_node_2.commit(obsfucatedHash, overlay_2);
 
-        expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+        expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
         await mineNBlocks(phaseLength);
 
-        await r_node_0.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
-        expect((await r_node_0.currentReveals(0)).hash).to.be.eq(hash_2);
-        expect((await r_node_0.currentReveals(0)).overlay).to.be.eq(overlay_2);
-        expect((await r_node_0.currentReveals(0)).owner).to.be.eq(address_2);
-        expect((await r_node_0.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
-        expect((await r_node_0.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
+        expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
+        expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
+        expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
+        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
+        expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
       });
 
       it('should create a fake commit with failed reveal', async function () {
@@ -494,14 +493,14 @@ describe('Redistribution', function () {
       it('should not allow duplicate commits', async function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+        const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-        await r_node_0.commit(obsfucatedHash, overlay_2);
+        await r_node_2.commit(obsfucatedHash, overlay_2);
 
-        expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+        expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
-        await expect(r_node_0.commit(obsfucatedHash, overlay_2)).to.be.revertedWith(errors.commit.alreadyCommited);
+        await expect(r_node_2.commit(obsfucatedHash, overlay_2)).to.be.revertedWith(errors.commit.alreadyCommited);
       });
     });
 
@@ -607,26 +606,26 @@ describe('Redistribution', function () {
     it('should allow single player to claim pot', async function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-      const r_node_0 = await ethers.getContract('Redistribution', node_0);
+      const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
       const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-      await r_node_0.commit(obsfucatedHash, overlay_2);
+      await r_node_2.commit(obsfucatedHash, overlay_2);
 
-      expect((await r_node_0.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
-
-      await mineNBlocks(phaseLength);
-
-      await r_node_0.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
-
-      expect((await r_node_0.currentReveals(0)).hash).to.be.eq(hash_2);
-      expect((await r_node_0.currentReveals(0)).overlay).to.be.eq(overlay_2);
-      expect((await r_node_0.currentReveals(0)).owner).to.be.eq(address_2);
-      expect((await r_node_0.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
-      expect((await r_node_0.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
+      expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
       await mineNBlocks(phaseLength);
 
-      const tx2 = await r_node_0.claim();
+      await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+
+      expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
+      expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
+      expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
+      expect((await r_node_2.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
+      expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
+
+      await mineNBlocks(phaseLength);
+
+      const tx2 = await r_node_2.claim();
       const receipt2 = await tx2.wait();
 
       let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -650,7 +649,7 @@ describe('Redistribution', function () {
       // console.log(WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent);
 
       const expectedPotPayout = 5216665600; //check this!
-      expect(await token.balanceOf(node_0)).to.be.eq(expectedPotPayout);
+      expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
       // expect(WinnerSelectedEvent.Winner).to.be.eq(node_0);
 
