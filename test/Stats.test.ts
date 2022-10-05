@@ -100,8 +100,8 @@ const errors = {
     notInReveal: 'not in reveal phase',
   },
   claim: {
-    alreadyClaimed: 'round already received successful claim'
-  }
+    alreadyClaimed: 'round already received successful claim',
+  },
 };
 
 //todo DRY this
@@ -152,118 +152,122 @@ async function createOverlay(address: string, networkID: string, nonce: string) 
 // both are evenly selected if 1/2 (do this in a separate test file)
 // other stats tests?
 
-async function twoPlayerGames(node_a:string, node_b:string, stake_amount_a: string, stake_amount_b: string, trials: number){
+async function twoPlayerGames(
+  node_a: string,
+  node_b: string,
+  stake_amount_a: string,
+  stake_amount_b: string,
+  trials: number
+) {
   let stampCreatedBlock;
-        const price1 = 100;
-        const batch = {
-          nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-          initialPaymentPerChunk: 200000,
-          depth: 17,
-          bucketDepth: 16,
-          immutable: false,
-        };
+  const price1 = 100;
+  const batch = {
+    nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
+    initialPaymentPerChunk: 200000,
+    depth: 17,
+    bucketDepth: 16,
+    immutable: false,
+  };
 
-        const token = await ethers.getContract('TestToken', deployer);
+  const token = await ethers.getContract('TestToken', deployer);
 
-        const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
-        await postageStampOracle.setPrice(price1);
+  const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
+  await postageStampOracle.setPrice(price1);
 
-        const batchSize = 2 ** batch.depth;
-        const transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
-        const expectedNormalisedBalance = batch.initialPaymentPerChunk;
+  const batchSize = 2 ** batch.depth;
+  const transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
+  const expectedNormalisedBalance = batch.initialPaymentPerChunk;
 
-        const postage = await ethers.getContract('PostageStamp', stamper);
+  const postage = await ethers.getContract('PostageStamp', stamper);
 
-        await mintAndApprove(stamper, postage.address, transferAmount.toString());
+  await mintAndApprove(stamper, postage.address, transferAmount.toString());
 
-        await postage.createBatch(
-          stamper,
-          batch.initialPaymentPerChunk,
-          batch.depth,
-          batch.bucketDepth,
-          batch.nonce,
-          batch.immutable
-        );
+  await postage.createBatch(
+    stamper,
+    batch.initialPaymentPerChunk,
+    batch.depth,
+    batch.bucketDepth,
+    batch.nonce,
+    batch.immutable
+  );
 
-        stampCreatedBlock = await getBlockNumber();
+  stampCreatedBlock = await getBlockNumber();
 
-        const depth = "0x00";
-        const hash = "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33";
-        const nonce = "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33";
-        const reveal_nonce = "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33";
-        const r_node_a = await ethers.getContract('Redistribution', node_a);
-        const r_node_b = await ethers.getContract('Redistribution', node_b);
+  const depth = '0x00';
+  const hash = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+  const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+  const reveal_nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+  const r_node_a = await ethers.getContract('Redistribution', node_a);
+  const r_node_b = await ethers.getContract('Redistribution', node_b);
 
-        const overlay_a = await createOverlay(node_a,"0x00",nonce);
-        const overlay_b = await createOverlay(node_b,"0x00",nonce);
+  const overlay_a = await createOverlay(node_a, '0x00', nonce);
+  const overlay_b = await createOverlay(node_b, '0x00', nonce);
 
-        const sr_node_a = await ethers.getContract('StakeRegistry', node_a);
-        await mintAndApprove(node_a, sr_node_a.address, stake_amount_a);
-        await sr_node_a.depositStake(node_a, nonce, stake_amount_a);
+  const sr_node_a = await ethers.getContract('StakeRegistry', node_a);
+  await mintAndApprove(node_a, sr_node_a.address, stake_amount_a);
+  await sr_node_a.depositStake(node_a, nonce, stake_amount_a);
 
-        const sr_node_b = await ethers.getContract('StakeRegistry', node_b);
-        await mintAndApprove(node_b, sr_node_b.address, stake_amount_b);
-        await sr_node_b.depositStake(node_b, nonce, stake_amount_b);
+  const sr_node_b = await ethers.getContract('StakeRegistry', node_b);
+  await mintAndApprove(node_b, sr_node_b.address, stake_amount_b);
+  await sr_node_b.depositStake(node_b, nonce, stake_amount_b);
 
-        let winsA = 0;
-        await mineNBlocks((roundLength*3)-21);
-        for(let i = 0; i < trials; i++){
-            const startRoundBlockNumber = await getBlockNumber();
+  let winsA = 0;
+  await mineNBlocks(roundLength * 3 - 21);
+  for (let i = 0; i < trials; i++) {
+    const startRoundBlockNumber = await getBlockNumber();
 
-            const obsfucatedHash_a = encodeAndHash(overlay_a, depth, hash, reveal_nonce);
-            await r_node_a.commit(obsfucatedHash_a, overlay_a);
+    const obsfucatedHash_a = encodeAndHash(overlay_a, depth, hash, reveal_nonce);
+    await r_node_a.commit(obsfucatedHash_a, overlay_a);
 
-            const obsfucatedHash_b = encodeAndHash(overlay_b, depth, hash, reveal_nonce);
-            await r_node_b.commit(obsfucatedHash_b, overlay_b);
+    const obsfucatedHash_b = encodeAndHash(overlay_b, depth, hash, reveal_nonce);
+    await r_node_b.commit(obsfucatedHash_b, overlay_b);
 
-            await mineNBlocks(phaseLength);
+    await mineNBlocks(phaseLength);
 
-            await r_node_a.reveal(overlay_a, depth, hash, reveal_nonce);
-            await r_node_b.reveal(overlay_b, depth, hash, reveal_nonce);
+    await r_node_a.reveal(overlay_a, depth, hash, reveal_nonce);
+    await r_node_b.reveal(overlay_b, depth, hash, reveal_nonce);
 
-            await mineNBlocks(phaseLength-2);
+    await mineNBlocks(phaseLength - 2);
 
-            if(await r_node_a.isWinner(overlay_a)){
-              winsA++;
-            }
+    if (await r_node_a.isWinner(overlay_a)) {
+      winsA++;
+    }
 
-            const tx2 = await r_node_b.claim();
-            const receipt2 = await tx2.wait();
+    const tx2 = await r_node_b.claim();
+    const receipt2 = await tx2.wait();
 
-            const sr = await ethers.getContract('StakeRegistry');
+    const sr = await ethers.getContract('StakeRegistry');
 
-            //stakes are preserved
-            expect(await sr.usableStakeOfOverlay(overlay_a)).to.be.eq(stake_amount_a);
-            expect(await sr.usableStakeOfOverlay(overlay_b)).to.be.eq(stake_amount_b);
+    //stakes are preserved
+    expect(await sr.usableStakeOfOverlay(overlay_a)).to.be.eq(stake_amount_a);
+    expect(await sr.usableStakeOfOverlay(overlay_b)).to.be.eq(stake_amount_b);
 
-            await mineNBlocks((phaseLength*2)-3);
-        }
-      return winsA/trials;
+    await mineNBlocks(phaseLength * 2 - 3);
+  }
+  return winsA / trials;
 }
 
 describe('Stats', function () {
-
-  describe('two player game', async function() {
+  describe('two player game', async function () {
     const trials = 200;
 
-    it('is fair with 1:3 stake', async function(){
-        const stake_amount_a = "100000000000000000";
-        const stake_amount_b = "300000000000000000";
-        const perfect_ratio = 0.25;
-        const allowed_variance = 0.02;
-        const node_a = others[0];
-        const node_b = others[1];
+    it('is fair with 1:3 stake', async function () {
+      const stake_amount_a = '100000000000000000';
+      const stake_amount_b = '300000000000000000';
+      const perfect_ratio = 0.25;
+      const allowed_variance = 0.02;
+      const node_a = others[0];
+      const node_b = others[1];
 
-        let winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
+      let winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
 
-        expect(winRatio).be.lessThan(perfect_ratio+allowed_variance)
-        expect(winRatio).be.greaterThan(perfect_ratio-allowed_variance)
-
+      expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
+      expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
     }).timeout(50000);
 
-    it('is fair with 1:3 stake', async function(){
-      const stake_amount_a = "100000000000000000";
-      const stake_amount_b = "300000000000000000";
+    it('is fair with 1:3 stake', async function () {
+      const stake_amount_a = '100000000000000000';
+      const stake_amount_b = '300000000000000000';
       const perfect_ratio = 0.25;
       const allowed_variance = 0.02;
       const node_a = others[2];
@@ -271,11 +275,8 @@ describe('Stats', function () {
 
       let winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
 
-      expect(winRatio).be.lessThan(perfect_ratio+allowed_variance)
-      expect(winRatio).be.greaterThan(perfect_ratio-allowed_variance)
-
-  }).timeout(50000);
-
-  })
-
+      expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
+      expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
+    }).timeout(50000);
+  });
 });
