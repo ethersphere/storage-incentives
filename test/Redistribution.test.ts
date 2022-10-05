@@ -866,15 +866,13 @@ describe('Redistribution', function () {
       describe('after skipped round with two players', async function () {
         let r_node_1: Contract;
         let r_node_2: Contract;
-        let depth = "0x04";
+        let depth = "0x00";
 
         beforeEach(async ()=>{
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
-          console.log(await r_node_2.currentRoundAnchor());
 
-          await mineNBlocks(roundLength);
-
+          await mineNBlocks(roundLength));
           console.log(await r_node_2.currentRoundAnchor());
 
           const obsfucatedHash_1 = encodeAndHash(overlay_1, depth, hash_1, reveal_nonce_1);
