@@ -296,7 +296,8 @@ describe('Redistribution', function () {
         const hash = "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33";
         const nonce = "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33";
         const reveal_nonce = "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33";
-        const stake_amount = "100000000000000000";
+        const stake_amount_a = "100000000000000000";
+        const stake_amount_b = "300000000000000000";
         const r_node_a = await ethers.getContract('Redistribution', node_a);
         const r_node_b = await ethers.getContract('Redistribution', node_b);
 
@@ -304,13 +305,13 @@ describe('Redistribution', function () {
         const overlay_b = await createOverlay(node_b,"0x00",nonce);
 
         const sr_node_a = await ethers.getContract('StakeRegistry', node_a);
-        await mintAndApprove(node_a, sr_node_a.address, stake_amount);
-        await sr_node_a.depositStake(node_a, nonce, stake_amount);
+        await mintAndApprove(node_a, sr_node_a.address, stake_amount_a);
+        await sr_node_a.depositStake(node_a, nonce, stake_amount_a);
         console.log("ZZ", (await r_node_b.currentRound()).toString());
 
         const sr_node_b = await ethers.getContract('StakeRegistry', node_b);
-        await mintAndApprove(node_b, sr_node_b.address, stake_amount);
-        await sr_node_b.depositStake(node_b, nonce, stake_amount);
+        await mintAndApprove(node_b, sr_node_b.address, stake_amount_b);
+        await sr_node_b.depositStake(node_b, nonce, stake_amount_b);
         console.log("ZZ", (await r_node_b.currentRound()).toString());
 
         let winsA = 0;
@@ -377,10 +378,10 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_a stake is preserved and not frozen
-            expect(await sr.usableStakeOfOverlay(overlay_a)).to.be.eq(stake_amount);
+            expect(await sr.usableStakeOfOverlay(overlay_a)).to.be.eq(stake_amount_a);
 
             //node_b stake is preserved and not frozen
-            expect(await sr.usableStakeOfOverlay(overlay_b)).to.be.eq(stake_amount);
+            expect(await sr.usableStakeOfOverlay(overlay_b)).to.be.eq(stake_amount_b);
 
             await mineNBlocks((phaseLength*2)-2);
 
