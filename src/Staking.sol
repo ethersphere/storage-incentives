@@ -43,7 +43,7 @@ contract StakeRegistry is AccessControl, Pausable {
     // The role allowed to freeze and slash entries
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
-    uint8 NetworkId;
+    uint64 NetworkId;
 
     // Associate every stake id with overlay data.
     mapping(bytes32 => Stake) public stakes;
@@ -55,7 +55,7 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
      */
-    constructor(address _bzzToken, uint8 _NetworkId) {
+    constructor(address _bzzToken, uint64 _NetworkId) {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -96,7 +96,7 @@ contract StakeRegistry is AccessControl, Pausable {
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
 
-        bytes32 overlay = keccak256(abi.encodePacked(_owner, uint64(NetworkId), nonce));
+        bytes32 overlay = keccak256(abi.encodePacked(_owner, NetworkId, nonce));
         uint256 updatedAmount = amount;
 
         if (stakes[overlay].isValue) {
