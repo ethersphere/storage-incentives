@@ -270,7 +270,7 @@ describe('Staking', function () {
 
   //tbc consensus will we include it?
   describe('freezing stake', function () {
-    let sr_staker_0:Contract;
+    let sr_staker_0: Contract;
 
     beforeEach(async function () {
       token = await ethers.getContract('TestToken', deployer);
@@ -296,8 +296,8 @@ describe('Staking', function () {
       const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
 
       await expect(stakeRegistryRedistributor.freezeDeposit(overlay_0, freezeTime))
-      .to.emit(stakeRegistry, 'StakeFrozen')
-      .withArgs(overlay_0, freezeTime);
+        .to.emit(stakeRegistry, 'StakeFrozen')
+        .withArgs(overlay_0, freezeTime);
 
       const staked = await stakeRegistryRedistributor.stakes(overlay_0);
       const updatedBlockNumber = (await getBlockNumber()) + 3;
