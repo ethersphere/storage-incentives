@@ -206,6 +206,9 @@ contract Redistribution is AccessControl, Pausable {
     //
 
     function inProximity(bytes32 A, bytes32 B, uint8 minimum) public pure returns (bool) {
+        if ( minimum == 0 ) {
+            return true;
+        }
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 
