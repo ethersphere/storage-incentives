@@ -264,18 +264,18 @@ describe('Stats', function () {
       expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
     }).timeout(50000);
 
-    it('is fair with 1:3 stake', async function () {
-      const stake_amount_a = '100000000000000000';
-      const stake_amount_b = '300000000000000000';
-      const perfect_ratio = 0.25;
-      const allowed_variance = 0.02;
-      const node_a = others[2];
-      const node_b = others[3];
+  //   it('is fair with 1:3 stake', async function () {
+  //     const stake_amount_a = '100000000000000000';
+  //     const stake_amount_b = '300000000000000000';
+  //     const perfect_ratio = 0.25;
+  //     const allowed_variance = 0.02;
+  //     const node_a = others[2];
+  //     const node_b = others[3];
 
-      let winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
+  //     let winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
 
-      expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
-      expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
-    }).timeout(50000);
+  //     expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
+  //     expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
+  //   }).timeout(50000);
   });
 });
