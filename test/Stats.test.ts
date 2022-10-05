@@ -258,7 +258,7 @@ describe('Stats', function () {
       const node_a = others[0];
       const node_b = others[1];
 
-      let winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
+      const winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
 
       expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
       expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
