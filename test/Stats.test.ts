@@ -159,7 +159,6 @@ async function twoPlayerGames(
   stake_amount_b: string,
   trials: number
 ) {
-  let stampCreatedBlock;
   const price1 = 100;
   const batch = {
     nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
@@ -191,7 +190,7 @@ async function twoPlayerGames(
     batch.immutable
   );
 
-  stampCreatedBlock = await getBlockNumber();
+  const stampCreatedBlock = await getBlockNumber();
 
   const depth = '0x00';
   const hash = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
