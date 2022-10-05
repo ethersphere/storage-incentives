@@ -111,8 +111,8 @@ contract StakeRegistry is AccessControl, Pausable {
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
 
-
         bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));
+
         uint256 updatedAmount = amount;
 
         if (stakes[overlay].isValue) {
