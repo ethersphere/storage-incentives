@@ -105,8 +105,8 @@ const errors = {
   },
   claim: {
     noReveals: 'round received no reveals',
-    alreadyClaimed: 'round already received successful claim'
-  }
+    alreadyClaimed: 'round already received successful claim',
+  },
 };
 
 //todo DRY this
@@ -625,7 +625,7 @@ describe('Redistribution', function () {
           errors.reveal.doNotMatch
         );
       });
-    })
+    });
 
     describe('claim phase', async function () {
       describe('single player', async function () {
@@ -695,7 +695,7 @@ describe('Redistribution', function () {
         let r_node_1: Contract;
         let r_node_2: Contract;
 
-        beforeEach(async ()=>{
+        beforeEach(async () => {
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
 
@@ -706,7 +706,7 @@ describe('Redistribution', function () {
           await r_node_2.commit(obsfucatedHash_2, overlay_2);
 
           await mineNBlocks(phaseLength);
-        })
+        });
 
         it('if only one reveal, should freeze non-revealer and select revealer as winner', async function () {
           //do not reveal node_1
@@ -776,7 +776,6 @@ describe('Redistribution', function () {
           // expect(await sr.stakes(overlay_3).args[0].stakeAmount).to.be.eq(stakeAmount_3);
           // node_3 is frozen for 7 * roundLength * 2 ** truthRevealedDepth
           // expect(await sr.stakes(overlay_3).lastUpdatedBlockNumber).to.be.eq(stakeAmount_3);
-
 
           // use setPrevRandao to select this same neighbourhood next time
 
@@ -886,14 +885,10 @@ describe('Redistribution', function () {
           // await mineNBlocks(phaseLength*2);
 
           // console.log(await r_node_2.currentCommits(0))
-
         });
       });
 
       describe('after skipped round with two players', async function () {});
-
-      });
     });
-
-
+  });
 });
