@@ -20,3 +20,4 @@ deployments/localhost
 
 # Misc
 contractsInfo.json
+.DS_Store
