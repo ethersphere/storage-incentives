@@ -14,6 +14,7 @@ import { Event, Contract } from 'ethers';
 
 import { keccak256 } from '@ethersproject/keccak256';
 import { arrayify, hexlify } from '@ethersproject/bytes';
+import { exit } from 'process';
 
 const phaseLength = 38;
 const roundLength = 152;
@@ -26,7 +27,7 @@ let deployer: string, stamper: string, oracle: string;
 let others: any;
 
 let node_0: string;
-const overlay_0 = '0xa67dc06e2a97991a1ace5628baf7a50efa00814b369e375475c059919f3cccaf';
+const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const revealed_overlay_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -43,7 +44,7 @@ const reveal_nonce_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415
 const obsfucatedHash_f = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let node_1: string;
-const overlay_1 = '0xa6da244c491646c1a8d60be1804e537ed77c90543815cac39f117bbe846bc665';
+const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
 const stakeAmount_1 = '100000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -53,7 +54,7 @@ const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 const obsfucatedHash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let node_2: string;
-const overlay_2 = '0xa55ccf886a6a325789beabcea720d3f1f0469672b2d042001214e9a246ae6465';
+const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
 const stakeAmount_2 = '100000000000000000';
 const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -61,7 +62,7 @@ const depth_2 = '0x06';
 const reveal_nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let node_3: string;
-const overlay_3 = '0xae41f76f17b6bff2be63309297b8b65326548dce0df5cfdc09aebf6eaf1d76e1';
+const overlay_3 = '0xaf217eb0d652baf39ec9464a350c7afc812743fd75ccadf4fcceb6d19a1f190c';
 const stakeAmount_3 = '100000000000000000';
 const nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -69,7 +70,7 @@ const depth_3 = '0x06';
 const reveal_nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let node_4: string;
-const overlay_4 = '0xaf4f91fec04f7fb393ebf0671da5562c278871530541b5eb612e6e03a2cfdde8';
+const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb02efb';
 const stakeAmount_4 = '100000000000000000';
 const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -146,10 +147,10 @@ function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, revea
 
 //dev purposes only
 async function createOverlay(address: string, networkID: string, nonce: string) {
-  const encoded = new Uint8Array(53);
+  const encoded = new Uint8Array(60);
   encoded.set(arrayify(address));
-  encoded.set(arrayify(networkID), 20);
-  encoded.set(arrayify(nonce), 21);
+  encoded.set(arrayify(networkID).reverse(), 20);
+  encoded.set(arrayify(nonce), 28);
   return keccak256(hexlify(encoded));
 }
 
@@ -199,7 +200,6 @@ async function mineOverlaysInDepth(prefix: string, networkID: string, depth: num
 }
 
 // mineOverlaysInDepth("0xac33", "0x00", 6, 10000);
-
 //end
 
 describe('Redistribution', function () {
@@ -587,9 +587,9 @@ describe('Redistribution', function () {
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-        // await expect(r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2)).to.be.revertedWith(
-        //   errors.reveal.doNotMatch
-        // );
+        await expect(r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_f)).to.be.revertedWith(
+          errors.reveal.doNotMatch
+        );
       });
 
       it('should not allow an overlay to reveal without with the incorrect overlay', async function () {
@@ -888,7 +888,7 @@ describe('Redistribution', function () {
         });
       });
 
-      describe('after skipped round with two players', async function () {});
+      // describe('after skipped round with two players', async function () {});
     });
   });
 });

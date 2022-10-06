@@ -83,27 +83,27 @@ const config: HardhatUserConfig = {
         },
         // node_0
         {
-          privateKey: '0x3d1870a4411478d65da5d44f167fba47f7a7d14d71ca4ae173f341243bb18a28',
+          privateKey: '0x94a0fc3d873f4f33cfb2841fe2f177d4aac7e0d6f884244f51e23b1f4539c136',
           balance: '10000000000000000000000',
         },
         // node_1
         {
-          privateKey: '0x4d6650dd904672e8f0202ccacea3e94b96d4f37b76fd97bc47d2cc5649fa05b6',
+          privateKey: '0xc71550f728fccc9e392301d50bde558745ac2ed4c3b0ceb3e38d2047bda480fa',
           balance: '10000000000000000000000',
         },
         // node_2
         {
-          privateKey: '0x3e28b11c28c70bb31afe5adf046190dece269c86a923c3e8f168ce5091619cb9',
+          privateKey: '0xb66c4187cc9779d6b76b91b1b7b3deb8bd8ef31633685a7f351c613f5cf31727',
           balance: '10000000000000000000000',
         },
         // node_3
         {
-          privateKey: '0x1336dd9d9cc32c9a75959bb170d6c84997d526cce10fdace47440cfe54f23bd4',
+          privateKey: '0xcd6b1d6669b75582f59971b348eec6e37107fa765fcdb02ae4ad698e684c9803',
           balance: '10000000000000000000000',
         },
         // node_4
         {
-          privateKey: '0x63b7e4fc762a676af3d8b1b69dc7e66ac063ed8ff9d57fcd659b0137182d6768',
+          privateKey: '0xc1a7ca0bc39058d1fb6e331f8a6a3b65e81f171cfeddeec6cd0f32271496f45c',
           balance: '10000000000000000000000',
         }
       ],
