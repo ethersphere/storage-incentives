@@ -1,13 +1,3 @@
-//<sig should seperate into unit/integration style tests?
-//<sig how many iterations/slashes etc. before the claim method uses too much gas for each blockchain?
-//<sig is it higher than 32 reveal/truth
-//<sig gas analysis
-//<sig review events emitted from claim in light of the above
-//<sig should add tests with split depths
-// it('should not allow randomness to be updated by an arbitrary user', async function () {});
-// it('should not allow random users to update an overlay address', async function () {});
-// it('should only redistributor can withdraw from the contract', async function () {});
-
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Event, Contract } from 'ethers';
@@ -625,8 +615,6 @@ describe('Redistribution', function () {
           errors.reveal.doNotMatch
         );
       });
-
-      //reveals but not claimed
     });
 
     describe('claim phase', async function () {
@@ -758,8 +746,8 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
           expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
-          // <sig should this be different? sig>
-          expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000'); //stakedensity?
+
+          expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000');
           expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_2);
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
 
@@ -773,18 +761,6 @@ describe('Redistribution', function () {
 
           //node_1 is frozen but not slashed
           expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(0);
-
-          // expect(await sr.usableStakeOfOverlay(overlay_3)).to.be.eq(0);
-          // expect(await sr.stakes(overlay_3).args[0].stakeAmount).to.be.eq(stakeAmount_3);
-          // node_3 is frozen for 7 * roundLength * 2 ** truthRevealedDepth
-          // expect(await sr.stakes(overlay_3).lastUpdatedBlockNumber).to.be.eq(stakeAmount_3);
-
-          // use setPrevRandao to select this same neighbourhood next time
-
-          // node_3 should not be able to commit?
-          // node_3 should be unfrozen after N rounds
-          // node_3 freezing rounds are meaningul given frequency of selection
-          // node_3 should now be able to commit
         });
 
         it('if both reveal, should select correct winner', async function () {
@@ -864,33 +840,7 @@ describe('Redistribution', function () {
           //node_2 stake is preserved and not frozen
           expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
         });
-
-        it('error if no reveals and all stakes are frozen', async function () {
-          //no reveals
-
-          await mineNBlocks(phaseLength);
-
-          await expect(r_node_2.claim()).to.be.revertedWith(errors.claim.noReveals);
-
-          expect(await token.balanceOf(node_1)).to.be.eq(0);
-          expect(await token.balanceOf(node_2)).to.be.eq(0);
-
-          const sr = await ethers.getContract('StakeRegistry');
-
-          // //<sig commented out to allow tests to pass
-          // //node_1 stake should be frozen
-          // expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(0);
-          // //node_2 stake should be frozen
-          // expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(0);
-          // // <sig end commented out to allow tests to pass
-
-          // await mineNBlocks(phaseLength*2);
-
-          // console.log(await r_node_2.currentCommits(0))
-        });
       });
-
-      // describe('after skipped round with two players', async function () {});
     });
   });
 });

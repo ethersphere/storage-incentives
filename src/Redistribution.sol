@@ -445,25 +445,6 @@ contract Redistribution is AccessControl, Pausable {
 
         currentClaimRound = cr;
 
-        //<sig
-        // given the current "actual storage depth" vs "theoretical reserve depth"
-        // change the price in the pricing oracle contract from the current price Pc to Pn using the formula Pn = kSPc
-        // where Pn is determined by  multiplying the pricing signal S Ǝ -1 > S > 1 by some constant k Ǝ ℝ+ (eg. 1.1)
-
-        // go through the truth revealers, check they can split without violating the minimum nodes per neighbourhood constraint
-        // if there is a zero continuation, then there there is a strong need for price increase to attract more nodes to the neighourhood
-        // if there is 1 bit continuation such that the min nodes/ nhood constraint will not be violated there then there is a mild need to reduce the price
-        // if there is 2 bit continuation ... then there is a mild need
-
-        // nb: k should be perhaps "tuned" by the foundation until it is corrects
-        // nnb: perhaps a linear progression is too strong, and we should implement functionality to prevent the price going exponential
-        // nnnb: this could bear some modelling/testing
-        // nnnnb: in fact, the hardhat testing env would be great to write these long running models in, separate to the unit tests for CI efficiency
-        //sig>
-
     }
-
-    //
-    //
 
 }

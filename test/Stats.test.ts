@@ -1,9 +1,3 @@
-//<sig should seperate into unit/integration style tests? sig>
-//<sig how many iterations/slashes etc. before the claim method uses too much gas for each blockchain? sig>
-//<sig is it higher than 32 reveal/truth sig>
-//<sig gas analysis sig>
-//<sig review events emitted from claim in light of the above
-
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Event, Contract } from 'ethers';
@@ -72,11 +66,6 @@ async function createOverlay(address: string, networkID: string, nonce: string) 
   encoded.set(arrayify(nonce), 28);
   return keccak256(hexlify(encoded));
 }
-
-// the game should only select one winner if there are 5 players with equal stakes
-// statistical test where 2 nodes one with 2/3 of the stake and see if there is a meaningful difference in their probability
-// both are evenly selected if 1/2 (do this in a separate test file)
-// other stats tests?
 
 async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   const price1 = 100;
@@ -203,27 +192,5 @@ describe('Stats', function () {
         expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
       }
     }).timeout(100000);
-
-    // it('is fair with 1:1 stake', async function () {
-    //   const allowed_variance = 0.02;
-    //   const stakes = ['100000000000000000', '100000000000000000'];
-    //   const nodes = [others[0], others[1]];
-
-    //   const dist = await nPlayerGames(nodes, stakes, trials);
-    //   let sumStakes = BigInt(0);
-    //   for(let i=0;i<stakes.length;i++){
-    //     sumStakes += BigInt(stakes[i]);
-    //   }
-
-    //   for(let i = 0; i<nodes.length; i++){
-    //     const r = dist[nodes[i]];
-    //     const actual = parseInt((BigInt(r[0])/BigInt(100000000000000000)).toString()) / parseInt((sumStakes/BigInt(100000000000000000)).toString());
-    //     const probable = (r[1] / trials);
-
-    //     expect(Math.abs(actual-probable)).be.lessThan(allowed_variance);
-
-    //   }
-
-    // }).timeout(100000);
   });
 });
