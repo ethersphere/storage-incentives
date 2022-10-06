@@ -140,10 +140,10 @@ function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, revea
 }
 
 async function createOverlay(address: string, networkID: string, nonce: string) {
-  const encoded = new Uint8Array(53);
+  const encoded = new Uint8Array(60);
   encoded.set(arrayify(address));
-  encoded.set(arrayify(networkID), 20);
-  encoded.set(arrayify(nonce), 21);
+  encoded.set(arrayify(networkID).reverse(), 20);
+  encoded.set(arrayify(nonce), 28);
   return keccak256(hexlify(encoded));
 }
 
@@ -262,7 +262,7 @@ describe('Stats', function () {
 
       expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
       expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
-    }).timeout(50000);
+    }).timeout(100000);
 
   //   it('is fair with 1:3 stake', async function () {
   //     const stake_amount_a = '100000000000000000';

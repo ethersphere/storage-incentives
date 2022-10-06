@@ -45,7 +45,7 @@ async function getBlockNumber() {
 }
 
 let staker_0: string;
-const overlay_0 = '0xa67dc06e2a97991a1ace5628baf7a50efa00814b369e375475c059919f3cccaf';
+const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
 const stakeAmount_0 = '10000000000000000';
 const updateStakeAmount = '633633';
 const updatedStakeAmount = '10000000000633633';
@@ -53,7 +53,7 @@ const twice_stakeAmount_0 = '20000000000000000';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let staker_1: string;
-const overlay_1 = '0xa6da244c491646c1a8d60be1804e537ed77c90543815cac39f117bbe846bc665'; //check calc?
+const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
 const stakeAmount_1 = '10000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
