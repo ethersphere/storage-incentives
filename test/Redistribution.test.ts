@@ -625,6 +625,8 @@ describe('Redistribution', function () {
           errors.reveal.doNotMatch
         );
       });
+
+      //reveals but not claimed
     });
 
     describe('claim phase', async function () {
