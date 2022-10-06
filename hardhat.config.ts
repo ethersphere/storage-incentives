@@ -4,6 +4,11 @@ import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
+import { task } from "hardhat/config";
+import { ContractTransaction, ContractReceipt } from 'ethers';
+import { HardhatRuntimeEnvironment } from 'hardhat/types';
+import { boolean, int, string  } from 'hardhat/internal/core/params/argumentTypes';
+import "@ethersproject/bignumber";
 
 // Define mnemonic for accounts.
 let mnemonic = process.env.MNEMONIC;
@@ -13,6 +18,31 @@ if (!mnemonic) {
   // DO NOT commit or share your mnemonic with others!
   mnemonic = 'test test test test test test test test test test test test';
 }
+
+task("setprice", "Another sample task with params")
+.addParam("amount", "", "", string)
+.addParam("postagecontract", "", "")
+.setAction(async (taskArgs, { ethers }) => {
+
+  const [deployer] = await ethers.getSigners();
+
+  const PostageStamp = await ethers.getContractFactory("PostageStamp");
+  const contract = PostageStamp.attach(taskArgs.postagecontract);
+
+  let result: ContractTransaction;
+  let receipt: ContractReceipt;
+
+  const priceOracleRole = contract.PRICE_ORACLE_ROLE();
+  result = await contract.grantRole(priceOracleRole, deployer.getAddress());
+  console.log(result);
+  receipt = await result.wait();
+
+  // Now you can call functions of the contract
+  result = await contract.setPrice(taskArgs.amount);
+  console.log(result);
+  receipt = await result.wait();
+});
+
 
 const accounts = { mnemonic };
 
