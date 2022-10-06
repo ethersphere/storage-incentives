@@ -105,7 +105,7 @@ const config: HardhatUserConfig = {
         {
           privateKey: '0xc1a7ca0bc39058d1fb6e331f8a6a3b65e81f171cfeddeec6cd0f32271496f45c',
           balance: '10000000000000000000000',
-        }
+        },
       ],
       hardfork: 'merge',
     },
