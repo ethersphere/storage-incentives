@@ -1,3 +1,80 @@
+//<sig should seperate into unit/integration style tests?
+//<sig how many iterations/slashes etc. before the claim method uses too much gas for each blockchain?
+//<sig is it higher than 32 reveal/truth
+//<sig gas analysis
+//<sig review events emitted from claim in light of the above
+//<sig should add tests with split depths
+// it('should not allow randomness to be updated by an arbitrary user', async function () {});
+// it('should not allow random users to update an overlay address', async function () {});
+// it('should only redistributor can withdraw from the contract', async function () {});
+//cannot commit twice
+//cannot reveal twice
+
+//<sig should seperate into unit/integration style tests? sig>
+//<sig how many iterations/slashes etc. before the claim method uses too much gas for each blockchain? sig>
+//<sig is it higher than 32 reveal/truth sig>
+//<sig gas analysis sig>
+//<sig review events emitted from claim in light of the above
+
+//<sig
+// given the current "actual storage depth" vs "theoretical reserve depth"
+// change the price in the pricing oracle contract from the current price Pc to Pn using the formula Pn = kSPc
+// where Pn is determined by  multiplying the pricing signal S Ǝ -1 > S > 1 by some constant k Ǝ ℝ+ (eg. 1.1)
+
+// go through the truth revealers, check they can split without violating the minimum nodes per neighbourhood constraint
+// if there is a zero continuation, then there there is a strong need for price increase to attract more nodes to the neighourhood
+// if there is 1 bit continuation such that the min nodes/ nhood constraint will not be violated there then there is a mild need to reduce the price
+// if there is 2 bit continuation ... then there is a mild need
+
+// nb: k should be perhaps "tuned" by the foundation until it is corrects
+// nnb: perhaps a linear progression is too strong, and we should implement functionality to prevent the price going exponential
+// nnnb: this could bear some modelling/testing
+// nnnnb: in fact, the hardhat testing env would be great to write these long running models in, separate to the unit tests for CI efficiency
+//sig>
+
+//reveals but not claimed
+// <sig should this be different? sig>
+//check stakedensity calculation
+// expect(await sr.usableStakeOfOverlay(overlay_3)).to.be.eq(0);
+// expect(await sr.stakes(overlay_3).args[0].stakeAmount).to.be.eq(stakeAmount_3);
+// node_3 is frozen for 7 * roundLength * 2 ** truthRevealedDepth
+// expect(await sr.stakes(overlay_3).lastUpdatedBlockNumber).to.be.eq(stakeAmount_3);
+
+// use setPrevRandao to select this same neighbourhood next time
+
+// node_3 should not be able to commit?
+// node_3 should be unfrozen after N rounds
+// node_3 freezing rounds are meaningul given frequency of selection
+// node_3 should now be able to commit
+it('error if no reveals and all stakes are frozen', async function () {
+//no reveals
+
+await mineNBlocks(phaseLength);
+
+await expect(r_node_2.claim()).to.be.revertedWith(errors.claim.noReveals);
+
+expect(await token.balanceOf(node_1)).to.be.eq(0);
+expect(await token.balanceOf(node_2)).to.be.eq(0);
+
+const sr = await ethers.getContract('StakeRegistry');
+
+// //<sig commented out to allow tests to pass
+// //node_1 stake should be frozen
+// expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(0);
+// //node_2 stake should be frozen
+// expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(0);
+// // <sig end commented out to allow tests to pass
+
+// await mineNBlocks(phaseLength*2);
+
+// console.log(await r_node_2.currentCommits(0))
+});
+// describe('after skipped round with two players', async function () {});
+
+
+
+
+
 a bunch of stuff can't possibly function now that nodes have to have been staked
 in the round before the current round, so maybe we should add guards for sanity
 and to reduce attack surface?
