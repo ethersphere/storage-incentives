@@ -21,88 +21,14 @@ const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972
 let deployer: string, stamper: string, oracle: string;
 let others: any;
 
-let node_0: string;
-const overlay_0 = '0xa67dc06e2a97991a1ace5628baf7a50efa00814b369e375475c059919f3cccaf';
-const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const revealed_overlay_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_0 = '0x06';
-const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const stakeAmount_0 = '100000000000000000';
-
-const obsfucatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-//fake
-const overlay_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
-const depth_f = '0x0000000000000000000000000000000000000000000000000000000000000007';
-const reveal_nonce_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
-const obsfucatedHash_f = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-let node_1: string;
-const overlay_1 = '0xa6da244c491646c1a8d60be1804e537ed77c90543815cac39f117bbe846bc665';
-const stakeAmount_1 = '100000000000000000';
-const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_1 = '0x06';
-const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-const obsfucatedHash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-let node_2: string;
-const overlay_2 = '0xa55ccf886a6a325789beabcea720d3f1f0469672b2d042001214e9a246ae6465';
-const stakeAmount_2 = '100000000000000000';
-const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_2 = '0x06';
-const reveal_nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-let node_3: string;
-const overlay_3 = '0xae41f76f17b6bff2be63309297b8b65326548dce0df5cfdc09aebf6eaf1d76e1';
-const stakeAmount_3 = '100000000000000000';
-const nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_3 = '0x06';
-const reveal_nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-let node_4: string;
-const overlay_4 = '0xaf4f91fec04f7fb393ebf0671da5562c278871530541b5eb612e6e03a2cfdde8';
-const stakeAmount_4 = '100000000000000000';
-const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_4 = '0x06';
-const reveal_nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
 // Before the tests, assign accounts
 before(async function () {
   const namedAccounts = await getNamedAccounts();
   deployer = namedAccounts.deployer;
   stamper = namedAccounts.stamper;
   oracle = namedAccounts.oracle;
-  node_0 = namedAccounts.node_0;
-  node_1 = namedAccounts.node_1;
-  node_2 = namedAccounts.node_2;
-  node_3 = namedAccounts.node_3;
-  node_4 = namedAccounts.node_4;
   others = await getUnnamedAccounts();
 });
-
-const errors = {
-  commit: {
-    notOwner: 'owner must match sender to be able to commit',
-    notStaked: 'node must have staked at least minimum stake',
-    stakedRecently: 'stake updated recently',
-    alreadyCommited: 'participant already committed in this round',
-  },
-  reveal: {
-    noCommits: 'round received no commits',
-    doNotMatch: 'no matching commit or hash',
-    outOfDepth: 'anchor out of self reported depth',
-    notInReveal: 'not in reveal phase',
-  },
-  claim: {
-    alreadyClaimed: 'round already received successful claim',
-  },
-};
 
 //todo DRY this
 async function mineNBlocks(n: number) {
@@ -152,11 +78,9 @@ async function createOverlay(address: string, networkID: string, nonce: string) 
 // both are evenly selected if 1/2 (do this in a separate test file)
 // other stats tests?
 
-async function twoPlayerGames(
-  node_a: string,
-  node_b: string,
-  stake_amount_a: string,
-  stake_amount_b: string,
+async function nPlayerGames(
+  nodes: string[],
+  stakes: string[],
   trials: number
 ) {
   const price1 = 100;
@@ -196,54 +120,69 @@ async function twoPlayerGames(
   const hash = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
   const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
   const reveal_nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-  const r_node_a = await ethers.getContract('Redistribution', node_a);
-  const r_node_b = await ethers.getContract('Redistribution', node_b);
 
-  const overlay_a = await createOverlay(node_a, '0x00', nonce);
-  const overlay_b = await createOverlay(node_b, '0x00', nonce);
+  for(let i=0; i < nodes.length; i++){
+    const r_node = await ethers.getContract('Redistribution', nodes[i]);
+    const overlay = await createOverlay(nodes[i], '0x00', nonce);
+    const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
+    await mintAndApprove(nodes[i], sr_node.address, stakes[i]);
+    await sr_node.depositStake(nodes[i], nonce, stakes[i]);
+  }
 
-  const sr_node_a = await ethers.getContract('StakeRegistry', node_a);
-  await mintAndApprove(node_a, sr_node_a.address, stake_amount_a);
-  await sr_node_a.depositStake(node_a, nonce, stake_amount_a);
+  let winDist: any;
+  winDist = {};
+  for(let i=0; i < nodes.length; i++){
+    winDist[nodes[i]] = [stakes[i], 0];
+  }
 
-  const sr_node_b = await ethers.getContract('StakeRegistry', node_b);
-  await mintAndApprove(node_b, sr_node_b.address, stake_amount_b);
-  await sr_node_b.depositStake(node_b, nonce, stake_amount_b);
-
-  let winsA = 0;
-  await mineNBlocks(roundLength * 3 - 21);
+  await mineNBlocks(roundLength * 3 - 15 - (nodes.length*3));
   for (let i = 0; i < trials; i++) {
     const startRoundBlockNumber = await getBlockNumber();
 
-    const obsfucatedHash_a = encodeAndHash(overlay_a, depth, hash, reveal_nonce);
-    await r_node_a.commit(obsfucatedHash_a, overlay_a);
+    const r_nodex = await ethers.getContract('Redistribution', nodes[0]);
 
-    const obsfucatedHash_b = encodeAndHash(overlay_b, depth, hash, reveal_nonce);
-    await r_node_b.commit(obsfucatedHash_b, overlay_b);
-
-    await mineNBlocks(phaseLength);
-
-    await r_node_a.reveal(overlay_a, depth, hash, reveal_nonce);
-    await r_node_b.reveal(overlay_b, depth, hash, reveal_nonce);
-
-    await mineNBlocks(phaseLength - 2);
-
-    if (await r_node_a.isWinner(overlay_a)) {
-      winsA++;
+    for(let i=0; i < nodes.length; i++){
+      const r_node = await ethers.getContract('Redistribution', nodes[i]);
+      const overlay = await createOverlay(nodes[i], '0x00', nonce);
+      const obsfucatedHash = encodeAndHash(overlay, depth, hash, reveal_nonce);
+      await r_node.commit(obsfucatedHash, overlay);
     }
 
-    const tx2 = await r_node_b.claim();
+    await mineNBlocks(phaseLength - nodes.length);
+
+    for(let i=0; i < nodes.length; i++){
+      const r_node = await ethers.getContract('Redistribution', nodes[i]);
+      const overlay = await createOverlay(nodes[i], '0x00', nonce);
+      await r_node.reveal(overlay, depth, hash, reveal_nonce);
+    }
+
+    await mineNBlocks(phaseLength - nodes.length + 1);
+
+    const r_node = await ethers.getContract('Redistribution', nodes[0]);
+
+    for(let i=0; i < nodes.length; i++){
+      const overlay = await createOverlay(nodes[i], '0x00', nonce);
+      if (await r_node.isWinner(overlay)) {
+        winDist[nodes[i]][1]++;
+      }
+    }
+
+    const tx2 = await r_node.claim();
     const receipt2 = await tx2.wait();
 
     const sr = await ethers.getContract('StakeRegistry');
 
     //stakes are preserved
-    expect(await sr.usableStakeOfOverlay(overlay_a)).to.be.eq(stake_amount_a);
-    expect(await sr.usableStakeOfOverlay(overlay_b)).to.be.eq(stake_amount_b);
+    for(let i=0; i < nodes.length; i++){
+      const overlay = await createOverlay(nodes[i], '0x00', nonce);
+      expect(await sr.usableStakeOfOverlay(overlay)).to.be.eq(stakes[i]);
+    }
 
-    await mineNBlocks(phaseLength * 2 - 3);
+    await mineNBlocks(phaseLength * 2 - nodes.length);
+
   }
-  return winsA / trials;
+
+  return winDist;
 }
 
 describe('Stats', function () {
@@ -251,31 +190,48 @@ describe('Stats', function () {
     const trials = 200;
 
     it('is fair with 1:3 stake', async function () {
-      const stake_amount_a = '100000000000000000';
-      const stake_amount_b = '300000000000000000';
-      const perfect_ratio = 0.25;
       const allowed_variance = 0.02;
-      const node_a = others[0];
-      const node_b = others[1];
+      const stakes = ['100000000000000000', '300000000000000000'];
+      const nodes = [others[0], others[1]];
 
-      const winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
+      const dist = await nPlayerGames(nodes, stakes, trials);
+      let sumStakes = BigInt(0);
+      for(let i=0;i<stakes.length;i++){
+        sumStakes += BigInt(stakes[i]);
+      }
 
-      expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
-      expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
+      for(let i = 0; i<nodes.length; i++){
+        let r = dist[nodes[i]];
+        let actual = parseInt((BigInt(r[0])/BigInt(100000000000000000)).toString()) / parseInt((sumStakes/BigInt(100000000000000000)).toString());
+        let probable = (r[1] / trials);
+
+        expect(Math.abs(actual-probable)).be.lessThan(allowed_variance);
+
+      }
+
     }).timeout(100000);
 
-  //   it('is fair with 1:3 stake', async function () {
-  //     const stake_amount_a = '100000000000000000';
-  //     const stake_amount_b = '300000000000000000';
-  //     const perfect_ratio = 0.25;
-  //     const allowed_variance = 0.02;
-  //     const node_a = others[2];
-  //     const node_b = others[3];
+    it('is fair with 1:1 stake', async function () {
+      const allowed_variance = 0.02;
+      const stakes = ['100000000000000000', '100000000000000000'];
+      const nodes = [others[0], others[1]];
 
-  //     let winRatio = await twoPlayerGames(node_a, node_b, stake_amount_a, stake_amount_b, trials);
+      const dist = await nPlayerGames(nodes, stakes, trials);
+      let sumStakes = BigInt(0);
+      for(let i=0;i<stakes.length;i++){
+        sumStakes += BigInt(stakes[i]);
+      }
 
-  //     expect(winRatio).be.lessThan(perfect_ratio + allowed_variance);
-  //     expect(winRatio).be.greaterThan(perfect_ratio - allowed_variance);
-  //   }).timeout(50000);
+      for(let i = 0; i<nodes.length; i++){
+        let r = dist[nodes[i]];
+        let actual = parseInt((BigInt(r[0])/BigInt(100000000000000000)).toString()) / parseInt((sumStakes/BigInt(100000000000000000)).toString());
+        let probable = (r[1] / trials);
+
+        expect(Math.abs(actual-probable)).be.lessThan(allowed_variance);
+
+      }
+
+    }).timeout(100000);
+
   });
 });
