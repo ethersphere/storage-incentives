@@ -20,10 +20,6 @@ contract PriceOracle is AccessControl {
 
     uint256 public constant minimumPrice = 2 ** 10;
 
-    uint256 public constant smoothness = 3;
-
-    uint256 public constant constExpectedRedundancy = 8;
-
     uint256[] public increaseRate = [0, 1069, 1040, 1032, 1024, 1014, 1004, 995, 980];
 
     // the address of the postageStamp contract
