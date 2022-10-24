@@ -16,6 +16,16 @@ contract PriceOracle is AccessControl {
 
     bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
 
+    uint256 public currentPrice;
+
+    uint256 public constant minimumPrice = 2 ** 10;
+
+    uint256 public constant smoothness = 3;
+
+    uint256 public constant constExpectedRedundancy = 8;
+
+    uint256[] public increaseRate = [0, 1069, 1040, 1032, 1024, 1014, 1004, 995, 980];
+
     // the address of the postageStamp contract
     PostageStamp public postageStamp;
 
@@ -33,5 +43,29 @@ contract PriceOracle is AccessControl {
         require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
         postageStamp.setPrice(_price);
         emit PriceUpdate(_price);
+    }
+
+    function adjustPrice(uint256 redundancy) external {
+
+        uint256 multiplier = minimumPrice;
+        uint256 usedRedundancy = redundancy;
+
+        require(redundancy > 0, "unexpected zero");
+
+        if ( redundancy > 8 ) {
+            usedRedundancy = 8;
+        }
+
+        uint256 ir = increaseRate[usedRedundancy];
+
+        currentPrice = ir * currentPrice / multiplier;
+
+        if ( currentPrice < minimumPrice ) {
+            currentPrice = minimumPrice;
+        }
+
+        require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
+        postageStamp.setPrice(currentPrice);
+        emit PriceUpdate(currentPrice);
     }
 }
