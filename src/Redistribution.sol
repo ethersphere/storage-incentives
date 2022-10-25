@@ -3,6 +3,7 @@ pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./PostageStamp.sol";
+import "./PriceOracle.sol";
 import "./Staking.sol";
 
 // import "hardhat/console.sol";
@@ -46,6 +47,8 @@ contract Redistribution is AccessControl, Pausable {
     //
     PostageStamp public PostageContract;
     //
+    PriceOracle public OracleContract;
+    //
     StakeRegistry public Stakes;
     //
     Commit[] public currentCommits;
@@ -76,9 +79,10 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @param staking the registry used by this contract
      */
-    constructor(address staking, address postageContract) {
+    constructor(address staking, address postageContract, address oracleContract) {
         Stakes = StakeRegistry(staking);
         PostageContract = PostageStamp(postageContract);
+        OracleContract = PriceOracle(oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
@@ -439,6 +443,8 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         emit WinnerSelected(winner);
+
+        OracleContract.adjustPrice(uint256(k));
 
         PostageContract.withdraw(winner.owner);
 
