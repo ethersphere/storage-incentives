@@ -172,6 +172,7 @@ describe('Staking', function () {
 
       expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(updatedStakeAmount);
     });
+
   });
 
   describe('slashing stake', function () {

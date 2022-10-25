@@ -391,8 +391,9 @@ contract Redistribution is AccessControl, Pausable {
 
         for(uint i=0; i<commitsArrayLength; i++) {
             if ( !currentCommits[i].revealed ) {
-                //slash
-                Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
+                // slash in later phase
+                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
+                Stakes.freezeDeposit(currentCommits[i].overlay, 7 * roundLength * uint256(2 ** truthRevealedDepth));
                 continue;
             }
         }
@@ -437,16 +438,16 @@ contract Redistribution is AccessControl, Pausable {
 
                 k++;
             } else {
-                Stakes.freezeDeposit(currentReveals[i].overlay, 7 * roundLength * uint256(2 ** truthRevealedDepth));
+                Stakes.freezeDeposit(currentReveals[i].overlay, 3 * roundLength * uint256(2 ** truthRevealedDepth));
                 // slash ph5
             }
         }
 
         emit WinnerSelected(winner);
 
-        OracleContract.adjustPrice(uint256(k));
-
         PostageContract.withdraw(winner.owner);
+
+        OracleContract.adjustPrice(uint256(k));
 
         currentClaimRound = cr;
 
