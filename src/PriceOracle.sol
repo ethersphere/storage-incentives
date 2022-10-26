@@ -38,6 +38,9 @@ contract PriceOracle is AccessControl {
     function setPrice(uint256 _price) external {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
         currentPrice = _price;
+        if (currentPrice < minimumPrice) {
+            currentPrice = minimumPrice;
+        }
         postageStamp.setPrice(_price);
         emit PriceUpdate(_price);
     }
