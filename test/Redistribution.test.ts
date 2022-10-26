@@ -1,10 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Event, Contract } from 'ethers';
-
-import { keccak256 } from '@ethersproject/keccak256';
-import { arrayify, hexlify } from '@ethersproject/bytes';
-import { exit } from 'process';
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove} from './util/tools'
 
 const phaseLength = 38;
 const roundLength = 152;
@@ -100,98 +97,6 @@ const errors = {
   },
 };
 
-//todo DRY this
-async function mineNBlocks(n: number) {
-  for (let index = 0; index < n; index++) {
-    await ethers.provider.send('hardhat_mine', []);
-  }
-}
-
-async function setPrevRandDAO() {
-  await ethers.provider.send('hardhat_setPrevRandao', [
-    '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
-  ]);
-}
-
-async function getBlockNumber() {
-  const blockNumber = await ethers.provider.send('eth_blockNumber', []);
-  return parseInt(blockNumber);
-}
-
-//todo DRY this
-async function mintAndApprove(payee: string, beneficiary: string, transferAmount: string) {
-  const minterTokenInstance = await ethers.getContract('TestToken', deployer);
-  await minterTokenInstance.mint(payee, transferAmount);
-  const payeeTokenInstance = await ethers.getContract('TestToken', payee);
-  await payeeTokenInstance.approve(beneficiary, transferAmount);
-}
-
-function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, reveal_nonce_1: string) {
-  const encoded = new Uint8Array(97);
-  encoded.set(arrayify(overlay_1));
-  encoded.set(arrayify(depth_1), 32);
-  encoded.set(arrayify(hash_1), 33);
-  encoded.set(arrayify(reveal_nonce_1), 65);
-  return keccak256(hexlify(encoded));
-}
-
-//dev purposes only
-async function createOverlay(address: string, networkID: string, nonce: string) {
-  const encoded = new Uint8Array(60);
-  encoded.set(arrayify(address));
-  encoded.set(arrayify(networkID).reverse(), 20);
-  encoded.set(arrayify(nonce), 28);
-  return keccak256(hexlify(encoded));
-}
-
-function hexToBinaryArray(h: string) {
-  h = h.substring(2);
-  const o = [];
-  for (let i = 0; i < h.length; i++) {
-    const byte = h.substring(i, i + 1);
-    const binary = parseInt(byte, 16).toString(2).padStart(4, '0');
-    for (let j = 0; j < binary.length; j++) {
-      o.push(parseInt(binary[j]));
-    }
-  }
-  return o;
-}
-
-function compareHexAsBinary(_a: string, _b: string, d: number) {
-  const a = hexToBinaryArray(_a);
-  const b = hexToBinaryArray(_b);
-  const match = false;
-  for (let i = 0; i < d; i++) {
-    if (a[i] != b[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-async function mineOverlaysInDepth(prefix: string, networkID: string, depth: number, maxAttempts: number) {
-  let found = false;
-  let w, o;
-  let i = 0;
-  while (found == false) {
-    w = ethers.Wallet.createRandom();
-    o = await createOverlay(w.address, networkID, nonce_0);
-    found = compareHexAsBinary(o, prefix.padEnd(66, '0'), depth);
-    console.log(i, o.substring(0, 8), prefix.padEnd(66, '0').substring(0, 8));
-    if (maxAttempts == i + 1) {
-      console.log('failed with max attempts', maxAttempts);
-      return;
-    }
-    i++;
-  }
-  if (w !== undefined) {
-    console.log(`found in ${i} attempts`, 'o a p', o, w.address, w.privateKey);
-  }
-}
-
-// mineOverlaysInDepth("0xac33", "0x00", 6, 10000);
-//end
-
 describe('Redistribution', function () {
   describe('when deploying contract', function () {
     beforeEach(async function () {
@@ -224,7 +129,7 @@ describe('Redistribution', function () {
 
     it('should not create a commit with recently staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
-      await mintAndApprove(node_0, sr_node_0.address, stakeAmount_0);
+      await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
       await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -237,7 +142,7 @@ describe('Redistribution', function () {
 
     it('should create a commit with staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
-      await mintAndApprove(node_0, sr_node_0.address, stakeAmount_0);
+      await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
       await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -277,7 +182,7 @@ describe('Redistribution', function () {
 
       postage = await ethers.getContract('PostageStamp', stamper);
 
-      await mintAndApprove(stamper, postage.address, transferAmount.toString());
+      await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
       await postage.createBatch(
         stamper,
@@ -291,23 +196,23 @@ describe('Redistribution', function () {
       stampCreatedBlock = await getBlockNumber();
 
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
-      await mintAndApprove(node_0, sr_node_0.address, stakeAmount_0);
+      await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
       await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
 
       const sr_node_1 = await ethers.getContract('StakeRegistry', node_1);
-      await mintAndApprove(node_1, sr_node_1.address, stakeAmount_1);
+      await mintAndApprove(deployer, node_1, sr_node_1.address, stakeAmount_1);
       await sr_node_1.depositStake(node_1, nonce_1, stakeAmount_1);
 
       const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
-      await mintAndApprove(node_2, sr_node_2.address, stakeAmount_2);
+      await mintAndApprove(deployer, node_2, sr_node_2.address, stakeAmount_2);
       await sr_node_2.depositStake(node_2, nonce_2, stakeAmount_2);
 
       const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
-      await mintAndApprove(node_3, sr_node_3.address, stakeAmount_3);
+      await mintAndApprove(deployer, node_3, sr_node_3.address, stakeAmount_3);
       await sr_node_3.depositStake(node_3, nonce_3, stakeAmount_3);
 
       const sr_node_4 = await ethers.getContract('StakeRegistry', node_4);
-      await mintAndApprove(node_4, sr_node_4.address, stakeAmount_3);
+      await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
       await sr_node_4.depositStake(node_4, nonce_4, stakeAmount_3);
 
       await mineNBlocks(roundLength * 2);

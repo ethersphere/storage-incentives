@@ -1,6 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Signer } from 'ethers';
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, computeBatchId} from './util/tools'
 
 // Named accounts used by tests.
 let stamper: string;
@@ -17,20 +18,8 @@ before(async function () {
   others = await getUnnamedAccounts();
 });
 
-function computeBatchId(sender: string, nonce: string): string {
-  const abi = new ethers.utils.AbiCoder();
-  const encoded = abi.encode(['address', 'bytes32'], [sender, nonce]);
-  return ethers.utils.keccak256(encoded);
-}
-
 async function setPrice(price: number) {
   return await (await ethers.getContract('PostageStamp', oracle)).setPrice(price);
-}
-
-async function mineNBlocks(n: number) {
-  for (let index = 0; index < n; index++) {
-    await ethers.provider.send('evm_mine', []);
-  }
 }
 
 const zeroAddress = '0x0000000000000000000000000000000000000000';

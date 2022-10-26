@@ -1,6 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Event, Contract } from 'ethers';
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, createOverlay} from './util/tools'
 
 import { keccak256 } from '@ethersproject/keccak256';
 import { arrayify, hexlify } from '@ethersproject/bytes';
@@ -24,49 +25,6 @@ before(async function () {
   others = await getUnnamedAccounts();
 });
 
-//todo DRY this
-async function mineNBlocks(n: number) {
-  for (let index = 0; index < n; index++) {
-    await ethers.provider.send('hardhat_mine', []);
-  }
-}
-
-async function setPrevRandDAO() {
-  await ethers.provider.send('hardhat_setPrevRandao', [
-    '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
-  ]);
-}
-
-async function getBlockNumber() {
-  const blockNumber = await ethers.provider.send('eth_blockNumber', []);
-  return parseInt(blockNumber);
-}
-
-//todo DRY this
-async function mintAndApprove(payee: string, beneficiary: string, transferAmount: string) {
-  const minterTokenInstance = await ethers.getContract('TestToken', deployer);
-  await minterTokenInstance.mint(payee, transferAmount);
-  const payeeTokenInstance = await ethers.getContract('TestToken', payee);
-  await payeeTokenInstance.approve(beneficiary, transferAmount);
-}
-
-function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, reveal_nonce_1: string) {
-  const encoded = new Uint8Array(97);
-  encoded.set(arrayify(overlay_1));
-  encoded.set(arrayify(depth_1), 32);
-  encoded.set(arrayify(hash_1), 33);
-  encoded.set(arrayify(reveal_nonce_1), 65);
-  return keccak256(hexlify(encoded));
-}
-
-async function createOverlay(address: string, networkID: string, nonce: string) {
-  const encoded = new Uint8Array(60);
-  encoded.set(arrayify(address));
-  encoded.set(arrayify(networkID).reverse(), 20);
-  encoded.set(arrayify(nonce), 28);
-  return keccak256(hexlify(encoded));
-}
-
 async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   const price1 = 100;
   const batch = {
@@ -88,7 +46,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
   const postage = await ethers.getContract('PostageStamp', stamper);
 
-  await mintAndApprove(stamper, postage.address, transferAmount.toString());
+  await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
   await postage.createBatch(
     stamper,
@@ -110,7 +68,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     const r_node = await ethers.getContract('Redistribution', nodes[i]);
     const overlay = await createOverlay(nodes[i], '0x00', nonce);
     const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
-    await mintAndApprove(nodes[i], sr_node.address, stakes[i]);
+    await mintAndApprove(deployer, nodes[i], sr_node.address, stakes[i]);
     await sr_node.depositStake(nodes[i], nonce, stakes[i]);
   }
 
@@ -173,7 +131,7 @@ describe('Stats', function () {
     const trials = 200;
 
     it('is fair with 1:3 stake', async function () {
-      const allowed_variance = 0.02;
+      const allowed_variance = 0.025;
       const stakes = ['100000000000000000', '300000000000000000'];
       const nodes = [others[0], others[1]];
 
@@ -188,7 +146,6 @@ describe('Stats', function () {
           parseInt((BigInt(dist[i][1]) / BigInt(100000000000000000)).toString()) /
           parseInt((sumStakes / BigInt(100000000000000000)).toString());
         const probable = dist[i][2] / trials;
-        console.log(dist);
         expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
       }
     }).timeout(100000);
