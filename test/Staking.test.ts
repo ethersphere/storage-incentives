@@ -17,6 +17,7 @@ const errors = {
     noBalance: 'ERC20: transfer amount exceeds balance',
     noZeroAddress: 'owner cannot be the zero address',
     belowMinimum: 'cannot be below the minimum stake value',
+    onlyOwner: 'only owner can update stake'
   },
   slash: {
     noRole: 'only redistributor can slash stake',
@@ -28,21 +29,10 @@ const errors = {
   pause: {
     noRole: 'only pauser can pause the contract',
     currentlyPaused: 'Pausable: paused',
+    notCurrentlyPaused: 'Pausable: not paused',
     onlyPauseCanUnPause: 'only pauser can unpause the contract',
   },
 };
-
-//todo DRY this
-async function mineNBlocks(n: number) {
-  for (let index = 0; index < n; index++) {
-    await ethers.provider.send('evm_mine', []);
-  }
-}
-
-async function getBlockNumber() {
-  const blockNumber = await ethers.provider.send('eth_blockNumber', []);
-  return parseInt(blockNumber);
-}
 
 let staker_0: string;
 const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
@@ -126,14 +116,13 @@ describe('Staking', function () {
       );
     });
 
-    it('should not deposit stake to the zero address', async function () {
+    it('only owner can deposit stake', async function () {
       const owner = zeroAddress;
-      const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
 
-      await expect(stakeRegistry.depositStake(owner, nonce, stakeAmount_0)).to.be.revertedWith(
-        errors.deposit.noZeroAddress
+      await expect(stakeRegistry.depositStake(owner, nonce_0, stakeAmount_0)).to.be.revertedWith(
+        errors.deposit.onlyOwner
       );
     });
 
@@ -261,11 +250,23 @@ describe('Staking', function () {
       expect(staked.lastUpdatedBlockNumber).to.be.eq(0);
     });
 
-    // it('should restake deposit for same address after slashing', async function () {});
+    it('should restake slashed deposit', async function () {
+      const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
 
-    // it('should not slash other nodes stakes when slashing', async function () {});
+      await stakeRegistryRedistributor.slashDeposit(overlay_0, stakeAmount_0);
 
-    // other sequences of staking/slashing..?
+      const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
+
+      const lastUpdatedBlockNumber = await getBlockNumber();
+      const staked = await stakeRegistry.stakes(overlay_0);
+      expect(staked.overlay).to.be.eq(overlay_0);
+      expect(staked.owner).to.be.eq(staker_0);
+      expect(staked.stakeAmount).to.be.eq(stakeAmount_0);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
+    });
   });
 
   //tbc consensus will we include it?
@@ -406,4 +407,67 @@ describe('Staking', function () {
 
     // it('should not allow stake withdrawal while unpaused', async function () {});
   });
+
+    describe('withdraw from contract', function () {
+      let sr_staker_0: Contract;
+      let updatedBlockNumber: Number;
+
+      beforeEach(async function () {
+        token = await ethers.getContract('TestToken', deployer);
+        stakeRegistry = await ethers.getContract('StakeRegistry');
+        await deployments.fixture();
+
+        sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+
+        await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+        await sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
+
+        updatedBlockNumber = await getBlockNumber();
+
+        const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+        const pauserRole = await stakeRegistryDeployer.PAUSER_ROLE();
+        await stakeRegistryDeployer.grantRole(pauserRole, pauser);
+      });
+
+      it('should not allow stake withdrawal while unpaused', async function () {
+
+        await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+        await sr_staker_0.depositStake(staker_0, nonce_0, stakeAmount_0);
+
+        await expect(sr_staker_0.withdrawFromStake(overlay_0, stakeAmount_0)).to.be.revertedWith(
+          errors.pause.notCurrentlyPaused
+        );
+      });
+
+      it('should allow stake withdrawal while paused', async function () {
+        const staked_before = await sr_staker_0.stakes(overlay_0);
+
+        expect(staked_before.overlay).to.be.eq(overlay_0);
+        expect(staked_before.owner).to.be.eq(staker_0);
+        expect(staked_before.stakeAmount).to.be.eq(stakeAmount_0);
+        expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+
+        const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+        await stakeRegistryPauser.pause();
+
+        expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
+
+        await sr_staker_0.withdrawFromStake(overlay_0, stakeAmount_0);
+
+        const staked_after = await sr_staker_0.stakes(overlay_0);
+
+        expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+
+        const updatedBlockNumber2 = await getBlockNumber();
+
+        expect(staked_after.overlay).to.be.eq(zeroBytes32);
+        expect(staked_after.owner).to.be.eq(zeroAddress);
+        expect(staked_after.stakeAmount).to.be.eq(zeroStake);
+        expect(staked_after.lastUpdatedBlockNumber).to.be.eq(0);
+
+        await stakeRegistryPauser.unPause();
+      });
+
+    });
+
 });
