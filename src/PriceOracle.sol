@@ -36,27 +36,26 @@ contract PriceOracle is AccessControl {
      * @param _price The new price.
      */
     function setPrice(uint256 _price) external {
-        require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
         postageStamp.setPrice(_price);
         emit PriceUpdate(_price);
     }
 
     function adjustPrice(uint256 redundancy) external {
-
         uint256 multiplier = minimumPrice;
         uint256 usedRedundancy = redundancy;
 
         require(redundancy > 0, "unexpected zero");
 
-        if ( redundancy > 8 ) {
+        if (redundancy > 8) {
             usedRedundancy = 8;
         }
 
         uint256 ir = increaseRate[usedRedundancy];
 
-        currentPrice = ir * currentPrice / multiplier;
+        currentPrice = (ir * currentPrice) / multiplier;
 
-        if ( currentPrice < minimumPrice ) {
+        if (currentPrice < minimumPrice) {
             currentPrice = minimumPrice;
         }
 
