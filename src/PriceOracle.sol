@@ -36,7 +36,7 @@ contract PriceOracle is AccessControl {
      * @param _price The new price.
      */
     function setPrice(uint256 _price) external {
-        require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
         postageStamp.setPrice(_price);
         emit PriceUpdate(_price);
     }
