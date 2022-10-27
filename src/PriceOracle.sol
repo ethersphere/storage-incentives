@@ -41,8 +41,8 @@ contract PriceOracle is AccessControl {
         if (currentPrice < minimumPrice) {
             currentPrice = minimumPrice;
         }
-        postageStamp.setPrice(_price);
-        emit PriceUpdate(_price);
+        postageStamp.setPrice(currentPrice);
+        emit PriceUpdate(currentPrice);
     }
 
     function adjustPrice(uint256 redundancy) external {

@@ -102,6 +102,19 @@ describe('PriceOracle', function () {
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice);
       });
 
+      it('does not set price less than minimum price', async function () {
+        const currentPrice = await priceOracle.currentPrice();
+        const newPrice = 2048;
+        await expect(priceOracle.setPrice(newPrice)).to.emit(priceOracle, 'PriceUpdate').withArgs(newPrice);
+
+        const tooLowPrice = 100;
+
+        await expect(priceOracle.setPrice(tooLowPrice)).to.emit(priceOracle, 'PriceUpdate').withArgs(minPriceString);
+
+        expect(await priceOracle.currentPrice()).to.be.eq(minPriceString);
+        expect(await postageStamp.lastPrice()).to.be.eq(minPriceString);
+      });
+
       it('should update the outpayments', async function () {
         const price1 = 100;
         await priceOracle.setPrice(price1);
