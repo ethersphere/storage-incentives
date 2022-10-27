@@ -17,7 +17,7 @@ before(async function () {
   others = await getUnnamedAccounts();
 });
 
-const increaseRate = [0, 1069, 1040, 1032, 1024, 1014, 1004, 995, 980];
+const increaseRate =  [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
 
 const errors = {
   manual: {
@@ -178,34 +178,31 @@ describe('PriceOracle', function () {
         expect(currentPrice).to.be.eq(minPriceString);
         expect(await postageStamp.lastPrice()).to.be.eq(minPriceString);
 
-        const r1 = 1;
-        await priceOracleU.adjustPrice(r1);
+        const redundancySignal1 = 1;
+        const newPrice1 = increaseRate[redundancySignal1] * parseInt(currentPrice) / parseInt(minPriceString);
 
-        const newPrice1 = increaseRate[r1] * parseInt(currentPrice) / parseInt(minPriceString);
+        await expect(priceOracleU.adjustPrice(redundancySignal1)).to.emit(priceOracle, 'PriceUpdate').withArgs(newPrice1);
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
 
-        const r2 = 2;
-        await priceOracleU.adjustPrice(r2);
-
-        const newPrice2 = Math.floor(increaseRate[r2] * newPrice1 / parseInt(minPriceString));
+        const redundancySignal2 = 2;
+        const newPrice2 = Math.floor(increaseRate[redundancySignal2] * newPrice1 / parseInt(minPriceString));
+        await expect(priceOracleU.adjustPrice(redundancySignal2)).to.emit(priceOracle, 'PriceUpdate').withArgs(newPrice2);
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice2);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice2);
 
-        const r3 = 2;
-        await priceOracleU.adjustPrice(r3);
-
-        const newPrice3 = Math.floor(increaseRate[r3] * newPrice2 / parseInt(minPriceString));
+        const redundancySignal3 = 3;
+        const newPrice3 = Math.floor(increaseRate[redundancySignal3] * newPrice2 / parseInt(minPriceString));
+        await expect(priceOracleU.adjustPrice(redundancySignal3)).to.emit(priceOracle, 'PriceUpdate').withArgs(newPrice3);
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice3);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice3);
 
-        const r4 = 2;
-        await priceOracleU.adjustPrice(r4);
-
-        const newPrice4 = Math.floor(increaseRate[r4] * newPrice3 / parseInt(minPriceString));
+        const redundancySignal4 = 3;
+        const newPrice4 = Math.floor(increaseRate[redundancySignal4] * newPrice3 / parseInt(minPriceString));
+        await expect(priceOracleU.adjustPrice(redundancySignal4)).to.emit(priceOracle, 'PriceUpdate').withArgs(newPrice4);
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice4);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice4);
