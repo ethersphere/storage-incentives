@@ -145,7 +145,7 @@ contract Redistribution is AccessControl, Pausable {
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint256 _roundNumber) external whenNotPaused {
 
         require(currentPhaseCommit(), "not in commit phase");
-    	uint256 cr = currentRound();
+        uint256 cr = currentRound();
         require(cr <= _roundNumber, "specified commit round over");
         require(cr >= _roundNumber, "specified commit round not started yet");
 
