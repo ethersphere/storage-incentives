@@ -142,16 +142,18 @@ contract Redistribution is AccessControl, Pausable {
      * @param _obfuscatedHash The owner of the new batch.
      * @param _overlay The initial balance per chunk of the batch.
      */
-    function commit(bytes32 _obfuscatedHash, bytes32 _overlay) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint256 _roundNumber) external whenNotPaused {
 
         require(currentPhaseCommit(), "not in commit phase");
+    	uint256 cr = currentRound();
+        require(cr <= _roundNumber, "specified commit round over");
+        require(cr >= _roundNumber, "specified commit round not started yet");
+
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require(nstake >= minimumStake, "node must have staked at least minimum stake");
         require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner must match sender to be able to commit");
 
         require(Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2*roundLength, "node must have staked before last round");
-
-    	uint256 cr = currentRound();
 
     	if ( cr != currentCommitRound ) {
     		delete currentCommits;
