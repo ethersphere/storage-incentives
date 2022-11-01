@@ -8,7 +8,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   await deploy('Redistribution', {
     from: deployer,
-    args: [(await get('StakeRegistry')).address, (await get('PostageStamp')).address],
+    args: [(await get('StakeRegistry')).address, (await get('PostageStamp')).address, (await get('PriceOracle')).address],
     log: true,
   });
 
@@ -27,6 +27,15 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     { from: deployer },
     'grantRole',
     redistributorRolePostageStamp,
+    (await get('Redistribution')).address
+  );
+
+  const priceUpdaterRoleOracle = await read('PriceOracle', 'PRICE_UPDATER_ROLE');
+  await execute(
+    'PriceOracle',
+    { from: deployer },
+    'grantRole',
+    priceUpdaterRoleOracle,
     (await get('Redistribution')).address
   );
 };

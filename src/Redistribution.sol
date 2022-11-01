@@ -3,6 +3,7 @@ pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./PostageStamp.sol";
+import "./PriceOracle.sol";
 import "./Staking.sol";
 
 // import "hardhat/console.sol";
@@ -46,6 +47,8 @@ contract Redistribution is AccessControl, Pausable {
     //
     PostageStamp public PostageContract;
     //
+    PriceOracle public OracleContract;
+    //
     StakeRegistry public Stakes;
     //
     Commit[] public currentCommits;
@@ -76,9 +79,10 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @param staking the registry used by this contract
      */
-    constructor(address staking, address postageContract) {
+    constructor(address staking, address postageContract, address oracleContract) {
         Stakes = StakeRegistry(staking);
         PostageContract = PostageStamp(postageContract);
+        OracleContract = PriceOracle(oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
@@ -138,16 +142,18 @@ contract Redistribution is AccessControl, Pausable {
      * @param _obfuscatedHash The owner of the new batch.
      * @param _overlay The initial balance per chunk of the batch.
      */
-    function commit(bytes32 _obfuscatedHash, bytes32 _overlay) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint256 _roundNumber) external whenNotPaused {
 
         require(currentPhaseCommit(), "not in commit phase");
+        uint256 cr = currentRound();
+        require(cr <= _roundNumber, "specified commit round over");
+        require(cr >= _roundNumber, "specified commit round not started yet");
+
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
         require(nstake >= minimumStake, "node must have staked at least minimum stake");
         require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner must match sender to be able to commit");
 
         require(Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2*roundLength, "node must have staked before last round");
-
-    	uint256 cr = currentRound();
 
     	if ( cr != currentCommitRound ) {
     		delete currentCommits;
@@ -387,8 +393,9 @@ contract Redistribution is AccessControl, Pausable {
 
         for(uint i=0; i<commitsArrayLength; i++) {
             if ( !currentCommits[i].revealed ) {
-                //slash
-                Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
+                // slash in later phase
+                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
+                Stakes.freezeDeposit(currentCommits[i].overlay, 7 * roundLength * uint256(2 ** truthRevealedDepth));
                 continue;
             }
         }
@@ -433,7 +440,7 @@ contract Redistribution is AccessControl, Pausable {
 
                 k++;
             } else {
-                Stakes.freezeDeposit(currentReveals[i].overlay, 7 * roundLength * uint256(2 ** truthRevealedDepth));
+                Stakes.freezeDeposit(currentReveals[i].overlay, 3 * roundLength * uint256(2 ** truthRevealedDepth));
                 // slash ph5
             }
         }
@@ -441,6 +448,8 @@ contract Redistribution is AccessControl, Pausable {
         emit WinnerSelected(winner);
 
         PostageContract.withdraw(winner.owner);
+
+        OracleContract.adjustPrice(uint256(k));
 
         currentClaimRound = cr;
 

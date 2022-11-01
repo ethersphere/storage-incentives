@@ -110,7 +110,6 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 amount
     ) external whenNotPaused {
         require(_owner == msg.sender, "only owner can update stake");
-        require(_owner != address(0), "owner cannot be the zero address");
 
         bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));
 
