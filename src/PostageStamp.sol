@@ -70,7 +70,7 @@ contract PostageStamp is AccessControl, Pausable {
     // The address of the BZZ ERC20 token this contract references.
     address public bzzToken;
     // The total out payment per chunk
-    uint256 public totalOutPayment;
+    uint256 private totalOutPayment;
 
     //
     uint8 public minimumBatchDepth;
