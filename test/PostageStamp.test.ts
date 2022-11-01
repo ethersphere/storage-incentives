@@ -1226,24 +1226,19 @@ describe('PostageStamp', function () {
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(price1);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(0);
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(2 * price1);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(0);
 
         const price2 = 200;
         await postageStamp.setPrice(price2);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1 + 1 * price2);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1 + 2 * price2);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
       });
 
       it('should emit event if called by oracle', async function () {
