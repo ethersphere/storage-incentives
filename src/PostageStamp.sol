@@ -357,6 +357,13 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
+     * @notice Returns the count of expired batches.
+     */
+    function expiredCount() public view returns(uint256) {
+        return tree.below(currentTotalOutPayment());
+    }
+
+    /**
      * @notice Returns the total lottery pot so far
      */
     function totalPot() public returns(uint256) {

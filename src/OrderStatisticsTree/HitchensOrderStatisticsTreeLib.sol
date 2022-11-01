@@ -86,7 +86,37 @@ library HitchensOrderStatisticsTreeLib {
     function count(Tree storage self) internal view returns(uint _count) {
         return getNodeCount(self,self.root);
     }
-
+    function below(Tree storage self, uint value) public view returns(uint _below) {
+        if(count(self) > 0 && value > 0) _below = rank(self,value)-uint(1);
+    }
+    function rank(Tree storage self, uint value) internal view returns(uint _rank) {
+        if(count(self) > 0) {
+            bool finished;
+            uint cursor = self.root;
+            Node storage c = self.nodes[cursor];
+            uint smaller = getNodeCount(self,c.left);
+            while (!finished) {
+                uint keyCount = c.keys.length;
+                if(cursor == value) {
+                    finished = true;
+                } else {
+                    if(cursor < value) {
+                        cursor = c.right;
+                        c = self.nodes[cursor];
+                        smaller += keyCount + getNodeCount(self,c.left);
+                    } else {
+                        cursor = c.left;
+                        c = self.nodes[cursor];
+                        smaller -= (keyCount + getNodeCount(self,c.right));
+                    }
+                }
+                if (!exists(self,cursor)) {
+                    finished = true;
+                }
+            }
+            return smaller + 1;
+        }
+    }
 /* We don't use this functionality, so it is commented out to make audit easier
 
     function percentile(Tree storage self, uint value) internal view returns(uint _percentile) {
@@ -109,9 +139,6 @@ library HitchensOrderStatisticsTreeLib {
     }    
     function median(Tree storage self) internal view returns(uint value) {
         return atPercentile(self,50);
-    }
-    function below(Tree storage self, uint value) public view returns(uint _below) {
-        if(count(self) > 0 && value > 0) _below = rank(self,value)-uint(1);
     }
     function above(Tree storage self, uint value) public view returns(uint _above) {
         if(count(self) > 0) _above = count(self)-rank(self,value);
@@ -152,34 +179,7 @@ library HitchensOrderStatisticsTreeLib {
             }
         }
     } 
-    function rank(Tree storage self, uint value) internal view returns(uint _rank) {
-        if(count(self) > 0) {
-            bool finished;
-            uint cursor = self.root;
-            Node storage c = self.nodes[cursor];
-            uint smaller = getNodeCount(self,c.left);
-            while (!finished) {
-                uint keyCount = c.keys.length;
-                if(cursor == value) {
-                    finished = true;
-                } else {
-                    if(cursor < value) {
-                        cursor = c.right;
-                        c = self.nodes[cursor];
-                        smaller += keyCount + getNodeCount(self,c.left);
-                    } else {
-                        cursor = c.left;
-                        c = self.nodes[cursor];
-                        smaller -= (keyCount + getNodeCount(self,c.right));
-                    }
-                }
-                if (!exists(self,cursor)) {
-                    finished = true;
-                }
-            }
-            return smaller + 1;
-        }
-    }
+    
     function atRank(Tree storage self, uint _rank) internal view returns(uint _value) {
         bool finished;
         uint cursor = self.root;

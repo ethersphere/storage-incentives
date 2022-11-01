@@ -1126,6 +1126,8 @@ describe('PostageStamp', function () {
 
         expect(batchB).equal(await this.postageStamp.firstBatchId());
 
+        // expect(1).equal(await this.postageStamp.expiredCount());
+
         await this.postageStamp.increaseDepth(batchC, this.batch.depth + 1);
 
         const expiredEarlier = 1;
