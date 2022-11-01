@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Event, Contract } from 'ethers';
-import { mineNBlocks } from './util/tools';
+import { mineNBlocks, getBlockNumber } from './util/tools';
 
 
 // Named accounts used by tests.
@@ -60,6 +60,8 @@ describe('PriceOracle', function () {
     describe('manual update', function(){
       let minPriceString: string;
       let priceOracle: Contract, postageStamp: Contract;
+      let initialPriceSetBlock: number;
+      let price0SetBlock: number;
 
       beforeEach(async function () {
         priceOracle = await ethers.getContract('PriceOracle', deployer);
@@ -68,10 +70,14 @@ describe('PriceOracle', function () {
         const updaterRole = await priceOracle.PRICE_UPDATER_ROLE();
         await priceOracle.grantRole(updaterRole, updater);
 
-        //initialise, set minimum price
+        //initialise, set minimum price, todo: move to deployment
         const minimumPrice = await priceOracle.minimumPrice();
         minPriceString = minimumPrice.toString();
         await priceOracle.setPrice(minPriceString);
+        price0SetBlock = await getBlockNumber();
+
+        //since postage contract was deployed in block 0
+        initialPriceSetBlock = await getBlockNumber();
       });
 
       it('is initialised', async function () {
@@ -116,27 +122,72 @@ describe('PriceOracle', function () {
       });
 
       it('should update the outpayments', async function () {
-        const price1 = 100;
+
+        const price0 = parseInt(minPriceString);
+        //price 0 was set during bootstrapping deploynent of the contract to be the minimum price
+        const blocksElapsed0Price0 = (await getBlockNumber()) - initialPriceSetBlock;
+        const outPayment0 = price0 * blocksElapsed0Price0;
+
+        // elapsed total based on current block 18
+        // i | price | set | elapsed | outPayment
+        // --------------------------------------
+        // 0 |  1024 |  14 |      14 |         0
+        // --------------------------------------
+        //                  total => |         0
+
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(outPayment0);
+
+        const price1 = 1025;
         await priceOracle.setPrice(price1);
-        // the price initially is minimum, therefore minimum is charged
-        expect(await postageStamp.totalOutPayment()).to.be.eq(minPriceString);
+        const price1SetBlock = await getBlockNumber();
 
-        const price2 = 200;
+        await mineNBlocks(3);
+
+        const blocksElapsed1Price0 = price1SetBlock - price0SetBlock;
+        const blocksElapsed1Price1 = (await getBlockNumber()) - price1SetBlock;
+
+        const outPayment1 =  outPayment0 + (price0 * blocksElapsed1Price0) + (price1 * blocksElapsed1Price1);
+
+        // elapsed total based on current block 18
+        // |------------------------------------------------------|
+        // | price | price set | block set | elapsed | outPayment |
+        // |------------------------------------------------------|
+        // |     0 |      1024 |        14 |      14 |         0  |
+        // |  1024 |      1025 |        15 |       1 |      1024  |
+        // |  1025 |           |           |       3 |      3075  |
+        // |------------------------------------------------------|
+        // |                                total => |      4099  |
+        // |------------------------------------------------------|
+
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(outPayment1);
+
+        await mineNBlocks(25);
+
+        const price2 = 1026;
         await priceOracle.setPrice(price2);
-        // price1 should be charged for the 1 block the prev line's tx mined
-        // plus the initial 1 block at minimum
-        const outPayment1 = parseInt(minPriceString) + price1;
+        const price2SetBlock = await getBlockNumber();
 
-        expect(await postageStamp.totalOutPayment()).to.be.eq(outPayment1);
+        await mineNBlocks(52);
 
-        await mineNBlocks(2);
+        const blocksElapsed2Price0 = price1SetBlock - price0SetBlock;
+        const blocksElapsed2Price1 = price2SetBlock - price1SetBlock;
+        const blocksElapsed2Price2 = (await getBlockNumber()) - price2SetBlock;
 
-        const price3 = 300;
-        await priceOracle.setPrice(price3);
+        const outPayment2 =  (price0 * blocksElapsed2Price0) + (price1 * blocksElapsed2Price1) + (price2 * blocksElapsed2Price2);
 
-        // price2 should be charged for 3 blocks (the 2 mined blocks and the new block setPrice is in)
-        const outPayment2 = outPayment1 + 3 * price2
-        expect(await postageStamp.totalOutPayment()).to.be.eq(outPayment2);
+        // elapsed total based on current block 96
+        // |------------------------------------------------------|
+        // | price | price set | block set | elapsed | outPayment |
+        // |------------------------------------------------------|
+        // |     0 |      1024 |        14 |      14 |         0  |
+        // |  1024 |      1025 |        15 |       1 |      1024  |
+        // |  1025 |      1026 |        44 |      29 |     29725  |
+        // |  1026 |           |           |      52 |     53352  |
+        // |------------------------------------------------------|
+        // |                                total => |     84101  |
+        // |------------------------------------------------------|
+
+        expect(await postageStamp.currentTotalOutPayment()).to.be.eq(outPayment2);
       });
     });
 
@@ -155,6 +206,7 @@ describe('PriceOracle', function () {
         const minimumPrice = await priceOracle.minimumPrice();
         minPriceString = minimumPrice.toString();
         await priceOracle.setPrice(minPriceString);
+
       });
 
       it('if redundany factor is 0', async function () {
