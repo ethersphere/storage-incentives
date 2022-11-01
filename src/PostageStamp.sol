@@ -173,6 +173,8 @@ contract PostageStamp is AccessControl, Pausable {
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
+        validChunkCount += 1 << _depth;
+
         batches[_batchId] = Batch({
             owner: _owner,
             depth: _depth,
@@ -329,11 +331,15 @@ contract PostageStamp is AccessControl, Pausable {
             if (remainingBalance(fbi) > 0) break;
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
+            require(validChunkCount >= batchSize , "insufficient valid chunk count");
             validChunkCount -= batchSize;
             pot += batchSize * (batch.normalisedBalance - leb);
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
         }
+
+        require(lastExpiryBalance >= leb, "current total outpayment should never decrease");
+
         pot += validChunkCount * (lastExpiryBalance - leb);
     }
 
@@ -349,6 +355,7 @@ contract PostageStamp is AccessControl, Pausable {
             if (remainingBalance(fbi) > 0) break;
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
+            require(validChunkCount >= batchSize , "insufficient valid chunk count");
             validChunkCount -= batchSize;
             pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
             tree.remove(fbi, batch.normalisedBalance);
