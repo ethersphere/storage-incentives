@@ -124,7 +124,8 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(r_node_0.commit(obsfucatedHash_0, overlay_0)).to.be.revertedWith(errors.commit.notStaked);
+      const currentRound = await r_node_0.currentRound();
+      await expect(r_node_0.commit(obsfucatedHash_0, overlay_0, currentRound)).to.be.revertedWith(errors.commit.notStaked);
     });
 
     it('should not create a commit with recently staked node', async function () {
@@ -346,7 +347,8 @@ describe('Redistribution', function () {
 
         expect(await r_node_3.wrapCommit(overlay_3, depth_3, hash_3, reveal_nonce_3)).to.be.eq(obsfucatedHash);
 
-        await r_node_3.commit(obsfucatedHash, overlay_3);
+        const currentRound = await r_node_3.currentRound();
+        await r_node_3.commit(obsfucatedHash, overlay_3, currentRound);
 
         expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
@@ -363,7 +365,9 @@ describe('Redistribution', function () {
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-        await r_node_2.commit(obsfucatedHash, overlay_2);
+
+        const currentRound = await r_node_2.currentRound();
+        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
@@ -383,7 +387,8 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
-        await r_node_0.commit(obsfucatedHash_0, overlay_0);
+        const currentRound = await r_node_0.currentRound();
+        await r_node_0.commit(obsfucatedHash_0, overlay_0, currentRound);
 
         const commit_0 = await r_node_0.currentCommits(0);
         expect(commit_0.overlay).to.be.eq(overlay_0);
@@ -408,7 +413,8 @@ describe('Redistribution', function () {
 
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
-        await expect(r_node_0.commit(obsfucatedHash, overlay_2)).to.be.revertedWith(errors.commit.notOwner);
+        const currentRound = await r_node_0.currentRound();
+        await expect(r_node_0.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(errors.commit.notOwner);
       });
 
       it('should not allow duplicate commits', async function () {
@@ -417,11 +423,14 @@ describe('Redistribution', function () {
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-        await r_node_2.commit(obsfucatedHash, overlay_2);
+
+        const currentRound = await r_node_2.currentRound();
+
+        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
-        await expect(r_node_2.commit(obsfucatedHash, overlay_2)).to.be.revertedWith(errors.commit.alreadyCommited);
+        await expect(r_node_2.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(errors.commit.alreadyCommited);
       });
     });
 
@@ -476,7 +485,9 @@ describe('Redistribution', function () {
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-        await r_node_2.commit(obsfucatedHash, overlay_2);
+
+        const currentRound = await r_node_2.currentRound();
+        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -493,7 +504,9 @@ describe('Redistribution', function () {
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-        await r_node_2.commit(obsfucatedHash, overlay_2);
+
+        const currentRound = await r_node_2.currentRound();
+        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -510,7 +523,9 @@ describe('Redistribution', function () {
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-        await r_node_2.commit(obsfucatedHash, overlay_2);
+
+        const currentRound = await r_node_2.currentRound();
+        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -530,7 +545,9 @@ describe('Redistribution', function () {
           const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
           const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-          await r_node_2.commit(obsfucatedHash, overlay_2);
+
+          const currentRound = await r_node_2.currentRound();
+          await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
           expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
@@ -589,16 +606,19 @@ describe('Redistribution', function () {
       describe('two commits with equal stakes', async function () {
         let r_node_1: Contract;
         let r_node_2: Contract;
+        let currentRound: number;
 
         beforeEach(async () => {
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
 
+          currentRound = await r_node_1.currentRound();
+
           const obsfucatedHash_1 = encodeAndHash(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_1.commit(obsfucatedHash_1, overlay_1);
+          await r_node_1.commit(obsfucatedHash_1, overlay_1, currentRound);
 
           const obsfucatedHash_2 = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-          await r_node_2.commit(obsfucatedHash_2, overlay_2);
+          await r_node_2.commit(obsfucatedHash_2, overlay_2, currentRound);
 
           await mineNBlocks(phaseLength);
         });
