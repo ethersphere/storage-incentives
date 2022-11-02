@@ -1,5 +1,5 @@
 import { expect } from './util/chai';
-import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
+import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber } from './util/tools';
 
@@ -42,11 +42,6 @@ const updatedStakeAmount = '10000000000633633';
 const twice_stakeAmount_0 = '20000000000000000';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
-let staker_1: string;
-const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
-const stakeAmount_1 = '10000000000000000';
-const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
 const zeroStake = '0';
 const zeroAmount = '0';
 
@@ -57,7 +52,6 @@ before(async function () {
   redistributor = namedAccounts.redistributor;
   pauser = namedAccounts.pauser;
   staker_0 = namedAccounts.node_0;
-  staker_1 = namedAccounts.node_1;
 });
 
 let stakeRegistry: Contract;
@@ -245,7 +239,7 @@ describe('Staking', function () {
     });
 
     it('should not freeze staked deposit without redistributor role', async function () {
-      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_0);
       await expect(stakeRegistryStaker1.freezeDeposit(overlay_0, freezeTime)).to.be.revertedWith(errors.freeze.noRole);
     });
 
@@ -304,7 +298,7 @@ describe('Staking', function () {
     });
 
     it('should not pause contract without pauser role', async function () {
-      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_0);
       await expect(stakeRegistryStaker1.pause()).to.be.revertedWith(errors.pause.noRole);
     });
 
@@ -322,7 +316,7 @@ describe('Staking', function () {
       const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
       await stakeRegistryPauser.pause();
 
-      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_0);
       await expect(stakeRegistryStaker1.unPause()).to.be.revertedWith(errors.pause.onlyPauseCanUnPause);
     });
 
@@ -358,7 +352,7 @@ describe('Staking', function () {
 
   describe('withdraw from contract', function () {
     let sr_staker_0: Contract;
-    let updatedBlockNumber: Number;
+    let updatedBlockNumber: number;
 
     beforeEach(async function () {
       token = await ethers.getContract('TestToken', deployer);
@@ -404,8 +398,6 @@ describe('Staking', function () {
       const staked_after = await sr_staker_0.stakes(overlay_0);
 
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
-
-      const updatedBlockNumber2 = await getBlockNumber();
 
       expect(staked_after.overlay).to.be.eq(zeroBytes32);
       expect(staked_after.owner).to.be.eq(zeroAddress);
