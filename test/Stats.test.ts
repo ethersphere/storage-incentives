@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Event, Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, createOverlay} from './util/tools'
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
 
 import { keccak256 } from '@ethersproject/keccak256';
 import { arrayify, hexlify } from '@ethersproject/bytes';

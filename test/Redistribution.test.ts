@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Event, Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove} from './util/tools'
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
 
 const phaseLength = 38;
 const roundLength = 152;
@@ -127,7 +127,9 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       const currentRound = await r_node_0.currentRound();
-      await expect(r_node_0.commit(obsfucatedHash_0, overlay_0, currentRound)).to.be.revertedWith(errors.commit.notStaked);
+      await expect(r_node_0.commit(obsfucatedHash_0, overlay_0, currentRound)).to.be.revertedWith(
+        errors.commit.notStaked
+      );
     });
 
     it('should not create a commit with recently staked node', async function () {
@@ -168,7 +170,7 @@ describe('Redistribution', function () {
       depth: 17,
       bucketDepth: 16,
       immutable: false,
-      blocks: 100
+      blocks: 100,
     };
     let stampCreatedBlock: number;
 
@@ -419,7 +421,9 @@ describe('Redistribution', function () {
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_0.currentRound();
-        await expect(r_node_0.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(errors.commit.notOwner);
+        await expect(r_node_0.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(
+          errors.commit.notOwner
+        );
       });
 
       it('should not allow duplicate commits', async function () {
@@ -435,7 +439,9 @@ describe('Redistribution', function () {
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
-        await expect(r_node_2.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(errors.commit.alreadyCommited);
+        await expect(r_node_2.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(
+          errors.commit.alreadyCommited
+        );
       });
     });
 
@@ -590,7 +596,7 @@ describe('Redistribution', function () {
           }
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
@@ -669,7 +675,7 @@ describe('Redistribution', function () {
           // https://github.com/ethers-io/ethers.js/discussions/3057?sort=top
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
@@ -689,7 +695,7 @@ describe('Redistribution', function () {
 
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
 
-          const newPrice = increaseRate[nodesInNeighbourhood] * price1 / 1024;
+          const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
           expect(await postage.lastPrice()).to.be.eq(newPrice);
 
           const sr = await ethers.getContract('StakeRegistry');
@@ -732,7 +738,7 @@ describe('Redistribution', function () {
           }
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
 
           expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
 
@@ -746,7 +752,7 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_1);
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_1));
 
-          const newPrice = increaseRate[nodesInNeighbourhood] * price1 / 1024;
+          const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
           expect(await postage.lastPrice()).to.be.eq(newPrice);
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
@@ -772,7 +778,7 @@ describe('Redistribution', function () {
           await r_node_1.claim();
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
 
           expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
 

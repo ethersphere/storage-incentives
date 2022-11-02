@@ -19,7 +19,7 @@ async function getBlockNumber() {
   return parseInt(blockNumber);
 }
 
-async function setPrevRandDAO(randVal:string) {
+async function setPrevRandDAO(randVal: string) {
   await ethers.provider.send('hardhat_setPrevRandao', [randVal]);
 }
 
@@ -74,7 +74,13 @@ function compareHexAsBinary(_a: string, _b: string, d: number) {
 }
 
 // example: mineOverlaysInDepth("0xac33", "0x00", 6, 10000);
-async function mineOverlaysInDepth(prefix: string, nonce: string, networkID: string, depth: number, maxAttempts: number) {
+async function mineOverlaysInDepth(
+  prefix: string,
+  nonce: string,
+  networkID: string,
+  depth: number,
+  maxAttempts: number
+) {
   let found = false;
   let w, o;
   let i = 0;
