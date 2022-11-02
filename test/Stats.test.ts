@@ -113,7 +113,7 @@ describe('Stats', function () {
     const trials = 200;
 
     it('is fair with 1:3 stake', async function () {
-      const allowed_variance = 0.025;
+      const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
       const nodes = [others[0], others[1]];
 
