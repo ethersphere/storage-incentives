@@ -6,6 +6,8 @@ import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove} from './uti
 const phaseLength = 38;
 const roundLength = 152;
 
+const increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
+
 const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
 
@@ -159,13 +161,14 @@ describe('Redistribution', function () {
     let redistribution: Contract;
     let token: Contract;
     let postage: Contract;
-    const price1 = 100;
+    const price1 = 2048;
     const batch = {
       nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-      initialPaymentPerChunk: 200000,
+      initialPaymentPerChunk: 2000000000,
       depth: 17,
       bucketDepth: 16,
       immutable: false,
+      blocks: 100
     };
     let stampCreatedBlock: number;
 
@@ -174,17 +177,19 @@ describe('Redistribution', function () {
       redistribution = await ethers.getContract('Redistribution');
       token = await ethers.getContract('TestToken', deployer);
 
-      const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
-      await postageStampOracle.setPrice(price1);
+      //initialise, set minimum price, todo: move to deployment
+      const priceOracle = await ethers.getContract('PriceOracle', deployer);
+      await priceOracle.setPrice(price1);
 
       const batchSize = 2 ** batch.depth;
-      const transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
+      const transferAmount = batch.initialPaymentPerChunk * batchSize;
       const expectedNormalisedBalance = batch.initialPaymentPerChunk;
 
       postage = await ethers.getContract('PostageStamp', stamper);
 
       await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
+      await postage.totalPot(); //for testing
       await postage.createBatch(
         stamper,
         batch.initialPaymentPerChunk,
@@ -563,6 +568,7 @@ describe('Redistribution', function () {
 
           await mineNBlocks(phaseLength);
 
+          //calculates totalpot
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
@@ -584,7 +590,7 @@ describe('Redistribution', function () {
           }
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
@@ -624,6 +630,8 @@ describe('Redistribution', function () {
         });
 
         it('if only one reveal, should freeze non-revealer and select revealer as winner', async function () {
+          const nodesInNeighbourhood = 1;
+
           //do not reveal node_1
           await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
@@ -661,7 +669,7 @@ describe('Redistribution', function () {
           // https://github.com/ethers-io/ethers.js/discussions/3057?sort=top
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
@@ -679,6 +687,11 @@ describe('Redistribution', function () {
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_2);
           expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_2));
 
+          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
+
+          const newPrice = increaseRate[nodesInNeighbourhood] * price1 / 1024;
+          expect(await postage.lastPrice()).to.be.eq(newPrice);
+
           const sr = await ethers.getContract('StakeRegistry');
 
           //node_2 stake is preserved and not frozen
@@ -689,13 +702,15 @@ describe('Redistribution', function () {
         });
 
         it('if both reveal, should select correct winner', async function () {
+          const nodesInNeighbourhood = 2;
+
           await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
           await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
           await mineNBlocks(phaseLength);
 
-          expect(await r_node_1.isWinner(overlay_1)).to.be.false;
-          expect(await r_node_2.isWinner(overlay_2)).to.be.true;
+          expect(await r_node_1.isWinner(overlay_1)).to.be.true;
+          expect(await r_node_2.isWinner(overlay_2)).to.be.false;
 
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
@@ -717,19 +732,22 @@ describe('Redistribution', function () {
           }
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
 
-          expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
+          expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
 
           expect(CountCommitsEvent.args[0]).to.be.eq(2);
           expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
+          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_1);
+          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_1);
+          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_1);
           expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000'); //stakedensity?
           expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_1);
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_1));
+
+          const newPrice = increaseRate[nodesInNeighbourhood] * price1 / 1024;
+          expect(await postage.lastPrice()).to.be.eq(newPrice);
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
           expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_1));
@@ -742,7 +760,7 @@ describe('Redistribution', function () {
           //node_2 stake is preserved and not frozen
           expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
 
-          await expect(r_node_2.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
+          await expect(r_node_1.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
         });
 
         it('if incorrect winner claims, correct winner is paid', async function () {
@@ -754,9 +772,9 @@ describe('Redistribution', function () {
           await r_node_1.claim();
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock ) * price1 * 2 ** batch.depth;
 
-          expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
+          expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
 
           const sr = await ethers.getContract('StakeRegistry');
 
