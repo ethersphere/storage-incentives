@@ -93,7 +93,7 @@ describe('PriceOracle', function () {
         await expect(priceOracleN.setPrice(newPrice)).to.be.revertedWith(errors.manual.notAdmin);
 
         const priceOracleU = await ethers.getContract('PriceOracle', updater);
-        await expect(priceOracleN.setPrice(newPrice)).to.be.revertedWith(errors.manual.notAdmin);
+        await expect(priceOracleU.setPrice(newPrice)).to.be.revertedWith(errors.manual.notAdmin);
       });
 
       it('can be updated manually by admin', async function () {
