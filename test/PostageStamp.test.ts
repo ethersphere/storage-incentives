@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Signer } from 'ethers';
-import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, computeBatchId} from './util/tools'
+import { mineNBlocks, computeBatchId } from './util/tools';
 
 // Named accounts used by tests.
 let stamper: string;

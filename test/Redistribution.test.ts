@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
-import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
-import { Event, Contract } from 'ethers';
+import { ethers, deployments, getNamedAccounts } from 'hardhat';
+import { Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
 
 const phaseLength = 38;
@@ -12,8 +12,7 @@ const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
 
 // Named accounts used by tests.
-let deployer: string, stamper: string, oracle: string;
-let others: any;
+let deployer: string, stamper: string;
 
 let node_0: string;
 const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
@@ -30,7 +29,6 @@ const obsfucatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b555
 const overlay_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
 const depth_f = '0x0000000000000000000000000000000000000000000000000000000000000007';
 const reveal_nonce_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
-const obsfucatedHash_f = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let node_1: string;
 const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
@@ -39,8 +37,6 @@ const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555
 const hash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_1 = '0x06';
 const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-const obsfucatedHash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let node_2: string;
 const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
@@ -60,24 +56,19 @@ const reveal_nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 
 let node_4: string;
 const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb02efb';
-const stakeAmount_4 = '100000000000000000';
 const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_4 = '0x06';
-const reveal_nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 // Before the tests, assign accounts
 before(async function () {
   const namedAccounts = await getNamedAccounts();
   deployer = namedAccounts.deployer;
   stamper = namedAccounts.stamper;
-  oracle = namedAccounts.oracle;
   node_0 = namedAccounts.node_0;
   node_1 = namedAccounts.node_1;
   node_2 = namedAccounts.node_2;
   node_3 = namedAccounts.node_3;
   node_4 = namedAccounts.node_4;
-  others = await getUnnamedAccounts();
 });
 
 const errors = {
@@ -113,7 +104,6 @@ describe('Redistribution', function () {
 
   describe('with deployed contract and unstaked node in next round', async function () {
     let redistribution: Contract;
-    let sr_node_0: Contract;
 
     beforeEach(async function () {
       await deployments.fixture();
@@ -140,7 +130,7 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(redistribution.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.revertedWith(
+      await expect(r_node_0.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.revertedWith(
         errors.commit.stakedRecently
       );
     });
@@ -153,7 +143,7 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(redistribution.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.revertedWith(
+      await expect(r_node_0.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.revertedWith(
         errors.commit.stakedRecently
       );
     });
@@ -185,7 +175,6 @@ describe('Redistribution', function () {
 
       const batchSize = 2 ** batch.depth;
       const transferAmount = batch.initialPaymentPerChunk * batchSize;
-      const expectedNormalisedBalance = batch.initialPaymentPerChunk;
 
       postage = await ethers.getContract('PostageStamp', stamper);
 
@@ -268,8 +257,6 @@ describe('Redistribution', function () {
 
     describe('qualifying participants', async function () {
       it('should correctly identify if overlay is allowed to participate in current round', async function () {
-        const initialBlockNumber = await getBlockNumber();
-
         await mineNBlocks(1); //because strict equality enforcing time since staking
 
         expect(await redistribution.currentRound()).to.be.eq(2);
@@ -285,8 +272,6 @@ describe('Redistribution', function () {
         expect(await redistribution.inProximity(round2Anchor, overlay_4, depth_4)).to.be.false;
 
         // 0x00...
-        const sr_node_1 = await ethers.getContract('StakeRegistry', node_1);
-
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.true;
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_1, depth_1)).to.be.true;
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_2, depth_2)).to.be.true;
@@ -324,8 +309,6 @@ describe('Redistribution', function () {
 
     describe('commit phase with no reveals', async function () {
       it('should have correct round anchors', async function () {
-        const initialBlockNumber = await getBlockNumber();
-
         expect(await redistribution.currentPhaseCommit()).to.be.true;
         expect(await redistribution.currentRound()).to.be.eq(2);
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
@@ -579,7 +562,6 @@ describe('Redistribution', function () {
           const receipt2 = await tx2.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
-          const events2: { [index: string]: Event } = {};
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;
@@ -666,9 +648,6 @@ describe('Redistribution', function () {
             if (e.event == 'CountReveals') {
               CountRevealsEvent = e;
             }
-            if (e.event == 'StakeFrozen') {
-              StakeFrozenEvent = e;
-            }
           }
 
           // <sig need something special to get at child events to check stakefrozen event
@@ -721,7 +700,7 @@ describe('Redistribution', function () {
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, StakeFrozenEvent;
+          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;

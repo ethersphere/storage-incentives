@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
-import { Event, Contract } from 'ethers';
+import { Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber } from './util/tools';
 
 // Named accounts used by tests.
@@ -107,7 +107,6 @@ describe('PriceOracle', function () {
       });
 
       it('does not set price less than minimum price', async function () {
-        const currentPrice = await priceOracle.currentPrice();
         const newPrice = 2048;
         await expect(priceOracle.setPrice(newPrice)).to.emit(priceOracle, 'PriceUpdate').withArgs(newPrice);
 
@@ -207,12 +206,12 @@ describe('PriceOracle', function () {
       });
 
       it('if redundany factor is 0', async function () {
-        let priceOracleU = await ethers.getContract('PriceOracle', updater);
+        const priceOracleU = await ethers.getContract('PriceOracle', updater);
         await expect(priceOracleU.adjustPrice(0)).to.be.revertedWith(errors.auto.notZero);
       });
 
       it('if redundany factor is 1 twice', async function () {
-        let priceOracleU = await ethers.getContract('PriceOracle', updater);
+        const priceOracleU = await ethers.getContract('PriceOracle', updater);
 
         const currentPrice = await priceOracle.currentPrice();
         expect(currentPrice).to.be.eq(minPriceString);
@@ -234,7 +233,7 @@ describe('PriceOracle', function () {
       });
 
       it('if redundany factor modulates', async function () {
-        let priceOracleU = await ethers.getContract('PriceOracle', updater);
+        const priceOracleU = await ethers.getContract('PriceOracle', updater);
 
         const currentPrice = await priceOracle.currentPrice();
         expect(currentPrice).to.be.eq(minPriceString);

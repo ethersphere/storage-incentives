@@ -1,20 +1,13 @@
 import { expect } from './util/chai';
-import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
-import { Event, Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
-
-import { keccak256 } from '@ethersproject/keccak256';
-import { arrayify, hexlify } from '@ethersproject/bytes';
+import { ethers, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
+import { mineNBlocks, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
 
 const phaseLength = 38;
 const roundLength = 152;
 
-const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
-const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
-
 // Named accounts used by tests.
 let deployer: string, stamper: string, oracle: string;
-let others: any;
+let others: any[] = [];
 
 // Before the tests, assign accounts
 before(async function () {
@@ -35,14 +28,11 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     immutable: false,
   };
 
-  const token = await ethers.getContract('TestToken', deployer);
-
   const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
   await postageStampOracle.setPrice(price1);
 
   const batchSize = 2 ** batch.depth;
   const transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
-  const expectedNormalisedBalance = batch.initialPaymentPerChunk;
 
   const postage = await ethers.getContract('PostageStamp', stamper);
 
@@ -57,16 +47,12 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     batch.immutable
   );
 
-  const stampCreatedBlock = await getBlockNumber();
-
   const depth = '0x00';
   const hash = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
   const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
   const reveal_nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
   for (let i = 0; i < nodes.length; i++) {
-    const r_node = await ethers.getContract('Redistribution', nodes[i]);
-    const overlay = await createOverlay(nodes[i], '0x00', nonce);
     const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
     await mintAndApprove(deployer, nodes[i], sr_node.address, stakes[i]);
     await sr_node.depositStake(nodes[i], nonce, stakes[i]);
@@ -79,10 +65,6 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
   await mineNBlocks(roundLength * 3 - 15 - nodes.length * 3);
   for (let i = 0; i < trials; i++) {
-    const startRoundBlockNumber = await getBlockNumber();
-
-    const r_nodex = await ethers.getContract('Redistribution', nodes[0]);
-
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
       const overlay = await createOverlay(nodes[i], '0x00', nonce);
@@ -110,8 +92,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
       }
     }
 
-    const tx2 = await r_node.claim();
-    const receipt2 = await tx2.wait();
+    await r_node.claim();
 
     const sr = await ethers.getContract('StakeRegistry');
 
