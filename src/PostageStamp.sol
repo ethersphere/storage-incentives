@@ -6,6 +6,21 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 // import "hardhat/console.sol";
 
+// there are two concpetual variables which are kept track of and updated during various transactions
+// the first is the batch normalised balance. this value is per chunk and represents
+// the remaining balance for that chunk, _as if the chunk had been paid for since the beginning of time_
+// when the batch is bought, the batch is credited with a remaining balance as if the chunk had
+// existed since the beginning of time, all batch normalised balances are therefore absolute
+// using this concept, we can simply define a single figure, the max normalised batch balance
+// such that the batch is valid at any given block. this is called the "currentTotalOutpayment"
+
+// the other variable that is kept track of is the total amount of chunks that are allowed in the swarm
+// at any given time. this is called the "valid chunk count".
+
+// both of these variables are tracked on a global and per batch basis for efficiency purposes.
+
+// expire batch must be
+
 /**
  * @title PostageStamp contract
  * @author The Swarm Authors
@@ -75,7 +90,8 @@ contract PostageStamp is AccessControl, Pausable {
     //
     uint8 public minimumBatchDepth;
 
-    // Combined chunk capacity of valid batches
+    // Combined global chunk capacity of valid batches remaining
+    // at the _value of the last block expire() was called_
     uint256 public validChunkCount;
 
     // Lottery pot at last update
@@ -122,13 +138,19 @@ contract PostageStamp is AccessControl, Pausable {
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
 
-        // per chunk balance times the batch size is what we need to transfer in
+        // per chunk balance times the batch size must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
+        // normalisedBalance is an absolute value, as if the batch had existed
+        // since the contract was deployed, so we must supplement this batch's
+        // _initialBalancePerChunk with the currentTotalOutPayment()
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
+        //expire the batches to update the validChunkCount up to this block
         expire();
+
+        //then add the chunks this batch is responsible for
         validChunkCount += 1 << _depth;
 
         batches[batchId] = Batch({
@@ -229,6 +251,8 @@ contract PostageStamp is AccessControl, Pausable {
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
+        // expire batches up to current block before amending validChunkCount to include
+        // the new chunks resultant from the depth increase
         expire();
         validChunkCount += (1 << _newDepth) - (1 << batch.depth);
 
@@ -276,8 +300,15 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns the current total outpayment
+     * @notice current minimum valid batch normalised balance
+     * @dev batch normalised balance is per chunk
      */
+    // this is an amount that has been normalised for calculation purposes
+    // to be the amount that would have been paid out for all time
+    // if all the batches had started in the block the contract was deployed in
+    // the totalOutPayment figure is stored and updated when setPrice() is called
+    // this is a view function which adds the outpayment that has accumulated
+    // since the last price change to that updated figure
     function currentTotalOutPayment() public view returns (uint256) {
         uint256 blocks = block.number - lastUpdatedBlock;
         uint256 increaseSinceLastUpdate = lastPrice * (blocks);
@@ -323,16 +354,31 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Reclaims expired batches and adds their value to pot
      */
     function expire() public {
+        // remember the previous lastExpiryBalance, this is the lower bound of the
+        // period during which we will check if batches have expired
         uint256 leb = lastExpiryBalance;
+        // update the lastExpiryBalance for next time, this will also for the
+        // upper bound of the period we will check if batches have expired during
         lastExpiryBalance = currentTotalOutPayment();
         for(;;) {
             if(empty()) break;
+            // get the batch with the currently smallest normalised balance
             bytes32 fbi = firstBatchId();
+            // if the batch with the smallest balance has not yet expired
+            // we have already reached the end of the batches we need
+            // to expire during this period, so exit the loop
             if (remainingBalance(fbi) > 0) break;
+            // otherwise, the batch with the smallest balance has _not_ expired
+            // so we must remove this batch's contribution to the global validChunkCount
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
             require(validChunkCount >= batchSize , "insufficient valid chunk count");
             validChunkCount -= batchSize;
+            // since this batch has expired _during_ the period
+            // we add this batch's contribution to the pot
+            // for the period until it expired
+            // this is the per-chunk outPayment of this batch for the period
+            // since the last expiry, multiplied by the batch size in chunks
             pot += batchSize * (batch.normalisedBalance - leb);
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
@@ -340,6 +386,10 @@ contract PostageStamp is AccessControl, Pausable {
 
         require(lastExpiryBalance >= leb, "current total outpayment should never decrease");
 
+        // finally, for all batches that _have not expired yet_
+        // add the total normalised payout of all batches
+        // multiplied by the remaining total valid chunk count
+        // to the pot for the period since the last expiry
         pot += validChunkCount * (lastExpiryBalance - leb);
     }
 
