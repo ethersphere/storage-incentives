@@ -8,7 +8,11 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   await deploy('Redistribution', {
     from: deployer,
-    args: [(await get('StakeRegistry')).address, (await get('PostageStamp')).address, (await get('PriceOracle')).address],
+    args: [
+      (await get('StakeRegistry')).address,
+      (await get('PostageStamp')).address,
+      (await get('PriceOracle')).address,
+    ],
     log: true,
   });
 
