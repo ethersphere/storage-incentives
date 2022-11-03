@@ -18,7 +18,7 @@ A node must have _staked_ at least two _rounds_ prior to their application. If a
 
 Every _N_ blocks, at the end of the previous _reveal phase_, the [redistribution contract](src/Staking.sol) selects a random _round anchor_ which determines which _neighbourhood_ may participate in the current _round_. Eligibility is determined by calculating the proximity of a node's _overlay address_ to the _round anchor_. A node is eligible if their proximity order to the anchor is less than or equal to the canonical _storage depth_ that they use to calculate their _commit hash_.
 
-If eligible to participate, a node will use the chunks in its _reserve_ to calculate a _reserve commitment_. This is the _keccack256_ hash of a the first _m_ chunk addresses when transformed using the standard *hmac* keyed hash function where the _round anchor_ is used as the key. The _reserve commitment_ should be the same for each node in a neighbourhood and represents their ability to access a full canonical reserve of chunks at the time that the _anchor_ was selected. The nodes then combine this with a unique _reveal nonce_, their _overlay_ and their current _storage depth_, defined as the maximum _proximity order_ between their _address_ and that of the furthest chunk that still falls within the node's fixed size _reserve_. The _keccack256_ hash of the concatentation of these values is known as a _commit hash_. This is then submitted to the blockchain during that _round's_ _commit_ phase.
+If eligible to participate, a node will use the chunks in its _reserve_ to calculate a _reserve commitment_. This is the _keccack256_ hash of a the first _m_ chunk addresses when transformed using the standard _hmac_ keyed hash function where the _round anchor_ is used as the key. The _reserve commitment_ should be the same for each node in a neighbourhood and represents their ability to access a full canonical reserve of chunks at the time that the _anchor_ was selected. The nodes then combine this with a unique _reveal nonce_, their _overlay_ and their current _storage depth_, defined as the maximum _proximity order_ between their _address_ and that of the furthest chunk that still falls within the node's fixed size _reserve_. The _keccack256_ hash of the concatentation of these values is known as a _commit hash_. This is then submitted to the blockchain during that _round's_ _commit_ phase.
 
 If nodes in the neighbourhood's _pull sync_ protocols are running as they should, each node in the neighbourhood will calculate the same _reserve commitment hash_ and _storage depth_. However, since the _commit hash_ calculation also includes a random _reveal nonce_ in before it is hashed, each node's _reserve commitment hash_ and _storage depth_ is kept private during the _commit phase_. Once the _commit phase_ is over, the _reveal phase_ begins, and each participating node is expected to send another transaction to the _redistribution contract_ with the corresponding pre-image of the hash, comprising the _reserve commitment_, _storage depth_ and _reveal nonce_.
 
@@ -31,24 +31,44 @@ The entire amount of the total of the _postage batch_ proceeds that have _expire
 As the _seed_ is chosen, the _anchor_ for the next round is revealed. Once it has noticed it is within the _neighbourhood_, a node may begin calculating its
 _reserve commitment_ in preparation for the upcoming _commit phase_, and so the cycle repeats.
 
+# Future Implementations Plan
+
+## Phase 4
+
+Nodes will be expected to submit inclusion proofs during the claim period, which prove...
+
+## Phase 5
+
+Nodes will be expected to submit inclusion proofs during the claim period, which prove inclusion of ...
+
+## End Phase
+
+Relinquish admin rights...
+
+## Emergency
+
+# Deplyment and Bootstrapping Procedure
+
+...
+
 ## Todo
 
-* check and finalise readme
-* add note to explain development phases
-* Note on claiming strategy.
-* Note Bootstrapping procedure.
-* Note of statistical implications and what "Winning" is
-* Attack modelling with financial quanitification
-    * phase now
-    * phase after inclusion proofs are added
-* Add stakefrozen event
-* Do calcs for statistical significance and amend stats
-* Improve comments
-* Solidity remix auto checker thing
-* solidity test coverage?
-* what happens in zero case (i.e. price has not been set) do we need to enforce this during an initialisation step
-* clarify copyBatch usage
-* read through all tests and sanity check preferably many eyes
+- add note to explain development phases
+- Note on claiming strategy.
+- Note Bootstrapping procedure.
+- Note of statistical implications and what "Winning" is
+- Attack modelling with financial quanitification
+  - phase now
+  - phase after inclusion proofs are added
+- Do calcs for statistical significance and amend stats
+- Improve comments
+- Solidity remix auto checker thing
+- solidity test coverage?
+- what happens in zero case (i.e. price has not been set) do we need to enforce this during an initialisation step
+- clarify copyBatch usage
+- read through all tests and sanity check preferably many eyes
+    - check if anything needs to be added and add it
+    - Add stakefrozen event
 
 ## Requirements:
 
@@ -65,10 +85,3 @@ Run `yarn install` to install all depencencies.
 You may run tests with `yarn test`.
 
 Hardhat is configured to deploy all contracts to the testing hardhat devchain and to use all named accounts.
-
-## Deployments
-
-| Network | Address                                                                                                                                           |
-| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| XDai    | [0x6a1a21eca3ab28be85c7ba22b2d6eae5907c900e](https://blockscout.com/xdai/mainnet/address/0x6a1a21eca3ab28be85c7ba22b2d6eae5907c900e/transactions) |
-| Goerli  | [0x621e455C4a139f5C4e4A8122Ce55Dc21630769E4](https://goerli.etherscan.io/address/0x621e455C4a139f5C4e4A8122Ce55Dc21630769E4)                      |
