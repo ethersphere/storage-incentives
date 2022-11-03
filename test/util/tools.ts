@@ -8,29 +8,32 @@ function computeBatchId(sender: string, nonce: string): string {
   return ethers.utils.keccak256(encoded);
 }
 
-async function mineNBlocks(n: number) {
+async function mineNBlocks(n: number): Promise<any> {
   for (let index = 0; index < n; index++) {
     await ethers.provider.send('evm_mine', []);
   }
+  return;
 }
 
-async function getBlockNumber() {
+async function getBlockNumber(): Promise<any> {
   const blockNumber = await ethers.provider.send('eth_blockNumber', []);
   return parseInt(blockNumber);
 }
 
-async function setPrevRandDAO(randVal: string) {
+async function setPrevRandDAO(randVal: string): Promise<any> {
   await ethers.provider.send('hardhat_setPrevRandao', [randVal]);
+  return;
 }
 
-async function mintAndApprove(deployer: string, payee: string, beneficiary: string, transferAmount: string) {
+async function mintAndApprove(deployer: string, payee: string, beneficiary: string, transferAmount: string): Promise<any> {
   const minterTokenInstance = await ethers.getContract('TestToken', deployer);
   await minterTokenInstance.mint(payee, transferAmount);
   const payeeTokenInstance = await ethers.getContract('TestToken', payee);
   await payeeTokenInstance.approve(beneficiary, transferAmount);
+  return;
 }
 
-function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, reveal_nonce_1: string) {
+function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, reveal_nonce_1: string): string {
   const encoded = new Uint8Array(97);
   encoded.set(arrayify(overlay_1));
   encoded.set(arrayify(depth_1), 32);
@@ -40,7 +43,7 @@ function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, revea
 }
 
 //dev purposes only
-async function createOverlay(address: string, networkID: string, nonce: string) {
+async function createOverlay(address: string, networkID: string, nonce: string): Promise<string> {
   const encoded = new Uint8Array(60);
   encoded.set(arrayify(address));
   encoded.set(arrayify(networkID).reverse(), 20);
@@ -48,7 +51,7 @@ async function createOverlay(address: string, networkID: string, nonce: string) 
   return keccak256(hexlify(encoded));
 }
 
-function hexToBinaryArray(h: string) {
+function hexToBinaryArray(h: string): number[] {
   h = h.substring(2);
   const o = [];
   for (let i = 0; i < h.length; i++) {
@@ -61,10 +64,9 @@ function hexToBinaryArray(h: string) {
   return o;
 }
 
-function compareHexAsBinary(_a: string, _b: string, d: number) {
+function compareHexAsBinary(_a: string, _b: string, d: number): any {
   const a = hexToBinaryArray(_a);
   const b = hexToBinaryArray(_b);
-  const match = false;
   for (let i = 0; i < d; i++) {
     if (a[i] != b[i]) {
       return false;
@@ -80,7 +82,7 @@ async function mineOverlaysInDepth(
   networkID: string,
   depth: number,
   maxAttempts: number
-) {
+): Promise<any> {
   let found = false;
   let w, o;
   let i = 0;
@@ -97,6 +99,7 @@ async function mineOverlaysInDepth(
   }
   if (w !== undefined) {
     console.log(`found in ${i} attempts`, 'o a p', o, w.address, w.privateKey);
+    return;
   }
 }
 
