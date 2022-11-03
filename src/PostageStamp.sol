@@ -232,9 +232,9 @@ contract PostageStamp is AccessControl, Pausable {
 
         // updates by removing and then inserting
         // removed normalised balance in ordered tree
-        tree.remove(_batchId, batch.normalisedBalance);        
+        tree.remove(_batchId, batch.normalisedBalance);
         batch.depth = _newDepth;
-        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);        
+        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);
         // insert normalised balance in ordered tree
         tree.insert(_batchId, batch.normalisedBalance);
 
@@ -341,12 +341,14 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Reclaims a limited number of expired batches
      * @dev Might be needed if reclaiming all expired batches would exceed the block gas limit.
      */
-    function expireLimited(uint256 limit) external {
+    function expireLimited(uint256 limit) external returns (bool) {
         uint256 i;
-        for(i = 0; i < limit; i++) {
-            if(empty()) break;
+        for (i = 0; i < limit; i++) {
+            if (empty()) break;
             bytes32 fbi = firstBatchId();
-            if (remainingBalance(fbi) > 0) break;
+            if (remainingBalance(fbi) > 0) {
+                return false;
+            }
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
             validChunkCount -= batchSize;
@@ -354,6 +356,11 @@ contract PostageStamp is AccessControl, Pausable {
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
         }
+        bytes32 fbi = firstBatchId();
+        if (remainingBalance(fbi) > 0) {
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -382,7 +389,7 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
         pot += amount;
     }
-    
+
     /**
      * @notice Set minimum batch depth
      */
