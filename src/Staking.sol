@@ -3,6 +3,7 @@ pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+
 // import "hardhat/console.sol";
 
 /**
@@ -11,16 +12,10 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @dev The postage stamp contracts allows users to create and manage postage stamp batches.
  */
 contract StakeRegistry is AccessControl, Pausable {
-
     /**
      * @dev Emitted when a new batch is created.
      */
-    event StakeUpdated(
-        bytes32 indexed overlay,
-        uint256 stakeAmount,
-        address owner,
-        uint256 lastUpdatedBlock
-    );
+    event StakeUpdated(bytes32 indexed overlay, uint256 stakeAmount, address owner, uint256 lastUpdatedBlock);
 
     event StakeSlashed(bytes32 slashed, uint256 amount);
     event StakeFrozen(bytes32 slashed, uint256 time);
@@ -74,7 +69,7 @@ contract StakeRegistry is AccessControl, Pausable {
         return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
     }
 
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns(uint256) {
+    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns (uint256) {
         return stakes[overlay].lastUpdatedBlockNumber;
     }
 
@@ -86,12 +81,10 @@ contract StakeRegistry is AccessControl, Pausable {
         v = input;
 
         // swap bytes
-        v = ((v & 0xFF00FF00FF00FF00) >> 8) |
-            ((v & 0x00FF00FF00FF00FF) << 8);
+        v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
 
         // swap 2-byte long pairs
-        v = ((v & 0xFFFF0000FFFF0000) >> 16) |
-            ((v & 0x0000FFFF0000FFFF) << 16);
+        v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
 
         // swap 4-byte long pairs
         v = (v >> 32) | (v << 32);
@@ -165,7 +158,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function freezeDeposit(bytes32 overlay, uint256 time) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can freeze stake");
 
-        if ( stakes[overlay].isValue ) {
+        if (stakes[overlay].isValue) {
             emit StakeFrozen(overlay, time);
             stakes[overlay].lastUpdatedBlockNumber = block.number + time;
         }
@@ -181,11 +174,11 @@ contract StakeRegistry is AccessControl, Pausable {
     function slashDeposit(bytes32 overlay, uint256 amount) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can slash stake");
         emit StakeSlashed(overlay, amount);
-        if ( stakes[overlay].isValue ) {
-            if ( stakes[overlay].stakeAmount > amount ) {
+        if (stakes[overlay].isValue) {
+            if (stakes[overlay].stakeAmount > amount) {
                 stakes[overlay].stakeAmount -= amount;
                 stakes[overlay].lastUpdatedBlockNumber = block.number;
-                } else {
+            } else {
                 delete stakes[overlay];
             }
         }
@@ -208,5 +201,4 @@ contract StakeRegistry is AccessControl, Pausable {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
         _unpause();
     }
-
 }

@@ -4,6 +4,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
+
 // import "hardhat/console.sol";
 
 // there are two concpetual variables which are kept track of and updated during various transactions
@@ -133,7 +134,7 @@ contract PostageStamp is AccessControl, Pausable {
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
         // bucket depth should be non-zero and smaller than the depth
-         require(_bucketDepth != 0 && _bucketDepth < _depth && minimumBatchDepth < _bucketDepth, "invalid bucket depth");
+        require(_bucketDepth != 0 && _bucketDepth < _depth && minimumBatchDepth < _bucketDepth, "invalid bucket depth");
         // Derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
@@ -258,9 +259,9 @@ contract PostageStamp is AccessControl, Pausable {
 
         // updates by removing and then inserting
         // removed normalised balance in ordered tree
-        tree.remove(_batchId, batch.normalisedBalance);        
+        tree.remove(_batchId, batch.normalisedBalance);
         batch.depth = _newDepth;
-        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);        
+        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);
         // insert normalised balance in ordered tree
         tree.insert(_batchId, batch.normalisedBalance);
 
@@ -274,7 +275,7 @@ contract PostageStamp is AccessControl, Pausable {
     function remainingBalance(bytes32 _batchId) public view returns (uint256) {
         Batch storage batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist");
-        if (batch.normalisedBalance <= currentTotalOutPayment()){
+        if (batch.normalisedBalance <= currentTotalOutPayment()) {
             return 0;
         }
         return batch.normalisedBalance - currentTotalOutPayment();
@@ -336,7 +337,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Returns true if no batches
      */
-    function empty() public view returns(bool) {
+    function empty() public view returns (bool) {
         return tree.count() == 0;
     }
 
@@ -345,7 +346,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @dev if more than one batch id, returns index at 0, if no batches, reverts
      */
     function firstBatchId() public view returns (bytes32) {
-        uint val = tree.first();
+        uint256 val = tree.first();
         require(val > 0);
         return tree.valueKeyAtIndex(val, 0);
     }
@@ -360,8 +361,8 @@ contract PostageStamp is AccessControl, Pausable {
         // update the lastExpiryBalance for next time, this will also for the
         // upper bound of the period we will check if batches have expired during
         lastExpiryBalance = currentTotalOutPayment();
-        for(;;) {
-            if(empty()) break;
+        for (;;) {
+            if (empty()) break;
             // get the batch with the currently smallest normalised balance
             bytes32 fbi = firstBatchId();
             // if the batch with the smallest balance has not yet expired
@@ -399,8 +400,8 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function expireLimited(uint256 limit) external {
         uint256 i;
-        for(i = 0; i < limit; i++) {
-            if(empty()) break;
+        for (i = 0; i < limit; i++) {
+            if (empty()) break;
             bytes32 fbi = firstBatchId();
             if (remainingBalance(fbi) > 0) break;
             Batch storage batch = batches[fbi];
@@ -416,7 +417,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Returns the total lottery pot so far
      */
-    function totalPot() public returns(uint256) {
+    function totalPot() public returns (uint256) {
         expire();
         uint256 balance = ERC20(bzzToken).balanceOf(address(this));
         return pot < balance ? pot : balance;
@@ -439,7 +440,7 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
         pot += amount;
     }
-    
+
     /**
      * @notice Set minimum batch depth
      */

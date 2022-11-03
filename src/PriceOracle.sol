@@ -18,7 +18,7 @@ contract PriceOracle is AccessControl {
 
     uint256 public currentPrice;
 
-    uint256 public constant minimumPrice = 2 ** 10;
+    uint256 public constant minimumPrice = 2**10;
 
     uint256[] public increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
 
@@ -45,8 +45,11 @@ contract PriceOracle is AccessControl {
         emit PriceUpdate(currentPrice);
     }
 
-    function adjustPrice(uint256 redundancy) external {
+    // function pauseAdjustPrice() {
 
+    // }
+
+    function adjustPrice(uint256 redundancy) external {
         require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
         uint256 multiplier = minimumPrice;
@@ -54,15 +57,15 @@ contract PriceOracle is AccessControl {
 
         require(redundancy > 0, "unexpected zero");
 
-        if ( redundancy > 8 ) {
+        if (redundancy > 8) {
             usedRedundancy = 8;
         }
 
         uint256 ir = increaseRate[usedRedundancy];
 
-        currentPrice = ir * currentPrice / multiplier;
+        currentPrice = (ir * currentPrice) / multiplier;
 
-        if ( currentPrice < minimumPrice ) {
+        if (currentPrice < minimumPrice) {
             currentPrice = minimumPrice;
         }
 
