@@ -1357,7 +1357,7 @@ describe('PostageStamp', function () {
         expect(batchA).equal(await this.postageStamp.firstBatchId());
 
         //        expect(await this.postageStamp.pot()).equal(0 * 2 ** this.batch.depth);
-
+        expect(await this.postageStamp.hasExpired()).equal(true);
         await mineNBlocks(10);
 
         const expectedAmount = 100 * 2 ** this.batch.depth;
@@ -1365,6 +1365,7 @@ describe('PostageStamp', function () {
         expect(await this.postageStamp.expireLimited(1));
 
         expect(await this.postageStamp.pot()).equal(expectedAmount);
+        expect(await this.postageStamp.hasExpired()).equal(false);
       });
     });
 
