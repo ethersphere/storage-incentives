@@ -5,48 +5,59 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
- * @title PostageStaking contract
+ * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
- * @dev The postage stamp contracts allows users to create and manage postage stamp batches.
+ * @dev Allows users to stake tokens in order to be eligible for the Redistribution Schelling co-ordination game.
+ * Stakes are not withdrawable unless the contract is paused, for example in the event of migration to a new staking
+ * contract. Stakes are frozen or slashed by the Redistribution contract in response to violations of the
+ * protocol.
  */
 contract StakeRegistry is AccessControl, Pausable {
     /**
-     * @dev Emitted when a new batch is created.
+     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `stakeamount`, during `lastUpdatedBlock`.
      */
     event StakeUpdated(bytes32 indexed overlay, uint256 stakeAmount, address owner, uint256 lastUpdatedBlock);
 
+    /**
+     * @dev Emitted when a stake for overlay `slashed` is slashed by `amount`.
+     */
     event StakeSlashed(bytes32 slashed, uint256 amount);
+
+    /**
+     * @dev Emitted when a stake for overlay `frozen` for `time` blocks.
+     */
     event StakeFrozen(bytes32 slashed, uint256 time);
 
     struct Stake {
-        //
+        // Overlay of the node that is being staked
         bytes32 overlay;
-        //
+        // Amount of tokens staked
         uint256 stakeAmount;
-        //
+        // Owner of `overlay`
         address owner;
-        //
+        // Block height the stake was updated
         uint256 lastUpdatedBlockNumber;
-        //
+        // Used to indicate presents in stakes struct
         bool isValue;
     }
-
-    // The role allowed to pause
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    // The role allowed to freeze and slash entries
-    bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
-
-    uint64 NetworkId;
 
     // Associate every stake id with overlay data.
     mapping(bytes32 => Stake) public stakes;
 
+    // Role allowed to pause
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    // Role allowed to freeze and slash entries
+    bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
+
+    // Swarm network ID
+    uint64 NetworkId;
+
+    // Address of the staked ERC20 token
     address public bzzToken;
 
-    uint256 public pot;
-
     /**
-     * @param _bzzToken The ERC20 token address to reference in this contract.
+     * @param _bzzToken Address of the staked ERC20 token
+     * @param _NetworkId Swarm network ID
      */
     constructor(address _bzzToken, uint64 _NetworkId) {
         NetworkId = _NetworkId;
@@ -55,26 +66,52 @@ contract StakeRegistry is AccessControl, Pausable {
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 
+    /**
+     * @dev Checks to see if `overlay` is frozen.
+     * @param overlay
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     */
     function overlayNotFrozen(bytes32 overlay) internal view returns (bool) {
         return stakes[overlay].lastUpdatedBlockNumber < block.number;
     }
 
+    /**
+     * @dev Returns the current `stakeAmount` of `overlay`.
+     * @param overlay
+     */
     function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
         return stakes[overlay].stakeAmount;
     }
 
+    /**
+     * @dev Returns the current usable `stakeAmount` of `overlay`.
+     * Checks whether the stake is currently frozen.
+     * @param overlay
+     */
     function usableStakeOfOverlay(bytes32 overlay) public view returns (uint256) {
         return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
     }
 
+    /**
+     * @dev Returns the `lastUpdatedBlockNumber` of `overlay`.
+     */
     function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns (uint256) {
         return stakes[overlay].lastUpdatedBlockNumber;
     }
 
+    /**
+     * @dev Returns the eth address of the owner of `overlay`.
+     * @param overlay
+     */
     function ownerOfOverlay(bytes32 overlay) public view returns (address) {
         return stakes[overlay].owner;
     }
 
+    /**
+     * @dev Please all Endians 🥚.
+     * @param input Eth address used for overlay calculation.
+     */
     function reverse(uint64 input) internal pure returns (uint64 v) {
         v = input;
 
@@ -91,9 +128,9 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Create a new stake or update an existing one.
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
-     * @param _owner eth address used for overlay calculation
-     * @param nonce used for overlay calculation
-     * @param amount deposited amount
+     * @param _owner Eth address used for overlay calculation.
+     * @param nonce Nonce that was used for overlay calculation.
+     * @param amount Deposited amount of ERC20 tokens.
      */
     function depositStake(
         address _owner,
@@ -124,11 +161,11 @@ contract StakeRegistry is AccessControl, Pausable {
         });
     }
 
-    /*
-     * @notice withdraw stake when staking contract paused
-     * @dev can only be called by the owner specifying the associated overlay
-     * @param overlay the overlay selected
-     * @param amount stake amount to be withdrawn
+    /**
+     * @dev Withdraw stake only when the staking contract is paused,
+     * can only be called by the owner specific to the associated `overlay`
+     * @param overlay The overlay to withdraw from
+     * @param amount The amount of ERC20 tokens to be withdrawn
      */
     function withdrawFromStake(bytes32 overlay, uint256 amount) external whenPaused {
         require(stakes[overlay].owner == msg.sender, "only owner can withdraw stake");
@@ -147,9 +184,8 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
-    /*
-     * @notice freeze an existing stake
-     * @dev can only be called by the redistributor
+    /**
+     * @dev Freeze an existing stake, can only be called by the redistributor
      * @param overlay the overlay selected
      * @param time penalty length in blocknumbers
      */
@@ -163,11 +199,9 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice slash and redistribute an existing stake
-     * @dev can only be called by the redistributor
+     * @dev Slash an existing stake, can only be called by the `redistributor`
      * @param overlay the overlay selected
      * @param amount the amount to be slashed
-     *
      */
     function slashDeposit(bytes32 overlay, uint256 amount) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can slash stake");
@@ -183,8 +217,8 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Pause the contract. The contract is provably stopped by renouncing the pauser role and the admin role after pausing
-     * @dev can only be called by the pauser when not paused
+     * @dev Pause the contract. The contract is provably stopped by renouncing
+     the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause the contract");
@@ -192,8 +226,7 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Unpause the contract.
-     * @dev can only be called by the pauser when paused
+     * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
