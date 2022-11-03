@@ -6,8 +6,6 @@ import "./PostageStamp.sol";
 import "./PriceOracle.sol";
 import "./Staking.sol";
 
-// import "hardhat/console.sol";
-
 /**
  * @title Redistribution contract
  * @author The Swarm Authors
