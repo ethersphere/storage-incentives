@@ -5,8 +5,6 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 
-// import "hardhat/console.sol";
-
 // there are two concpetual variables which are kept track of and updated during various transactions
 // the first is the batch normalised balance. this value is per chunk and represents
 // the remaining balance for that chunk, _as if the chunk had been paid for since the beginning of time_

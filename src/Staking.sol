@@ -4,8 +4,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
-// import "hardhat/console.sol";
-
 /**
  * @title PostageStaking contract
  * @author The Swarm Authors
