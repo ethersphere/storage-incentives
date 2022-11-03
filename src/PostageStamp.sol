@@ -412,6 +412,17 @@ contract PostageStamp is AccessControl, Pausable {
         }
     }
 
+    /*
+    * @notice Returns a bool if there is a batch that needs to be expired.
+    */
+    function hasExpired() public view returns(bool) {
+        bytes32 fbi = firstBatchId();
+        if (remainingBalance(fbi) > 0) {
+            return false;
+        }
+        return true;
+    }
+
     /**
      * @notice Returns the total lottery pot so far
      */

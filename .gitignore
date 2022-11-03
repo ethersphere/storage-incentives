@@ -11,6 +11,10 @@ coverage*
 # Node
 node_modules/
 
+# Idea
+.idea/
+.idea/*
+
 # Env
 .env
 
