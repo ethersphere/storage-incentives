@@ -28,6 +28,8 @@ Once the _reveal phase_ is over, the _claim phase_ begins. A random _seed_ is ch
 
 The entire amount of the total of the _postage batch_ proceeds that have _expired_ during this round are _withdrawn_ from the [postage stamp contract](src/Postage.sol) and transferred to the _winner_. Nodes that have revealed _reserve commitments_ or _storage depths_ that do not agree with the _truth teller_ are _frozen_ for a period longer but similarly proportioned to the truthy depth and will have to wait until _unfrozen_ to participate again.
 
+When the claim is submitted, the cardinality of the truthy set of applicants is used as to provide a signal to change the price of storage. If the redundancy per neighbourhood is at the desired amount (4), no action is taken and the price remains static. If it is lower, this indicates an overdemand for storage and an undersupply of storage nodes - the price per chunk per block is increased to cause batches to expire more quickly and to attract more storage nodes to the network. Conversely, if more than 4 nodes per neighbourhood apply with a truthy _reserve commitment_, this indicates an oversupply of storage nodes and the price is decreased to ensure the efficiency of service provision.
+
 As the _seed_ is chosen, the _anchor_ for the next round is revealed. Once it has noticed it is within the _neighbourhood_, a node may begin calculating its
 _reserve commitment_ in preparation for the upcoming _commit phase_, and so the cycle repeats.
 
