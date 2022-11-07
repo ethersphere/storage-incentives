@@ -22,6 +22,8 @@ contract PriceOracle is AccessControl {
 
     uint256[] public increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
 
+    bool public isPaused = false;
+
     // the address of the postageStamp contract
     PostageStamp public postageStamp;
 
@@ -45,31 +47,39 @@ contract PriceOracle is AccessControl {
         emit PriceUpdate(currentPrice);
     }
 
-    // function pauseAdjustPrice() {
+    function pause() external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        isPaused = true;
+    }
 
-    // }
+    function unPause() external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        isPaused = false;
+    }
 
     function adjustPrice(uint256 redundancy) external {
-        require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
+        if(isPaused == false){
+            require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-        uint256 multiplier = minimumPrice;
-        uint256 usedRedundancy = redundancy;
+            uint256 multiplier = minimumPrice;
+            uint256 usedRedundancy = redundancy;
 
-        require(redundancy > 0, "unexpected zero");
+            require(redundancy > 0, "unexpected zero");
 
-        if (redundancy > 8) {
-            usedRedundancy = 8;
+            if (redundancy > 8) {
+                usedRedundancy = 8;
+            }
+
+            uint256 ir = increaseRate[usedRedundancy];
+
+            currentPrice = (ir * currentPrice) / multiplier;
+
+            if (currentPrice < minimumPrice) {
+                currentPrice = minimumPrice;
+            }
+
+            postageStamp.setPrice(currentPrice);
+            emit PriceUpdate(currentPrice);
         }
-
-        uint256 ir = increaseRate[usedRedundancy];
-
-        currentPrice = (ir * currentPrice) / multiplier;
-
-        if (currentPrice < minimumPrice) {
-            currentPrice = minimumPrice;
-        }
-
-        postageStamp.setPrice(currentPrice);
-        emit PriceUpdate(currentPrice);
     }
 }
