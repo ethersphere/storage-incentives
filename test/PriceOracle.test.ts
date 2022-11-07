@@ -87,7 +87,7 @@ describe('PriceOracle', function () {
 
       it('cannot be updated manually by non admin', async function () {
         const currentPrice = await priceOracle.currentPrice();
-        const newPrice = currentPrice + 1024;
+        const newPrice = parseInt(currentPrice) + 1024;
 
         const priceOracleN = await ethers.getContract('PriceOracle', others[1]);
         await expect(priceOracleN.setPrice(newPrice)).to.be.revertedWith(errors.manual.notAdmin);
@@ -98,7 +98,7 @@ describe('PriceOracle', function () {
 
       it('can be updated manually by admin', async function () {
         const currentPrice = await priceOracle.currentPrice();
-        const newPrice = currentPrice + 1024;
+        const newPrice = parseInt(currentPrice) + 1024;
 
         await expect(priceOracle.setPrice(newPrice)).to.emit(priceOracle, 'PriceUpdate').withArgs(newPrice);
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice);
@@ -230,6 +230,28 @@ describe('PriceOracle', function () {
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice2);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice2);
+      });
+
+      it('does not adjust price if paused', async function () {
+        const priceOracleU = await ethers.getContract('PriceOracle', updater);
+
+        const currentPrice = await priceOracle.currentPrice();
+        expect(currentPrice).to.be.eq(minPriceString);
+        expect(await postageStamp.lastPrice()).to.be.eq(minPriceString);
+
+        await priceOracleU.adjustPrice(1);
+
+        await priceOracle.pause();
+
+        const newPrice1 = (increaseRate[1] * parseInt(currentPrice)) / parseInt(minPriceString);
+
+        expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
+        expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
+
+        await priceOracleU.adjustPrice(1);
+
+        expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
+        expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
       });
 
       it('if redundany factor modulates', async function () {
