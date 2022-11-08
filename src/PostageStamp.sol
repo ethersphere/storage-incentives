@@ -160,7 +160,7 @@ contract PostageStamp is AccessControl, Pausable {
             normalisedBalance: normalisedBalance
         });
 
-        require(normalisedBalance > 0, "normalised balance cannot be zero");
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         // insert into the ordered tree
         tree.insert(batchId, normalisedBalance);
@@ -202,7 +202,9 @@ contract PostageStamp is AccessControl, Pausable {
             immutableFlag: _immutable,
             normalisedBalance: normalisedBalance
         });
-        require(normalisedBalance > 0, "normalised balance cannot be zero");
+
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
+
         tree.insert(_batchId, normalisedBalance);
 
         emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
@@ -316,7 +318,7 @@ contract PostageStamp is AccessControl, Pausable {
      * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
      */
     function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause the contract");
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
         _pause();
     }
 
@@ -325,7 +327,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @dev Can only be called by the pauser role while paused.
      */
     function unPause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
         _unpause();
     }
 

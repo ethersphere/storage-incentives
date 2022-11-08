@@ -272,7 +272,7 @@ describe('PostageStamp', function () {
             this.batch.nonce,
             this.batch.immutable
           )
-        ).to.be.revertedWith('normalised balance cannot be zero');
+        ).to.be.revertedWith('normalisedBalance cannot be zero');
       });
 
       it('should not return empty batches', async function () {
@@ -702,7 +702,7 @@ describe('PostageStamp', function () {
             this.batch.nonce,
             this.batch.immutable
           )
-        ).to.be.revertedWith('normalised balance cannot be zero');
+        ).to.be.revertedWith('normalisedBalance cannot be zero');
       });
 
       it('should not return empty batches', async function () {
