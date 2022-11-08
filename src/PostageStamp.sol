@@ -98,7 +98,6 @@ contract PostageStamp is AccessControl, Pausable {
 
     // the price from the last update
     uint256 public lastPrice;
-    // the block at which the last update occured
     // Price from the last update.
     // Block at which the last update occured.
     uint256 public lastUpdatedBlock;
