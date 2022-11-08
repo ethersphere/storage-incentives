@@ -189,19 +189,6 @@ describe('PostageStamp', function () {
         ).to.be.revertedWith('ERC20: transfer amount exceeds balance');
       });
 
-      it('should not allow zero address as owner', async function () {
-        await expect(
-          this.postageStamp.createBatch(
-            zeroAddress,
-            this.batch.initialPaymentPerChunk,
-            this.batch.depth,
-            this.batch.bucketDepth,
-            this.batch.nonce,
-            this.batch.immutable
-          )
-        ).to.be.revertedWith('owner cannot be the zero address');
-      });
-
       it('should not allow zero as bucket depth', async function () {
         await expect(
           this.postageStamp.createBatch(
