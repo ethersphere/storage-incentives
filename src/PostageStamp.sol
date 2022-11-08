@@ -130,6 +130,7 @@ contract PostageStamp is AccessControl, Pausable {
         bytes32 _nonce,
         bool _immutable
     ) external whenNotPaused {
+        require(_owner != address(0), "owner cannot be the zero address");
         // bucket depth should be non-zero and smaller than the depth
         require(_bucketDepth != 0 && _bucketDepth < _depth && minimumBatchDepth <= _bucketDepth, "invalid bucket depth");
         // Derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
