@@ -68,7 +68,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @dev Checks to see if `overlay` is frozen.
-     * @param overlay
+     * @param overlay Overlay of staked overlay
      *
      * Returns a boolean value indicating whether the operation succeeded.
      */
@@ -78,7 +78,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @dev Returns the current `stakeAmount` of `overlay`.
-     * @param overlay
+     * @param overlay Overlay of node
      */
     function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
         return stakes[overlay].stakeAmount;
@@ -87,7 +87,7 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @dev Returns the current usable `stakeAmount` of `overlay`.
      * Checks whether the stake is currently frozen.
-     * @param overlay
+     * @param overlay Overlay of node
      */
     function usableStakeOfOverlay(bytes32 overlay) public view returns (uint256) {
         return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
@@ -102,14 +102,14 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @dev Returns the eth address of the owner of `overlay`.
-     * @param overlay
+     * @param overlay Overlay of node
      */
     function ownerOfOverlay(bytes32 overlay) public view returns (address) {
         return stakes[overlay].owner;
     }
 
     /**
-     * @dev Please all Endians 🥚.
+     * @dev Please both Endians 🥚.
      * @param input Eth address used for overlay calculation.
      */
     function reverse(uint64 input) internal pure returns (uint64 v) {
