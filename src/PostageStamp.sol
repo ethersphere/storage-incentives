@@ -88,6 +88,7 @@ contract PostageStamp is AccessControl, Pausable {
 
     //
     uint8 public minimumBatchDepth;
+    uint8 public minimumBatchDepth = 16;
 
     // Combined global chunk capacity of valid batches remaining
     // at the _value of the last block expire() was called_
@@ -108,7 +109,6 @@ contract PostageStamp is AccessControl, Pausable {
      */
     constructor(address _bzzToken) {
         bzzToken = _bzzToken;
-        minimumBatchDepth = 15;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
@@ -131,7 +131,7 @@ contract PostageStamp is AccessControl, Pausable {
         bool _immutable
     ) external whenNotPaused {
         // bucket depth should be non-zero and smaller than the depth
-        require(_bucketDepth != 0 && _bucketDepth < _depth && minimumBatchDepth < _bucketDepth, "invalid bucket depth");
+        require(_bucketDepth != 0 && _bucketDepth < _depth && minimumBatchDepth <= _bucketDepth, "invalid bucket depth");
         // Derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
