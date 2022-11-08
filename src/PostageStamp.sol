@@ -87,8 +87,6 @@ contract PostageStamp is AccessControl, Pausable {
     // Total out payment per chunk, at the blockheight of the last price change.
     uint256 private totalOutPayment;
 
-    //
-    uint8 public minimumBatchDepth;
     // Minimum batch depth that is allowed to be purchased.
     uint8 public minimumBatchDepth = 16;
 
