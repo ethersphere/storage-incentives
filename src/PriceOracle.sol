@@ -47,11 +47,20 @@ contract PriceOracle is AccessControl {
         emit PriceUpdate(currentPrice);
     }
 
+    /**
+     * @notice Pause the price adjustment mechanism.
+     * @dev Can only be called by the admin role.
+     */
     function pause() external {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
         isPaused = true;
     }
 
+
+    /**
+     * @notice Un-pause the price adjustment mechanism if it is paused.
+     * @dev Can only be called by the admin role.
+     */
     function unPause() external {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
         isPaused = false;

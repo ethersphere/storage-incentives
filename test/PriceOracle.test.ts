@@ -44,6 +44,17 @@ describe('PriceOracle', function () {
       expect(await priceOracle.hasRole(updaterRole, deployer)).to.be.true;
     });
 
+    it('should pause/un-pause the price oracle', async function () {
+      const priceOracle = await ethers.getContract('PriceOracle');
+      const updaterRole = await priceOracle.DEFAULT_ADMIN_ROLE();
+      expect(await priceOracle.hasRole(updaterRole, deployer)).to.be.true;
+      expect(await priceOracle.isPaused).to.be.false;
+      await priceOracle.pause();
+      expect(await priceOracle.isPaused).to.be.true;
+      await priceOracle.unPause();
+      expect(await priceOracle.isPaused).to.be.false;
+    });
+
     it('should set the postage stamp contract', async function () {
       const priceOracle = await ethers.getContract('PriceOracle');
       const postageStamp = await priceOracle.postageStamp();
