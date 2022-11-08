@@ -8,10 +8,11 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
  * @dev Allows users to stake tokens in order to be eligible for the Redistribution Schelling co-ordination game.
- * Stakes are not withdrawable unless the contract is paused, for example in the event of migration to a new staking
+ * Stakes are not withdrawable unless the contract is paused, e.g. in the event of migration to a new staking
  * contract. Stakes are frozen or slashed by the Redistribution contract in response to violations of the
  * protocol.
  */
+
 contract StakeRegistry is AccessControl, Pausable {
     /**
      * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `stakeamount`, during `lastUpdatedBlock`.
