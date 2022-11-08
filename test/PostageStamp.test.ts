@@ -1436,7 +1436,7 @@ describe('PostageStamp', function () {
 
         await mineNBlocks(10);
 
-        expect(await postageStamp.connect(receiver).setMinimumBatchDepth(16));
+        expect(await postageStamp.connect(receiver).setMinimumBatchDepth(17));
 
         const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
 
