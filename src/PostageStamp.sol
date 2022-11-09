@@ -147,7 +147,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
         //update validChunkCount to remove currently expired batches
-        expire();
+        expireLimited(type(uint256).max);
 
         //then add the chunks this batch will contribute
         validChunkCount += 1 << _depth;
@@ -254,7 +254,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         // expire batches up to current block before amending validChunkCount to include
         // the new chunks resultant of the depth increase
-        expire();
+        expireLimited(type(uint256).max);
         validChunkCount += (1 << _newDepth) - (1 << batch.depth);
 
         // update by removing batch and then reinserting
@@ -348,22 +348,28 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Top up the pot with the balance that has accumulated due to expired or part expired batches
-     * since the last expiry.
+     * @notice Reclaims a limited number of expired batches
+     * @dev Can be used if reclaiming all expired batches would exceed the block gas limit, causing other
+     * contract method calls to fail.
+     * @param limit The maximum number of batches to expire.
      */
-    function expire() public {
+    function expireLimited(uint256 limit) public {
         // the lower bound of the normalised balance for which we will check if batches have expired
         uint256 leb = lastExpiryBalance;
-        // the upper bound of the normalised balance for which we will check if batches have expired
-        lastExpiryBalance = currentTotalOutPayment();
-        for (;;) {
+        uint256 i;
+        for (i = 0; i < limit; i++) {
             if (empty()) break;
             // get the batch with the smallest normalised balance
             bytes32 fbi = firstBatchId();
             // if the batch with the smallest balance has not yet expired
             // we have already reached the end of the batches we need
             // to expire, so exit the loop
-            if (remainingBalance(fbi) > 0) break;
+            if (remainingBalance(fbi) > 0) {
+                // the upper bound of the normalised balance for which we will check if batches have expired
+                // value is updated when there are no expired batches left
+                lastExpiryBalance = currentTotalOutPayment();
+                break;
+            }
             // otherwise, the batch with the smallest balance has expired,
             // so we must remove the chunks this batch contributes to the global validChunkCount
             Batch storage batch = batches[fbi];
@@ -382,26 +388,6 @@ contract PostageStamp is AccessControl, Pausable {
         pot += validChunkCount * (lastExpiryBalance - leb);
     }
 
-    /**
-     * @notice Reclaims a limited number of expired batches
-     * @dev Can be used if reclaiming all expired batches would exceed the block gas limit, causing other
-     * contract method calls to fail.
-     * @param limit The maximum number of batches to expire.
-     */
-    function expireLimited(uint256 limit) external {
-        uint256 i;
-        for (i = 0; i < limit; i++) {
-            if (empty()) break;
-            bytes32 fbi = firstBatchId();
-            if (remainingBalance(fbi) > 0) break;
-            Batch storage batch = batches[fbi];
-            uint256 batchSize = 1 << batch.depth;
-            validChunkCount -= batchSize;
-            pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
-            tree.remove(fbi, batch.normalisedBalance);
-            delete batches[fbi];
-        }
-    }
 
     /**
      * @notice Inidicates there are batches waiting to be processed by _expire_.
@@ -418,7 +404,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice The current pot.
      */
     function totalPot() public returns (uint256) {
-        expire();
+        expireLimited(type(uint256).max);
         uint256 balance = ERC20(bzzToken).balanceOf(address(this));
         return pot < balance ? pot : balance;
     }
