@@ -35,7 +35,7 @@ import "./Staking.sol";
  * have their stakes "frozen" for a period of rounds proportional to their reported depth.
  */
 contract Redistribution is AccessControl, Pausable {
-    // An elgible user may commit to an obsfucated hash during the commit phase...
+    // An eligible user may commit to an _obsfucatedHash_ during the commit phase...
     struct Commit {
         bytes32 overlay;
         address owner;
@@ -43,7 +43,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 obfuscatedHash;
         bool revealed;
     }
-    // ...then provide the actual values that are the pre-image of the _obsfucatedHash_
+    // ...then provide the actual values that are the constituents of the pre-image of the _obsfucatedHash_
     // during the reveal phase.
     struct Reveal {
         address owner;
