@@ -358,7 +358,10 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 leb = lastExpiryBalance;
         uint256 i;
         for (i = 0; i < limit; i++) {
-            if (empty()) break;
+            if (empty()) {
+                lastExpiryBalance = currentTotalOutPayment();
+                break;
+            } 
             // get the batch with the smallest normalised balance
             bytes32 fbi = firstBatchId();
             // if the batch with the smallest balance has not yet expired
