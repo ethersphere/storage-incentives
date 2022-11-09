@@ -9,70 +9,93 @@ import "./Staking.sol";
 /**
  * @title Redistribution contract
  * @author The Swarm Authors
- * @dev The redistribution contracts allows users to create and manage postage stamp batches.
+ * @dev Implements a Schelling Co-ordination game to form consensus around the Reserve Commitment hash. This takes
+ * place in three phases: _commit_, _reveal_ and _claim_.
+ *
+ * A node, upon establishing that it _isParticipatingInUpcomingRound_, i.e. it's overlay falls within proximity order
+ * of its reported depth, prepares a "reserve commitment hash" and calculates the "storage depth" using the chunks
+ * it is currently stores in its reserve. These values should be the same for every node in a neighbourhood, and
+ * represent the Schelling point. Each eligible node may use these values, together with a random, single use, secret
+ * _revealNonce_ and their _overlay_ as the pre-image values for the obsfucated _commit_.
+ *
+ * Once the _commit_ round has elapsed, participating nodes must provide the values used to calculate their obsfucated
+ * _commit_ hash, which, once verified for correctness and proximity to the anchor are retained in the _currentReveals_.
+ * Nodes that have commited but do not reveal the correct pre-image values will have their stake "frozen" for a period
+ * of rounds proportional to their reported depth.
+ *
+ * During the _reveal_ round, the randomness is updated after every successful reveal. Once the reveal round
+ * is concluded, the _currentRoundAnchor_ is updated and users can determine if they will be eligible their overlay
+ * will be eligible for the next commit phase using _isParticipatingInUpcomingRound_.
+ *
+ * When the _reveal_ phase has been concluded, the claim phase can begin. At this point the truth teller and winner
+ * are already determined. By calling _isWinner_, an applicant node can run the relevant logic do determine if they have
+ * been selected as the beneficiary of this round. When calling _claim_, the current pot from the PostageStamp contract
+ * is withdrawn and transferred to the beneficiaries address. Nodes that have revealed values that differ from the truth,
+ * have their stakes "frozen" for a period of rounds proportional to their reported depth.
  */
 contract Redistribution is AccessControl, Pausable {
+    // An elgible user may commit to an obsfucated hash during the commit phase...
     struct Commit {
-        //
         bytes32 overlay;
-        // Owner of this commit
         address owner;
-        // Normalised balance per chunk.
         uint256 stake;
-        //
         bytes32 obfuscatedHash;
-        //
         bool revealed;
     }
-
+    // ...then provide the actual values that are the pre-image of the _obsfucatedHash_
+    // during the reveal phase.
     struct Reveal {
-        // Owner of this commit
         address owner;
-        //
         bytes32 overlay;
-        // Normalised balance per chunk.
         uint256 stake;
-        //
         uint256 stakeDensity;
-        //
         bytes32 hash;
-        //
         uint8 depth;
     }
 
-    //
+    // The address of the linked PostageStamp contract.
     PostageStamp public PostageContract;
-    //
+    // The address of the linked PriceOracle contract.
     PriceOracle public OracleContract;
-    //
+    // The address of the linked Staking contract.
     StakeRegistry public Stakes;
-    //
+
+    // Commits for the current round.
     Commit[] public currentCommits;
-    //
+    // Reveals for the current round.
     Reveal[] public currentReveals;
-    //
+
+    // Role allowed to pause.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    //
+
+    // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
-    //
+
+    // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 currentRevealRoundAnchor;
-    //
+
+    // The current random value from which we will random.
+    // inputs for selection of the truth teller and beneficiary.
     bytes32 seed;
-    //
+
+    // The miniumum stake allowed to be staked using the Staking contract.
     uint256 public minimumStake = 100000000000000000;
-    //
+
+    // The number of the currently active round phases.
     uint256 public currentCommitRound;
-    //
     uint256 public currentRevealRound;
-    //
     uint256 public currentClaimRound;
-    //
+
+    // The length of a round in blocks.
     uint256 public roundLength = 152;
-    //
+
+    // The reveal of the winner of the last round.
     Reveal public winner;
 
     /**
-     * @param staking the registry used by this contract
+     * @param staking the address of the linked Staking contract.
+     * @param postageContract the address of the linked PostageStamp contract.
+     * @param oracleContract the address of the linked PriceOracle contract.
      */
     constructor(
         address staking,
@@ -96,16 +119,27 @@ contract Redistribution is AccessControl, Pausable {
      */
     event TruthSelected(bytes32 hash, uint8 depth);
 
-    //these events to be removed after testing phase pending some other usefulness being found
+    // Next two events to be removed after testing phase pending some other usefulness being found.
+    /**
+     * @dev Emits the number of commits being processed by the claim phase.
+     */
     event CountCommits(uint256 _count);
-    event CountReveals(uint256 _count);
-    event Log(string l);
-    event LogBytes32(string l, bytes32 b);
 
+    /**
+     * @dev Emits the number of reveals being processed by the claim phase.
+     */
+    event CountReveals(uint256 _count);
+
+    /**
+     * @notice The number of the current round.
+     */
     function currentRound() public view returns (uint256) {
         return (block.number / roundLength);
     }
 
+    /**
+     * @notice Returns true if current block is during commit phase.
+     */
     function currentPhaseCommit() public view returns (bool) {
         if (block.number % roundLength < roundLength / 4) {
             return true;
@@ -113,6 +147,9 @@ contract Redistribution is AccessControl, Pausable {
         return false;
     }
 
+    /**
+     * @notice Returns true if current block is during reveal phase.
+     */
     function currentPhaseReveal() public view returns (bool) {
         uint256 number = block.number % roundLength;
         if ( number >= roundLength / 4 && number < roundLength / 2 ) {
@@ -121,6 +158,9 @@ contract Redistribution is AccessControl, Pausable {
         return false;
     }
 
+    /**
+     * @notice Returns true if current block is during claim phase.
+     */
     function currentPhaseClaim() public view returns (bool){
         if ( block.number % roundLength >= roundLength / 2 ) {
             return true;
@@ -128,6 +168,9 @@ contract Redistribution is AccessControl, Pausable {
         return false;
     }
 
+    /**
+     * @notice Returns true if current block is during reveal phase.
+     */
     function currentRoundReveals() public view returns (Reveal[] memory) {
         require(currentPhaseClaim(), "not in claim phase");
         uint256 cr = currentRound();
@@ -136,10 +179,14 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Commit in a round
-     * @dev
-     * @param _obfuscatedHash The owner of the new batch.
-     * @param _overlay The initial balance per chunk of the batch.
+     * @notice Begin application for a round if eligible. Commit a hashed value for which the pre-image will be
+     * subsequently revealed.
+     * @dev If a node's overlay is _inProximity_(_depth_) of the _currentRoundAnchor_, that node may compute an
+     * _obsfucatedHash_ by providing their _overlay_, reported storage _depth_, reserve commitment _hash_ and a
+     * randomly generated, and secret _revealNonce_ to the _wrapCommit_ method.
+     * @param _obfuscatedHash The calculated hash resultant of the required pre-image values.
+     * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
+     * and be derived from the same key pair as the message sender.
      */
     function commit(
         bytes32 _obfuscatedHash,
@@ -160,6 +207,8 @@ contract Redistribution is AccessControl, Pausable {
             "node must have staked before last round"
         );
 
+        // if we are in a new commit phase, reset the array of commits and
+        // set the currentCommitRound to be the current one
         if (cr != currentCommitRound) {
             delete currentCommits;
             currentCommitRound = cr;
@@ -183,6 +232,12 @@ contract Redistribution is AccessControl, Pausable {
         );
     }
 
+
+    /**
+     * @notice Returns the current random seed which is used to determine later utilised random numbers.
+     * If rounds have elapsed without reveals, hash the seed with an incremented nonce to produce a new
+     * random seed and hence a new round anchor.
+     */
     function currentSeed() public view returns (bytes32) {
         uint256 cr = currentRound();
         bytes32 currentSeedValue = seed;
@@ -195,6 +250,10 @@ contract Redistribution is AccessControl, Pausable {
         return currentSeedValue;
     }
 
+    /**
+     * @notice Returns the seed which will become current once the next commit phase begins.
+     * Used to determine what the next round's anchor will be.
+     */
     function nextSeed() public view returns (bytes32) {
         uint256 cr = currentRound() + 1;
         bytes32 currentSeedValue = seed;
@@ -207,16 +266,20 @@ contract Redistribution is AccessControl, Pausable {
         return currentSeedValue;
     }
 
-    //
-    //
-
+    /**
+     * @notice Updates the source of randomness. Uses block.difficulty in pre-merge chains, this is substituted
+     * to block.prevrandao in post merge chains.
+     */
     function updateRandomness() private {
         seed = keccak256(abi.encode(seed, block.difficulty));
     }
 
-    //
-    //
-
+    /**
+     * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
+     * @param A An overlay address to compare.
+     * @param B An overlay address to compare.
+     * @param minimum Minimum proximity order.
+     */
     function inProximity(
         bytes32 A,
         bytes32 B,
@@ -228,9 +291,14 @@ contract Redistribution is AccessControl, Pausable {
         return uint256(A ^ B) < uint256(2**(256 - minimum));
     }
 
-    //
-    //
-
+    /**
+     * @notice Hash the pre-image values to the obsfucated hash.
+     * @dev _revealNonce_ must be randomly generated, used once and kept secret until the reveal phase.
+     * @param _overlay The overlay address of the applicant.
+     * @param _depth The reported depth.
+     * @param _hash The reserve commitment hash.
+     * @param revealNonce A random, single use, secret nonce.
+     */
     function wrapCommit(
         bytes32 _overlay,
         uint8 _depth,
@@ -240,9 +308,13 @@ contract Redistribution is AccessControl, Pausable {
         return keccak256(abi.encodePacked(_overlay, _depth, _hash, revealNonce));
     }
 
-    //
-    //
-
+    /**
+     * @notice Reveal the pre-image values used to generate commit provided during this round's commit phase.
+     * @param _overlay The overlay address of the applicant.
+     * @param _depth The reported depth.
+     * @param _hash The reserve commitment hash.
+     * @param revealNonce The nonce used to generate the commit that is being revealed.
+     */
     function reveal(
         bytes32 _overlay,
         uint8 _depth,
@@ -294,9 +366,10 @@ contract Redistribution is AccessControl, Pausable {
         require(false, "no matching commit or hash");
     }
 
-    //
-    //
-
+    /**
+     * @notice Determine if a the owner of a given overlay will be the beneficiary of the claim phase.
+     * @param _overlay The overlay address of the applicant.
+     */
     function isWinner(bytes32 _overlay) public view returns (bool) {
         require(currentPhaseClaim(), "winner not determined yet");
         uint256 cr = currentRound();
@@ -349,6 +422,11 @@ contract Redistribution is AccessControl, Pausable {
         return (winnerIs == _overlay);
     }
 
+    /**
+     * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
+     * @param overlay The overlay address of the applicant.
+     * @param depth The storage depth the applicant intends to report.
+     */
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
         require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
         require(
@@ -359,6 +437,9 @@ contract Redistribution is AccessControl, Pausable {
         return inProximity(overlay, currentRoundAnchor(), depth);
     }
 
+    /**
+     * @notice The random value used to choose the selected truth teller.
+     */
     function currentTruthSelectionAnchor() private view returns (string memory) {
         require(currentPhaseClaim(), "not determined for current round yet");
         uint256 cr = currentRound();
@@ -367,6 +448,9 @@ contract Redistribution is AccessControl, Pausable {
         return string(abi.encodePacked(seed, "0"));
     }
 
+    /**
+     * @notice The random value used to choose the selected beneficiary.
+     */
     function currentWinnerSelectionAnchor() private view returns (string memory) {
         require(currentPhaseClaim(), "not determined for current round yet");
         uint256 cr = currentRound();
@@ -375,6 +459,10 @@ contract Redistribution is AccessControl, Pausable {
         return string(abi.encodePacked(seed, "1"));
     }
 
+    /**
+     * @notice The anchor used to determine eligibility for the current round.
+     * @dev A node must be within proximity order of less than or equal to the storage depth they intend to report.
+     */
     function currentRoundAnchor() public view returns (bytes32 returnVal) {
         uint256 cr = currentRound();
 
@@ -391,6 +479,10 @@ contract Redistribution is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Conclude the current round by identifying the selected truth teller and beneficiary.
+     * @dev
+     */
     function claim() external whenNotPaused {
         require(currentPhaseClaim(), "not in claim phase");
 
