@@ -200,7 +200,7 @@ contract Redistribution is AccessControl, Pausable {
         require(cr >= _roundNumber, "commit round not started yet");
 
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
-        require(nstake >= minimumStake, "staked must exceed minimum");
+        require(nstake >= minimumStake, "stake must exceed minimum");
         require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner must match sender");
 
         require(
@@ -218,7 +218,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
-            require(currentCommits[i].overlay != _overlay, "can only commit once per round");
+            require(currentCommits[i].overlay != _overlay, "only one commit each per round");
         }
 
         currentCommits.push(

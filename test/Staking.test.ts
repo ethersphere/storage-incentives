@@ -27,10 +27,10 @@ const errors = {
     currentlyFrozen: 'overlay currently frozen',
   },
   pause: {
-    noRole: 'only pauser can pause the contract',
+    noRole: 'only pauser can pause',
     currentlyPaused: 'Pausable: paused',
     notCurrentlyPaused: 'Pausable: not paused',
-    onlyPauseCanUnPause: 'only pauser can unpause the contract',
+    onlyPauseCanUnPause: 'only pauser can unpause',
   },
 };
 

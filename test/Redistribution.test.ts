@@ -73,10 +73,10 @@ before(async function () {
 
 const errors = {
   commit: {
-    notOwner: 'owner must match sender to be able to commit',
-    notStaked: 'node must have staked at least minimum stake',
+    notOwner: 'owner must match sender',
+    notStaked: 'stake must exceed minimum',
     stakedRecently: 'stake updated recently',
-    alreadyCommited: 'participant already committed in this round',
+    alreadyCommited: 'only one commit each per round',
   },
   reveal: {
     noCommits: 'round received no commits',
