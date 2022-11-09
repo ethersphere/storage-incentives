@@ -96,9 +96,8 @@ contract PostageStamp is AccessControl, Pausable {
     // Lottery pot at last update.
     uint256 public pot;
 
-    // the price from the last update
-    uint256 public lastPrice;
     // Price from the last update.
+    uint256 public lastPrice = 0;
     // Block at which the last update occured.
     uint256 public lastUpdatedBlock;
     // Normalised balance at the blockheight expire() was last called.
