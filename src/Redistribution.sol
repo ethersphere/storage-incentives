@@ -115,14 +115,14 @@ contract Redistribution is AccessControl, Pausable {
 
     function currentPhaseReveal() public view returns (bool) {
         uint256 number = block.number % roundLength;
-        if (number >= roundLength / 4 && number <= roundLength / 2) {
+        if ( number >= roundLength / 4 && number < roundLength / 2 ) {
             return true;
         }
         return false;
     }
 
-    function currentPhaseClaim() public view returns (bool) {
-        if (block.number % roundLength > roundLength / 2) {
+    function currentPhaseClaim() public view returns (bool){
+        if ( block.number % roundLength >= roundLength / 2 ) {
             return true;
         }
         return false;
