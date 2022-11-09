@@ -294,6 +294,9 @@ describe('PostageStamp', function () {
       });
 
       it('should not allow batch creation when paused', async function () {
+        const price = 1;
+        await setPrice(price);
+        console.log('price' + (await this.postageStamp.getPrice()));
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
         await expect(
@@ -309,7 +312,7 @@ describe('PostageStamp', function () {
       });
 
       it('should include totalOutpayment in the normalised balance', async function () {
-        const price = 100;
+        const price = 15;
         await setPrice(price);
 
         await expect(
@@ -371,7 +374,7 @@ describe('PostageStamp', function () {
       it('should delete expired batches', async function () {
         const price = 1;
         await setPrice(price);
-
+        expect(await this.postageStamp.getPrice()).equal(1);
         const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
         await this.postageStamp.createBatch(
           stamper,
@@ -509,6 +512,9 @@ describe('PostageStamp', function () {
       });
 
       it('should fire the BatchCreated event', async function () {
+        const price = 1;
+        await setPrice(price);
+        console.log('price' + (await this.postageStamp.getPrice()));
         await expect(
           this.postageStamp.copyBatch(
             stamper,

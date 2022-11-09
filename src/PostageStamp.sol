@@ -87,7 +87,7 @@ contract PostageStamp is AccessControl, Pausable {
     uint256 private totalOutPayment;
 
     //
-    uint8 public minimumBatchDepth;
+//    uint8 public minimumBatchDepth;
     uint8 public minimumBatchDepth = 16;
 
     // Combined global chunk capacity of valid batches remaining
@@ -143,12 +143,15 @@ contract PostageStamp is AccessControl, Pausable {
 
         // normalisedBalance is an absolute value, as if the batch had existed
         // since the contract was deployed, so we must supplement this batch's
-        // _initialBalancePerChunk with the currentTotalOutPayment()
-        uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
+
+//        // _initialBalancePerChunk with the currentTotalOutPayment()
+//        uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
         //expire the batches to update the validChunkCount up to this block
         expire();
 
+        // _initialBalancePerChunk with the currentTotalOutPayment()
+        uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
         //then add the chunks this batch is responsible for
         validChunkCount += 1 << _depth;
 
@@ -285,15 +288,13 @@ contract PostageStamp is AccessControl, Pausable {
     function setPrice(uint256 _price) external {
         require(hasRole(PRICE_ORACLE_ROLE, msg.sender), "only price oracle can set the price");
 
-        // if there was a last price, charge for the time since the last update with the last price
-        if (lastPrice != 0) {
-            totalOutPayment = currentTotalOutPayment();
-        }
-
         lastPrice = _price;
-        lastUpdatedBlock = block.number;
 
         emit PriceUpdate(_price);
+    }
+
+    function getPrice() public view returns(uint256){
+        return lastPrice;
     }
 
     /**
@@ -351,59 +352,94 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Reclaims expired batches and adds their value to pot
      */
     function expire() public {
-        // remember the previous lastExpiryBalance, this is the lower bound of the
-        // period during which we will check if batches have expired
-        uint256 leb = lastExpiryBalance;
-        // update the lastExpiryBalance for next time, this will also for the
-        // upper bound of the period we will check if batches have expired during
-        lastExpiryBalance = currentTotalOutPayment();
-        for (;;) {
-            if (empty()) break;
-            // get the batch with the currently smallest normalised balance
-            bytes32 fbi = firstBatchId();
-            // if the batch with the smallest balance has not yet expired
-            // we have already reached the end of the batches we need
-            // to expire during this period, so exit the loop
-            if (remainingBalance(fbi) > 0) break;
-            // otherwise, the batch with the smallest balance has _not_ expired
-            // so we must remove this batch's contribution to the global validChunkCount
-            Batch storage batch = batches[fbi];
-            uint256 batchSize = 1 << batch.depth;
-            validChunkCount -= batchSize;
-            // since this batch has expired _during_ the period
-            // we add this batch's contribution to the pot
-            // for the period until it expired
-            // this is the per-chunk outPayment of this batch for the period
-            // since the last expiry, multiplied by the batch size in chunks
-            pot += batchSize * (batch.normalisedBalance - leb);
-            tree.remove(fbi, batch.normalisedBalance);
-            delete batches[fbi];
+        lastUpdatedBlock = block.number;
+
+        // if there was a last price, charge for the time since the last update with the last price
+        if (lastPrice != 0) {
+            totalOutPayment = currentTotalOutPayment();
+            unchecked{
+                expireLimited(uint256(0) - 1);
+            }
         }
-        // finally, for all batches that _have not expired yet_
-        // add the total normalised payout of all batches
-        // multiplied by the remaining total valid chunk count
-        // to the pot for the period since the last expiry
-        pot += validChunkCount * (lastExpiryBalance - leb);
     }
+    //    function expire() public {
+    //        // remember the previous lastExpiryBalance, this is the lower bound of the
+    //        // period during which we will check if batches have expired
+    //        uint256 leb = lastExpiryBalance;
+    //        // update the lastExpiryBalance for next time, this will also for the
+    //        // upper bound of the period we will check if batches have expired during
+    //        lastExpiryBalance = currentTotalOutPayment();
+    //        for (;;) {
+    //            if (empty()) break;
+    //            // get the batch with the currently smallest normalised balance
+    //            bytes32 fbi = firstBatchId();
+    //            // if the batch with the smallest balance has not yet expired
+    //            // we have already reached the end of the batches we need
+    //            // to expire during this period, so exit the loop
+    //            if (remainingBalance(fbi) > 0) break;
+    //            // otherwise, the batch with the smallest balance has _not_ expired
+    //            // so we must remove this batch's contribution to the global validChunkCount
+    //            Batch storage batch = batches[fbi];
+    //            uint256 batchSize = 1 << batch.depth;
+    //            validChunkCount -= batchSize;
+    //            // since this batch has expired _during_ the period
+    //            // we add this batch's contribution to the pot
+    //            // for the period until it expired
+    //            // this is the per-chunk outPayment of this batch for the period
+    //            // since the last expiry, multiplied by the batch size in chunks
+    //            pot += batchSize * (batch.normalisedBalance - leb);
+    //            tree.remove(fbi, batch.normalisedBalance);
+    //            delete batches[fbi];
+    //        }
+    //        // finally, for all batches that _have not expired yet_
+    //        // add the total normalised payout of all batches
+    //        // multiplied by the remaining total valid chunk count
+    //        // to the pot for the period since the last expiry
+    //        pot += validChunkCount * (lastExpiryBalance - leb);
+    //    }
 
     /**
      * @notice Reclaims a limited number of expired batches
      * @dev Might be needed if reclaiming all expired batches would exceed the block gas limit.
      */
-    function expireLimited(uint256 limit) external {
+    function expireLimited(uint256 limit) public {
+        uint256 expiredOutPayment;
+        uint256 leb = lastExpiryBalance;
+        lastExpiryBalance = currentTotalOutPayment();
         uint256 i;
-        for (i = 0; i < limit; i++) {
-            if (empty()) break;
+        for(i=0;i<limit;i++) {
+            if(empty()) break;
             bytes32 fbi = firstBatchId();
-            if (remainingBalance(fbi) > 0) break;
             Batch storage batch = batches[fbi];
+            if (currentTotalOutPayment() < batch.normalisedBalance) break;
+            expiredOutPayment = batch.normalisedBalance - totalOutPayment;
+
             uint256 batchSize = 1 << batch.depth;
+            require(validChunkCount >= batchSize , "insufficient valid chunk count");
             validChunkCount -= batchSize;
-            pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
+
+            pot += batchSize * expiredOutPayment;
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
         }
+        totalOutPayment += expiredOutPayment;
+        lastUpdatedBlock += expiredOutPayment/lastPrice;
+        pot += validChunkCount * expiredOutPayment;
     }
+    //    function expireLimited(uint256 limit) external {
+    //        uint256 i;
+    //        for (i = 0; i < limit; i++) {
+    //            if (empty()) break;
+    //            bytes32 fbi = firstBatchId();
+    //            if (remainingBalance(fbi) > 0) break;
+    //            Batch storage batch = batches[fbi];
+    //            uint256 batchSize = 1 << batch.depth;
+    //            validChunkCount -= batchSize;
+    //            pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
+    //            tree.remove(fbi, batch.normalisedBalance);
+    //            delete batches[fbi];
+    //        }
+    //    }
 
     /*
     * @notice Returns a bool if there is a batch that needs to be expired.
@@ -420,7 +456,6 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Returns the total lottery pot so far
      */
     function totalPot() public returns (uint256) {
-        expire();
         uint256 balance = ERC20(bzzToken).balanceOf(address(this));
         return pot < balance ? pot : balance;
     }
@@ -430,6 +465,7 @@ contract PostageStamp is AccessControl, Pausable {
      */
 
     function withdraw(address beneficiary) external {
+        expire();
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
         require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
         pot = 0;
