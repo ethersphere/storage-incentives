@@ -361,7 +361,7 @@ contract PostageStamp is AccessControl, Pausable {
             if (empty()) {
                 lastExpiryBalance = currentTotalOutPayment();
                 break;
-            } 
+            }
             // get the batch with the smallest normalised balance
             bytes32 fbi = firstBatchId();
             // if the batch with the smallest balance has not yet expired
@@ -393,14 +393,13 @@ contract PostageStamp is AccessControl, Pausable {
 
 
     /**
-     * @notice Inidicates there are batches waiting to be processed by _expire_.
+     * @notice Indicates whether expired batches exist.
      */
-    function hasExpired() public view returns(bool) {
-        bytes32 fbi = firstBatchId();
-        if (remainingBalance(fbi) > 0) {
+    function expiredBatchesExist() public view returns (bool) {
+        if (empty()){
             return false;
         }
-        return true;
+        return !(remainingBalance(firstBatchId()) > 0);
     }
 
     /**
