@@ -1243,7 +1243,7 @@ describe('PostageStamp', function () {
     describe('when pausing', function () {
       it('should not allow anybody but the pauser to pause', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', stamper);
-        await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause the contract');
+        await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause');
       });
     });
 
@@ -1259,7 +1259,7 @@ describe('PostageStamp', function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
         const postageStamp2 = await ethers.getContract('PostageStamp', stamper);
-        await expect(postageStamp2.unPause()).to.be.revertedWith('only pauser can unpause the contract');
+        await expect(postageStamp2.unPause()).to.be.revertedWith('only pauser can unpause');
       });
 
       it('should not allow unpausing when not paused', async function () {
