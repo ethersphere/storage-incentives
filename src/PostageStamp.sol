@@ -214,7 +214,7 @@ contract PostageStamp is AccessControl, Pausable {
     function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external whenNotPaused {
         Batch storage batch = batches[_batchId];
 
-        require(batch.owner != address(0), "batch does not exist");
+        require(batch.owner != address(0), "batch does not exist or has expired");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
@@ -266,7 +266,7 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function remainingBalance(bytes32 _batchId) public view returns (uint256) {
         Batch storage batch = batches[_batchId];
-        require(batch.owner != address(0), "batch does not exist");
+        require(batch.owner != address(0), "batch does not exist or expired");
         if (batch.normalisedBalance <= currentTotalOutPayment()) {
             return 0;
         }
