@@ -399,7 +399,7 @@ contract PostageStamp is AccessControl, Pausable {
         if (empty()){
             return false;
         }
-        return !(remainingBalance(firstBatchId()) > 0);
+        return (remainingBalance(firstBatchId()) <= 0);
     }
 
     /**
