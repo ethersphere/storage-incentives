@@ -8,19 +8,19 @@ function computeBatchId(sender: string, nonce: string): string {
   return ethers.utils.keccak256(encoded);
 }
 
-async function mineNBlocks(n: number): Promise<any> {
+async function mineNBlocks(n: number): Promise<undefined> {
   for (let index = 0; index < n; index++) {
     await ethers.provider.send('evm_mine', []);
   }
   return;
 }
 
-async function getBlockNumber(): Promise<any> {
+async function getBlockNumber(): Promise<number> {
   const blockNumber = await ethers.provider.send('eth_blockNumber', []);
   return parseInt(blockNumber);
 }
 
-async function setPrevRandDAO(randVal: string): Promise<any> {
+async function setPrevRandDAO(randVal: string): Promise<undefined> {
   await ethers.provider.send('hardhat_setPrevRandao', [randVal]);
   return;
 }
@@ -30,7 +30,7 @@ async function mintAndApprove(
   payee: string,
   beneficiary: string,
   transferAmount: string
-): Promise<any> {
+): Promise<undefined> {
   const minterTokenInstance = await ethers.getContract('TestToken', deployer);
   await minterTokenInstance.mint(payee, transferAmount);
   const payeeTokenInstance = await ethers.getContract('TestToken', payee);
@@ -69,7 +69,7 @@ function hexToBinaryArray(h: string): number[] {
   return o;
 }
 
-function compareHexAsBinary(_a: string, _b: string, d: number): any {
+function compareHexAsBinary(_a: string, _b: string, d: number): boolean {
   const a = hexToBinaryArray(_a);
   const b = hexToBinaryArray(_b);
   for (let i = 0; i < d; i++) {
@@ -87,7 +87,7 @@ async function mineOverlaysInDepth(
   networkID: string,
   depth: number,
   maxAttempts: number
-): Promise<any> {
+): Promise<undefined> {
   let found = false;
   let w, o;
   let i = 0;
