@@ -414,7 +414,6 @@ describe('PostageStamp', function () {
         const initialPaymentPerChunk0 = price0 * 8;
         const initialPaymentPerChunk1 = price0 * 4;
         const initialPaymentPerChunk2 = price0 * 16;
-        // const initialPaymentPerChunk3 = price0;
 
         const transferAmount0 = initialPaymentPerChunk0 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount0.toString());
@@ -433,8 +432,6 @@ describe('PostageStamp', function () {
 
         const batch0 = computeBatchId(stamper, nonce0);
         expect(await postageStamp.firstBatchId()).to.equal(batch0);
-
-        // expect(await postageStamp.pot()).equal(0);
 
         const transferAmount1 = initialPaymentPerChunk1 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount1.toString());
@@ -455,8 +452,6 @@ describe('PostageStamp', function () {
         const batch1 = computeBatchId(stamper, nonce1);
         expect(await postageStamp.firstBatchId()).to.equal(batch1);
 
-        // expect(await postageStamp.pot()).equal(1 << batch.depth);
-
         const transferAmount2 = initialPaymentPerChunk2 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount2.toString());
 
@@ -476,40 +471,19 @@ describe('PostageStamp', function () {
         expect(await postageStamp.firstBatchId()).to.equal(batch1);
         expect(await postageStamp.firstBatchId()).not.to.equal(batch2);
 
-        const outpaymentSinceBuyStamp0 = ((await getBlockNumber()) - buyStamp0Block) * price0;
-        const outpaymentSinceBuyStamp1 = ((await getBlockNumber()) - buyStamp1Block) * price0;
-        const outpaymentSinceBuyStamp2 = ((await getBlockNumber()) - buyStamp2Block) * price0;
-
-        expect(await postageStamp.remainingBalance(batch0)).to.equal(initialPaymentPerChunk0 - outpaymentSinceBuyStamp0);
-        expect(await postageStamp.remainingBalance(batch1)).to.equal(initialPaymentPerChunk1 - outpaymentSinceBuyStamp1);
-        expect(await postageStamp.remainingBalance(batch2)).to.equal(initialPaymentPerChunk2 - outpaymentSinceBuyStamp2);
-
         await mineNBlocks(1);
 
         expect(await postageStamp.firstBatchId()).to.equal(batch1);
         expect(await postageStamp.firstBatchId()).not.to.equal(batch2);
 
-        const outpaymentSinceBuyStamp0_2 = ((await getBlockNumber()) - buyStamp0Block) * price0;
-        const outpaymentSinceBuyStamp1_2 = ((await getBlockNumber()) - buyStamp1Block) * price0;
-        const outpaymentSinceBuyStamp2_2 = ((await getBlockNumber()) - buyStamp2Block) * price0;
-
-        expect(await postageStamp.remainingBalance(batch0)).to.equal(initialPaymentPerChunk0 - outpaymentSinceBuyStamp0_2);
-        expect(await postageStamp.remainingBalance(batch1)).to.equal(initialPaymentPerChunk1 - outpaymentSinceBuyStamp1_2);
-        expect(await postageStamp.remainingBalance(batch2)).to.equal(initialPaymentPerChunk2 - outpaymentSinceBuyStamp2_2);
-
         await postageStamp.expire();
-
-        const outpaymentSinceBuyStamp2_3 = ((await getBlockNumber()) - buyStamp2Block) * price0;
-
-        await expect(postageStamp.remainingBalance(batch0)).to.be.revertedWith('batch does not exist or expired');
-        await expect(postageStamp.remainingBalance(batch1)).to.be.revertedWith('batch does not exist or expired');
-        expect(await postageStamp.remainingBalance(batch2)).to.equal(initialPaymentPerChunk2 - outpaymentSinceBuyStamp2_3);
 
         expect(batch0).not.equal(await postageStamp.firstBatchId());
         expect(batch1).not.equal(await postageStamp.firstBatchId());
         expect(batch2).equal(await postageStamp.firstBatchId());
       });
 
+      // todo add this and perhaps other, longer tests
       // it('should delete many expired batches', async function () {
       //   const price = 2048;
       //   await setPrice(price);
@@ -548,11 +522,15 @@ describe('PostageStamp', function () {
       //   expect(await postageStamp.pot()).equal(210 * 2 ** batch.depth);
       // });
 
-      it('should delete expired batches', async function () {
-        const initialPaymentPerChunk0 = price0 * 8;
-        const initialPaymentPerChunk1 = price0 * 4;
-        const initialPaymentPerChunk2 = price0 * 16;
-        // const initialPaymentPerChunk3 = price0;
+      it('should calculate the correct remaining balances and update the pot', async function () {
+        const blocksBeforeExpired0 = 8;
+        const initialPaymentPerChunk0 = price0 * blocksBeforeExpired0;
+
+        const blocksBeforeExpired1 = 4;
+        const initialPaymentPerChunk1 = price0 * blocksBeforeExpired1;
+
+        const blocksBeforeExpired2 = 16;
+        const initialPaymentPerChunk2 = price0 * blocksBeforeExpired2;
 
         const transferAmount0 = initialPaymentPerChunk0 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount0.toString());
@@ -569,10 +547,16 @@ describe('PostageStamp', function () {
 
         const buyStamp0Block = await getBlockNumber();
 
-        const batch0 = computeBatchId(stamper, nonce0);
-        expect(await postageStamp.firstBatchId()).to.equal(batch0);
+        expect(await postageStamp.pot()).equal(0);
 
-        // expect(await postageStamp.pot()).equal(0);
+        await postageStamp.expire();
+
+        const blocksElapsed0Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
+
+        const blocksCharged0Stamp0 = (blocksBeforeExpired0 - blocksElapsed0Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed0Stamp0 ;
+        const outpayment0Stamp0 = price0 * blocksCharged0Stamp0 * 2 ** batch.depth;
+
+        expect(await postageStamp.pot()).equal(outpayment0Stamp0);
 
         const transferAmount1 = initialPaymentPerChunk1 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount1.toString());
@@ -591,9 +575,24 @@ describe('PostageStamp', function () {
         const buyStamp1Block = await getBlockNumber();
 
         const batch1 = computeBatchId(stamper, nonce1);
-        expect(await postageStamp.firstBatchId()).to.equal(batch1);
 
-        // expect(await postageStamp.pot()).equal(1 << batch.depth);
+        await postageStamp.expire();
+
+        const blocksElapsed1Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
+
+        const blocksCharged1Stamp0 = (blocksBeforeExpired0 - blocksElapsed1Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed1Stamp0 ;
+
+        const outpayment1Stamp0 = price0 * blocksCharged1Stamp0 * 2 ** batch.depth;
+
+        const blocksElapsed1Stamp1 = ((await getBlockNumber()) - buyStamp1Block);
+
+        const blocksCharged1Stamp1 = (blocksBeforeExpired1 - blocksElapsed1Stamp1) < 0 ? blocksBeforeExpired1 : blocksElapsed1Stamp1 ;
+
+        const outpayment1Stamp1 = price0 * blocksCharged1Stamp1 * 2 ** batch.depth;
+
+        const expectedPot1 = outpayment1Stamp0 + outpayment1Stamp1;
+
+        expect(await postageStamp.pot()).equal(expectedPot1);
 
         const transferAmount2 = initialPaymentPerChunk2 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount2.toString());
@@ -611,41 +610,44 @@ describe('PostageStamp', function () {
         const buyStamp2Block = await getBlockNumber();
 
         const batch2 = computeBatchId(stamper, nonce2);
-        expect(await postageStamp.firstBatchId()).to.equal(batch1);
-        expect(await postageStamp.firstBatchId()).not.to.equal(batch2);
-
-        const outpaymentSinceBuyStamp0 = ((await getBlockNumber()) - buyStamp0Block) * price0;
-        const outpaymentSinceBuyStamp1 = ((await getBlockNumber()) - buyStamp1Block) * price0;
-        const outpaymentSinceBuyStamp2 = ((await getBlockNumber()) - buyStamp2Block) * price0;
-
-        expect(await postageStamp.remainingBalance(batch0)).to.equal(initialPaymentPerChunk0 - outpaymentSinceBuyStamp0);
-        expect(await postageStamp.remainingBalance(batch1)).to.equal(initialPaymentPerChunk1 - outpaymentSinceBuyStamp1);
-        expect(await postageStamp.remainingBalance(batch2)).to.equal(initialPaymentPerChunk2 - outpaymentSinceBuyStamp2);
-
-        await mineNBlocks(1);
-
-        expect(await postageStamp.firstBatchId()).to.equal(batch1);
-        expect(await postageStamp.firstBatchId()).not.to.equal(batch2);
-
-        const outpaymentSinceBuyStamp0_2 = ((await getBlockNumber()) - buyStamp0Block) * price0;
-        const outpaymentSinceBuyStamp1_2 = ((await getBlockNumber()) - buyStamp1Block) * price0;
-        const outpaymentSinceBuyStamp2_2 = ((await getBlockNumber()) - buyStamp2Block) * price0;
-
-        expect(await postageStamp.remainingBalance(batch0)).to.equal(initialPaymentPerChunk0 - outpaymentSinceBuyStamp0_2);
-        expect(await postageStamp.remainingBalance(batch1)).to.equal(initialPaymentPerChunk1 - outpaymentSinceBuyStamp1_2);
-        expect(await postageStamp.remainingBalance(batch2)).to.equal(initialPaymentPerChunk2 - outpaymentSinceBuyStamp2_2);
 
         await postageStamp.expire();
 
-        const outpaymentSinceBuyStamp2_3 = ((await getBlockNumber()) - buyStamp2Block) * price0;
+        const blocksElapsed2Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
+        const blocksCharged2Stamp0 = (blocksBeforeExpired0 - blocksElapsed2Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed2Stamp0 ;
+        const outpayment2Stamp0 = price0 * blocksCharged2Stamp0 * 2 ** batch.depth;
 
-        await expect(postageStamp.remainingBalance(batch0)).to.be.revertedWith('batch does not exist or expired');
-        await expect(postageStamp.remainingBalance(batch1)).to.be.revertedWith('batch does not exist or expired');
-        expect(await postageStamp.remainingBalance(batch2)).to.equal(initialPaymentPerChunk2 - outpaymentSinceBuyStamp2_3);
+        const blocksElapsed2Stamp1 = ((await getBlockNumber()) - buyStamp1Block);
+        const blocksCharged2Stamp1 = (blocksBeforeExpired1 - blocksElapsed2Stamp1) < 0 ? blocksBeforeExpired1 : blocksElapsed2Stamp1 ;
+        const outpayment2Stamp1 = price0 * blocksCharged2Stamp1 * 2 ** batch.depth;
 
-        expect(batch0).not.equal(await postageStamp.firstBatchId());
-        expect(batch1).not.equal(await postageStamp.firstBatchId());
-        expect(batch2).equal(await postageStamp.firstBatchId());
+        const blocksElapsed2Stamp2 = ((await getBlockNumber()) - buyStamp2Block);
+        const blocksCharged2Stamp2 = (blocksBeforeExpired2 - blocksElapsed2Stamp2) < 0 ? blocksBeforeExpired2 : blocksElapsed2Stamp2 ;
+        const outpayment2Stamp2 = price0 * blocksCharged2Stamp2 * 2 ** batch.depth;
+
+        const expectedPot2 = outpayment2Stamp0 + outpayment2Stamp1 + outpayment2Stamp2;
+
+        expect(await postageStamp.pot()).equal(expectedPot2);
+
+        await mineNBlocks(1);
+
+        await postageStamp.expire();
+
+        const blocksElapsed3Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
+        const blocksCharged3Stamp0 = (blocksBeforeExpired0 - blocksElapsed3Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed3Stamp0 ;
+        const outpayment3Stamp0 = price0 * blocksCharged3Stamp0 * 2 ** batch.depth;
+
+        const blocksElapsed3Stamp1 = ((await getBlockNumber()) - buyStamp1Block);
+        const blocksCharged3Stamp1 = (blocksBeforeExpired1 - blocksElapsed3Stamp1) < 0 ? blocksBeforeExpired1 : blocksElapsed3Stamp1 ;
+        const outpayment3Stamp1 = price0 * blocksCharged3Stamp1 * 2 ** batch.depth;
+
+        const blocksElapsed3Stamp2 = ((await getBlockNumber()) - buyStamp2Block);
+        const blocksCharged3Stamp2 = (blocksBeforeExpired2 - blocksElapsed3Stamp2) < 0 ? blocksBeforeExpired2 : blocksElapsed3Stamp2 ;
+        const outpayment3Stamp2 = price0 * blocksCharged3Stamp2 * 2 ** batch.depth;
+
+        const expectedPot3 = outpayment3Stamp0 + outpayment3Stamp1 + outpayment3Stamp2;
+
+        expect(await postageStamp.pot()).equal(expectedPot3);
       });
 
     });
@@ -1088,7 +1090,7 @@ describe('PostageStamp', function () {
 
         const batch2Id = computeBatchId(stamper, batch2.nonce);
 
-        expect(batch.id).equal(await postageStamp.firstBatchId());
+        expect(await postageStamp.firstBatchId()).equal(batch.id);
 
         const batch0TopUpBlocks = 40;
         const topUpAmountBatch0 = price0 * batch0TopUpBlocks;
@@ -1098,7 +1100,7 @@ describe('PostageStamp', function () {
 
         await postageStamp.topUp(batch.id, topUpAmountBatch0);
 
-        expect(batch2Id).equal(await postageStamp.firstBatchId());
+        expect(await postageStamp.firstBatchId()).equal(batch2Id);
       });
     });
 
@@ -1246,101 +1248,53 @@ describe('PostageStamp', function () {
 
         const batch2Id = computeBatchId(stamper, batch2.nonce);
 
-        expect(batch.id).equal(await postageStamp.firstBatchId());
+        expect(await postageStamp.firstBatchId()).equal(batch.id);
 
         await postageStamp.increaseDepth(batch2Id, batch2NewDepth);
 
-        expect(batch2Id).equal(await postageStamp.firstBatchId());
+        expect(await postageStamp.firstBatchId()).equal(batch2Id);
       });
 
-    //   it('should delete expired batches', async function () {
-      // diffficult
-    //     const price = 1;
-    //     await setPrice(price);
+      it('should delete expired batches', async function () {
+        const batch2NewDepth = 24;
+        const batch2NewDepth2 = 36;
+        const batch2Blocks = 200;
+        const batch2 = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abc1',
+          initialPaymentPerChunk: price0 * batch2Blocks,
+          depth: 17,
+          immutable: false,
+          bucketDepth: 16,
+        };
+        const batch2TransferAmount = price0 * batch2Blocks * 2 ** batch2.depth;
 
-    //     const initialExpectedPot = price * 2 ** batch.depth + price * 2 ** batch.depth;
-    //     let numberOfBatches = 1;
-    //     let newBlocks = 0;
-    //     let expectedPot = initialExpectedPot;
+        await mintAndApprove(deployer, stamper, postageStamp.address, batch2TransferAmount.toString());
 
-    //     const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000001234';
-    //     await postageStamp.createBatch(
-    //       stamper,
-    //       8,
-    //       batch.depth,
-    //       batch.bucketDepth,
-    //       nonce0,
-    //       batch.immutable
-    //     );
-    //     const batch0 = computeBatchId(stamper, nonce0);
-    //     expect(batch0).equal(await postageStamp.firstBatchId());
+        await postageStamp.createBatch(
+          stamper,
+          batch2.initialPaymentPerChunk,
+          batch2.depth,
+          batch2.bucketDepth,
+          batch2.nonce,
+          batch2.immutable
+        );
+        const buyStamp2Block = await getBlockNumber();
 
-    //     expect(await postageStamp.pot()).equal(expectedPot);
+        const batch2Id = computeBatchId(stamper, batch2.nonce);
 
-    //     numberOfBatches++;
-    //     newBlocks = 1;
+        expect(await postageStamp.firstBatchId()).equal(batch.id);
 
-    //     const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
-    //     await postageStamp.createBatch(
-    //       stamper,
-    //       3,
-    //       batch.depth,
-    //       batch.bucketDepth,
-    //       nonce1,
-    //       batch.immutable
-    //     );
-    //     const batch1 = computeBatchId(stamper, nonce1);
-    //     expect(batch1).equal(await postageStamp.firstBatchId());
+        await postageStamp.increaseDepth(batch2Id, batch2NewDepth);
 
-    //     expectedPot += numberOfBatches * newBlocks * 2 ** batch.depth;
-    //     expect(await postageStamp.pot()).equal(expectedPot);
+        expect(await postageStamp.firstBatchId()).equal(batch2Id);
 
-    //     numberOfBatches++;
-    //     newBlocks = 1;
+        await postageStamp.increaseDepth(batch2Id, batch2NewDepth2);
 
-    //     const nonce2 = '0x0000000000000000000000000000000000000000000000000000000000001236';
-    //     await postageStamp.createBatch(
-    //       stamper,
-    //       7,
-    //       batch.depth,
-    //       batch.bucketDepth,
-    //       nonce2,
-    //       batch.immutable
-    //     );
-    //     const batch2 = computeBatchId(stamper, nonce2);
-    //     expect(batch1).equal(await postageStamp.firstBatchId());
-    //     expect(batch2).not.equal(await postageStamp.firstBatchId());
+        await postageStamp.expire();
 
-    //     const stamp = await postageStamp.batches(batch1);
-    //     expect(stamp[0]).to.equal(stamper);
-    //     expect(stamp[1]).to.equal(batch.depth);
-    //     expect(stamp[2]).to.equal(batch.immutable);
-    //     expect(stamp[3]).to.equal(205);
+        expect(await postageStamp.firstBatchId()).equal(batch.id);
 
-    //     expectedPot += numberOfBatches * newBlocks * 2 ** batch.depth;
-    //     expect(await postageStamp.pot()).equal(expectedPot);
-
-    //     numberOfBatches++;
-    //     newBlocks = 1;
-
-    //     await mineNBlocks(2);
-    //     newBlocks = 3;
-
-    //     expect(await postageStamp.pot()).equal(expectedPot);
-
-    //     expect(batch1).equal(await postageStamp.firstBatchId());
-
-    //     await postageStamp.increaseDepth(batch2, batch.depth + 1);
-
-    //     const expiredEarlier = 1;
-
-    //     expectedPot += (numberOfBatches * newBlocks - expiredEarlier) * 2 ** batch.depth;
-    //     expect(await postageStamp.pot()).equal(expectedPot);
-
-    //     expect(batch1).not.equal(await postageStamp.firstBatchId());
-    //     expect(batch2).equal(await postageStamp.firstBatchId());
-    //   });
-    // });
+      });
 
     });
 
@@ -1417,56 +1371,151 @@ describe('PostageStamp', function () {
       });
     });
 
-    describe('when expireLimited is called', function () {
-      // beforeEach(async function () {
-      //   postageStamp = await ethers.getContract('PostageStamp', stamper);
-      //   token = await ethers.getContract('TestToken', deployer);
+    describe('expiring batches', function () {
+      let postageStamp: Contract, token: Contract, priceOracle: Contract;
+      let batch0: any;
+      let batch1: any;
+      let batch2: any;
+      let batch0Size: number, transferAmount0: number;
+      let batch1Size: number, transferAmount1: number;
+      let batch2Size: number, transferAmount2: number;
+      let price0 = 1024;
+      let setPrice0Block: number, buyStamp0Block: number, buyStamp1Block: number, buyStamp2Block: number;
+      let initialBatch0Blocks = 10;
+      let initialBatch1Blocks = 10;
+      let initialBatch2Blocks = 200;
+      let batch0Id: string, batch1Id: string, batch2Id: string;
 
-      //   batch = {
-      //     nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-      //     initialPaymentPerChunk: 4096,
-      //     depth: 17,
-      //     immutable: false,
-      //     bucketDepth: 16,
-      //   };
+      beforeEach(async function () {
+        postageStamp = await ethers.getContract('PostageStamp', stamper);
+        token = await ethers.getContract('TestToken', deployer);
+        priceOracle = await ethers.getContract('PriceOracle', deployer);
 
-      //   batchSize = 2 ** batch.depth;
-      //   transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
-      //   expectedNormalisedBalance = batch.initialPaymentPerChunk;
+        setPrice0Block = await getBlockNumber();
+        await priceOracle.setPrice(price0);
 
-      //   batch.id = computeBatchId(stamper, batch.nonce);
+        batch0 = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abce',
+          initialPaymentPerChunk: price0 * initialBatch0Blocks,
+          depth: 17,
+          immutable: false,
+          bucketDepth: 16,
+        };
 
-      //   await token.mint(stamper, transferAmount);
-      //   (await ethers.getContract('TestToken', stamper)).approve(postageStamp.address, transferAmount);
-      // });
-      // it('should update the pot and delete expired batches', async function () {
-      //   const price = 2048;
-      //   await setPrice(price);
+        batch0Size = 2 ** batch0.depth;
+        transferAmount0 = batch0.initialPaymentPerChunk * batch0Size;
 
-      //   const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000001234';
-      //   await postageStamp.createBatch(
-      //     stamper,
-      //     4096,
-      //     batch.depth,
-      //     batch.bucketDepth,
-      //     nonce0,
-      //     batch.immutable
-      //   );
-      //   const batch0 = computeBatchId(stamper, nonce0);
-      //   expect(batch0).equal(await postageStamp.firstBatchId());
+        batch0Id = computeBatchId(stamper, batch0.nonce);
 
-      //   //        expect(await postageStamp.pot()).equal(0 * 2 ** batch.depth);
-      //   expect(await postageStamp.hasExpired()).equal(false);
-      //   await mineNBlocks(10);
-      //   expect(await postageStamp.hasExpired()).equal(true);
+        await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount0.toString());
 
-      //   const expectedAmount = 100 * 2 ** batch.depth;
+        buyStamp0Block = await getBlockNumber();
+        await postageStamp.createBatch(
+          stamper,
+          batch0.initialPaymentPerChunk,
+          batch0.depth,
+          batch0.bucketDepth,
+          batch0.nonce,
+          batch0.immutable
+        );
 
-      //   expect(await postageStamp.expireLimited(1));
+        batch1 = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abcf',
+          initialPaymentPerChunk: price0 * initialBatch1Blocks,
+          depth: 17,
+          immutable: false,
+          bucketDepth: 16,
+        };
 
-      //   expect(await postageStamp.pot()).equal(expectedAmount);
-      //   expect(await postageStamp.hasExpired()).equal(false);
-      // });
+
+        batch1Size = 2 ** batch1.depth;
+        transferAmount1 = batch1.initialPaymentPerChunk * batch1Size;
+
+        batch1Id = computeBatchId(stamper, batch1.nonce);
+
+        await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount1.toString());
+
+        buyStamp1Block = await getBlockNumber();
+        await postageStamp.createBatch(
+          stamper,
+          batch1.initialPaymentPerChunk,
+          batch1.depth,
+          batch1.bucketDepth,
+          batch1.nonce,
+          batch1.immutable
+        );
+
+        batch2 = {
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abc1',
+          initialPaymentPerChunk: price0 * initialBatch2Blocks,
+          depth: 17,
+          immutable: false,
+          bucketDepth: 16,
+        };
+
+        batch2Size = 2 ** batch2.depth;
+        transferAmount2 = batch2.initialPaymentPerChunk * batch2Size;
+
+        batch2Id = computeBatchId(stamper, batch2.nonce);
+
+        await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount2.toString());
+
+        buyStamp2Block = await getBlockNumber();
+        await postageStamp.createBatch(
+          stamper,
+          batch2.initialPaymentPerChunk,
+          batch2.depth,
+          batch2.bucketDepth,
+          batch2.nonce,
+          batch2.immutable
+        );
+      });
+
+      it('expire should update the pot and delete expired batches', async function () {
+        await mineNBlocks(20);
+        await postageStamp.expire();
+
+        expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
+
+        await postageStamp.expire();
+
+        expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
+
+        await mineNBlocks(200);
+
+        await postageStamp.expire();
+
+        await expect(
+          postageStamp.firstBatchId()
+        ).to.be.revertedWith('no batches exist');
+      });
+
+      it('expireLimited should update the pot and delete expired batches', async function () {
+        await mineNBlocks(20);
+        await postageStamp.expireLimited(1);
+
+        expect(await postageStamp.firstBatchId()).to.be.equal(batch1Id);
+
+        await postageStamp.expireLimited(1);
+
+        expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
+
+        await postageStamp.expire();
+
+        expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
+
+        await postageStamp.expireLimited(1);
+
+        expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
+
+        await mineNBlocks(200);
+
+        await postageStamp.expireLimited(1);
+
+        await expect(
+          postageStamp.firstBatchId()
+        ).to.be.revertedWith('no batches exist');
+      });
     });
 
     describe('when topupPot is called', function () {
