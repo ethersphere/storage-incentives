@@ -3,13 +3,20 @@ import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardh
 import { Contract } from 'ethers';
 import { mineNBlocks, computeBatchId, mintAndApprove, getBlockNumber } from './util/tools';
 
-// Named accounts used by tests.
+interface Batch {
+  id?: string;
+  nonce: string;
+  initialPaymentPerChunk: number;
+  depth: number;
+  immutable: boolean;
+  bucketDepth: number;
+}
+
 let stamper: string;
 let deployer: string;
 let oracle: string;
 let others: string[];
 
-// Before the tests, set named accounts and read deployments.
 before(async function () {
   const namedAccounts = await getNamedAccounts();
   deployer = namedAccounts.deployer;
@@ -19,11 +26,19 @@ before(async function () {
 });
 
 const errors = {
-  manual: {
-    notAdmin: 'caller is not the admin',
+  remainingBalance: {
+    doesNotExist: 'batch does not exist or expired',
   },
-  auto: {
-    notZero: 'unexpected zero',
+  erc20: {
+    exceedsBalance: 'ERC20: transfer amount exceeds balance',
+  },
+  createBatch: {
+    invalidDepth: 'invalid bucket depth',
+    alreadyExists: 'batch already exists',
+    paused: 'Pausable: paused',
+  },
+  firstBatchId: {
+    noneExist: 'no batches exist',
   },
 };
 
@@ -59,7 +74,7 @@ describe('PostageStamp', function () {
 
   describe('with deployed contract', async function () {
     let postageStamp: Contract, token: Contract, priceOracle: Contract;
-    let batch: any;
+    let batch: Batch;
     let batchSize: number, transferAmount: number;
     const price0 = 1024;
     let setPrice0Block: number;
@@ -171,7 +186,7 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        await expect(postageStamp.remainingBalance(batch.id)).to.be.revertedWith('batch does not exist or expired');
+        await expect(postageStamp.remainingBalance(batch.id)).to.be.revertedWith(errors.remainingBalance.doesNotExist);
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
@@ -250,13 +265,13 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('ERC20: transfer amount exceeds balance');
+        ).to.be.revertedWith(errors.erc20.exceedsBalance);
       });
 
       it('should not allow zero as bucket depth', async function () {
         await expect(
           postageStamp.createBatch(stamper, batch.initialPaymentPerChunk, batch.depth, 0, batch.nonce, batch.immutable)
-        ).to.be.revertedWith('invalid bucket depth');
+        ).to.be.revertedWith(errors.createBatch.invalidDepth);
       });
 
       it('should not allow bucket depth larger than depth', async function () {
@@ -269,7 +284,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('invalid bucket depth');
+        ).to.be.revertedWith(errors.createBatch.invalidDepth);
       });
 
       it('should not allow bucket depth equal to depth', async function () {
@@ -282,7 +297,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('invalid bucket depth');
+        ).to.be.revertedWith(errors.createBatch.invalidDepth);
       });
 
       it('should not allow duplicate batch', async function () {
@@ -303,7 +318,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('batch already exists');
+        ).to.be.revertedWith(errors.createBatch.alreadyExists);
       });
 
       // it('should not allow normalized balance to be zero', async function () {
@@ -351,7 +366,7 @@ describe('PostageStamp', function () {
         await postageStamp.pause();
         await expect(
           postageStamp.createBatch(stamper, 0, batch.depth, batch.bucketDepth, batch.nonce, batch.immutable)
-        ).to.be.revertedWith('Pausable: paused');
+        ).to.be.revertedWith(errors.createBatch.paused);
       });
 
       it('should allow batch creation when unpaused', async function () {
@@ -366,7 +381,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('Pausable: paused');
+        ).to.be.revertedWith(errors.createBatch.paused);
         await postage_p.unPause();
 
         const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
@@ -946,7 +961,7 @@ describe('PostageStamp', function () {
 
     describe('when topping up a batch', function () {
       let postageStamp: Contract, token: Contract, priceOracle: Contract;
-      let batch: any;
+      let batch: Batch;
       let batchSize: number, transferAmount: number;
       const price0 = 1024;
       let setPrice0Block: number, buyStampBlock: number;
@@ -1076,7 +1091,7 @@ describe('PostageStamp', function () {
 
     describe('when increasing the depth', function () {
       let postageStamp: Contract, priceOracle: Contract;
-      let batch: any;
+      let batch: Batch;
       let batchSize: number, transferAmount: number;
       const price0 = 1024;
       let setPrice0Block: number, buyStampBlock: number;
@@ -1333,9 +1348,9 @@ describe('PostageStamp', function () {
 
     describe('expiring batches', function () {
       let postageStamp: Contract, priceOracle: Contract;
-      let batch0: any;
-      let batch1: any;
-      let batch2: any;
+      let batch0: Batch;
+      let batch1: Batch;
+      let batch2: Batch;
       let batch0Size: number, transferAmount0: number;
       let batch1Size: number, transferAmount1: number;
       let batch2Size: number, transferAmount2: number;
@@ -1436,7 +1451,7 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        await expect(postageStamp.firstBatchId()).to.be.revertedWith('no batches exist');
+        await expect(postageStamp.firstBatchId()).to.be.revertedWith(errors.firstBatchId.noneExist);
       });
 
       it('expireLimited should update the pot and delete expired batches', async function () {
@@ -1461,7 +1476,7 @@ describe('PostageStamp', function () {
 
         await postageStamp.expireLimited(1);
 
-        await expect(postageStamp.firstBatchId()).to.be.revertedWith('no batches exist');
+        await expect(postageStamp.firstBatchId()).to.be.revertedWith(errors.firstBatchId.noneExist);
       });
     });
 
