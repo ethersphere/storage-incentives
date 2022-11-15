@@ -1075,7 +1075,7 @@ describe('PostageStamp', function () {
     });
 
     describe('when increasing the depth', function () {
-      let postageStamp: Contract, token: Contract, priceOracle: Contract;
+      let postageStamp: Contract, priceOracle: Contract;
       let batch: any;
       let batchSize: number, transferAmount: number;
       const price0 = 1024;
@@ -1332,7 +1332,7 @@ describe('PostageStamp', function () {
     });
 
     describe('expiring batches', function () {
-      let postageStamp: Contract, token: Contract, priceOracle: Contract;
+      let postageStamp: Contract, priceOracle: Contract;
       let batch0: any;
       let batch1: any;
       let batch2: any;
