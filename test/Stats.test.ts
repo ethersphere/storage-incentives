@@ -7,7 +7,7 @@ const roundLength = 152;
 
 // Named accounts used by tests.
 let deployer: string, stamper: string, oracle: string;
-let others: any[] = [];
+let others: string[];
 
 // Before the tests, assign accounts
 before(async function () {

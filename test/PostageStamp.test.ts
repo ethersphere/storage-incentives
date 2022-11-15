@@ -1136,23 +1136,34 @@ describe('PostageStamp', function () {
 
       it('should fire the BatchDepthIncrease event', async function () {
         const depthChange = newDepth - batch.depth;
-        const expectedNormalisedBalance =
-          (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4)) / (1 << depthChange);
+        // the expected normalised balance should be changed - the total amount remaining should be multiplied by the new batch size over the old batch size
+        // so the total expected normalised balance should be the normalised balance up to that point, plus the future normalised balance adjusted by this factor
+        const expectedNormalisedBalance = batch.initialPaymentPerChunk + (buyStampBlock - setPrice0Block) * price0;
+
+        const stamp = await postageStamp.batches(batch.id);
+        expect(stamp.normalisedBalance.toString()).to.be.equal(expectedNormalisedBalance.toString());
+
+        const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - price0 * 1;
+        const currentTotalOutPaymentNextBlock = parseInt(await postageStamp.currentTotalOutPayment()) + price0 * 1;
+        const expectedNormalisedBalanceAfter = currentTotalOutPaymentNextBlock + (remainingBalanceNextBlock / 2 ** depthChange);
+
         await expect(postageStamp.increaseDepth(batch.id, newDepth))
           .to.emit(postageStamp, 'BatchDepthIncrease')
-          .withArgs(batch.id, newDepth, expectedNormalisedBalance);
+          .withArgs(batch.id, newDepth, expectedNormalisedBalanceAfter.toString());
       });
 
       it('should update the stamp data', async function () {
         const depthChange = newDepth - batch.depth;
-        const expectedNormalisedBalance =
-          (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4)) / (1 << depthChange);
+        const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - price0 * 1;
+        const currentTotalOutPaymentNextBlock = parseInt(await postageStamp.currentTotalOutPayment()) + price0 * 1;
+        const expectedNormalisedBalanceAfter = currentTotalOutPaymentNextBlock + (remainingBalanceNextBlock / 2 ** depthChange);
+
         await postageStamp.increaseDepth(batch.id, newDepth);
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp.owner).to.equal(stamper);
         expect(stamp.depth).to.equal(newDepth);
         expect(stamp.immutableFlag).to.equal(batch.immutable);
-        expect(stamp.normalisedBalance).to.equal(expectedNormalisedBalance);
+        expect(stamp.normalisedBalance).to.equal(expectedNormalisedBalanceAfter);
       });
 
       it('should not allow other accounts to increase depth', async function () {
@@ -1184,21 +1195,13 @@ describe('PostageStamp', function () {
         const newPrice = 2048;
         await priceOracle.setPrice(newPrice);
 
-        const expectedNormalisedBalance =
-          (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4)) / (1 << depthChange);
+        const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - newPrice * 1;
+        const currentTotalOutPaymentNextBlock = parseInt(await postageStamp.currentTotalOutPayment()) + newPrice * 1;
+        const expectedNormalisedBalanceAfter = currentTotalOutPaymentNextBlock + (remainingBalanceNextBlock / 2 ** depthChange);
 
-        // at the moment of the depth increase the currentTotalOutpayment is already 2*price + 1*newPrice
-        // 1 * price and 1 * newPrice of the batch value was already used up
-        // const expectedNormalisedBalance =
-        //   2 * price +
-        //   newPrice +
-        //   Math.floor((batch.initialPaymentPerChunk - price - newPrice) / increaseFactor);
-
-        // difficult
-
-        // await expect(postageStamp.increaseDepth(batch.id, newDepth))
-        //   .to.emit(postageStamp, 'BatchDepthIncrease')
-        //   .withArgs(batch.id, newDepth, expectedNormalisedBalance);
+        await expect(postageStamp.increaseDepth(batch.id, newDepth))
+          .to.emit(postageStamp, 'BatchDepthIncrease')
+          .withArgs(batch.id, newDepth, expectedNormalisedBalanceAfter);
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
