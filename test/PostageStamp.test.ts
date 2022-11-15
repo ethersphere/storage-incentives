@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
-import { Contract, Signer } from 'ethers';
+import { Contract } from 'ethers';
 import { mineNBlocks, computeBatchId, mintAndApprove, getBlockNumber } from './util/tools';
 
 // Named accounts used by tests.
@@ -17,8 +17,6 @@ before(async function () {
   oracle = namedAccounts.oracle;
   others = await getUnnamedAccounts();
 });
-
-const zeroAddress = '0x0000000000000000000000000000000000000000';
 
 const errors = {
   manual: {
@@ -63,7 +61,7 @@ describe('PostageStamp', function () {
     let postageStamp: Contract, token: Contract, priceOracle: Contract;
     let batch: any;
     let batchSize: number, transferAmount: number;
-    let price0 = 1024;
+    const price0 = 1024;
     let setPrice0Block: number;
 
     beforeEach(async function () {
@@ -140,9 +138,6 @@ describe('PostageStamp', function () {
       });
 
       it('should report the correct remaining balance', async function () {
-        const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
-        const expectedNormalisedBalance = batch.initialPaymentPerChunk + blocksElapsed * price0;
-
         await postageStamp.createBatch(
           stamper,
           batch.initialPaymentPerChunk,
@@ -153,23 +148,21 @@ describe('PostageStamp', function () {
         );
         const buyStampBlock = await getBlockNumber();
 
-        const stamp = await postageStamp.batches(batch.id);
-
-        let normalisedBalance0 = parseInt(await postageStamp.remainingBalance(batch.id));
-        let expectedNormalisedBalance0 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
+        const normalisedBalance0 = parseInt(await postageStamp.remainingBalance(batch.id));
+        const expectedNormalisedBalance0 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
 
         expect(normalisedBalance0).to.be.equal(expectedNormalisedBalance0);
 
         await mineNBlocks(1);
 
-        let normalisedBalance1 = parseInt(await postageStamp.remainingBalance(batch.id));
-        let expectedNormalisedBalance1 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
+        const normalisedBalance1 = parseInt(await postageStamp.remainingBalance(batch.id));
+        const expectedNormalisedBalance1 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
 
         expect(normalisedBalance1).to.be.equal(expectedNormalisedBalance1);
         await mineNBlocks(12);
 
-        let expectedNormalisedBalance2 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
-        let normalisedBalance2 = await postageStamp.remainingBalance(batch.id);
+        const expectedNormalisedBalance2 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
+        const normalisedBalance2 = await postageStamp.remainingBalance(batch.id);
 
         expect(expectedNormalisedBalance2).to.be.lessThan(0);
         expect(normalisedBalance2).to.be.equal(0);
@@ -391,7 +384,6 @@ describe('PostageStamp', function () {
         ).to.be.revertedWith('Pausable: paused');
         await postage_p.unPause();
 
-        const initialPaymentPerChunk0 = 2048;
         const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance = batch.initialPaymentPerChunk + blocksElapsed * price0;
         await postageStamp.createBatch(
@@ -428,15 +420,12 @@ describe('PostageStamp', function () {
           batch.immutable
         );
 
-        const buyStamp0Block = await getBlockNumber();
-
         const batch0 = computeBatchId(stamper, nonce0);
         expect(await postageStamp.firstBatchId()).to.equal(batch0);
 
         const transferAmount1 = initialPaymentPerChunk1 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount1.toString());
 
-        const batch1CreatedBlock = await getBlockNumber();
         const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
         await postageStamp.createBatch(
           stamper,
@@ -446,8 +435,6 @@ describe('PostageStamp', function () {
           nonce1,
           batch.immutable
         );
-
-        const buyStamp1Block = await getBlockNumber();
 
         const batch1 = computeBatchId(stamper, nonce1);
         expect(await postageStamp.firstBatchId()).to.equal(batch1);
@@ -464,8 +451,6 @@ describe('PostageStamp', function () {
           nonce2,
           batch.immutable
         );
-
-        const buyStamp2Block = await getBlockNumber();
 
         const batch2 = computeBatchId(stamper, nonce2);
         expect(await postageStamp.firstBatchId()).to.equal(batch1);
@@ -561,7 +546,6 @@ describe('PostageStamp', function () {
         const transferAmount1 = initialPaymentPerChunk1 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount1.toString());
 
-        const batch1CreatedBlock = await getBlockNumber();
         const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
         await postageStamp.createBatch(
           stamper,
@@ -573,8 +557,6 @@ describe('PostageStamp', function () {
         );
 
         const buyStamp1Block = await getBlockNumber();
-
-        const batch1 = computeBatchId(stamper, nonce1);
 
         await postageStamp.expire();
 
@@ -608,8 +590,6 @@ describe('PostageStamp', function () {
         );
 
         const buyStamp2Block = await getBlockNumber();
-
-        const batch2 = computeBatchId(stamper, nonce2);
 
         await postageStamp.expire();
 
@@ -975,10 +955,10 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, token: Contract, priceOracle: Contract;
       let batch: any;
       let batchSize: number, transferAmount: number;
-      let price0 = 1024;
+      const price0 = 1024;
       let setPrice0Block: number, buyStampBlock: number;;
-      let initialBatchBlocks = 10;
-      let topupAmountPerChunk = 1024;
+      const initialBatchBlocks = 10;
+      const topupAmountPerChunk = 1024;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
@@ -1086,7 +1066,6 @@ describe('PostageStamp', function () {
           batch2.nonce,
           batch2.immutable
         );
-        const buyStamp2Block = await getBlockNumber();
 
         const batch2Id = computeBatchId(stamper, batch2.nonce);
 
@@ -1108,15 +1087,14 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, token: Contract, priceOracle: Contract;
       let batch: any;
       let batchSize: number, transferAmount: number;
-      let price0 = 1024;
+      const price0 = 1024;
       let setPrice0Block: number, buyStampBlock: number;;
-      let initialBatchBlocks = 100;
-      let newDepth = 18;
+      const initialBatchBlocks = 100;
+      const newDepth = 18;
       let depthChange: number;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
-        token = await ethers.getContract('TestToken', deployer);
         priceOracle = await ethers.getContract('PriceOracle', deployer);
 
         setPrice0Block = await getBlockNumber();
@@ -1244,7 +1222,6 @@ describe('PostageStamp', function () {
           batch2.nonce,
           batch2.immutable
         );
-        const buyStamp2Block = await getBlockNumber();
 
         const batch2Id = computeBatchId(stamper, batch2.nonce);
 
@@ -1278,7 +1255,6 @@ describe('PostageStamp', function () {
           batch2.nonce,
           batch2.immutable
         );
-        const buyStamp2Block = await getBlockNumber();
 
         const batch2Id = computeBatchId(stamper, batch2.nonce);
 
@@ -1379,19 +1355,16 @@ describe('PostageStamp', function () {
       let batch0Size: number, transferAmount0: number;
       let batch1Size: number, transferAmount1: number;
       let batch2Size: number, transferAmount2: number;
-      let price0 = 1024;
-      let setPrice0Block: number, buyStamp0Block: number, buyStamp1Block: number, buyStamp2Block: number;
-      let initialBatch0Blocks = 10;
-      let initialBatch1Blocks = 10;
-      let initialBatch2Blocks = 200;
-      let batch0Id: string, batch1Id: string, batch2Id: string;
+      const price0 = 1024;
+      const initialBatch0Blocks = 10;
+      const initialBatch1Blocks = 10;
+      const initialBatch2Blocks = 200;
+      let batch1Id: string, batch2Id: string;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
-        token = await ethers.getContract('TestToken', deployer);
         priceOracle = await ethers.getContract('PriceOracle', deployer);
 
-        setPrice0Block = await getBlockNumber();
         await priceOracle.setPrice(price0);
 
         batch0 = {
@@ -1405,11 +1378,8 @@ describe('PostageStamp', function () {
         batch0Size = 2 ** batch0.depth;
         transferAmount0 = batch0.initialPaymentPerChunk * batch0Size;
 
-        batch0Id = computeBatchId(stamper, batch0.nonce);
-
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount0.toString());
 
-        buyStamp0Block = await getBlockNumber();
         await postageStamp.createBatch(
           stamper,
           batch0.initialPaymentPerChunk,
@@ -1435,7 +1405,6 @@ describe('PostageStamp', function () {
 
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount1.toString());
 
-        buyStamp1Block = await getBlockNumber();
         await postageStamp.createBatch(
           stamper,
           batch1.initialPaymentPerChunk,
@@ -1460,7 +1429,6 @@ describe('PostageStamp', function () {
 
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount2.toString());
 
-        buyStamp2Block = await getBlockNumber();
         await postageStamp.createBatch(
           stamper,
           batch2.initialPaymentPerChunk,
