@@ -1145,7 +1145,8 @@ describe('PostageStamp', function () {
 
         const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - price0 * 1;
         const currentTotalOutPaymentNextBlock = parseInt(await postageStamp.currentTotalOutPayment()) + price0 * 1;
-        const expectedNormalisedBalanceAfter = currentTotalOutPaymentNextBlock + (remainingBalanceNextBlock / 2 ** depthChange);
+        const expectedNormalisedBalanceAfter =
+          currentTotalOutPaymentNextBlock + remainingBalanceNextBlock / 2 ** depthChange;
 
         await expect(postageStamp.increaseDepth(batch.id, newDepth))
           .to.emit(postageStamp, 'BatchDepthIncrease')
@@ -1156,7 +1157,8 @@ describe('PostageStamp', function () {
         const depthChange = newDepth - batch.depth;
         const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - price0 * 1;
         const currentTotalOutPaymentNextBlock = parseInt(await postageStamp.currentTotalOutPayment()) + price0 * 1;
-        const expectedNormalisedBalanceAfter = currentTotalOutPaymentNextBlock + (remainingBalanceNextBlock / 2 ** depthChange);
+        const expectedNormalisedBalanceAfter =
+          currentTotalOutPaymentNextBlock + remainingBalanceNextBlock / 2 ** depthChange;
 
         await postageStamp.increaseDepth(batch.id, newDepth);
         const stamp = await postageStamp.batches(batch.id);
@@ -1197,7 +1199,8 @@ describe('PostageStamp', function () {
 
         const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - newPrice * 1;
         const currentTotalOutPaymentNextBlock = parseInt(await postageStamp.currentTotalOutPayment()) + newPrice * 1;
-        const expectedNormalisedBalanceAfter = currentTotalOutPaymentNextBlock + (remainingBalanceNextBlock / 2 ** depthChange);
+        const expectedNormalisedBalanceAfter =
+          currentTotalOutPaymentNextBlock + remainingBalanceNextBlock / 2 ** depthChange;
 
         await expect(postageStamp.increaseDepth(batch.id, newDepth))
           .to.emit(postageStamp, 'BatchDepthIncrease')
