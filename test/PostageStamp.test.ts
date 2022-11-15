@@ -70,7 +70,6 @@ describe('PostageStamp', function () {
 
     describe('when creating a batch', function () {
       beforeEach(async function () {
-
         postageStamp = await ethers.getContract('PostageStamp', stamper);
         token = await ethers.getContract('TestToken', deployer);
         priceOracle = await ethers.getContract('PriceOracle', deployer);
@@ -149,19 +148,22 @@ describe('PostageStamp', function () {
         const buyStampBlock = await getBlockNumber();
 
         const normalisedBalance0 = parseInt(await postageStamp.remainingBalance(batch.id));
-        const expectedNormalisedBalance0 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
+        const expectedNormalisedBalance0 =
+          batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
 
         expect(normalisedBalance0).to.be.equal(expectedNormalisedBalance0);
 
         await mineNBlocks(1);
 
         const normalisedBalance1 = parseInt(await postageStamp.remainingBalance(batch.id));
-        const expectedNormalisedBalance1 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
+        const expectedNormalisedBalance1 =
+          batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
 
         expect(normalisedBalance1).to.be.equal(expectedNormalisedBalance1);
         await mineNBlocks(12);
 
-        const expectedNormalisedBalance2 = batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
+        const expectedNormalisedBalance2 =
+          batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
         const normalisedBalance2 = await postageStamp.remainingBalance(batch.id);
 
         expect(expectedNormalisedBalance2).to.be.lessThan(0);
@@ -169,9 +171,7 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        await expect(
-          postageStamp.remainingBalance(batch.id)
-        ).to.be.revertedWith('batch does not exist or expired');
+        await expect(postageStamp.remainingBalance(batch.id)).to.be.revertedWith('batch does not exist or expired');
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
@@ -255,14 +255,7 @@ describe('PostageStamp', function () {
 
       it('should not allow zero as bucket depth', async function () {
         await expect(
-          postageStamp.createBatch(
-            stamper,
-            batch.initialPaymentPerChunk,
-            batch.depth,
-            0,
-            batch.nonce,
-            batch.immutable
-          )
+          postageStamp.createBatch(stamper, batch.initialPaymentPerChunk, batch.depth, 0, batch.nonce, batch.immutable)
         ).to.be.revertedWith('invalid bucket depth');
       });
 
@@ -357,17 +350,9 @@ describe('PostageStamp', function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
         await expect(
-          postageStamp.createBatch(
-            stamper,
-            0,
-            batch.depth,
-            batch.bucketDepth,
-            batch.nonce,
-            batch.immutable
-          )
+          postageStamp.createBatch(stamper, 0, batch.depth, batch.bucketDepth, batch.nonce, batch.immutable)
         ).to.be.revertedWith('Pausable: paused');
       });
-
 
       it('should allow batch creation when unpaused', async function () {
         const postage_p = await ethers.getContract('PostageStamp', deployer);
@@ -536,9 +521,10 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        const blocksElapsed0Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
+        const blocksElapsed0Stamp0 = (await getBlockNumber()) - buyStamp0Block;
 
-        const blocksCharged0Stamp0 = (blocksBeforeExpired0 - blocksElapsed0Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed0Stamp0 ;
+        const blocksCharged0Stamp0 =
+          blocksBeforeExpired0 - blocksElapsed0Stamp0 < 0 ? blocksBeforeExpired0 : blocksElapsed0Stamp0;
         const outpayment0Stamp0 = price0 * blocksCharged0Stamp0 * 2 ** batch.depth;
 
         expect(await postageStamp.pot()).equal(outpayment0Stamp0);
@@ -560,15 +546,17 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        const blocksElapsed1Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
+        const blocksElapsed1Stamp0 = (await getBlockNumber()) - buyStamp0Block;
 
-        const blocksCharged1Stamp0 = (blocksBeforeExpired0 - blocksElapsed1Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed1Stamp0 ;
+        const blocksCharged1Stamp0 =
+          blocksBeforeExpired0 - blocksElapsed1Stamp0 < 0 ? blocksBeforeExpired0 : blocksElapsed1Stamp0;
 
         const outpayment1Stamp0 = price0 * blocksCharged1Stamp0 * 2 ** batch.depth;
 
-        const blocksElapsed1Stamp1 = ((await getBlockNumber()) - buyStamp1Block);
+        const blocksElapsed1Stamp1 = (await getBlockNumber()) - buyStamp1Block;
 
-        const blocksCharged1Stamp1 = (blocksBeforeExpired1 - blocksElapsed1Stamp1) < 0 ? blocksBeforeExpired1 : blocksElapsed1Stamp1 ;
+        const blocksCharged1Stamp1 =
+          blocksBeforeExpired1 - blocksElapsed1Stamp1 < 0 ? blocksBeforeExpired1 : blocksElapsed1Stamp1;
 
         const outpayment1Stamp1 = price0 * blocksCharged1Stamp1 * 2 ** batch.depth;
 
@@ -593,16 +581,19 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        const blocksElapsed2Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
-        const blocksCharged2Stamp0 = (blocksBeforeExpired0 - blocksElapsed2Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed2Stamp0 ;
+        const blocksElapsed2Stamp0 = (await getBlockNumber()) - buyStamp0Block;
+        const blocksCharged2Stamp0 =
+          blocksBeforeExpired0 - blocksElapsed2Stamp0 < 0 ? blocksBeforeExpired0 : blocksElapsed2Stamp0;
         const outpayment2Stamp0 = price0 * blocksCharged2Stamp0 * 2 ** batch.depth;
 
-        const blocksElapsed2Stamp1 = ((await getBlockNumber()) - buyStamp1Block);
-        const blocksCharged2Stamp1 = (blocksBeforeExpired1 - blocksElapsed2Stamp1) < 0 ? blocksBeforeExpired1 : blocksElapsed2Stamp1 ;
+        const blocksElapsed2Stamp1 = (await getBlockNumber()) - buyStamp1Block;
+        const blocksCharged2Stamp1 =
+          blocksBeforeExpired1 - blocksElapsed2Stamp1 < 0 ? blocksBeforeExpired1 : blocksElapsed2Stamp1;
         const outpayment2Stamp1 = price0 * blocksCharged2Stamp1 * 2 ** batch.depth;
 
-        const blocksElapsed2Stamp2 = ((await getBlockNumber()) - buyStamp2Block);
-        const blocksCharged2Stamp2 = (blocksBeforeExpired2 - blocksElapsed2Stamp2) < 0 ? blocksBeforeExpired2 : blocksElapsed2Stamp2 ;
+        const blocksElapsed2Stamp2 = (await getBlockNumber()) - buyStamp2Block;
+        const blocksCharged2Stamp2 =
+          blocksBeforeExpired2 - blocksElapsed2Stamp2 < 0 ? blocksBeforeExpired2 : blocksElapsed2Stamp2;
         const outpayment2Stamp2 = price0 * blocksCharged2Stamp2 * 2 ** batch.depth;
 
         const expectedPot2 = outpayment2Stamp0 + outpayment2Stamp1 + outpayment2Stamp2;
@@ -613,23 +604,25 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        const blocksElapsed3Stamp0 = ((await getBlockNumber()) - buyStamp0Block);
-        const blocksCharged3Stamp0 = (blocksBeforeExpired0 - blocksElapsed3Stamp0) < 0 ? blocksBeforeExpired0 : blocksElapsed3Stamp0 ;
+        const blocksElapsed3Stamp0 = (await getBlockNumber()) - buyStamp0Block;
+        const blocksCharged3Stamp0 =
+          blocksBeforeExpired0 - blocksElapsed3Stamp0 < 0 ? blocksBeforeExpired0 : blocksElapsed3Stamp0;
         const outpayment3Stamp0 = price0 * blocksCharged3Stamp0 * 2 ** batch.depth;
 
-        const blocksElapsed3Stamp1 = ((await getBlockNumber()) - buyStamp1Block);
-        const blocksCharged3Stamp1 = (blocksBeforeExpired1 - blocksElapsed3Stamp1) < 0 ? blocksBeforeExpired1 : blocksElapsed3Stamp1 ;
+        const blocksElapsed3Stamp1 = (await getBlockNumber()) - buyStamp1Block;
+        const blocksCharged3Stamp1 =
+          blocksBeforeExpired1 - blocksElapsed3Stamp1 < 0 ? blocksBeforeExpired1 : blocksElapsed3Stamp1;
         const outpayment3Stamp1 = price0 * blocksCharged3Stamp1 * 2 ** batch.depth;
 
-        const blocksElapsed3Stamp2 = ((await getBlockNumber()) - buyStamp2Block);
-        const blocksCharged3Stamp2 = (blocksBeforeExpired2 - blocksElapsed3Stamp2) < 0 ? blocksBeforeExpired2 : blocksElapsed3Stamp2 ;
+        const blocksElapsed3Stamp2 = (await getBlockNumber()) - buyStamp2Block;
+        const blocksCharged3Stamp2 =
+          blocksBeforeExpired2 - blocksElapsed3Stamp2 < 0 ? blocksBeforeExpired2 : blocksElapsed3Stamp2;
         const outpayment3Stamp2 = price0 * blocksCharged3Stamp2 * 2 ** batch.depth;
 
         const expectedPot3 = outpayment3Stamp0 + outpayment3Stamp1 + outpayment3Stamp2;
 
         expect(await postageStamp.pot()).equal(expectedPot3);
       });
-
     });
 
     // describe('when copyBatch creates a batch', function () {
@@ -956,7 +949,7 @@ describe('PostageStamp', function () {
       let batch: any;
       let batchSize: number, transferAmount: number;
       const price0 = 1024;
-      let setPrice0Block: number, buyStampBlock: number;;
+      let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 10;
       const topupAmountPerChunk = 1024;
 
@@ -996,14 +989,16 @@ describe('PostageStamp', function () {
       });
 
       it('should fire the BatchTopUp event', async function () {
-        const expectedNormalisedBalance = price0 * (buyStampBlock - setPrice0Block) + (price0 * initialBatchBlocks) + topupAmountPerChunk;
+        const expectedNormalisedBalance =
+          price0 * (buyStampBlock - setPrice0Block) + price0 * initialBatchBlocks + topupAmountPerChunk;
         await expect(postageStamp.topUp(batch.id, topupAmountPerChunk))
           .to.emit(postageStamp, 'BatchTopUp')
           .withArgs(batch.id, topupAmountPerChunk * batchSize, expectedNormalisedBalance);
       });
 
       it('should update the normalised balance', async function () {
-        const expectedNormalisedBalance = price0 * (buyStampBlock - setPrice0Block) + (price0 * initialBatchBlocks) + topupAmountPerChunk;
+        const expectedNormalisedBalance =
+          price0 * (buyStampBlock - setPrice0Block) + price0 * initialBatchBlocks + topupAmountPerChunk;
         await postageStamp.topUp(batch.id, topupAmountPerChunk);
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp.normalisedBalance).to.equal(expectedNormalisedBalance);
@@ -1031,18 +1026,14 @@ describe('PostageStamp', function () {
       });
 
       it('should not top up expired batches', async function () {
-        await mineNBlocks(initialBatchBlocks+10);
-        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk)).to.be.revertedWith(
-          'batch already expired'
-        );
+        await mineNBlocks(initialBatchBlocks + 10);
+        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk)).to.be.revertedWith('batch already expired');
       });
 
       it('should not top up when paused', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
-        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk)).to.be.revertedWith(
-          'Pausable: paused'
-        );
+        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk)).to.be.revertedWith('Pausable: paused');
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
@@ -1088,7 +1079,7 @@ describe('PostageStamp', function () {
       let batch: any;
       let batchSize: number, transferAmount: number;
       const price0 = 1024;
-      let setPrice0Block: number, buyStampBlock: number;;
+      let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 100;
       const newDepth = 18;
       let depthChange: number;
@@ -1130,7 +1121,8 @@ describe('PostageStamp', function () {
 
       it('should fire the BatchDepthIncrease event', async function () {
         const depthChange = newDepth - batch.depth;
-        const expectedNormalisedBalance = (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4))/(1 << depthChange);
+        const expectedNormalisedBalance =
+          (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4)) / (1 << depthChange);
         await expect(postageStamp.increaseDepth(batch.id, newDepth))
           .to.emit(postageStamp, 'BatchDepthIncrease')
           .withArgs(batch.id, newDepth, expectedNormalisedBalance);
@@ -1138,7 +1130,8 @@ describe('PostageStamp', function () {
 
       it('should update the stamp data', async function () {
         const depthChange = newDepth - batch.depth;
-        const expectedNormalisedBalance = (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4))/(1 << depthChange);
+        const expectedNormalisedBalance =
+          (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4)) / (1 << depthChange);
         await postageStamp.increaseDepth(batch.id, newDepth);
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp.owner).to.equal(stamper);
@@ -1153,38 +1146,31 @@ describe('PostageStamp', function () {
       });
 
       it('should not allow decreasing the depth', async function () {
-        await expect(postageStamp.increaseDepth(batch.id, batch.depth - 1)).to.be.revertedWith(
-          'depth not increasing'
-        );
+        await expect(postageStamp.increaseDepth(batch.id, batch.depth - 1)).to.be.revertedWith('depth not increasing');
       });
 
       it('should not allow the same depth', async function () {
-        await expect(postageStamp.increaseDepth(batch.id, batch.depth)).to.be.revertedWith(
-          'depth not increasing'
-        );
+        await expect(postageStamp.increaseDepth(batch.id, batch.depth)).to.be.revertedWith('depth not increasing');
       });
 
       it('should not increase depth of expired batches', async function () {
         // one price applied so far, this ensures the currentTotalOutpayment will be exactly the batch value when increaseDepth is called
         await mineNBlocks(100);
-        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith(
-          'batch already expired'
-        );
+        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith('batch already expired');
       });
 
       it('should not increase depth when paused', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
-        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith(
-          'Pausable: paused'
-        );
+        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith('Pausable: paused');
       });
 
       it('should compute correct balance if outpayments changed since creation', async function () {
         const newPrice = 2048;
         await priceOracle.setPrice(newPrice);
 
-        const expectedNormalisedBalance = (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4))/(1 << depthChange);
+        const expectedNormalisedBalance =
+          (price0 * (buyStampBlock - setPrice0Block + initialBatchBlocks + 4)) / (1 << depthChange);
 
         // at the moment of the depth increase the currentTotalOutpayment is already 2*price + 1*newPrice
         // 1 * price and 1 * newPrice of the batch value was already used up
@@ -1269,9 +1255,7 @@ describe('PostageStamp', function () {
         await postageStamp.expire();
 
         expect(await postageStamp.firstBatchId()).equal(batch.id);
-
       });
-
     });
 
     describe('when setting the price', function () {
@@ -1397,7 +1381,6 @@ describe('PostageStamp', function () {
           bucketDepth: 16,
         };
 
-
         batch1Size = 2 ** batch1.depth;
         transferAmount1 = batch1.initialPaymentPerChunk * batch1Size;
 
@@ -1453,9 +1436,7 @@ describe('PostageStamp', function () {
 
         await postageStamp.expire();
 
-        await expect(
-          postageStamp.firstBatchId()
-        ).to.be.revertedWith('no batches exist');
+        await expect(postageStamp.firstBatchId()).to.be.revertedWith('no batches exist');
       });
 
       it('expireLimited should update the pot and delete expired batches', async function () {
@@ -1480,15 +1461,12 @@ describe('PostageStamp', function () {
 
         await postageStamp.expireLimited(1);
 
-        await expect(
-          postageStamp.firstBatchId()
-        ).to.be.revertedWith('no batches exist');
+        await expect(postageStamp.firstBatchId()).to.be.revertedWith('no batches exist');
       });
     });
 
     describe('when topupPot is called', function () {
       beforeEach(async function () {
-
         transferAmount = 2 ** 20;
 
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount.toString());
