@@ -180,7 +180,7 @@ describe('Redistribution', function () {
 
       await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
-      await postage.totalPot(); //for testing
+      await postage.expire(); //for testing
       await postage.createBatch(
         stamper,
         batch.initialPaymentPerChunk,
