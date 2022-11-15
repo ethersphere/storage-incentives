@@ -25,7 +25,12 @@ async function setPrevRandDAO(randVal: string): Promise<any> {
   return;
 }
 
-async function mintAndApprove(deployer: string, payee: string, beneficiary: string, transferAmount: string): Promise<any> {
+async function mintAndApprove(
+  deployer: string,
+  payee: string,
+  beneficiary: string,
+  transferAmount: string
+): Promise<any> {
   const minterTokenInstance = await ethers.getContract('TestToken', deployer);
   await minterTokenInstance.mint(payee, transferAmount);
   const payeeTokenInstance = await ethers.getContract('TestToken', payee);
