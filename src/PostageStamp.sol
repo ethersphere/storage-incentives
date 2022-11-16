@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 
+
 /**
  * @title PostageStamp contract
  * @author The Swarm Authors
@@ -91,7 +92,7 @@ contract PostageStamp is AccessControl, Pausable {
     uint256 public validChunkCount;
 
     // Lottery pot at last update.
-    uint256 public pot;
+    uint256 public pot; //should be private
 
     // Price from the last update.
     uint256 public lastPrice = 0;
@@ -191,6 +192,8 @@ contract PostageStamp is AccessControl, Pausable {
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
+        validChunkCount += 1 << _depth;
+
         batches[_batchId] = Batch({
             owner: _owner,
             depth: _depth,
@@ -213,7 +216,6 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external whenNotPaused {
         Batch storage batch = batches[_batchId];
-
         require(batch.owner != address(0), "batch does not exist or has expired");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
@@ -246,10 +248,15 @@ contract PostageStamp is AccessControl, Pausable {
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
+
+
+
         // expire batches up to current block before amending validChunkCount to include
         // the new chunks resultant of the depth increase
         expire();
         validChunkCount += (1 << _newDepth) - (1 << batch.depth);
+
+
 
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
@@ -358,10 +365,13 @@ contract PostageStamp is AccessControl, Pausable {
             // we have already reached the end of the batches we need
             // to expire, so exit the loop
             if (remainingBalance(fbi) > 0) break;
+
+
             // otherwise, the batch with the smallest balance has expired,
             // so we must remove the chunks this batch contributes to the global validChunkCount
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
+            require(validChunkCount >= batchSize , "insufficient valid chunk count");
             validChunkCount -= batchSize;
             // since the batch expired _during_ the period we must add
             // remaining normalised payout for this batch only
@@ -373,6 +383,9 @@ contract PostageStamp is AccessControl, Pausable {
         // add the total normalised payout of all batches
         // multiplied by the remaining total valid chunk count
         // to the pot for the period since the last expiry
+
+        require(lastExpiryBalance >= leb, "current total outpayment should never decrease");
+
         pot += validChunkCount * (lastExpiryBalance - leb);
     }
 
@@ -390,6 +403,7 @@ contract PostageStamp is AccessControl, Pausable {
             if (remainingBalance(fbi) > 0) break;
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
+            require(validChunkCount >= batchSize , "insufficient valid chunk count");
             validChunkCount -= batchSize;
             pot += batchSize * (batch.normalisedBalance - lastExpiryBalance);
             tree.remove(fbi, batch.normalisedBalance);
