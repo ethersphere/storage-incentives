@@ -1,3 +1,6 @@
+DETERMINE ZERO PRICE CASE, check if guard needed and if so where
+
+
 //<sig should seperate into unit/integration style tests?
 //<sig how many iterations/slashes etc. before the claim method uses too much gas for each blockchain?
 //<sig is it higher than 32 reveal/truth
