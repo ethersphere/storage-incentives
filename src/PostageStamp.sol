@@ -414,7 +414,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Inidicates there are batches waiting to be processed by _expire_.
      */
-    function hasExpired() public view returns(bool) {
+    function expiredBatchesExist() public view returns(bool) {
         bytes32 fbi = firstBatchId();
         if (remainingBalance(fbi) > 0) {
             return false;

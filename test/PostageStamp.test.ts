@@ -1418,10 +1418,6 @@ describe('PostageStamp', function () {
           batch1.immutable
         );
 
-        // expect(await this.postageStamp.expiredBatchesExist()).equal(false);
-        // await mineNBlocks(10);
-        // expect(await this.postageStamp.expiredBatchesExist()).equal(true);
-
         batch2 = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abc1',
           initialPaymentPerChunk: price0 * initialBatch2Blocks,
@@ -1448,8 +1444,14 @@ describe('PostageStamp', function () {
       });
 
       it('expire should update the pot and delete expired batches', async function () {
+
         await mineNBlocks(20);
+
+        expect(await postageStamp.expiredBatchesExist()).equal(true);
+
         await postageStamp.expire();
+
+        expect(await postageStamp.expiredBatchesExist()).equal(false);
 
         expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
 
