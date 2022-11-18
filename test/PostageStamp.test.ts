@@ -1418,6 +1418,10 @@ describe('PostageStamp', function () {
           batch1.immutable
         );
 
+        // expect(await this.postageStamp.expiredBatchesExist()).equal(false);
+        // await mineNBlocks(10);
+        // expect(await this.postageStamp.expiredBatchesExist()).equal(true);
+
         batch2 = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abc1',
           initialPaymentPerChunk: price0 * initialBatch2Blocks,

@@ -7,7 +7,8 @@ on:
   pull_request:
     branches:
       - '**'
-
+env:
+  NODEJS_VERSION: '16'
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -17,13 +18,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup NodeJS
         uses: actions/setup-node@v1
         with:
-          node-version: '16'
+          node-version: ${{env.NODEJS_VERSION}}
 
-      # Restore the yarn cache
-      - uses: c-hive/gha-yarn-cache@v1
+      - uses: c-hive/gha-yarn-cache@v1 # Restore the yarn cache.
 
       - name: Yarn install
         run: yarn install
