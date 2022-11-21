@@ -313,7 +313,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay address of the applicant.
      * @param _depth The reported depth.
      * @param _hash The reserve commitment hash.
-     * @param revealNonce The nonce used to generate the commit that is being revealed.
+     * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
     function reveal(
         bytes32 _overlay,

@@ -1380,9 +1380,9 @@ describe('PostageStamp', function () {
 
         //        expect(await this.postageStamp.pot()).equal(0 * 2 ** this.batch.depth);
         expect(await this.postageStamp.validChunkCount()).to.be.equal(2 ** this.batch.depth);
-        expect(await this.postageStamp.hasExpired()).equal(false);
+        expect(await this.postageStamp.expiredBatchesExist()).equal(false);
         await mineNBlocks(10);
-        expect(await this.postageStamp.hasExpired()).equal(true);
+        expect(await this.postageStamp.expiredBatchesExist()).equal(true);
 
         const expectedAmount = 100 * 2 ** this.batch.depth;
 
@@ -1391,7 +1391,7 @@ describe('PostageStamp', function () {
         expect(await this.postageStamp.validChunkCount()).to.be.equal(0);
 
         expect(await this.postageStamp.pot()).equal(expectedAmount);
-        expect(await this.postageStamp.hasExpired()).equal(false);
+        expect(await this.postageStamp.expiredBatchesExist()).equal(false);
       });
     });
 
