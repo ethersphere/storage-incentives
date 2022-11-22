@@ -5,7 +5,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
   const { deploy, execute, read } = deployments;
 
-  const { deployer, oracle } = await getNamedAccounts();
+  const { deployer, oracle, redistributor } = await getNamedAccounts();
 
   const token = await deploy('TestToken', {
     from: deployer,
@@ -21,6 +21,9 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
   await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
+
+  const redistributorRole = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
+  await execute('PostageStamp', { from: deployer }, 'grantRole', redistributorRole, redistributor);
 };
 
 export default func;

@@ -1,6 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
-import { Signer } from "ethers";
+import { Signer } from 'ethers';
+import { mineNBlocks, computeBatchId } from './util/tools';
 
 // Named accounts used by tests.
 let stamper: string;
@@ -17,20 +18,8 @@ before(async function () {
   others = await getUnnamedAccounts();
 });
 
-function computeBatchId(sender: string, nonce: string): string {
-  const abi = new ethers.utils.AbiCoder();
-  const encoded = abi.encode(['address', 'bytes32'], [sender, nonce]);
-  return ethers.utils.keccak256(encoded);
-}
-
 async function setPrice(price: number) {
   return await (await ethers.getContract('PostageStamp', oracle)).setPrice(price);
-}
-
-async function mineNBlocks(n: number) {
-  for (let index = 0; index < n; index++) {
-    await ethers.provider.send('evm_mine', []);
-  }
 }
 
 const zeroAddress = '0x0000000000000000000000000000000000000000';
@@ -143,7 +132,6 @@ describe('PostageStamp', function () {
         const batchA = computeBatchId(stamper, nonceA);
         expect(batchA).equal(await this.postageStamp.firstBatchId());
 
-
         expect(await this.postageStamp.validChunkCount()).to.be.equal(1 * 2 ** this.batch.depth);
 
         const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
@@ -181,7 +169,6 @@ describe('PostageStamp', function () {
         expect(await this.postageStamp.validChunkCount()).to.be.equal(3 * 2 ** this.batch.depth);
       });
 
-
       it('should transfer the token', async function () {
         await this.postageStamp.createBatch(
           stamper,
@@ -205,19 +192,6 @@ describe('PostageStamp', function () {
             this.batch.immutable
           )
         ).to.be.revertedWith('ERC20: transfer amount exceeds balance');
-      });
-
-      it('should not allow zero address as owner', async function () {
-        await expect(
-          this.postageStamp.createBatch(
-            zeroAddress,
-            this.batch.initialPaymentPerChunk,
-            this.batch.depth,
-            this.batch.bucketDepth,
-            this.batch.nonce,
-            this.batch.immutable
-          )
-        ).to.be.revertedWith('owner cannot be the zero address');
       });
 
       it('should not allow zero as bucket depth', async function () {
@@ -290,7 +264,7 @@ describe('PostageStamp', function () {
             this.batch.nonce,
             this.batch.immutable
           )
-        ).to.be.revertedWith('normalised balance cannot be zero');
+        ).to.be.revertedWith('normalisedBalance cannot be zero');
       });
 
       it('should not return empty batches', async function () {
@@ -443,7 +417,6 @@ describe('PostageStamp', function () {
         expect(stamp[2]).to.equal(this.batch.immutable);
         expect(stamp[3]).to.equal(7);
 
-
         expect(await this.postageStamp.pot()).equal(3 * 2 ** this.batch.depth);
 
         await mineNBlocks(4);
@@ -466,7 +439,6 @@ describe('PostageStamp', function () {
         expect(batchB).not.equal(await this.postageStamp.firstBatchId());
         expect(batchD).not.equal(await this.postageStamp.firstBatchId());
         expect(batchC).equal(await this.postageStamp.firstBatchId());
-
       });
 
       it('should delete many expired batches', async function () {
@@ -479,9 +451,9 @@ describe('PostageStamp', function () {
         await this.token.mint(stamper, this.transferAmount);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
 
-        for(let i = 0; i < 20; i++) {
-
-          const nonce = '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, "0");
+        for (let i = 0; i < 20; i++) {
+          const nonce =
+            '0x000000000000000000000000000000000000000000000000000000000000' + i.toString().padStart(4, '0');
           await this.postageStamp.createBatch(
             stamper,
             20 - i,
@@ -490,15 +462,13 @@ describe('PostageStamp', function () {
             nonce,
             this.batch.immutable
           );
-
           expect(await this.postageStamp.validChunkCount()).to.be.equal((i + 1) * 2 ** this.batch.depth);
-
-        };
+        }
 
         await mineNBlocks(5);
 
         const nonceD = '0x0000000000000000000000000000000000000000000000000000000000011237';
-        const result = await this.postageStamp.createBatch(
+        await this.postageStamp.createBatch(
           stamper,
           19,
           this.batch.depth,
@@ -508,16 +478,11 @@ describe('PostageStamp', function () {
         );
 
         expect(await this.postageStamp.pot()).equal(210 * 2 ** this.batch.depth);
-
         expect(await this.postageStamp.validChunkCount()).to.be.equal(2 ** this.batch.depth);
-
-
       });
-
     });
 
-describe('when copyBatch creates a batch', function () {
-
+    describe('when copyBatch creates a batch', function () {
       beforeEach(async function () {
         this.postageStampContract = await ethers.getContract('PostageStamp', deployer);
 
@@ -540,7 +505,6 @@ describe('when copyBatch creates a batch', function () {
 
         const admin = await this.postageStamp.DEFAULT_ADMIN_ROLE();
         await this.postageStampContract.grantRole(admin, stamper);
-
 
         await this.token.mint(stamper, this.transferAmount);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
@@ -636,7 +600,6 @@ describe('when copyBatch creates a batch', function () {
         expect(stamp[2]).to.equal(this.batch.immutable);
         expect(stamp[3]).to.equal(11);
         expect(await this.postageStamp.validChunkCount()).to.be.equal(3 * 2 ** this.batch.depth);
-
       });
 
       it('should transfer the token', async function () {
@@ -747,7 +710,7 @@ describe('when copyBatch creates a batch', function () {
             this.batch.nonce,
             this.batch.immutable
           )
-        ).to.be.revertedWith('normalised balance cannot be zero');
+        ).to.be.revertedWith('normalisedBalance cannot be zero');
       });
 
       it('should not return empty batches', async function () {
@@ -842,7 +805,6 @@ describe('when copyBatch creates a batch', function () {
         const stamp = await this.postageStamp.batches(this.batch.id);
         expect(stamp[3]).to.equal(3 * price + this.expectedNormalisedBalance);
       });
-
     });
 
     describe('when topping up a batch', function () {
@@ -977,7 +939,7 @@ describe('when copyBatch creates a batch', function () {
         this.newBatchSize = 2 ** this.newDepth;
         this.increaseFactor = this.newBatchSize / this.batchSize;
         this.initialNormalisedBalance = this.totalOutPayment + this.batch.initialPaymentPerChunk;
-        const transferAmount = 2 *this.batch.initialPaymentPerChunk * this.batchSize;
+        const transferAmount = 2 * this.batch.initialPaymentPerChunk * this.batchSize;
 
         await this.token.mint(stamper, transferAmount);
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, transferAmount);
@@ -1106,7 +1068,7 @@ describe('when copyBatch creates a batch', function () {
         const price = 1;
         await setPrice(price);
 
-        const initialExpectedPot = this.price * 2 ** this.batch.depth + price * 2 ** this.batch.depth
+        const initialExpectedPot = this.price * 2 ** this.batch.depth + price * 2 ** this.batch.depth;
         let numberOfBatches = 1;
         let newBlocks = 0;
         let expectedPot = initialExpectedPot;
@@ -1142,7 +1104,7 @@ describe('when copyBatch creates a batch', function () {
         const batchB = computeBatchId(stamper, nonceB);
         expect(batchB).equal(await this.postageStamp.firstBatchId());
 
-        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth
+        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth;
         expect(await this.postageStamp.pot()).equal(expectedPot);
 
         expect(await this.postageStamp.validChunkCount()).to.be.equal(3 * 2 ** this.batch.depth);
@@ -1169,7 +1131,7 @@ describe('when copyBatch creates a batch', function () {
         expect(stamp[2]).to.equal(this.batch.immutable);
         expect(stamp[3]).to.equal(205);
 
-        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth
+        expectedPot += numberOfBatches * newBlocks * 2 ** this.batch.depth;
         expect(await this.postageStamp.pot()).equal(expectedPot);
 
         expect(await this.postageStamp.validChunkCount()).to.be.equal(4 * 2 ** this.batch.depth);
@@ -1190,12 +1152,11 @@ describe('when copyBatch creates a batch', function () {
 
         const expiredEarlier = 1;
 
-        expectedPot += (numberOfBatches * newBlocks - expiredEarlier  ) * 2 ** this.batch.depth
+        expectedPot += (numberOfBatches * newBlocks - expiredEarlier) * 2 ** this.batch.depth;
         expect(await this.postageStamp.pot()).equal(expectedPot);
 
         expect(batchB).not.equal(await this.postageStamp.firstBatchId());
         expect(batchC).equal(await this.postageStamp.firstBatchId());
-
       });
     });
 
@@ -1252,24 +1213,19 @@ describe('when copyBatch creates a batch', function () {
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(price1);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(0);
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(2 * price1);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(0);
 
         const price2 = 200;
         await postageStamp.setPrice(price2);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1 + 1 * price2);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
 
         await ethers.provider.send('evm_mine', []);
         expect(await postageStamp.currentTotalOutPayment()).to.be.eq(3 * price1 + 2 * price2);
-        expect(await postageStamp.totalOutPayment()).to.be.eq(3 * price1);
       });
 
       it('should emit event if called by oracle', async function () {
@@ -1287,7 +1243,7 @@ describe('when copyBatch creates a batch', function () {
     describe('when pausing', function () {
       it('should not allow anybody but the pauser to pause', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', stamper);
-        await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause the contract');
+        await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause');
       });
     });
 
@@ -1303,7 +1259,7 @@ describe('when copyBatch creates a batch', function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
         const postageStamp2 = await ethers.getContract('PostageStamp', stamper);
-        await expect(postageStamp2.unPause()).to.be.revertedWith('only pauser can unpause the contract');
+        await expect(postageStamp2.unPause()).to.be.revertedWith('only pauser can unpause');
       });
 
       it('should not allow unpausing when not paused', async function () {
@@ -1371,7 +1327,6 @@ describe('when copyBatch creates a batch', function () {
 
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
 
-
         const redistributorRole = await postageStamp.REDISTRIBUTOR_ROLE();
         await postageStamp.grantRole(redistributorRole, receiver.getAddress());
 
@@ -1382,7 +1337,6 @@ describe('when copyBatch creates a batch', function () {
         await expect(postageStamp.connect(receiver).withdraw(beneficiary.getAddress()));
 
         expect(await this.token.balanceOf(beneficiary.getAddress())).to.equal(expectedAmount);
-
       });
     });
 
@@ -1424,10 +1378,11 @@ describe('when copyBatch creates a batch', function () {
         const batchA = computeBatchId(stamper, nonceA);
         expect(batchA).equal(await this.postageStamp.firstBatchId());
 
-//        expect(await this.postageStamp.pot()).equal(0 * 2 ** this.batch.depth);
-        expect(await this.postageStamp.validChunkCount()).to.be.equal(1 * 2 ** this.batch.depth);
-
+        //        expect(await this.postageStamp.pot()).equal(0 * 2 ** this.batch.depth);
+        expect(await this.postageStamp.validChunkCount()).to.be.equal(2 ** this.batch.depth);
+        expect(await this.postageStamp.expiredBatchesExist()).equal(false);
         await mineNBlocks(10);
+        expect(await this.postageStamp.expiredBatchesExist()).equal(true);
 
         const expectedAmount = 100 * 2 ** this.batch.depth;
 
@@ -1436,8 +1391,7 @@ describe('when copyBatch creates a batch', function () {
         expect(await this.postageStamp.validChunkCount()).to.be.equal(0);
 
         expect(await this.postageStamp.pot()).equal(expectedAmount);
-
-
+        expect(await this.postageStamp.expiredBatchesExist()).equal(false);
       });
     });
 
@@ -1452,8 +1406,6 @@ describe('when copyBatch creates a batch', function () {
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
       });
       it('should add to pot', async function () {
-
-
         const expectedAmount = this.transferAmount;
 
         expect(await this.postageStamp.pot()).equal(0);
@@ -1461,8 +1413,6 @@ describe('when copyBatch creates a batch', function () {
         expect(await this.postageStamp.topupPot(this.transferAmount));
 
         expect(await this.postageStamp.pot()).equal(expectedAmount);
-
-
       });
     });
 
@@ -1473,7 +1423,6 @@ describe('when copyBatch creates a batch', function () {
         receiver = accounts[0];
         this.postageStamp = await ethers.getContract('PostageStamp', stamper);
         this.token = await ethers.getContract('TestToken', deployer);
-
 
         this.batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
@@ -1493,12 +1442,10 @@ describe('when copyBatch creates a batch', function () {
         (await ethers.getContract('TestToken', stamper)).approve(this.postageStamp.address, this.transferAmount);
       });
       it('should not allow creating a small batch', async function () {
-
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         const updaterRole = await postageStamp.DEPTH_ORACLE_ROLE();
 
         await postageStamp.grantRole(updaterRole, receiver.getAddress());
-
 
         const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
         await this.postageStamp.createBatch(
@@ -1514,7 +1461,7 @@ describe('when copyBatch creates a batch', function () {
 
         await mineNBlocks(10);
 
-        expect(await postageStamp.connect(receiver).setMinimumBatchDepth(16));
+        expect(await postageStamp.connect(receiver).setMinimumBatchDepth(17));
 
         const nonceB = '0x0000000000000000000000000000000000000000000000000000000000001235';
 
@@ -1527,18 +1474,14 @@ describe('when copyBatch creates a batch', function () {
             nonceB,
             this.batch.immutable
           )
-        ).to.be.revertedWith("invalid bucket depth");
-
-
+        ).to.be.revertedWith('invalid bucket depth');
       });
 
       it('should not allow topping up a small batch', async function () {
-
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         const updaterRole = await postageStamp.DEPTH_ORACLE_ROLE();
 
         await postageStamp.grantRole(updaterRole, receiver.getAddress());
-
 
         const nonceA = '0x0000000000000000000000000000000000000000000000000000000000001234';
         await this.postageStamp.createBatch(
@@ -1556,17 +1499,14 @@ describe('when copyBatch creates a batch', function () {
 
         expect(await postageStamp.connect(receiver).setMinimumBatchDepth(20));
 
-        await expect(this.postageStamp.topUp(batchA, 100)).to.be.revertedWith("batch too small to renew");
+        await expect(this.postageStamp.topUp(batchA, 100)).to.be.revertedWith('batch too small to renew');
 
-        await expect(this.postageStamp.increaseDepth(batchA, 18)).to.be.revertedWith("depth not increasing");
+        await expect(this.postageStamp.increaseDepth(batchA, 18)).to.be.revertedWith('depth not increasing');
 
         expect(await this.postageStamp.increaseDepth(batchA, 21));
 
         expect(await this.postageStamp.topUp(batchA, 100));
-
       });
     });
-
-
   });
 });

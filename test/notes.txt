@@ -1,0 +1,56 @@
+hitchens order statistic tree lib
+    write tests
+
+redistribution
+    if there is one commit reveal
+        the one should always win
+    if there is two commit reveals with equal stakes
+        if they do agree (test is 1000 times in a loop and the difference should be smaller than approx tbc)
+            the one that is selected as a winner
+    if there is two commit reveals with equal stakes
+        if they do not agree
+            one should win and one should be slashed
+                one should win an approriate amount
+                one should be slashed an approriate amount
+    if there is one commit and no reveal
+        nothing? should happen
+    if there are two commits and one reveal
+        one that revealed wins and the one that does not gets slashed
+    if in the first round (when there have been no nonces submitted)
+        the random seed should be ?
+    if in the second round
+        the random seed should be ?
+    if the random seed is X
+        the node most proximate to X is selected
+
+    if out of depth
+    if within depth
+
+    if some report correct depth but others don't
+    what other edge cases around misreporting depth especially
+
+    should the anchor now be determined in the claim phase, since we do not want every node to commit?
+        every node committing every time incentivises liveness
+
+    what happens if nobody wins?
+        do you get a new anchor, or should we wait for someone to win with that anchor
+
+min stake?
+
+theoretical reserve depth: depth needed in the whole swarm if batch utilisation is X% does it matter if X?
+
+pricing oracle
+    under what cicumstances should the price change, various commit/reveal sequences, reveal by the winner or otherwise
+
+retrospectively add tests for copyBatch
+
+what is the industry standard for unit test coverage for solidity contracts
+
+what is the maximum number of batches such that we will exceed the block gas limit of GC
+
+do the slashed stakes get burnt or redistributed?
+    burnt:
+        - deflationary
+        - no perverse incentive to slash other nodes
+    redistributed:
+        - perverse incentive to slash other nodes

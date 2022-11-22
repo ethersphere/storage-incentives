@@ -1,0 +1,137 @@
+//<sig should seperate into unit/integration style tests?
+//<sig how many iterations/slashes etc. before the claim method uses too much gas for each blockchain?
+//<sig is it higher than 32 reveal/truth
+//<sig gas analysis
+//<sig review events emitted from claim in light of the above
+//<sig should add tests with split depths
+// it('should not allow randomness to be updated by an arbitrary user', async function () {});
+// it('should not allow random users to update an overlay address', async function () {});
+// it('should only redistributor can withdraw from the contract', async function () {});
+//cannot commit twice
+//cannot reveal twice
+
+//<sig should seperate into unit/integration style tests? sig>
+//<sig how many iterations/slashes etc. before the claim method uses too much gas for each blockchain? sig>
+//<sig is it higher than 32 reveal/truth sig>
+//<sig gas analysis sig>
+//<sig review events emitted from claim in light of the above
+
+//<sig
+// given the current "actual storage depth" vs "theoretical reserve depth"
+// change the price in the pricing oracle contract from the current price Pc to Pn using the formula Pn = kSPc
+// where Pn is determined by  multiplying the pricing signal S Ǝ -1 > S > 1 by some constant k Ǝ ℝ+ (eg. 1.1)
+
+// go through the truth revealers, check they can split without violating the minimum nodes per neighbourhood constraint
+// if there is a zero continuation, then there there is a strong need for price increase to attract more nodes to the neighourhood
+// if there is 1 bit continuation such that the min nodes/ nhood constraint will not be violated there then there is a mild need to reduce the price
+// if there is 2 bit continuation ... then there is a mild need
+
+// nb: k should be perhaps "tuned" by the foundation until it is corrects
+// nnb: perhaps a linear progression is too strong, and we should implement functionality to prevent the price going exponential
+// nnnb: this could bear some modelling/testing
+// nnnnb: in fact, the hardhat testing env would be great to write these long running models in, separate to the unit tests for CI efficiency
+//sig>
+
+//reveals but not claimed
+// <sig should this be different? sig>
+//check stakedensity calculation
+// expect(await sr.usableStakeOfOverlay(overlay_3)).to.be.eq(0);
+// expect(await sr.stakes(overlay_3).args[0].stakeAmount).to.be.eq(stakeAmount_3);
+// node_3 is frozen for 7 * roundLength * 2 ** truthRevealedDepth
+// expect(await sr.stakes(overlay_3).lastUpdatedBlockNumber).to.be.eq(stakeAmount_3);
+
+// use setPrevRandao to select this same neighbourhood next time
+
+// node_3 should not be able to commit?
+// node_3 should be unfrozen after N rounds
+// node_3 freezing rounds are meaningul given frequency of selection
+// node_3 should now be able to commit
+it('error if no reveals and all stakes are frozen', async function () {
+//no reveals
+
+await mineNBlocks(phaseLength);
+
+await expect(r_node_2.claim()).to.be.revertedWith(errors.claim.noReveals);
+
+expect(await token.balanceOf(node_1)).to.be.eq(0);
+expect(await token.balanceOf(node_2)).to.be.eq(0);
+
+const sr = await ethers.getContract('StakeRegistry');
+
+// //<sig commented out to allow tests to pass
+// //node_1 stake should be frozen
+// expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(0);
+// //node_2 stake should be frozen
+// expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(0);
+// // <sig end commented out to allow tests to pass
+
+// await mineNBlocks(phaseLength*2);
+
+// console.log(await r_node_2.currentCommits(0))
+});
+// describe('after skipped round with two players', async function () {});
+
+
+
+
+
+a bunch of stuff can't possibly function now that nodes have to have been staked
+in the round before the current round, so maybe we should add guards for sanity
+and to reduce attack surface?
+
+
+
+...................
+
+//provide real data
+
+
+//what is the cost of the attack given minimum stake
+//what is the minimum stake
+//we either put a lower bound in for the threshold or a minimum stake
+
+
+//check roles are not assigned wrongly too?
+
+//it would be perhaps better to explicitly declare the vars in the relevant scope rather than using (this) for convention/readibility
+//also would be good to add some comments so it's clear what is going on
+//there's an extra brackets here that aren't needed
+//it would be nice to perhaps define these values as what they are exlicitly for code reading purposes, or make an type/interface which will do so automatically
+//this would fail anyway because normalised balance would be zero, although with a different error message, maybe should change it to be a normally passing case
+//should this use the "mineNBlocks" function above?
+//could be good to roll this up into a function too - create N batches
+// this will return the previous batch id
+// at the moment of the depth increase the currentTotalOutpayment is already 2*price
+//perhaps should use the same pattern here to be consistent
+
+
+1. expire should perhaps use expirelimited?
+2. this approach means there will not be regular outpayments but that it will be sporadically distributed,
+the whole value of the batch gets dumped on the lucky winner, many rounds may have no value, some rounds
+will be extremely valuable.
+
+does:
+
+each time batches are expired, for each batch, if the batch remainingBalance is not more than zero
+    - removes the batch's chunks from the global validChunkChount
+    - the pot is adjusted by adding an amount equal to the (normalisedBalanced of the batch,
+    minus the global last expiry balance), multiplied by the number of chunks in that batch
+
+
+should:
+
+each time the batches are expired, each batch should be considered
+- if it is greater than zero in value, it is not processed in this run and will be considered in future runs
+- if it is not greater than zero in value,
+    - the chunks it represents are removed from the global validChunkChount
+    and the value it holds should be transferred to the pot
+    - the value in tokens it represents should be moved into the pot, which will be available to withdraw by the
+    redistributor
+
+
+
+notes:
+
+the total outpayment is the amount paid out over all time, normalised per chunk
+the last expiry balance is the balance at the point where the batches were last migrated, and the pot was updated
+the currentTotalOutpayment is the total outpayment since **the last time the batches were expired?**
