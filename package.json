@@ -59,6 +59,6 @@
     "staging:export": "hardhat --network staging export",
     "staging:seed": "cross-env HARDHAT_NETWORK=staging ts-node --files scripts/seed.ts",
     "hardhat": "hardhat",
-    "deployLocal": "npx hardhat run deploy/deploy_staking.ts --network ganache"
+    "deployLocal": "npx hardhat run scripts/deployer.ts --network ganache"
   }
 }

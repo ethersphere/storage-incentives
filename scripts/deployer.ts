@@ -3,9 +3,15 @@ import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
 import 'hardhat-deploy-ethers';
 import hre from 'hardhat';
-
-import * as addresses from '../deployed.json';
+import * as fs from 'fs';
 import { ContractReceipt, ContractTransaction } from 'ethers';
+
+import deployedData from '../deployed.json';
+const fileName = 'deployed.json';
+// refactor:
+//  mainnet_deployed.json
+//  testnet_deployed.json
+//  local_deployed.json
 
 const deployTo = process.env.DEPLOYTO;
 const networkID = 5; //test network
@@ -55,6 +61,8 @@ async function main() {
   console.log(redisAdd.address);
 
   redistribution = redisAdd.address;
+
+  await jsonIO();
 }
 
 async function rolesSetter() {
@@ -80,6 +88,48 @@ async function rolesSetter() {
   console.log(result);
   receipt = await result.wait();
   console.log(receipt);
+}
+
+async function jsonIO() {
+  const deployed = JSON.parse(JSON.stringify(deployedData).toString());
+
+  deployed['contracts']['postage']['deployer'] = 'haseeb';
+
+  //set addresses
+  deployed['contracts']['postage']['deployedAddress'] = postage;
+  deployed['contracts']['redistribution']['deployedAddress'] = redistribution;
+  deployed['contracts']['staking']['deployedAddress'] = staking;
+  deployed['contracts']['priceOracle']['deployedAddress'] = oracle;
+
+  //set abi and bytecode
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const postageABI = require('../artifacts/src/PostageStamp.sol/PostageStamp.json');
+  deployed['contracts']['postage']['abi'] = postageABI.abi;
+  deployed['contracts']['postage']['bytecode'] = postageABI.bytecode;
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const redisABI = require('../artifacts/src/Redistribution.sol/Redistribution.json');
+  deployed['contracts']['redistribution']['abi'] = redisABI.abi;
+  deployed['contracts']['redistribution']['bytecode'] = redisABI.bytecode;
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const stakingABI = require('../artifacts/src/Staking.sol/StakeRegistry.json');
+  deployed['contracts']['staking']['abi'] = stakingABI.abi;
+  deployed['contracts']['staking']['bytecode'] = stakingABI.bytecode;
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const oracleABI = require('../artifacts/src/PriceOracle.sol/PriceOracle.json');
+  deployed['contracts']['priceOracle']['abi'] = oracleABI.abi;
+  deployed['contracts']['priceOracle']['bytecode'] = oracleABI.bytecode;
+
+  await fs.writeFile(
+    fileName,
+    JSON.stringify(deployed),
+    await function writeJSON(err) {
+      if (err) return console.log(err);
+      console.log('writing to ' + fileName);
+    }
+  );
 }
 
 // We recommend this pattern to be able to use async/await everywhere
