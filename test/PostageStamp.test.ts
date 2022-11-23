@@ -1446,7 +1446,6 @@ describe('PostageStamp', function () {
       });
 
       it('expire should update the pot and delete expired batches', async function () {
-
         await mineNBlocks(20);
 
         expect(await postageStamp.expiredBatchesExist()).equal(true);
