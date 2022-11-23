@@ -636,7 +636,7 @@ describe('Redistribution', function () {
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, StakeFrozenEvent;
+          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;
