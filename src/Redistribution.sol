@@ -217,7 +217,6 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 commitsArrayLength = currentCommits.length;
 
-        // check can only commit once
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             require(currentCommits[i].overlay != _overlay, "participant already committed in this round");
         }
