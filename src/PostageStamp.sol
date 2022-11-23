@@ -219,7 +219,7 @@ contract PostageStamp is AccessControl, Pausable {
     function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external whenNotPaused {
         Batch storage batch = batches[_batchId];
 
-        require(batch.owner != address(0), "batch does not exist");
+        require(batch.owner != address(0), "batch does not exist or has expired");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
         require(batch.depth > minimumBatchDepth, "batch too small to renew");
 
@@ -246,7 +246,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         require(batch.owner == msg.sender, "not batch owner");
         require(!batch.immutableFlag, "batch is immutable");
-        require(_newDepth > batch.depth && _newDepth > minimumBatchDepth, "depth not increasing");
+        require(_newDepth > batch.depth, "depth not increasing");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
         uint8 depthChange = _newDepth - batch.depth;
@@ -273,7 +273,7 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function remainingBalance(bytes32 _batchId) public view returns (uint256) {
         Batch storage batch = batches[_batchId];
-        require(batch.owner != address(0), "batch does not exist");
+        require(batch.owner != address(0), "batch does not exist or expired");
         if (batch.normalisedBalance <= currentTotalOutPayment()) {
             return 0;
         }
