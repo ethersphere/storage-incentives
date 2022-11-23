@@ -243,7 +243,6 @@ contract PostageStamp is AccessControl, Pausable {
         Batch storage batch = batches[_batchId];
 
         require(batch.owner == msg.sender, "not batch owner");
-        require(!batch.immutableFlag, "batch is immutable");
         require(_newDepth > batch.depth, "depth not increasing");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
