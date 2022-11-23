@@ -131,7 +131,7 @@ contract PostageStamp is AccessControl, Pausable {
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
         // bucket depth should be non-zero and smaller than the depth
-        require(_bucketDepth != 0 && _bucketDepth < _depth && minimumBatchDepth <= _bucketDepth, "invalid bucket depth");
+        require(_bucketDepth != 0 && _bucketDepth < _depth, "invalid bucket depth");
         // derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
@@ -218,10 +218,8 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external whenNotPaused {
         Batch storage batch = batches[_batchId];
-
         require(batch.owner != address(0), "batch does not exist or has expired");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
-        require(batch.depth > minimumBatchDepth, "batch too small to renew");
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _topupAmountPerChunk * (1 << batch.depth);
@@ -437,13 +435,5 @@ contract PostageStamp is AccessControl, Pausable {
     function topupPot(uint256 amount) external {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
         pot += amount;
-    }
-
-    /**
-     * @notice Set minimum batch depth
-     */
-    function setMinimumBatchDepth(uint8 min) external {
-        require(hasRole(DEPTH_ORACLE_ROLE, msg.sender), "only depth oracle can set minimum batch depth");
-        minimumBatchDepth = min;
     }
 }
