@@ -29,7 +29,7 @@ contract PriceOracle is AccessControl {
     // When the contract is paused, price changes are not effective
     bool public isPaused = false;
 
-    // The address of the linked postageStamp contract
+    // The address of the linked PostageStamp contract
     PostageStamp public postageStamp;
 
     constructor(address _postageStamp) {
@@ -80,8 +80,9 @@ contract PriceOracle is AccessControl {
      * who have commited and revealed truthy reserve commitment hashes, this is called
      * the redundancy signal. If the redundancy signal is 4, no action is taken. If the
      * redundancy signal is greater than 4, a price decrease is applied in order to
-     * reduce the incentive to run a node. If the redundancy signal is greater than 4,
+     * reduce the incentive to run a node. If the redundancy signal is less than 4,
      * a price increase is applied in order to increase the incentive to run a node.
+     *
      * Can only be called by the price updater role, this should be set to be the depoloyed
      * Redistribution contract's address. Rounds down to return an integer.
      */
@@ -95,7 +96,7 @@ contract PriceOracle is AccessControl {
             // redundancy may not be zero
             require(redundancy > 0, "unexpected zero");
 
-            // maximum extra redundancy is 4
+            // maximum considered extra redundancy is 4
             if (redundancy > 8) {
                 usedRedundancy = 8;
             }

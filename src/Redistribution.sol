@@ -13,28 +13,29 @@ import "./Staking.sol";
  * place in three phases: _commit_, _reveal_ and _claim_.
  *
  * A node, upon establishing that it _isParticipatingInUpcomingRound_, i.e. it's overlay falls within proximity order
- * of its reported depth, prepares a "reserve commitment hash" and calculates the "storage depth" using the chunks
- * it is currently stores in its reserve. These values should be the same for every node in a neighbourhood, and
- * represent the Schelling point. Each eligible node may use these values, together with a random, single use, secret
- * _revealNonce_ and their _overlay_ as the pre-image values for the obsfucated _commit_.
+ * of its reported depth with the _currentRoundAnchor_, prepares a "reserve commitment hash" using the chunks
+ * it currently stores in its reserve and calculates the "storage depth" (see Bee for details). These values, if calculated
+ * honestly, and with the right chunks stored, should be the same for every node in a neighbourhood. This is the Schelling point.
+ * Each eligible node can then use these values, together with a random, single use, secret  _revealNonce_ and their
+ * _overlay_ as the pre-image values for the obsfucated _commit_, using the _wrapCommit_ method.
  *
  * Once the _commit_ round has elapsed, participating nodes must provide the values used to calculate their obsfucated
  * _commit_ hash, which, once verified for correctness and proximity to the anchor are retained in the _currentReveals_.
- * Nodes that have commited but do not reveal the correct pre-image values will have their stake "frozen" for a period
- * of rounds proportional to their reported depth.
+ * Nodes that have commited but do not reveal the correct values used to create the pre-image will have their stake
+ * "frozen" for a period of rounds proportional to their reported depth.
  *
- * During the _reveal_ round, the randomness is updated after every successful reveal. Once the reveal round
- * is concluded, the _currentRoundAnchor_ is updated and users can determine if they will be eligible their overlay
- * will be eligible for the next commit phase using _isParticipatingInUpcomingRound_.
+ * During the _reveal_ round, randomness is updated after every successful reveal. Once the reveal round is concluded,
+ * the _currentRoundAnchor_ is updated and users can determine if they will be eligible their overlay will be eligible
+ * for the next commit phase using _isParticipatingInUpcomingRound_.
  *
- * When the _reveal_ phase has been concluded, the claim phase can begin. At this point the truth teller and winner
- * are already determined. By calling _isWinner_, an applicant node can run the relevant logic do determine if they have
+ * When the _reveal_ phase has been concluded, the claim phase can begin. At this point, the truth teller and winner
+ * are already determined. By calling _isWinner_, an applicant node can run the relevant logic to determine if they have
  * been selected as the beneficiary of this round. When calling _claim_, the current pot from the PostageStamp contract
- * is withdrawn and transferred to the beneficiaries address. Nodes that have revealed values that differ from the truth,
+ * is withdrawn and transferred to that beneficiaries address. Nodes that have revealed values that differ from the truth,
  * have their stakes "frozen" for a period of rounds proportional to their reported depth.
  */
 contract Redistribution is AccessControl, Pausable {
-    // An elgible user may commit to an obsfucated hash during the commit phase...
+    // An eligible user may commit to an _obsfucatedHash_ during the commit phase...
     struct Commit {
         bytes32 overlay;
         address owner;
@@ -42,7 +43,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 obfuscatedHash;
         bool revealed;
     }
-    // ...then provide the actual values that are the pre-image of the _obsfucatedHash_
+    // ...then provide the actual values that are the constituents of the pre-image of the _obsfucatedHash_
     // during the reveal phase.
     struct Reveal {
         address owner;

@@ -387,6 +387,10 @@ contract PostageStamp is AccessControl, Pausable {
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
         }
+        // then, for all batches that have _not_ expired during the period
+        // add the total normalised payout of all batches
+        // multiplied by the remaining total valid chunk count
+        // to the pot for the period since the last expiry
 
         require(lastExpiryBalance >= leb, "current total outpayment should never decrease");
 

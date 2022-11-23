@@ -3,13 +3,11 @@ import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardh
 import { Signer } from 'ethers';
 import { mineNBlocks, computeBatchId } from './util/tools';
 
-// Named accounts used by tests.
 let stamper: string;
 let deployer: string;
 let oracle: string;
 let others: string[];
 
-// Before the tests, set named accounts and read deployments.
 before(async function () {
   const namedAccounts = await getNamedAccounts();
   deployer = namedAccounts.deployer;
