@@ -14,6 +14,14 @@ if (!mnemonic) {
   mnemonic = 'test test test test test test test test test test test test';
 }
 
+let MNEMONICORKEY = process.env.MNEMONICORKEY;
+if (!MNEMONICORKEY) {
+  // NOTE: this fallback is for development only!
+  // When using other networks, set the secret in .env.
+  // DO NOT commit or share your mnemonic with others!
+  MNEMONICORKEY = 'test test test test test test test test test test test test';
+}
+
 const accounts = { mnemonic };
 
 // Config for hardhat.
@@ -112,6 +120,9 @@ const config: HardhatUserConfig = {
     localhost: {
       url: 'http://localhost:8545',
       accounts,
+    },
+    ganache: {
+      url: 'http://127.0.0.1:8545',
     },
     staging: {
       url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
