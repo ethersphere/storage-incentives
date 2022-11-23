@@ -196,16 +196,16 @@ contract Redistribution is AccessControl, Pausable {
     ) external whenNotPaused {
         require(currentPhaseCommit(), "not in commit phase");
         uint256 cr = currentRound();
-        require(cr <= _roundNumber, "specified commit round over");
-        require(cr >= _roundNumber, "specified commit round not started yet");
+        require(cr <= _roundNumber, "commit round over");
+        require(cr >= _roundNumber, "commit round not started yet");
 
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
-        require(nstake >= minimumStake, "node must have staked at least minimum stake");
-        require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner must match sender to be able to commit");
+        require(nstake >= minimumStake, "stake must exceed minimum");
+        require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner must match sender");
 
         require(
             Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2 * roundLength,
-            "node must have staked before last round"
+            "must have staked 2 rounds prior"
         );
 
         // if we are in a new commit phase, reset the array of commits and
@@ -218,7 +218,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
-            require(currentCommits[i].overlay != _overlay, "participant already committed in this round");
+            require(currentCommits[i].overlay != _overlay, "only one commit each per round");
         }
 
         currentCommits.push(
