@@ -11,6 +11,8 @@ const increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
 const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
 
+const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
+
 // Named accounts used by tests.
 let deployer: string, stamper: string;
 
@@ -73,10 +75,10 @@ before(async function () {
 
 const errors = {
   commit: {
-    notOwner: 'owner must match sender to be able to commit',
-    notStaked: 'node must have staked at least minimum stake',
+    notOwner: 'owner must match sender',
+    notStaked: 'stake must exceed minimum',
     stakedRecently: 'stake updated recently',
-    alreadyCommited: 'participant already committed in this round',
+    alreadyCommited: 'only one commit each per round',
   },
   reveal: {
     noCommits: 'round received no commits',
@@ -180,7 +182,7 @@ describe('Redistribution', function () {
 
       await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
-      await postage.totalPot(); //for testing
+      await postage.expireLimited(maxInt256); //for testing
       await postage.createBatch(
         stamper,
         batch.initialPaymentPerChunk,
@@ -634,7 +636,7 @@ describe('Redistribution', function () {
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, StakeFrozenEvent;
+          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;

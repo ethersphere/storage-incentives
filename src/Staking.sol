@@ -222,7 +222,7 @@ contract StakeRegistry is AccessControl, Pausable {
      the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause the contract");
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
         _pause();
     }
 
@@ -230,7 +230,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause the contract");
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
         _unpause();
     }
 }

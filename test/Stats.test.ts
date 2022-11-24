@@ -7,7 +7,7 @@ const roundLength = 152;
 
 // Named accounts used by tests.
 let deployer: string, stamper: string, oracle: string;
-let others: any[] = [];
+let others: string[];
 
 // Before the tests, assign accounts
 before(async function () {
@@ -58,9 +58,15 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     await sr_node.depositStake(nodes[i], nonce, stakes[i]);
   }
 
-  const winDist: any[][] = [];
+  interface Outcome {
+    node: string;
+    stake: string;
+    wins: number;
+  }
+
+  const winDist: Outcome[] = [];
   for (let i = 0; i < nodes.length; i++) {
-    winDist.push([nodes[i], stakes[i], 0]);
+    winDist.push({ node: nodes[i], stake: stakes[i], wins: 0 });
   }
 
   await mineNBlocks(roundLength * 3 - 15 - nodes.length * 3);
@@ -86,9 +92,9 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     const r_node = await ethers.getContract('Redistribution', nodes[0]);
 
     for (let i = 0; i < winDist.length; i++) {
-      const overlay = await createOverlay(winDist[i][0], '0x00', nonce);
+      const overlay = await createOverlay(winDist[i].node, '0x00', nonce);
       if (await r_node.isWinner(overlay)) {
-        winDist[i][2]++;
+        winDist[i].wins++;
       }
     }
 
@@ -125,9 +131,9 @@ describe('Stats', function () {
 
       for (let i = 0; i < dist.length; i++) {
         const actual =
-          parseInt((BigInt(dist[i][1]) / BigInt(100000000000000000)).toString()) /
+          parseInt((BigInt(dist[i].stake) / BigInt(100000000000000000)).toString()) /
           parseInt((sumStakes / BigInt(100000000000000000)).toString());
-        const probable = dist[i][2] / trials;
+        const probable = dist[i].wins / trials;
         expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
       }
     }).timeout(100000);

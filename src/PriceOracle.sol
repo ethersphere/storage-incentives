@@ -26,10 +26,13 @@ contract PriceOracle is AccessControl {
     // Constants used to modulate the price, see below usage
     uint256[] public increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
 
+    uint16 targetRedundancy = 4;
+    uint16 maxConsideredExtraRedundancy = 4;
+
     // When the contract is paused, price changes are not effective
     bool public isPaused = false;
 
-    // The address of the linked postageStamp contract
+    // The address of the linked PostageStamp contract
     PostageStamp public postageStamp;
 
     constructor(address _postageStamp) {
@@ -78,15 +81,18 @@ contract PriceOracle is AccessControl {
      * @dev The ideal redundancy in Swarm is 4 nodes per neighbourhood. Each round, the
      * Redistribution contract reports the current amount of nodes in the neighbourhood
      * who have commited and revealed truthy reserve commitment hashes, this is called
-     * the redundancy signal. If the redundancy signal is 4, no action is taken. If the
-     * redundancy signal is greater than 4, a price decrease is applied in order to
-     * reduce the incentive to run a node. If the redundancy signal is greater than 4,
-     * a price increase is applied in order to increase the incentive to run a node.
-     * Can only be called by the price updater role, this should be set to be the depoloyed
+     * the redundancy signal. The target redundancy is 4, so, if the redundancy signal is 4,
+     * no action is taken. If the redundancy signal is greater than 4, i.e. there is extra
+     * redundancy, a price decrease is applied in order to reduce the incentive to run a node.
+     * If the redundancy signal is less than 4, a price increase is applied in order to
+     * increase the incentive to run a node. If the redundancy signal is more than 8, we
+     * apply the max price decrease as if there were just four extra nodes.
+     *
+     * Can only be called by the price updater role, this should be set to be the deployed
      * Redistribution contract's address. Rounds down to return an integer.
      */
     function adjustPrice(uint256 redundancy) external {
-        if(isPaused == false){
+        if (isPaused == false) {
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
             uint256 multiplier = minimumPrice;
@@ -95,9 +101,10 @@ contract PriceOracle is AccessControl {
             // redundancy may not be zero
             require(redundancy > 0, "unexpected zero");
 
-            // maximum extra redundancy is 4
-            if (redundancy > 8) {
-                usedRedundancy = 8;
+            // enforce maximum considered extra redundancy
+            uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
+            if (redundancy > maxConsideredRedundancy) {
+                usedRedundancy = maxConsideredRedundancy;
             }
 
             // use the increaseRate array of constants to determine

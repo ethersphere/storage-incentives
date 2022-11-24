@@ -27,10 +27,10 @@ const errors = {
     currentlyFrozen: 'overlay currently frozen',
   },
   pause: {
-    noRole: 'only pauser can pause the contract',
+    noRole: 'only pauser can pause',
     currentlyPaused: 'Pausable: paused',
     notCurrentlyPaused: 'Pausable: not paused',
-    onlyPauseCanUnPause: 'only pauser can unpause the contract',
+    onlyPauseCanUnPause: 'only pauser can unpause',
   },
 };
 
@@ -57,9 +57,6 @@ before(async function () {
 let stakeRegistry: Contract;
 let token: Contract;
 
-// let networkID = 0; //test network
-
-//todo DRY this
 async function mintAndApprove(payee: string, beneficiary: string, transferAmount: string) {
   const minterTokenInstance = await ethers.getContract('TestToken', deployer);
   await minterTokenInstance.mint(payee, transferAmount);
