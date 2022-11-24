@@ -73,8 +73,6 @@ contract PostageStamp is AccessControl, Pausable {
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     // Role allowed to withdraw the pot
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
-    // Role allowed to specify the minimum depth
-    bytes32 public constant DEPTH_ORACLE_ROLE = keccak256("DEPTH_ORACLE_ROLE");
 
     // Associate every batch id with batch data.
     mapping(bytes32 => Batch) public batches;
@@ -86,9 +84,6 @@ contract PostageStamp is AccessControl, Pausable {
 
     // Total out payment per chunk, at the blockheight of the last price change.
     uint256 private totalOutPayment;
-
-    // Minimum batch depth that is allowed to be purchased.
-    uint8 public minimumBatchDepth = 16;
 
     // Combined global chunk capacity of valid batches remaining at the blockheight expire() was last called.
     uint256 public validChunkCount;
