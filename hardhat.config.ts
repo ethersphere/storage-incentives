@@ -5,21 +5,12 @@ import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 
-// Define mnemonic for accounts.
 let mnemonic = process.env.MNEMONIC;
 if (!mnemonic) {
   // NOTE: this fallback is for development only!
   // When using other networks, set the secret in .env.
   // DO NOT commit or share your mnemonic with others!
   mnemonic = 'test test test test test test test test test test test test';
-}
-
-let MNEMONICORKEY = process.env.MNEMONICORKEY;
-if (!MNEMONICORKEY) {
-  // NOTE: this fallback is for development only!
-  // When using other networks, set the secret in .env.
-  // DO NOT commit or share your mnemonic with others!
-  MNEMONICORKEY = 'test test test test test test test test test test test test';
 }
 
 const accounts = { mnemonic };
@@ -120,13 +111,21 @@ const config: HardhatUserConfig = {
     localhost: {
       url: 'http://localhost:8545',
       accounts,
+      chainId: 1,
+    },
+    geth: {
+      url: 'add url',
+      chainId: 0,
+      accounts,
     },
     ganache: {
       url: 'http://127.0.0.1:8545',
+      chainId: 1337,
     },
     staging: {
       url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
       accounts,
+      chainId: 5,
     },
   },
   paths: {

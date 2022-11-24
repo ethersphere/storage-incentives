@@ -1,0 +1,39 @@
+{
+  "contracts": {
+    "postage": {
+      "abi": [],
+      "bytecode": "",
+      "address": "",
+      "block": 0,
+      "url": ""
+    },
+    "redistribution": {
+      "abi": [],
+      "bytecode": "",
+      "address": "",
+      "block": 0,
+      "url": ""
+    },
+    "staking": {
+      "abi": [],
+      "bytecode": "",
+      "address": "",
+      "block": 0,
+      "url": ""
+    },
+    "priceOracle": {
+      "abi": [],
+      "bytecode": "",
+      "address": "",
+      "block": 0,
+      "url": ""
+    },
+    "factory": {
+      "abi": [],
+      "bytecode": "",
+      "address": "",
+      "block": 0,
+      "url": ""
+    }
+  }
+}
