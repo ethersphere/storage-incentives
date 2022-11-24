@@ -57,9 +57,6 @@ before(async function () {
 let stakeRegistry: Contract;
 let token: Contract;
 
-// let networkID = 0; //test network
-
-//todo DRY this
 async function mintAndApprove(payee: string, beneficiary: string, transferAmount: string) {
   const minterTokenInstance = await ethers.getContract('TestToken', deployer);
   await minterTokenInstance.mint(payee, transferAmount);

@@ -53,25 +53,6 @@ Relinquish admin rights...
 
 ...
 
-## Todo
-
-- add note to explain development phases
-- Note on claiming strategy.
-- Note Bootstrapping procedure.
-- Note of statistical implications and what "Winning" is
-- Attack modelling with financial quanitification
-  - phase now
-  - phase after inclusion proofs are added
-- Do calcs for statistical significance and amend stats
-- Improve comments
-- Solidity remix auto checker thing
-- solidity test coverage?
-- what happens in zero case (i.e. price has not been set) do we need to enforce this during an initialisation step
-- clarify copyBatch usage
-- read through all tests and sanity check preferably many eyes
-    - check if anything needs to be added and add it
-    - Add stakefrozen event
-
 ## Requirements:
 
 To set up the project, you will need `yarn` and `node`.
