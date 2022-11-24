@@ -35,7 +35,7 @@ import "./Staking.sol";
  * have their stakes "frozen" for a period of rounds proportional to their reported depth.
  */
 contract Redistribution is AccessControl, Pausable {
-    // An eligible user may commit to an _obsfucatedHash_ during the commit phase...
+    // An eligible user may commit to an _obfuscatedHash_ during the commit phase...
     struct Commit {
         bytes32 overlay;
         address owner;
@@ -43,7 +43,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 obfuscatedHash;
         bool revealed;
     }
-    // ...then provide the actual values that are the constituents of the pre-image of the _obsfucatedHash_
+    // ...then provide the actual values that are the constituents of the pre-image of the _obfuscatedHash_
     // during the reveal phase.
     struct Reveal {
         address owner;
@@ -183,7 +183,7 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Begin application for a round if eligible. Commit a hashed value for which the pre-image will be
      * subsequently revealed.
      * @dev If a node's overlay is _inProximity_(_depth_) of the _currentRoundAnchor_, that node may compute an
-     * _obsfucatedHash_ by providing their _overlay_, reported storage _depth_, reserve commitment _hash_ and a
+     * _obfuscatedHash_ by providing their _overlay_, reported storage _depth_, reserve commitment _hash_ and a
      * randomly generated, and secret _revealNonce_ to the _wrapCommit_ method.
      * @param _obfuscatedHash The calculated hash resultant of the required pre-image values.
      * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
