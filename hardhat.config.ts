@@ -5,7 +5,7 @@ import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 
-let mnemonic = process.env.MNEMONIC;
+let mnemonic = process.env.WALLET_SECRET;
 if (!mnemonic) {
   // NOTE: this fallback is for development only!
   // When using other networks, set the secret in .env.
@@ -114,18 +114,19 @@ const config: HardhatUserConfig = {
       chainId: 1,
     },
     geth: {
-      url: 'add url',
-      chainId: 0,
+      url: '', // Add url of geth node
+      chainId: 0, // Add chain id
       accounts,
     },
     ganache: {
       url: 'http://127.0.0.1:8545',
       chainId: 1337,
     },
-    staging: {
+    testnet: {
       url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
-      accounts,
+      accounts: [process.env.WALLET_SECRET as string],
       chainId: 5,
+      gasPrice: 80000000000, // this is 80 Gwei
     },
   },
   paths: {

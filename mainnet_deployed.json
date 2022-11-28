@@ -1,13 +1,6 @@
 {
   "contracts": {
-    "postage": {
-      "abi": [],
-      "bytecode": "",
-      "address": "",
-      "block": 0,
-      "url": ""
-    },
-    "redistribution": {
+    "factory": {
       "abi": [],
       "bytecode": "",
       "address": "",
@@ -21,6 +14,13 @@
       "block": 0,
       "url": ""
     },
+    "postageStamp": {
+      "abi": [],
+      "bytecode": "",
+      "address": "",
+      "block": 0,
+      "url": ""
+    },
     "priceOracle": {
       "abi": [],
       "bytecode": "",
@@ -28,7 +28,7 @@
       "block": 0,
       "url": ""
     },
-    "factory": {
+    "redistribution": {
       "abi": [],
       "bytecode": "",
       "address": "",
