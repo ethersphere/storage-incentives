@@ -122,12 +122,17 @@ const config: HardhatUserConfig = {
       url: 'http://127.0.0.1:8545',
       chainId: 1337,
     },
-    testnet: {
-      url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
-      accounts: [process.env.WALLET_SECRET as string],
-      chainId: 5,
-      gasPrice: 80000000000, // this is 80 Gwei
-    },
+    // testnet: {
+    //   url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
+    //   accounts: [process.env.WALLET_SECRET as string],
+    //   chainId: 5,
+    //   gasPrice: 80000000000, // this is 80 Gwei
+    // },
+    // mainnet: {
+    //   url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
+    //   accounts: [process.env.WALLET_SECRET as string],
+    //   chainId: 5,
+    // },
   },
   paths: {
     sources: 'src',

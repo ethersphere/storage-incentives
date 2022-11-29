@@ -9,7 +9,7 @@ import { ethers } from 'hardhat';
 import hre from 'hardhat';
 
 interface DeployedContract {
-  abi: Array<any>; // Improve these types
+  abi: Array<any>;
   bytecode: string;
   address: string;
   block: number;
@@ -178,8 +178,6 @@ async function logResult(contractData: any) {
 }
 
 async function rolesSetter(contractData: any) {
-  const [deployer] = await ethers.getSigners();
-
   const PostageStamp = await ethers.getContractFactory('PostageStamp');
   const StakeReg = await ethers.getContractFactory('StakeRegistry');
 
@@ -191,12 +189,14 @@ async function rolesSetter(contractData: any) {
   const redistributorRole = contract.REDISTRIBUTOR_ROLE();
   result = await contract.grantRole(redistributorRole, contractData.addresses.redistribution);
   receipt = await result.wait();
+  console.log(receipt);
 
   const contract2 = StakeReg.attach(contractData.addresses.staking);
 
   const redistributorRole2 = contract2.REDISTRIBUTOR_ROLE();
   result = await contract2.grantRole(redistributorRole2, contractData.addresses.redistribution);
   receipt = await result.wait();
+  console.log(receipt);
 }
 
 async function writeResult(deployedData: any, contractData: any) {
@@ -244,7 +244,7 @@ async function writeResult(deployedData: any, contractData: any) {
       break;
     case 'mainnet':
       urlAddress = mainnetURL;
-      fileName = 'testnet_deployed.json';
+      fileName = 'mainnet_deployed.json';
       break;
     default:
       break;
@@ -259,9 +259,8 @@ async function writeResult(deployedData: any, contractData: any) {
     deployed['contracts']['redistribution']['url'] = urlAddress;
     deployed['contracts']['staking']['url'] = urlAddress;
     deployed['contracts']['priceOracle']['url'] = urlAddress;
-
-    fs.writeFileSync(fileName, JSON.stringify(deployed, null, '\t'));
   }
+  fs.writeFileSync(fileName, JSON.stringify(deployed, null, '\t'));
 }
 
 // We recommend this pattern to be able to use async/await everywhere
