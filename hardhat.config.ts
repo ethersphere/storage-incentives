@@ -129,7 +129,7 @@ const config: HardhatUserConfig = {
     //   gasPrice: 80000000000, // this is 80 Gwei
     // },
     // mainnet: {
-    //   url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
+    //   url: 'https://mainnet.infura.io/v3/' + process.env.INFURA_TOKEN,
     //   accounts: [process.env.WALLET_SECRET as string],
     //   chainId: 5,
     // },
