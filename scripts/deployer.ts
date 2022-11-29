@@ -3,13 +3,12 @@ import * as fs from 'fs';
 import { ContractReceipt, ContractTransaction } from 'ethers';
 import mainnetData from '../mainnet_deployed.json';
 import testnetData from '../testnet_deployed.json';
-import dummyData from '../example_testnet_deployed.json';
 import { getCurrentTimestamp } from 'hardhat/internal/hardhat-network/provider/utils/getCurrentTimestamp';
 import { ethers } from 'hardhat';
 import hre from 'hardhat';
 
 interface DeployedContract {
-  abi: Array<any>;
+  abi: Array<never>;
   bytecode: string;
   address: string;
   block: number;
@@ -26,8 +25,6 @@ interface DeployedData {
   };
 }
 
-let fileName = 'example_testnet_deployed.json';
-
 // URL
 const mainnetURL = 'https://gnosisscan.io/address/';
 const testnetURL = 'https://goerli.etherscan.io/address/';
@@ -35,7 +32,7 @@ const testnetURL = 'https://goerli.etherscan.io/address/';
 const blockChainVendor = hre.network.name;
 const networkID = hre.network.config.chainId;
 
-async function main(deployedData: DeployedData = dummyData) {
+async function main(deployedData: DeployedData = testnetData) {
   let contractData = {
     addresses: {
       postageStamp: '',
@@ -237,6 +234,7 @@ async function writeResult(deployedData: any, contractData: any) {
 
   // Construct URL for contract
   let urlAddress = '';
+  let fileName = '';
   switch (blockChainVendor) {
     case 'testnet':
       urlAddress = testnetURL;
@@ -247,6 +245,7 @@ async function writeResult(deployedData: any, contractData: any) {
       fileName = 'mainnet_deployed.json';
       break;
     default:
+      fileName = 'example_testnet_deployed.json';
       break;
   }
   if (urlAddress.length != 0) {
@@ -259,6 +258,10 @@ async function writeResult(deployedData: any, contractData: any) {
     deployed['contracts']['redistribution']['url'] = urlAddress;
     deployed['contracts']['staking']['url'] = urlAddress;
     deployed['contracts']['priceOracle']['url'] = urlAddress;
+  }
+
+  if (fileName.length == 0 || !fs.existsSync(fileName)) {
+    fileName = blockChainVendor + '_deployed.json';
   }
   fs.writeFileSync(fileName, JSON.stringify(deployed, null, '\t'));
 }

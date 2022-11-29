@@ -26,7 +26,6 @@ deployments/localhost
 *_deployed.json
 !mainnet_deployed.json
 !testnet_deployed.json
-!example_testnet_deployed.json
 
 # Misc
 contractsInfo.json

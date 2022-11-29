@@ -5,11 +5,12 @@ import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 
-let mnemonic = process.env.WALLET_SECRET;
+let mnemonic = process.env.MNEMONIC;
 if (!mnemonic) {
   // NOTE: this fallback is for development only!
   // When using other networks, set the secret in .env.
   // DO NOT commit or share your mnemonic with others!
+  console.log(mnemonic);
   mnemonic = 'test test test test test test test test test test test test';
 }
 
@@ -122,17 +123,16 @@ const config: HardhatUserConfig = {
       url: 'http://127.0.0.1:8545',
       chainId: 1337,
     },
-    // testnet: {
-    //   url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
-    //   accounts: [process.env.WALLET_SECRET as string],
-    //   chainId: 5,
-    //   gasPrice: 80000000000, // this is 80 Gwei
-    // },
-    // mainnet: {
-    //   url: 'https://mainnet.infura.io/v3/' + process.env.INFURA_TOKEN,
-    //   accounts: [process.env.WALLET_SECRET as string],
-    //   chainId: 5,
-    // },
+    testnet: {
+      url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
+      accounts,
+      chainId: 5,
+    },
+    mainnet: {
+      url: 'https://mainnet.infura.io/v3/' + process.env.INFURA_TOKEN,
+      accounts,
+      chainId: 1,
+    },
   },
   paths: {
     sources: 'src',
