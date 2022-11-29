@@ -245,7 +245,6 @@ async function writeResult(deployedData: any, contractData: any) {
       fileName = 'mainnet_deployed.json';
       break;
     default:
-      fileName = 'example_testnet_deployed.json';
       break;
   }
   if (urlAddress.length != 0) {
