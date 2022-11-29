@@ -129,9 +129,9 @@ const config: HardhatUserConfig = {
       chainId: 5,
     },
     mainnet: {
-      url: 'https://mainnet.infura.io/v3/' + process.env.INFURA_TOKEN,
+      url: process.env.QUICKNODE, // change it to appropriate rpc endpoint (quicknode or infura)
       accounts,
-      chainId: 1,
+      chainId: 100,
     },
   },
   paths: {
