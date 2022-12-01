@@ -8,16 +8,16 @@ import '@nomiclabs/hardhat-etherscan';
 
 const mnemonic = process.env.MNEMONIC;
 if (!mnemonic) {
-  throw new Error('Please set your MNEMONIC in a .env file');
+  console.log('Please set your MNEMONIC in a .env file');
 }
 
 const infuraToken = process.env.INFURA_TOKEN;
 if (!infuraToken) {
-  throw new Error('Please set your INFURA_TOKEN in a .env file');
+  console.log('Please set your INFURA_TOKEN in a .env file');
 }
 
-const gnosisKey = process.env.GNOSISSCANAPIKEY;
-const goerliKey = process.env.GOERLIAPIKEY;
+const mainnetKey = process.env.MAINNET_ETHERSCAN_KEY;
+const testnetKey = process.env.TESTNET_ETHERSCAN_KEY;
 
 const accounts = { mnemonic };
 
@@ -120,24 +120,24 @@ const config: HardhatUserConfig = {
       chainId: 1,
     },
     testnet: {
-      url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
+      url: 'https://goerli.infura.io/v3/' + infuraToken,
       accounts,
       chainId: 5,
     },
     mainnet: {
-      url: 'https://mainnet.infura.io/v3/' + process.env.INFURA_TOKEN, // change it to quicknode if needed
+      url: 'https://mainnet.infura.io/v3/' + infuraToken, // change it to quicknode if needed
       accounts,
       chainId: 100,
     },
   },
   etherscan: {
     apiKey: {
-      goerli: '<goerli-api-key>',
-      gnosis: '<gnosis-api-key>',
+      mainnet: '<goerli-api-key>',
+      testnet: '<gnosis-api-key>',
     },
     customChains: [
       {
-        network: 'goerli',
+        network: 'testnet',
         chainId: 5,
         urls: {
           apiURL: 'https://api-goerli.etherscan.io/api',
@@ -145,7 +145,7 @@ const config: HardhatUserConfig = {
         },
       },
       {
-        network: 'gnosis',
+        network: 'mainnet',
         chainId: 100,
         urls: {
           apiURL: 'https://gnosisscan.io/apis',
