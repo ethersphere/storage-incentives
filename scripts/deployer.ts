@@ -1,9 +1,7 @@
 import 'hardhat-deploy-ethers';
 import * as fs from 'fs';
-import { ContractReceipt, ContractTransaction } from 'ethers';
 import mainnetData from '../mainnet_deployed.json';
 import testnetData from '../testnet_deployed.json';
-import { getCurrentTimestamp } from 'hardhat/internal/hardhat-network/provider/utils/getCurrentTimestamp';
 import { ethers } from 'hardhat';
 import hre from 'hardhat';
 
