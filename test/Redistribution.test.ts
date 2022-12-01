@@ -359,7 +359,10 @@ describe('Redistribution', function () {
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
+
+        await expect(r_node_2.commit(obsfucatedHash, overlay_2, currentRound))
+        .to.emit(redistribution, 'Committed')
+        .withArgs(currentRound, overlay_2);
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
@@ -530,6 +533,26 @@ describe('Redistribution', function () {
         await expect(redistribution.reveal(overlay_2, depth_f, hash_2, reveal_nonce_2)).to.be.revertedWith(
           errors.reveal.doNotMatch
         );
+      });
+
+      it('should emit correct events', async function () {
+        const initialBlockNumber = await getBlockNumber();
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
+
+        const r_node_2 = await ethers.getContract('Redistribution', node_2);
+        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+
+        const currentRound = await r_node_2.currentRound();
+        console.log(currentRound)
+        await r_node_2.commit(obsfucatedHash, overlay_2, parseInt(currentRound));
+
+        await mineNBlocks(phaseLength);
+        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
+
+        await expect(redistribution.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2))
+          .to.emit(redistribution, 'Revealed')
+          .withArgs(currentRound, overlay_2, stakeAmount_2, "6400000000000000000", hash_2, parseInt(depth_2));
       });
     });
 

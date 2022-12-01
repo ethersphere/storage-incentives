@@ -132,6 +132,23 @@ contract Redistribution is AccessControl, Pausable {
     event CountReveals(uint256 _count);
 
     /**
+     * @dev Logs that an overlay has committed
+     */
+    event Committed(uint256 roundNumber, bytes32 overlay);
+
+    /**
+     * @dev Logs that an overlay has revealed
+     */
+    event Revealed(
+        uint256 roundNumber,
+        bytes32 overlay,
+        uint256 stake,
+        uint256 stakeDensity,
+        bytes32 reserveCommitment,
+        uint8 depth
+    );
+
+    /**
      * @notice The number of the current round.
      */
     function currentRound() public view returns (uint256) {
@@ -230,8 +247,9 @@ contract Redistribution is AccessControl, Pausable {
                 revealed: false
             })
         );
-    }
 
+        emit Committed(_roundNumber, _overlay);
+    }
 
     /**
      * @notice Returns the current random seed which is used to determine later utilised random numbers.
@@ -358,6 +376,15 @@ contract Redistribution is AccessControl, Pausable {
                 );
 
                 updateRandomness();
+
+                emit Revealed(
+                    cr,
+                    currentCommits[i].overlay,
+                    currentCommits[i].stake,
+                    currentCommits[i].stake * uint256(2**_depth),
+                    _hash,
+                    _depth
+                );
 
                 return;
             }
