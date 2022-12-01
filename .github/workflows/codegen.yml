@@ -32,13 +32,13 @@ jobs:
         fetch-depth: 0
         ref: master
 
-    - name: Generate Golang files
+    - name: Generate files
       run: |
         readonly TARGET_DIR=${{env.CODEGEN_ARTIFACTS}}/abi
         mkdir -p "${TARGET_DIR}"
         ./codegen/generate_src.sh "${{steps.tag.outputs.tag}}" "go" "${TARGET_DIR}"
 
-    - name: Commit Golang files
+    - name: Commit files
       run: |
         cd ${{env.CODEGEN_ARTIFACTS}}
         git config --local user.email "bee-worker@ethswarm.org"
@@ -48,14 +48,14 @@ jobs:
         git tag "${{steps.tag.outputs.tag}}"
         git log --patch --max-count 1
 
-#    - name: Push Golang changes
-#      uses: ad-m/github-push-action@master
-#      with:
-#        repository: ${{env.GO_CODEGEN_REPOSITORY}}
-#        directory: ${{env.CODEGEN_ARTIFACTS}}
-#        github_token: ${{secrets.GH_TOKEN}}
-#        branch: master
-#        tags: true
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        repository: ${{env.GO_CODEGEN_REPOSITORY}}
+        directory: ${{env.CODEGEN_ARTIFACTS}}
+        github_token: ${{secrets.GH_TOKEN}}
+        branch: master
+        tags: true
 
   generate-env:
     if: contains(github.event.ref, '-rc')
@@ -67,6 +67,10 @@ jobs:
         persist-credentials: false
         fetch-depth: 0
 
+    - name: Get tag
+      id: tag
+      uses: dawidd6/action-get-tag@v1
+
     - uses: actions/checkout@v2
       with:
         repository: ${{env.ENV_CODEGEN_REPOSITORY}}
@@ -75,13 +79,13 @@ jobs:
         fetch-depth: 0
         ref: master
 
-    - name: Generate .env files
+    - name: Generate files
       run: |
         readonly TARGET_DIR=${{env.CODEGEN_ARTIFACTS}}
         mkdir -p "${TARGET_DIR}"
         ./codegen/generate_src.sh "${{steps.tag.outputs.tag}}" "env" "${TARGET_DIR}"
 
-    - name: Commit .env files
+    - name: Commit files
       run: |
         cd ${{env.CODEGEN_ARTIFACTS}}
         git config --local user.email "bee-worker@ethswarm.org"
@@ -91,11 +95,11 @@ jobs:
         git tag "${{steps.tag.outputs.tag}}"
         git log --patch --max-count 1
 
-#    - name: Push .env changes
-#      uses: ad-m/github-push-action@master
-#      with:
-#        repository: ${{env.ENV_CODEGEN_REPOSITORY}}
-#        directory: ${{env.CODEGEN_ARTIFACTS}}
-#        github_token: ${{secrets.GH_TOKEN}}
-#        branch: master
-#        tags: true
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        repository: ${{env.ENV_CODEGEN_REPOSITORY}}
+        directory: ${{env.CODEGEN_ARTIFACTS}}
+        github_token: ${{secrets.GH_TOKEN}}
+        branch: master
+        tags: true
