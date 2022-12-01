@@ -22,6 +22,11 @@ node_modules/
 deployments/hardhat
 deployments/localhost
 
+# deployment files for mainnet and testnet and an example file
+*_deployed.json
+!mainnet_deployed.json
+!testnet_deployed.json
+
 # Misc
 contractsInfo.json
 .DS_Store

@@ -13,8 +13,10 @@
     "contracts"
   ],
   "devDependencies": {
+    "@nomiclabs/hardhat-etherscan": "^3.1.3",
     "@ethereum-waffle/chai": "^3.2.0",
     "@ethersproject/wallet": "^5.0.7",
+    "@nomiclabs/hardhat-ethers": "^2.2.1",
     "@openzeppelin/contracts": "4.0.0",
     "@types/chai": "^4.2.14",
     "@types/mocha": "^8.0.3",
@@ -31,6 +33,7 @@
     "ethereum-waffle": "^3.2.0",
     "ethereumjs-abi": "^0.6.8",
     "ethers": "^5.0.19",
+    "ganache-cli": "^6.12.2",
     "hardhat": "^2.11.2",
     "hardhat-deploy": "^0.7.0-beta.25",
     "hardhat-deploy-ethers": "^0.3.0-beta.5",
@@ -56,6 +59,7 @@
     "staging:deploy": "hardhat --network staging deploy",
     "staging:export": "hardhat --network staging export",
     "staging:seed": "cross-env HARDHAT_NETWORK=staging ts-node --files scripts/seed.ts",
-    "hardhat": "hardhat"
+    "hardhat": "hardhat",
+    "deploy:hardhat": "hardhat run scripts/deployer.ts --network hardhat"
   }
 }

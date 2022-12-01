@@ -68,3 +68,14 @@ Run `yarn install` to install all depencencies.
 You may run tests with `yarn test`.
 
 Hardhat is configured to deploy all contracts to the testing hardhat devchain and to use all named accounts.
+
+## Run
+
+To deploy the smart contracts on Testnet, execute the following command `npx hardhat run scripts/deployer.ts --network testnet`.
+
+To deploy the smart contracts on Mainnet, execute the following command `npx hardhat run scripts/deployer.ts --network mainnet`.
+
+To deploy the smart contracts on Localhost, Geth node or Ganache, execute the following command `npx hardhat run scripts/deployer.ts --network "NETWORK""`.
+
+
+You need to provide infura ID to deploy the smart contracts on Testnet or Mainnet. You also need to provide your nemonic or private key to deploy contracts on networks.

@@ -4,15 +4,20 @@ import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
+import '@nomiclabs/hardhat-etherscan';
 
-// Define mnemonic for accounts.
-let mnemonic = process.env.MNEMONIC;
-if (!mnemonic) {
-  // NOTE: this fallback is for development only!
-  // When using other networks, set the secret in .env.
-  // DO NOT commit or share your mnemonic with others!
-  mnemonic = 'test test test test test test test test test test test test';
+const mnemonic = process.env.MNEMONIC === undefined ? 'undefined' : process.env.MNEMONIC;
+if (mnemonic === 'undefined') {
+  console.log('Please set your MNEMONIC in a .env file');
 }
+
+const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
+if (infuraToken === 'undefined') {
+  console.log('Please set your INFURA_TOKEN in a .env file');
+}
+
+const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
+const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 
 const accounts = { mnemonic };
 
@@ -27,9 +32,6 @@ const config: HardhatUserConfig = {
       },
     },
   },
-  // mocha: {
-  //   timeout: 100000000
-  // },
   namedAccounts: {
     deployer: 0,
     admin: 1,
@@ -42,10 +44,6 @@ const config: HardhatUserConfig = {
     node_2: 8,
     node_3: 9,
     node_4: 10,
-    // node_5: 11,
-    // node_6: 12,
-    // node_7: 13,
-    // node_8: 14
   },
   networks: {
     hardhat: {
@@ -112,11 +110,42 @@ const config: HardhatUserConfig = {
     localhost: {
       url: 'http://localhost:8545',
       accounts,
+      chainId: 1,
     },
-    staging: {
-      url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
+    testnet: {
+      url: 'https://goerli.infura.io/v3/' + infuraToken,
       accounts,
+      chainId: 5,
     },
+    mainnet: {
+      url: 'https://mainnet.infura.io/v3/' + infuraToken,
+      accounts,
+      chainId: 100,
+    },
+  },
+  etherscan: {
+    apiKey: {
+      mainnet: '<goerli-api-key>',
+      testnet: '<gnosis-api-key>',
+    },
+    customChains: [
+      {
+        network: 'testnet',
+        chainId: 5,
+        urls: {
+          apiURL: 'https://api-goerli.etherscan.io/api',
+          browserURL: 'https://goerli.etherscan.io/address/',
+        },
+      },
+      {
+        network: 'mainnet',
+        chainId: 100,
+        urls: {
+          apiURL: 'https://gnosisscan.io/apis',
+          browserURL: 'https://gnosisscan.io/address/',
+        },
+      },
+    ],
   },
   paths: {
     sources: 'src',
