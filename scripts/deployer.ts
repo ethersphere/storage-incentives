@@ -91,7 +91,7 @@ async function main(deployedData: DeployedData = testnetData) {
   await writeResult(deployedData, contractData);
 }
 
-async function deployFactory(deployed: any, contractData: ContractData) {
+async function deployFactory(deployed: DeployedData | null, contractData: ContractData) {
   if (deployed == null) {
     console.log(
       'Deploying Factory contract to network ' + hre.network.name + ' with chain id ' + hre.network.config.chainId
@@ -256,7 +256,7 @@ async function rolesSetter(contractData: ContractData) {
   await contract2.grantRole(redistributorRole2, contractData.addresses.redistribution);
 }
 
-async function writeResult(deployedData: any, contractData: ContractData) {
+async function writeResult(deployedData: DeployedData, contractData: ContractData) {
   const deployed = await JSON.parse(JSON.stringify(deployedData).toString());
 
   //set addresses
