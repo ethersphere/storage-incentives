@@ -43,7 +43,7 @@ interface ContractData {
 }
 
 //networkID
-const networkID = 5;
+const networkID = hre.network.config.chainId;
 
 const blockChainVendor = hre.network.name;
 
