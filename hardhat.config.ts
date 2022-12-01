@@ -119,15 +119,6 @@ const config: HardhatUserConfig = {
       accounts,
       chainId: 1,
     },
-    geth: {
-      url: '', // Add url of geth node
-      chainId: 0, // Add chain id
-      accounts,
-    },
-    ganache: {
-      url: 'http://127.0.0.1:8545',
-      chainId: 1337,
-    },
     testnet: {
       url: 'https://goerli.infura.io/v3/' + process.env.INFURA_TOKEN,
       accounts,
