@@ -1,4 +1,6 @@
 {
+  "chainId": 5,
+  "networkId": 10000,
   "contracts": {
     "factory": {
       "abi": [],

@@ -4,15 +4,20 @@ import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
+import '@nomiclabs/hardhat-etherscan';
 
-let mnemonic = process.env.MNEMONIC;
+const mnemonic = process.env.MNEMONIC;
 if (!mnemonic) {
-  // NOTE: this fallback is for development only!
-  // When using other networks, set the secret in .env.
-  // DO NOT commit or share your mnemonic with others!
-  console.log(mnemonic);
-  mnemonic = 'test test test test test test test test test test test test';
+  throw new Error('Please set your MNEMONIC in a .env file');
 }
+
+const infuraToken = process.env.INFURA_TOKEN;
+if (!infuraToken) {
+  throw new Error('Please set your INFURA_TOKEN in a .env file');
+}
+
+const gnosisKey = process.env.GNOSISSCANAPIKEY;
+const goerliKey = process.env.GOERLIAPIKEY;
 
 const accounts = { mnemonic };
 
@@ -133,6 +138,30 @@ const config: HardhatUserConfig = {
       accounts,
       chainId: 100,
     },
+  },
+  etherscan: {
+    apiKey: {
+      goerli: '<goerli-api-key>',
+      gnosis: '<gnosis-api-key>',
+    },
+    customChains: [
+      {
+        network: 'goerli',
+        chainId: 5,
+        urls: {
+          apiURL: 'https://api-goerli.etherscan.io/api',
+          browserURL: 'https://goerli.etherscan.io/address/',
+        },
+      },
+      {
+        network: 'gnosis',
+        chainId: 100,
+        urls: {
+          apiURL: 'https://gnosisscan.io/apis',
+          browserURL: 'https://gnosisscan.io/address/',
+        },
+      },
+    ],
   },
   paths: {
     sources: 'src',

@@ -8,7 +8,7 @@ import { ethers } from 'hardhat';
 import hre from 'hardhat';
 
 interface DeployedContract {
-  abi: Array<never>;
+  abi: Array<unknown>;
   bytecode: string;
   address: string;
   block: number;
@@ -16,6 +16,8 @@ interface DeployedContract {
 }
 
 interface DeployedData {
+  chainId: number;
+  networkId: number;
   contracts: {
     postageStamp: DeployedContract;
     redistribution: DeployedContract;
@@ -25,12 +27,27 @@ interface DeployedData {
   };
 }
 
-// URL
-const mainnetURL = 'https://gnosisscan.io/address/';
-const testnetURL = 'https://goerli.etherscan.io/address/';
+interface ContractData {
+  addresses: {
+    postageStamp: string;
+    redistribution: string;
+    staking: string;
+    priceOracle: string;
+    factory: string;
+  };
+  blocks: {
+    postageStamp: number;
+    redistribution: number;
+    staking: number;
+    priceOracle: number;
+    factory: number;
+  };
+}
+
+//networkID
+const networkID = 5;
 
 const blockChainVendor = hre.network.name;
-const networkID = hre.network.config.chainId;
 
 async function main(deployedData: DeployedData = testnetData) {
   let contractData = {
@@ -53,14 +70,10 @@ async function main(deployedData: DeployedData = testnetData) {
   switch (blockChainVendor) {
     case 'testnet':
       contractData = await deployFactory(await JSON.parse(JSON.stringify(testnetData).toString()), contractData);
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
       deployedData = testnetData;
       break;
     case 'mainnet':
       contractData = await deployFactory(await JSON.parse(JSON.stringify(mainnetData).toString()), contractData);
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
       deployedData = mainnetData;
       break;
     default:
@@ -68,7 +81,7 @@ async function main(deployedData: DeployedData = testnetData) {
   }
 
   if (!contractData.addresses.factory) {
-    handleErr('expected factory address');
+    throw new Error('Factory address not found for deployment over ' + blockChainVendor);
   }
 
   contractData = await deployRedistribution(
@@ -78,40 +91,77 @@ async function main(deployedData: DeployedData = testnetData) {
   await rolesSetter(contractData);
 
   await writeResult(deployedData, contractData);
-  await logResult(contractData);
 }
 
-async function deployFactory(deployed: any, contractData: any) {
+async function deployFactory(deployed: any, contractData: ContractData) {
   if (deployed == null) {
+    console.log(
+      'Deploying Factory contract to network ' + hre.network.name + ' with chain id ' + hre.network.config.chainId
+    );
     const TestToken = await hre.ethers.getContractFactory('TestToken');
     const testToken = await TestToken.deploy();
+    console.log('tx hash:' + testToken.deployTransaction.hash);
     await testToken.deployed();
     contractData.addresses.factory = testToken.address;
     contractData.blocks.factory = testToken.deployTransaction.blockNumber as number;
+    console.log(
+      'Deployed Factory contract to address ' +
+        contractData.addresses.factory +
+        ' with block number ' +
+        contractData.blocks.factory
+    );
     return contractData;
   }
   contractData.addresses.factory = deployed['contracts']['factory']['address'];
   contractData.blocks.factory = deployed['contracts']['factory']['block'];
+  console.log(
+    'Using deployed Factory contract address ' +
+      contractData.addresses.factory +
+      ' with block number ' +
+      contractData.blocks.factory
+  );
   return contractData;
 }
 
-async function deployStaking(contractData: any) {
+async function deployStaking(contractData: ContractData) {
+  console.log(
+    '\nDeploying Stake Registry contract to network ' +
+      hre.network.name +
+      ' with chain id ' +
+      hre.network.config.chainId +
+      ' and network id ' +
+      networkID
+  );
   const StakeRegistryContract = await hre.ethers.getContractFactory('StakeRegistry');
   const stakeRegistryContract = await StakeRegistryContract.deploy(contractData.addresses.factory, networkID);
+  console.log('tx hash:' + stakeRegistryContract.deployTransaction.hash);
   await stakeRegistryContract.deployed();
-  console.log(stakeRegistryContract.address);
   const { provider } = hre.network;
   const txReceipt = await provider.send('eth_getTransactionReceipt', [stakeRegistryContract.deployTransaction.hash]);
 
   contractData.blocks.staking = parseInt(txReceipt.blockNumber, 16);
   contractData.addresses.staking = stakeRegistryContract.address;
-  console.log('staking address:' + contractData.addresses.staking + '\n block:' + contractData.blocks.staking);
+  console.log(
+    'Deployed Stake Registry contract to address ' +
+      contractData.addresses.staking +
+      ' with block number ' +
+      contractData.blocks.staking
+  );
   return contractData;
 }
 
-async function deployPostageStamp(contractData: any) {
+async function deployPostageStamp(contractData: ContractData) {
+  console.log(
+    '\nDeploying Postage Stamp contract to network ' +
+      hre.network.name +
+      ' with chain id ' +
+      hre.network.config.chainId +
+      ' and factory address ' +
+      contractData.addresses.factory
+  );
   const Postage = await hre.ethers.getContractFactory('PostageStamp');
   const postageContract = await Postage.deploy(contractData.addresses.factory);
+  console.log('tx hash:' + postageContract.deployTransaction.hash);
   await postageContract.deployed();
 
   const { provider } = hre.network;
@@ -119,30 +169,64 @@ async function deployPostageStamp(contractData: any) {
 
   contractData.blocks.postageStamp = parseInt(txReceipt.blockNumber, 16);
   contractData.addresses.postageStamp = postageContract.address;
-  console.log('postage address:' + postageContract.address + '\n block:' + contractData.blocks.postageStamp);
+  console.log(
+    'Deployed Postage contract to address ' +
+      contractData.addresses.postageStamp +
+      ' with block number ' +
+      contractData.blocks.postageStamp
+  );
   return contractData;
 }
 
-async function deployPriceOracle(contractData: any) {
+async function deployPriceOracle(contractData: ContractData) {
+  console.log(
+    '\nDeploying Price Oracle contract to network ' +
+      hre.network.name +
+      ' with chain id ' +
+      hre.network.config.chainId +
+      ' and Postage Contract address ' +
+      contractData.addresses.postageStamp
+  );
+
   const Oracle = await hre.ethers.getContractFactory('PriceOracle');
   const priceOracleContract = await Oracle.deploy(contractData.addresses.postageStamp);
+  console.log('tx hash:' + priceOracleContract.deployTransaction.hash);
   await priceOracleContract.deployed();
   const { provider } = hre.network;
   const txReceipt = await provider.send('eth_getTransactionReceipt', [priceOracleContract.deployTransaction.hash]);
 
   contractData.blocks.priceOracle = parseInt(txReceipt.blockNumber, 16);
   contractData.addresses.priceOracle = priceOracleContract.address;
-  console.log('oracle address:' + priceOracleContract.address + '\n block:' + contractData.blocks.priceOracle);
+  console.log(
+    'Deployed Price Oracle contract to address ' +
+      contractData.addresses.priceOracle +
+      ' with block number ' +
+      contractData.blocks.priceOracle
+  );
   return contractData;
 }
 
-async function deployRedistribution(contractData: any) {
+async function deployRedistribution(contractData: ContractData) {
+  console.log(
+    '\nDeploying Redistribution contract to network ' +
+      hre.network.name +
+      ' with chain id ' +
+      hre.network.config.chainId +
+      ' and \n\t Stake Registry Contract address ' +
+      contractData.addresses.staking +
+      '\n\t Postage Contract address ' +
+      contractData.addresses.postageStamp +
+      '\n\t Price Oracle Contract address ' +
+      contractData.addresses.priceOracle
+  );
+
   const Redistribution = await hre.ethers.getContractFactory('Redistribution');
   const redistributionContract = await Redistribution.deploy(
     contractData.addresses.staking,
     contractData.addresses.postageStamp,
     contractData.addresses.priceOracle
   );
+  console.log('tx hash:' + redistributionContract.deployTransaction.hash);
   await redistributionContract.deployed();
 
   const { provider } = hre.network;
@@ -151,52 +235,30 @@ async function deployRedistribution(contractData: any) {
   contractData.blocks.redistribution = parseInt(txReceipt.blockNumber, 16);
   contractData.addresses.redistribution = redistributionContract.address;
   console.log(
-    'redistribution address:' + redistributionContract.address + '\n block:' + contractData.blocks.redistribution
+    'Deployed Redistribution contract to address ' +
+      contractData.addresses.redistribution +
+      ' with block number ' +
+      contractData.blocks.redistribution
   );
   return contractData;
 }
 
-async function logResult(contractData: any) {
-  console.log('\n---Contract Addresses with Blocks | Timestamp: ' + getCurrentTimestamp());
-  console.log('staking address:' + contractData.addresses.staking + '\n block:' + contractData.blocks.staking);
-  console.log(
-    'redistribution address:' +
-      contractData.addresses.redistribution +
-      '\n block:' +
-      (contractData.blocks.redistribution as number)
-  );
-  console.log('oracle address:' + contractData.addresses.priceOracle + '\n block:' + contractData.blocks.priceOracle);
-  console.log(
-    'postage address:' +
-      contractData.addresses.postageStamp +
-      '\n block:' +
-      (contractData.blocks.postageStamp as number)
-  );
-}
-
-async function rolesSetter(contractData: any) {
+async function rolesSetter(contractData: ContractData) {
   const PostageStamp = await ethers.getContractFactory('PostageStamp');
   const StakeReg = await ethers.getContractFactory('StakeRegistry');
 
   const contract = PostageStamp.attach(contractData.addresses.postageStamp);
 
-  let result: ContractTransaction;
-  let receipt: ContractReceipt;
-
   const redistributorRole = contract.REDISTRIBUTOR_ROLE();
-  result = await contract.grantRole(redistributorRole, contractData.addresses.redistribution);
-  receipt = await result.wait();
-  console.log(receipt);
+  await contract.grantRole(redistributorRole, contractData.addresses.redistribution);
 
   const contract2 = StakeReg.attach(contractData.addresses.staking);
 
   const redistributorRole2 = contract2.REDISTRIBUTOR_ROLE();
-  result = await contract2.grantRole(redistributorRole2, contractData.addresses.redistribution);
-  receipt = await result.wait();
-  console.log(receipt);
+  await contract2.grantRole(redistributorRole2, contractData.addresses.redistribution);
 }
 
-async function writeResult(deployedData: any, contractData: any) {
+async function writeResult(deployedData: any, contractData: ContractData) {
   const deployed = await JSON.parse(JSON.stringify(deployedData).toString());
 
   //set addresses
@@ -232,16 +294,20 @@ async function writeResult(deployedData: any, contractData: any) {
   deployed['contracts']['priceOracle']['abi'] = oracleABI.abi;
   deployed['contracts']['priceOracle']['bytecode'] = oracleABI.bytecode.toString();
 
+  // set chain and network id
+  deployed['networkId'] = networkID;
+  deployed['chainId'] = hre.network.config.chainId;
+
   // Construct URL for contract
   let urlAddress = '';
   let fileName = '';
   switch (blockChainVendor) {
     case 'testnet':
-      urlAddress = testnetURL;
+      urlAddress = hre.config.etherscan.customChains[0]['urls']['browserURL'].toString();
       fileName = 'testnet_deployed.json';
       break;
     case 'mainnet':
-      urlAddress = mainnetURL;
+      urlAddress = hre.config.etherscan.customChains[1]['urls']['browserURL'].toString();
       fileName = 'mainnet_deployed.json';
       break;
     default:
@@ -265,16 +331,9 @@ async function writeResult(deployedData: any, contractData: any) {
   fs.writeFileSync(fileName, JSON.stringify(deployed, null, '\t'));
 }
 
-// We recommend this pattern to be able to use async/await everywhere
-// and properly handle errors.
 main()
   .then(() => process.exit(0))
   .catch((error) => {
     console.error(error);
     process.exit(1);
   });
-
-function handleErr(err: string) {
-  console.error(err);
-  process.exit(1);
-}
