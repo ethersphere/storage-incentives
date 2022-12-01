@@ -21,7 +21,7 @@ interface DeployedData {
     redistribution: DeployedContract;
     staking: DeployedContract;
     priceOracle: DeployedContract;
-    factory: DeployedContract;
+    bzzToken: DeployedContract;
   };
 }
 
@@ -31,14 +31,14 @@ interface ContractData {
     redistribution: string;
     staking: string;
     priceOracle: string;
-    factory: string;
+    bzzToken: string;
   };
   blocks: {
     postageStamp: number;
     redistribution: number;
     staking: number;
     priceOracle: number;
-    factory: number;
+    bzzToken: number;
   };
 }
 
@@ -52,32 +52,32 @@ async function main(deployedData: DeployedData = testnetData) {
       redistribution: '',
       staking: '',
       priceOracle: '',
-      factory: '',
+      bzzToken: '',
     },
     blocks: {
       postageStamp: 0,
       redistribution: 0,
       staking: 0,
       priceOracle: 0,
-      factory: 0,
+      bzzToken: 0,
     },
   };
 
   switch (blockChainVendor) {
     case 'testnet':
-      contractData = await deployFactory(await JSON.parse(JSON.stringify(testnetData).toString()), contractData);
+      contractData = await deployBzzToken(await JSON.parse(JSON.stringify(testnetData).toString()), contractData);
       deployedData = testnetData;
       break;
     case 'mainnet':
-      contractData = await deployFactory(await JSON.parse(JSON.stringify(mainnetData).toString()), contractData);
+      contractData = await deployBzzToken(await JSON.parse(JSON.stringify(mainnetData).toString()), contractData);
       deployedData = mainnetData;
       break;
     default:
-      contractData = await deployFactory(null, contractData);
+      contractData = await deployBzzToken(null, contractData);
   }
 
-  if (!contractData.addresses.factory) {
-    throw new Error('Factory address not found for deployment over ' + blockChainVendor);
+  if (!contractData.addresses.bzzToken) {
+    throw new Error('BzzToken address not found for deployment over ' + blockChainVendor);
   }
 
   contractData = await deployRedistribution(
@@ -89,32 +89,32 @@ async function main(deployedData: DeployedData = testnetData) {
   await writeResult(deployedData, contractData);
 }
 
-async function deployFactory(deployed: DeployedData | null, contractData: ContractData) {
+async function deployBzzToken(deployed: DeployedData | null, contractData: ContractData) {
   if (deployed == null) {
     console.log(
-      'Deploying Factory contract to network ' + hre.network.name + ' with chain id ' + hre.network.config.chainId
+      'Deploying BzzToken contract to network ' + hre.network.name + ' with chain id ' + hre.network.config.chainId
     );
     const TestToken = await hre.ethers.getContractFactory('TestToken');
     const testToken = await TestToken.deploy();
     console.log('tx hash:' + testToken.deployTransaction.hash);
     await testToken.deployed();
-    contractData.addresses.factory = testToken.address;
-    contractData.blocks.factory = testToken.deployTransaction.blockNumber as number;
+    contractData.addresses.bzzToken = testToken.address;
+    contractData.blocks.bzzToken = testToken.deployTransaction.blockNumber as number;
     console.log(
-      'Deployed Factory contract to address ' +
-        contractData.addresses.factory +
+      'Deployed BzzToken contract to address ' +
+        contractData.addresses.bzzToken +
         ' with block number ' +
-        contractData.blocks.factory
+        contractData.blocks.bzzToken
     );
     return contractData;
   }
-  contractData.addresses.factory = deployed['contracts']['factory']['address'];
-  contractData.blocks.factory = deployed['contracts']['factory']['block'];
+  contractData.addresses.bzzToken = deployed['contracts']['bzzToken']['address'];
+  contractData.blocks.bzzToken = deployed['contracts']['bzzToken']['block'];
   console.log(
-    'Using deployed Factory contract address ' +
-      contractData.addresses.factory +
+    'Using deployed BzzToken contract address ' +
+      contractData.addresses.bzzToken +
       ' with block number ' +
-      contractData.blocks.factory
+      contractData.blocks.bzzToken
   );
   return contractData;
 }
@@ -129,7 +129,7 @@ async function deployStaking(contractData: ContractData) {
       networkID
   );
   const StakeRegistryContract = await hre.ethers.getContractFactory('StakeRegistry');
-  const stakeRegistryContract = await StakeRegistryContract.deploy(contractData.addresses.factory, networkID);
+  const stakeRegistryContract = await StakeRegistryContract.deploy(contractData.addresses.bzzToken, networkID);
   console.log('tx hash:' + stakeRegistryContract.deployTransaction.hash);
   await stakeRegistryContract.deployed();
   const { provider } = hre.network;
@@ -152,11 +152,11 @@ async function deployPostageStamp(contractData: ContractData) {
       hre.network.name +
       ' with chain id ' +
       hre.network.config.chainId +
-      ' and factory address ' +
-      contractData.addresses.factory
+      ' and bzzToken address ' +
+      contractData.addresses.bzzToken
   );
   const Postage = await hre.ethers.getContractFactory('PostageStamp');
-  const postageContract = await Postage.deploy(contractData.addresses.factory);
+  const postageContract = await Postage.deploy(contractData.addresses.bzzToken);
   console.log('tx hash:' + postageContract.deployTransaction.hash);
   await postageContract.deployed();
 

@@ -6,13 +6,13 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
-const mnemonic = process.env.MNEMONIC;
-if (!mnemonic) {
+const mnemonic = process.env.MNEMONIC === undefined ? 'undefined' : process.env.MNEMONIC;
+if (mnemonic === 'undefined') {
   console.log('Please set your MNEMONIC in a .env file');
 }
 
-const infuraToken = process.env.INFURA_TOKEN;
-if (!infuraToken) {
+const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
+if (infuraToken === 'undefined') {
   console.log('Please set your INFURA_TOKEN in a .env file');
 }
 

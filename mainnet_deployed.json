@@ -2,7 +2,7 @@
   "chainId": 100,
   "networkId": 100,
   "contracts": {
-    "factory": {
+    "bzzToken": {
       "abi": [
         {
           "constant": true,
