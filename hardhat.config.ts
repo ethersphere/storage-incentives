@@ -16,8 +16,8 @@ if (!infuraToken) {
   console.log('Please set your INFURA_TOKEN in a .env file');
 }
 
-const mainnetKey = process.env.MAINNET_ETHERSCAN_KEY;
-const testnetKey = process.env.TESTNET_ETHERSCAN_KEY;
+const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
+const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 
 const accounts = { mnemonic };
 
@@ -32,9 +32,6 @@ const config: HardhatUserConfig = {
       },
     },
   },
-  // mocha: {
-  //   timeout: 100000000
-  // },
   namedAccounts: {
     deployer: 0,
     admin: 1,
@@ -47,10 +44,6 @@ const config: HardhatUserConfig = {
     node_2: 8,
     node_3: 9,
     node_4: 10,
-    // node_5: 11,
-    // node_6: 12,
-    // node_7: 13,
-    // node_8: 14
   },
   networks: {
     hardhat: {
@@ -125,7 +118,7 @@ const config: HardhatUserConfig = {
       chainId: 5,
     },
     mainnet: {
-      url: 'https://mainnet.infura.io/v3/' + infuraToken, // change it to quicknode if needed
+      url: 'https://mainnet.infura.io/v3/' + infuraToken,
       accounts,
       chainId: 100,
     },

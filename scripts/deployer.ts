@@ -42,9 +42,7 @@ interface ContractData {
   };
 }
 
-//networkID
 const networkID = hre.network.config.chainId;
-
 const blockChainVendor = hre.network.name;
 
 async function main(deployedData: DeployedData = testnetData) {
