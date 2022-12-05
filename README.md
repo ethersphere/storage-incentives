@@ -49,38 +49,96 @@ Relinquish admin rights...
 
 ## Emergency
 
-# Deplyment and Bootstrapping Procedure
+# Deployment and Bootstrapping Procedure
 
 ...
+## Contents:
+### Smart Contracts and Metadata
+This project includes the following smart contracts and their metadata:
+- [Smart Contracts](./src)
+  - Redistribution
+  - Staking Registry
+  - Price Oracle
+  - Postage Stamps
+    - HitchensOrderStatisticsTreeLib
+  - Test Token
 
-## Requirements:
 
+- Metadata ([Testnet](./testnet_deployed.json),[Mainnet](./mainnet_deployed.json))
+  - **Chain ID**: Chain ID of the blockchain.
+  - **Network ID**: Network ID.
+  - **ABI**: Interface to communicate with smart contracts.
+  - **Bytecode**: Compiled object code that is executed during communication with smart contract.
+  - **Address**: Address of the deployed contract on blockchcain.
+  - **Block**: Block height in which the transaction is mined.
+  - **URL**: URL for analyzing the transaction.
+
+### [Scripts](./scripts)
+- Script for deploying all and individual contracts
+- Script assigning roles/permissions for smart contracts
+  - Redistributor roles
+
+## Project Setup
+### Prerequisites
 To set up the project, you will need `yarn` and `node`.
 
 The project has been tested with the latest node LTS (Erbium). A `.nvmrc` file is also provided.
 
-## Installation:
+### Setup
+To get started with this project, follow these steps:
 
-Run `yarn install` to install all depencencies.
+1. Clone the repo.
+2. Run `yarn install` at the root of the repo to install all dependencies.
+3. Add a `.env` file in your root directory, where you'll store your sensitive information for deployment. An example file [`.env.example`](./.env.example) is provided for reference.
 
-## Testing:
+## Run
 
-You may run tests with `yarn test`.
+### [Tests](./test)
+- Unit Tests
+  - Run `yarn run test` to run all the tests.
+  - Run `yarn run test:coverage` to see the coverage of smart contracts.
 
-Hardhat is configured to deploy all contracts to the testing hardhat devchain and to use all named accounts.
+### Deployments
 
-## Deployment
+#### Remote
+##### Prerequisites
+Consult devops/storage-incentives team for infura token or create one from [Infura website](https://infura.io/).
 
-To deploy the smart contracts on Testnet, execute the following command `npx hardhat run scripts/deployer.ts --network testnet`.
+##### Steps
+1. Run `yarn run compile` to get all the contracts compiled.
+2. Run `yarn run test` to run all the tests.
+3. Configure `.env` file
+   - Add your wallet `Mnemonic` in `.env` file.
+   - Add your `Infura` token in `.env` file.
+4. To deploy all contracts and set roles:
+   - Mainnet: `yarn run deploy:mainnet`
+   - Testnet: `yarn run deploy:testnet`
+
+**Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed if intended.
 The command will update the [testnet_deployed.json](testnet_deployed.json) file. 
 
-To deploy the smart contracts on Mainnet, execute the following command `npx hardhat run scripts/deployer.ts --network mainnet`.
-The command will update the [mainnet_deployed.json](mainnet_deployed.json) file.
+#### Local
+- Run `yarn run deploy:hardhat` to deploy all contracts on hardhat environment(network).
+- To deploy on Ganache (or other networks):
+  - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
+      ```
+      - ganache: {
+            url: 'http://localhost:8545',
+            chainId: 1337,
+      },
+      ```
+  - To run: `yarn run deploy ganache`
 
-To deploy the smart contracts on Localhost, Geth node or Ganache, execute the following command `npx hardhat run scripts/deployer.ts --network "NETWORK""`.
+
+#### Additional commands and flags:
+* Make necessary changes to [hardhat.config.ts](./hardhat.config.ts).
+  * List of available configs can be found [here](https://hardhat.org/hardhat-runner/docs/config).
+* Run script `yarn hardhat run <script> --network <network>`
+  - **Network**: Configure network name
+  - **Script**: Configure script name and path
+     
 
 
-You need to provide infura ID to deploy the smart contracts on Testnet or Mainnet. You also need to provide your nemonic or private key to deploy contracts on networks.
 
 ## Releasing
 

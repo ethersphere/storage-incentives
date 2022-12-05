@@ -50,6 +50,7 @@
     "lint:fix": "eslint --fix \"**/*.{js,ts}\"",
     "format": "prettier --write \"**/*.{ts,js,sol}\"",
     "test": "cross-env HARDHAT_DEPLOY_FIXTURE=true HARDHAT_COMPILE=true mocha --bail --recursive test",
+    "test:coverage": "hardhat coverage",
     "dev": "hardhat node --reset --watch --export contractsInfo.json",
     "compile": "hardhat compile",
     "local:deploy": "hardhat --network localhost deploy",
@@ -60,6 +61,9 @@
     "staging:export": "hardhat --network staging export",
     "staging:seed": "cross-env HARDHAT_NETWORK=staging ts-node --files scripts/seed.ts",
     "hardhat": "hardhat",
-    "deploy:hardhat": "hardhat run scripts/deployer.ts --network hardhat"
+    "deploy:hardhat": "hardhat run scripts/deployer.ts --network hardhat",
+    "deploy:testnet": "hardhat run scripts/deployer.ts --network testnet",
+    "deploy:mainnet": "hardhat run scripts/deployer.ts --network mainnet",
+    "deploy": "hardhat run scripts/deployer.ts --network"
   }
 }
