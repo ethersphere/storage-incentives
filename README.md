@@ -108,11 +108,11 @@ Consult devops/storage team for infura token or create one from [Infura website]
 1. Run `npm run compile` to get all the contracts compiled.
 2. Run `npm run test` to run all the tests.
 3. Configure `.env` file
-  - Add your wallet `Mnemonic` in `.env` file.
-  - Add your `Infura` token in `.env` file.
+   - Add your wallet `Mnemonic` in `.env` file.
+   - Add your `Infura` token in `.env` file.
 4. To deploy all contracts and set roles:
-  - Mainnet: `npm run deploy:mainnet`
-  - Testnet: `npm run deploy:testnet`
+   - Mainnet: `npm run deploy:mainnet`
+   - Testnet: `npm run deploy:testnet`
 
 **Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed if intended.
 
