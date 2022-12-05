@@ -52,31 +52,31 @@ Relinquish admin rights...
 # Deployment and Bootstrapping Procedure
 
 ...
-## Checklist:
+## Contents:
 ### Smart Contracts and Metadata
 This project includes the following smart contracts and their metadata:
-- [x] [Smart Contracts](./src)
-  - [x] Redistribution
-  - [x] Staking Registry
-  - [x] Price Oracle
-  - [x] Postage Stamps
-  - [x] Test Token
+- [Smart Contracts](./src)
+  - Redistribution
+  - Staking Registry
+  - Price Oracle
+  - Postage Stamps
+    - HitchensOrderStatisticsTreeLib
+  - Test Token
 
-- [x] Metadata ([Testnet](./testnet_deployed.json),[Mainnet](./mainnet_deployed.json))
-  - [x] **Chain ID**: Chain ID of the blockchain.
-  - [x] **Network ID**: Network ID.
-  - [x] **ABI**: Interface to communicate with smart contracts.
-  - [x] **Bytecode**: Compiled object code that is executed during communication with smart contract.
-  - [x] **Address**: Address of the deployed contract on blockchcain.
-  - [x] **Block**: Block height in which the transaction is mined.
-  - [x] **URL**: URL for analyzing the transaction.
+
+- Metadata ([Testnet](./testnet_deployed.json),[Mainnet](./mainnet_deployed.json))
+  - **Chain ID**: Chain ID of the blockchain.
+  - **Network ID**: Network ID.
+  - **ABI**: Interface to communicate with smart contracts.
+  - **Bytecode**: Compiled object code that is executed during communication with smart contract.
+  - **Address**: Address of the deployed contract on blockchcain.
+  - **Block**: Block height in which the transaction is mined.
+  - **URL**: URL for analyzing the transaction.
 
 ### [Scripts](./scripts)
-- [x] Script for deploying all and individual contracts
-- [ ] Script to deploy contracts and run bee node with updated addresses
-- [ ] Script for interacting with smart contracts
-- [x] Script assigning roles/permissions for smart contracts
-  - [x] Redistributor roles
+- Script for deploying all and individual contracts
+- Script assigning roles/permissions for smart contracts
+  - Redistributor roles
 
 ## Project Setup
 ### Prerequisites
@@ -115,6 +115,8 @@ Consult devops/storage team for infura token or create one from [Infura website]
 4. To deploy all contracts and set roles:
   - Mainnet: `npm run deploy:mainnet`
   - Testnet: `npm run deploy:testnet`
+
+**Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed if intended.
 
 #### Local
 - Run `npm run deploy:hardhat` to deploy all contracts on hardhat environment(network).
