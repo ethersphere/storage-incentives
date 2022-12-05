@@ -133,7 +133,7 @@ The command will update the [testnet_deployed.json](testnet_deployed.json) file.
 #### Additional commands and flags:
 * Make necessary changes to [hardhat.config.ts](./hardhat.config.ts).
   * List of available configs can be found [here](https://hardhat.org/hardhat-runner/docs/config).
-* Run script `npx hardhat run <script> --network <network>`
+* Run script `yarn hardhat run <script> --network <network>`
   - **Network**: Configure network name
   - **Script**: Configure script name and path
      
