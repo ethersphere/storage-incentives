@@ -69,13 +69,28 @@ You may run tests with `yarn test`.
 
 Hardhat is configured to deploy all contracts to the testing hardhat devchain and to use all named accounts.
 
-## Run
+## Deployment
 
 To deploy the smart contracts on Testnet, execute the following command `npx hardhat run scripts/deployer.ts --network testnet`.
+The command will update the [testnet_deployed.json](testnet_deployed.json) file. 
 
 To deploy the smart contracts on Mainnet, execute the following command `npx hardhat run scripts/deployer.ts --network mainnet`.
+The command will update the [mainnet_deployed.json](mainnet_deployed.json) file.
 
 To deploy the smart contracts on Localhost, Geth node or Ganache, execute the following command `npx hardhat run scripts/deployer.ts --network "NETWORK""`.
 
 
 You need to provide infura ID to deploy the smart contracts on Testnet or Mainnet. You also need to provide your nemonic or private key to deploy contracts on networks.
+
+## Releasing
+
+To release a new rc version, tag the commit with the `-rcX` suffix, where `X` is the release candidate number.
+For example, to release `v0.4.0-rc1`, execute the following command: `git tag v0.4.0-rc1 && git push origin v0.4.0-rc1`.
+This will generate Golang source code for the smart contracts and publish it to the [`ethersphere/go-storage-incentives-abi`](https://github.com/ethersphere/go-storage-incentives-abi) repository.
+It'll also generate .env file with the bytecodes and publish it to the [`ethersphere/docker-setup-contracts`](https://github.com/ethersphere/docker-setup-contracts) repository.
+The values for the Golang source code and .env file are taken from the [testnet_deployed.json](testnet_deployed.json) file, (see the [Deployment](#deployment) section).
+
+To release a new stable version, tag the commit without the `-rcX` suffix.
+For example, to release `v0.4.0`, execute the following command: `git tag v0.4.0 && git push origin v0.4.0`.
+This will generate Golang source code for the smart contracts and publish it to the [`ethersphere/go-storage-incentives-abi`](https://github.com/ethersphere/go-storage-incentives-abi) repository.
+The values for the Golang source code file are taken from the [mainnet_deployed.json](mainnet_deployed.json) file (see the [Deployment](#deployment) section).
