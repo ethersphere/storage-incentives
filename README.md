@@ -95,8 +95,8 @@ To get started with this project, follow these steps:
 
 ### [Tests](./test)
 - Unit Tests
-  - Run `npm run test` to run all the tests.
-  - Run `npm run test:coverage` to see the coverage of smart contracts.
+  - Run `yarn run test` to run all the tests.
+  - Run `yarn run test:coverage` to see the coverage of smart contracts.
 
 ### Deployments
 
@@ -105,20 +105,20 @@ To get started with this project, follow these steps:
 Consult devops/storage-incentives team for infura token or create one from [Infura website](https://infura.io/).
 
 ##### Steps
-1. Run `npm run compile` to get all the contracts compiled.
-2. Run `npm run test` to run all the tests.
+1. Run `yarn run compile` to get all the contracts compiled.
+2. Run `yarn run test` to run all the tests.
 3. Configure `.env` file
    - Add your wallet `Mnemonic` in `.env` file.
    - Add your `Infura` token in `.env` file.
 4. To deploy all contracts and set roles:
-   - Mainnet: `npm run deploy:mainnet`
-   - Testnet: `npm run deploy:testnet`
+   - Mainnet: `yarn run deploy:mainnet`
+   - Testnet: `yarn run deploy:testnet`
 
 **Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed if intended.
 The command will update the [testnet_deployed.json](testnet_deployed.json) file. 
 
 #### Local
-- Run `npm run deploy:hardhat` to deploy all contracts on hardhat environment(network).
+- Run `yarn run deploy:hardhat` to deploy all contracts on hardhat environment(network).
 - To deploy on Ganache (or other networks):
   - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
       ```
@@ -127,7 +127,7 @@ The command will update the [testnet_deployed.json](testnet_deployed.json) file.
             chainId: 1337,
       },
       ```
-  - To run: `npm run deploy ganache`
+  - To run: `yarn run deploy ganache`
 
 
 #### Additional commands and flags:
