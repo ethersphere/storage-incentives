@@ -102,7 +102,7 @@ To get started with this project, follow these steps:
 
 #### Remote
 ##### Prerequisites
-Consult devops/storage team for infura token or create one from [Infura website](https://infura.io/).
+Consult devops/storage-incentives team for infura token or create one from [Infura website](https://infura.io/).
 
 ##### Steps
 1. Run `npm run compile` to get all the contracts compiled.
