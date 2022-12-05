@@ -49,48 +49,92 @@ Relinquish admin rights...
 
 ## Emergency
 
-# Deplyment and Bootstrapping Procedure
+# Deployment and Bootstrapping Procedure
 
 ...
+## Checklist:
+### Smart Contracts and Metadata
+This project includes the following smart contracts and their metadata:
+- [x] [Smart Contracts](./src)
+  - [x] Redistribution
+  - [x] Staking Registry
+  - [x] Price Oracle
+  - [x] Postage Stamps
+  - [x] Test Token
 
-## Requirements:
+- [x] Metadata ([Testnet](./testnet_deployed.json),[Mainnet](./mainnet_deployed.json))
+  - [x] **Chain ID**: Chain ID of the blockchain.
+  - [x] **Network ID**: Network ID.
+  - [x] **ABI**: Interface to communicate with smart contracts.
+  - [x] **Bytecode**: Compiled object code that is executed during communication with smart contract.
+  - [x] **Address**: Address of the deployed contract on blockchcain.
+  - [x] **Block**: Block height in which the transaction is mined.
+  - [x] **URL**: URL for analyzing the transaction.
 
+### [Scripts](./scripts)
+- [x] Script for deploying all and individual contracts
+- [ ] Script to deploy contracts and run bee node with updated addresses
+- [ ] Script for interacting with smart contracts
+- [x] Script assigning roles/permissions for smart contracts
+  - [x] Redistributor roles
+
+## Project Setup
+### Prerequisites
 To set up the project, you will need `yarn` and `node`.
 
 The project has been tested with the latest node LTS (Erbium). A `.nvmrc` file is also provided.
 
-## Installation:
+### Setup
+To get started with this project, follow these steps:
 
-Run `yarn install` to install all depencencies.
-
-## Testing:
-
-You may run tests with `yarn test`.
-
-Hardhat is configured to deploy all contracts to the testing hardhat devchain and to use all named accounts.
+1. Clone the repo.
+2. Run `yarn install` at the root of the repo to install all dependencies.
+3. Add a `.env` file in your root directory, where you'll store your sensitive information for deployment. An example file [`.env.example`](./.env.example) is provided for reference.
 
 ## Deployment
 
-To deploy the smart contracts on Testnet, execute the following command `npx hardhat run scripts/deployer.ts --network testnet`.
-The command will update the [testnet_deployed.json](testnet_deployed.json) file. 
-
-To deploy the smart contracts on Mainnet, execute the following command `npx hardhat run scripts/deployer.ts --network mainnet`.
-The command will update the [mainnet_deployed.json](mainnet_deployed.json) file.
-
-To deploy the smart contracts on Localhost, Geth node or Ganache, execute the following command `npx hardhat run scripts/deployer.ts --network "NETWORK""`.
+### [Tests](./test)
+- [x] Unit Tests
+  - Run `npm run test` to run all the tests.
+  - Run `npm run test:coverage` to see the coverage of smart contracts.
+- [ ] Integration Tests
 
 
-You need to provide infura ID to deploy the smart contracts on Testnet or Mainnet. You also need to provide your nemonic or private key to deploy contracts on networks.
+### Deployments
 
-## Releasing
+#### Remote
+##### Prerequisites
+Consult devops/storage team for infura token or create one from [Infura website](https://infura.io/).
 
-To release a new rc version, tag the commit with the `-rcX` suffix, where `X` is the release candidate number.
-For example, to release `v0.4.0-rc1`, execute the following command: `git tag v0.4.0-rc1 && git push origin v0.4.0-rc1`.
-This will generate Golang source code for the smart contracts and publish it to the [`ethersphere/go-storage-incentives-abi`](https://github.com/ethersphere/go-storage-incentives-abi) repository.
-It'll also generate .env file with the bytecodes and publish it to the [`ethersphere/docker-setup-contracts`](https://github.com/ethersphere/docker-setup-contracts) repository.
-The values for the Golang source code and .env file are taken from the [testnet_deployed.json](testnet_deployed.json) file, (see the [Deployment](#deployment) section).
+##### Steps
+1. Run `npm run compile` to get all the contracts compiled.
+2. Run `npm run test` to run all the tests.
+3. Configure `.env` file
+  - Add your wallet `Mnemonic` in `.env` file.
+  - Add your `Infura` token in `.env` file.
+4. To deploy all contracts and set roles:
+  - Mainnet: `npm run deploy:mainnet`
+  - Testnet: `npm run deploy:testnet`
 
-To release a new stable version, tag the commit without the `-rcX` suffix.
-For example, to release `v0.4.0`, execute the following command: `git tag v0.4.0 && git push origin v0.4.0`.
-This will generate Golang source code for the smart contracts and publish it to the [`ethersphere/go-storage-incentives-abi`](https://github.com/ethersphere/go-storage-incentives-abi) repository.
-The values for the Golang source code file are taken from the [mainnet_deployed.json](mainnet_deployed.json) file (see the [Deployment](#deployment) section).
+#### Local
+- Run `npm run deploy:hardhat` to deploy all contracts on hardhat environment(network).
+- To deploy on Ganache (or other networks):
+  - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
+      ```
+      - ganache: {
+            url: 'http://localhost:8545',
+            chainId: 1337,
+      },
+      ```
+  - To run: `npm run deploy ganache`
+
+
+#### Additional commands and flags:
+* Make necessary changes to [hardhat.config.ts](./hardhat.config.ts).
+  * List of available configs can be found [here](https://hardhat.org/hardhat-runner/docs/config).
+* Run script `npx hardhat run <script> --network <network>`
+  - **Network**: Configure network name
+  - **Script**: Configure script name and path
+     
+
+
