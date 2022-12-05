@@ -94,11 +94,9 @@ To get started with this project, follow these steps:
 ## Deployment
 
 ### [Tests](./test)
-- [x] Unit Tests
+- Unit Tests
   - Run `npm run test` to run all the tests.
   - Run `npm run test:coverage` to see the coverage of smart contracts.
-- [ ] Integration Tests
-
 
 ### Deployments
 
