@@ -242,16 +242,24 @@ async function deployRedistribution(contractData: ContractData) {
 async function rolesSetter(contractData: ContractData) {
   const PostageStamp = await ethers.getContractFactory('PostageStamp');
   const StakeReg = await ethers.getContractFactory('StakeRegistry');
+  const Oracle = await ethers.getContractFactory('PriceOracle');
 
   const contract = PostageStamp.attach(contractData.addresses.postageStamp);
 
   const redistributorRole = contract.REDISTRIBUTOR_ROLE();
   await contract.grantRole(redistributorRole, contractData.addresses.redistribution);
 
+  const priceOracleRole = contract.PRICE_ORACLE_ROLE();
+  await contract.grantRole(priceOracleRole, contractData.addresses.priceOracle);
+
   const contract2 = StakeReg.attach(contractData.addresses.staking);
 
   const redistributorRole2 = contract2.REDISTRIBUTOR_ROLE();
   await contract2.grantRole(redistributorRole2, contractData.addresses.redistribution);
+
+  const contract3 = Oracle.attach(contractData.addresses.priceOracle);
+  const priceUpdaterRole = contract3.PRICE_UPDATER_ROLE();
+  await contract2.grantRole(priceUpdaterRole, contractData.addresses.redistribution);
 }
 
 async function writeResult(deployedData: DeployedData, contractData: ContractData) {

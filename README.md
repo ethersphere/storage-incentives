@@ -114,6 +114,7 @@ Consult devops/storage-incentives team for infura token or create one from [Infu
    - Mainnet: `yarn run deploy:mainnet`
    - Testnet: `yarn run deploy:testnet`
 
+**Note:** It is recommended to add `gasPrice=80000000000,` in [hardhat.config.ts](./hardhat.config.ts) as a fail-safe.
 **Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed if intended.
 The command will update the [testnet_deployed.json](testnet_deployed.json) file. 
 
