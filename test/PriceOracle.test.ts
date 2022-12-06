@@ -49,6 +49,13 @@ describe('PriceOracle', function () {
       const postageStamp = await priceOracle.postageStamp();
       expect(postageStamp).to.be.eq((await ethers.getContract('PostageStamp')).address);
     });
+
+    it('current price should be equal to minimum price', async function () {
+      const priceOracle = await ethers.getContract('PriceOracle');
+      const minimumPrice = await priceOracle.minimumPrice();
+      const currentPrice = await priceOracle.currentPrice();
+      expect(currentPrice).to.be.gte(minimumPrice);
+    });
   });
 
   describe('with deployed contract', async function () {

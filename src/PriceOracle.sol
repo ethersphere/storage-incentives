@@ -17,11 +17,11 @@ contract PriceOracle is AccessControl {
     // Role allowed to update price
     bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
 
-    // The current price is the atomic unit
-    uint256 public currentPrice;
-
     // The minimum price allowed
     uint256 public constant minimumPrice = 1024;
+
+    // The current price is the atomic unit.
+    uint256 public currentPrice = minimumPrice;
 
     // Constants used to modulate the price, see below usage
     uint256[] public increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
