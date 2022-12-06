@@ -76,7 +76,8 @@ This project includes the following smart contracts and their metadata:
 ### [Scripts](./scripts)
 - Script for deploying all and individual contracts
 - Script assigning roles/permissions for smart contracts
-  - Redistributor roles
+  - Redistributor role
+  - Price Updater role
 
 ## Project Setup
 ### Prerequisites
