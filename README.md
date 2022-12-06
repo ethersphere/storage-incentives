@@ -126,7 +126,7 @@ The command will update the [testnet_deployed.json](testnet_deployed.json) file.
        ganache: {
             url: 'http://localhost:8545',
             chainId: 1337,
-      },
+       },
       ```
   - To run: `yarn run deploy ganache`
 

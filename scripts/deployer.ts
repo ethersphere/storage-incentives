@@ -315,6 +315,14 @@ async function writeResult(deployedData: DeployedData, contractData: ContractDat
       fileName = 'mainnet_deployed.json';
       break;
     default:
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const testToken = await require('../artifacts/src/TestToken.sol/TestToken.json');
+      deployed['contracts']['bzzToken']['abi'] = testToken.abi;
+      deployed['contracts']['bzzToken']['bytecode'] = testToken.bytecode.toString();
+
+      deployed['contracts']['bzzToken']['address'] = contractData.addresses.bzzToken;
+      deployed['contracts']['bzzToken']['block'] = contractData.blocks.bzzToken;
+      deployed['contracts']['bzzToken']['url'] = '';
       break;
   }
   if (urlAddress.length != 0) {
