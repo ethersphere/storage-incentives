@@ -114,11 +114,12 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   return winDist;
 }
 
-describe('Stats', function () {
+describe('Stats', async function () {
   describe('two player game', async function () {
     const trials = 200;
 
     it('is fair with 1:3 stake', async function () {
+      this.timeout(0);
       const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
       const nodes = [others[0], others[1]];
@@ -134,8 +135,8 @@ describe('Stats', function () {
           parseInt((BigInt(dist[i].stake) / BigInt(100000000000000000)).toString()) /
           parseInt((sumStakes / BigInt(100000000000000000)).toString());
         const probable = dist[i].wins / trials;
-        expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
+        await expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
       }
-    }).timeout(100000);
+    });
   });
 });
