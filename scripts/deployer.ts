@@ -240,26 +240,25 @@ async function deployRedistribution(contractData: ContractData) {
 }
 
 async function rolesSetter(contractData: ContractData) {
-  const PostageStamp = await ethers.getContractFactory('PostageStamp');
   const StakeRegistry = await ethers.getContractFactory('StakeRegistry');
+  const PostageStamp = await ethers.getContractFactory('PostageStamp');
   const PriceOracle = await ethers.getContractFactory('PriceOracle');
 
+  const stakingRegistryContract = StakeRegistry.attach(contractData.addresses.staking);
   const postageStampContract = PostageStamp.attach(contractData.addresses.postageStamp);
-
-  const redistributorRoleForPostageStamp = postageStampContract.REDISTRIBUTOR_ROLE();
-  await postageStampContract.grantRole(redistributorRoleForPostageStamp, contractData.addresses.redistribution);
+  const priceOracleContract = PriceOracle.attach(contractData.addresses.priceOracle);
 
   const priceOracleRole = postageStampContract.PRICE_ORACLE_ROLE();
   await postageStampContract.grantRole(priceOracleRole, contractData.addresses.priceOracle);
 
-  const stakingRegistryContract = StakeRegistry.attach(contractData.addresses.staking);
+  const priceUpdaterRole = priceOracleContract.PRICE_UPDATER_ROLE();
+  await priceOracleContract.grantRole(priceUpdaterRole, contractData.addresses.redistribution);
+
+  const redistributorRoleForPostageStamp = postageStampContract.REDISTRIBUTOR_ROLE();
+  await postageStampContract.grantRole(redistributorRoleForPostageStamp, contractData.addresses.redistribution);
 
   const redistributorRoleForStakeRegistry = stakingRegistryContract.REDISTRIBUTOR_ROLE();
   await stakingRegistryContract.grantRole(redistributorRoleForStakeRegistry, contractData.addresses.redistribution);
-
-  const priceOracleContract = PriceOracle.attach(contractData.addresses.priceOracle);
-  const priceUpdaterRole = priceOracleContract.PRICE_UPDATER_ROLE();
-  await stakingRegistryContract.grantRole(priceUpdaterRole, contractData.addresses.redistribution);
 }
 
 async function writeResult(deployedData: DeployedData, contractData: ContractData) {
