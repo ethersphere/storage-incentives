@@ -240,18 +240,25 @@ async function deployRedistribution(contractData: ContractData) {
 }
 
 async function rolesSetter(contractData: ContractData) {
+  const StakeRegistry = await ethers.getContractFactory('StakeRegistry');
   const PostageStamp = await ethers.getContractFactory('PostageStamp');
-  const StakeReg = await ethers.getContractFactory('StakeRegistry');
+  const PriceOracle = await ethers.getContractFactory('PriceOracle');
 
-  const contract = PostageStamp.attach(contractData.addresses.postageStamp);
+  const stakingRegistryContract = StakeRegistry.attach(contractData.addresses.staking);
+  const postageStampContract = PostageStamp.attach(contractData.addresses.postageStamp);
+  const priceOracleContract = PriceOracle.attach(contractData.addresses.priceOracle);
 
-  const redistributorRole = contract.REDISTRIBUTOR_ROLE();
-  await contract.grantRole(redistributorRole, contractData.addresses.redistribution);
+  const priceOracleRole = postageStampContract.PRICE_ORACLE_ROLE();
+  await postageStampContract.grantRole(priceOracleRole, contractData.addresses.priceOracle);
 
-  const contract2 = StakeReg.attach(contractData.addresses.staking);
+  const priceUpdaterRole = priceOracleContract.PRICE_UPDATER_ROLE();
+  await priceOracleContract.grantRole(priceUpdaterRole, contractData.addresses.redistribution);
 
-  const redistributorRole2 = contract2.REDISTRIBUTOR_ROLE();
-  await contract2.grantRole(redistributorRole2, contractData.addresses.redistribution);
+  const redistributorRoleForPostageStamp = postageStampContract.REDISTRIBUTOR_ROLE();
+  await postageStampContract.grantRole(redistributorRoleForPostageStamp, contractData.addresses.redistribution);
+
+  const redistributorRoleForStakeRegistry = stakingRegistryContract.REDISTRIBUTOR_ROLE();
+  await stakingRegistryContract.grantRole(redistributorRoleForStakeRegistry, contractData.addresses.redistribution);
 }
 
 async function writeResult(deployedData: DeployedData, contractData: ContractData) {
@@ -307,6 +314,14 @@ async function writeResult(deployedData: DeployedData, contractData: ContractDat
       fileName = 'mainnet_deployed.json';
       break;
     default:
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const testToken = await require('../artifacts/src/TestToken.sol/TestToken.json');
+      deployed['contracts']['bzzToken']['abi'] = testToken.abi;
+      deployed['contracts']['bzzToken']['bytecode'] = testToken.bytecode.toString();
+
+      deployed['contracts']['bzzToken']['address'] = contractData.addresses.bzzToken;
+      deployed['contracts']['bzzToken']['block'] = contractData.blocks.bzzToken;
+      deployed['contracts']['bzzToken']['url'] = '';
       break;
   }
   if (urlAddress.length != 0) {
