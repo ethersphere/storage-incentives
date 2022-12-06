@@ -103,6 +103,7 @@ To get started with this project, follow these steps:
 ### Deployments
 
 #### Remote
+
 ##### Prerequisites
 Consult devops/storage-incentives team for infura token or create one from [Infura website](https://infura.io/).
 
@@ -110,8 +111,8 @@ Consult devops/storage-incentives team for infura token or create one from [Infu
 1. Run `yarn run compile` to get all the contracts compiled.
 2. Run `yarn run test` to run all the tests.
 3. Configure `.env` file
-   - Add your wallet `Mnemonic` in `.env` file.
-   - Add your `Infura` token in `.env` file.
+   - Set your `WALLET_SECRET` in the `.env` file.
+   - Set your `INFURA_TOKEN` in the `.env` file.
 4. To deploy all contracts and set roles:
    - Mainnet: `yarn run deploy:mainnet`
    - Testnet: `yarn run deploy:testnet`
@@ -131,16 +132,12 @@ Consult devops/storage-incentives team for infura token or create one from [Infu
       ```
   - To run: `yarn run deploy ganache`
 
-
 #### Additional commands and flags:
 * Make necessary changes to [hardhat.config.ts](./hardhat.config.ts).
   * List of available configs can be found [here](https://hardhat.org/hardhat-runner/docs/config).
 * Run script `yarn hardhat run <script> --network <network>`
   - **Network**: Configure network name
   - **Script**: Configure script name and path
-     
-
-
 
 ## Releasing
 
