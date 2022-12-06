@@ -123,10 +123,10 @@ The command will update the [testnet_deployed.json](testnet_deployed.json) file.
 - To deploy on Ganache (or other networks):
   - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
       ```
-       ganache: {
+      ganache: {
             url: 'http://localhost:8545',
             chainId: 1337,
-       },
+      },
       ```
   - To run: `yarn run deploy ganache`
 
