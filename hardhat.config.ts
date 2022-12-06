@@ -6,20 +6,20 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
-const mnemonic = process.env.MNEMONIC === undefined ? 'undefined' : process.env.MNEMONIC;
-if (mnemonic === 'undefined') {
-  console.log('Please set your MNEMONIC in a .env file');
-}
-
 const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
 if (infuraToken === 'undefined') {
   console.log('Please set your INFURA_TOKEN in a .env file');
 }
 
+const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : process.env.WALLET_SECRET;
+if (walletSecret === 'undefined') {
+  console.log('Please set your WALLET_SECRET in a .env file');
+}
+
 const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
 const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 
-const accounts = { mnemonic };
+const accounts = walletSecret.length === 64 ? [walletSecret] : { mnemonic: walletSecret };
 
 // Config for hardhat.
 const config: HardhatUserConfig = {
