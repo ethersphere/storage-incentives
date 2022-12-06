@@ -134,7 +134,7 @@ describe('Stats', function () {
           parseInt((BigInt(dist[i].stake) / BigInt(100000000000000000)).toString()) /
           parseInt((sumStakes / BigInt(100000000000000000)).toString());
         const probable = dist[i].wins / trials;
-        expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
+        await expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
       }
     }).timeout(100000);
   });
