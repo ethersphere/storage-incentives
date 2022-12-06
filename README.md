@@ -77,6 +77,7 @@ This project includes the following smart contracts and their metadata:
 - Script for deploying all and individual contracts
 - Script assigning roles/permissions for smart contracts
   - Redistributor role
+  - Price Oracle role
   - Price Updater role
 
 ## Project Setup
