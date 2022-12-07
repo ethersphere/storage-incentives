@@ -125,8 +125,8 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      mainnet: '<goerli-api-key>',
-      testnet: '<gnosis-api-key>',
+      mainnet: '<gnosis-api-key>',
+      testnet: '<goerli-api-key>',
     },
     customChains: [
       {
