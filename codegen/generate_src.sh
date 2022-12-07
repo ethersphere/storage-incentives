@@ -29,6 +29,15 @@ readonly CHAIN_ID="$(jq '.chainId | select( . != null )' "${DEPLOYED_ARTIFACTS}"
 readonly NETWORK_ID="$(jq '.networkId | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
 [[ -z "${NETWORK_ID}" ]] && printf "network id number is empty\n" && exit 1
 
+readonly BZZ_TOKEN_BLOCK_NUMBER="$(jq '.contracts.bzzToken.block | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
+[[ -z "${BZZ_TOKEN_BLOCK_NUMBER}" ]] && printf "bzz token block number is empty\n" && exit 1
+readonly BZZ_TOKEN_ADDRESS="$(jq -r '.contracts.bzzToken.address | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
+[[ -z "${BZZ_TOKEN_ADDRESS}" ]] && printf "bzz token address is empty\n" && exit 1
+readonly BZZ_TOKEN_BYTECODE="$(jq -r '.contracts.bzzToken.bytecode | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
+[[ -z "${BZZ_TOKEN_BYTECODE}" ]] && printf "bzz token bytecode is empty\n" && exit 1
+readonly BZZ_TOKEN_ABI="$(jq '.contracts.bzzToken.abi | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
+[[ -z "${BZZ_TOKEN_ABI}" ]] && printf "bzz token abi is empty\n" && exit 1
+
 readonly STAKING_BLOCK_NUMBER="$(jq '.contracts.staking.block | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
 [[ -z "${STAKING_BLOCK_NUMBER}" ]] && printf "staking block number is empty\n" && exit 1
 readonly STAKING_ADDRESS="$(jq -r '.contracts.staking.address | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
@@ -39,7 +48,7 @@ readonly STAKING_ABI="$(jq '.contracts.staking.abi | select( . != null )' "${DEP
 [[ -z "${STAKING_ABI}" ]] && printf "staking abi is empty\n" && exit 1
 
 readonly POSTAGE_BLOCK_NUMBER="$(jq '.contracts.postageStamp.block | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
-[[ -z "${POSTAGE_BLOCK_NUMBER}" ]] && printf "postage block number is empty\n" && exit 1
+[[ -z "${POSTAGE_BLOCK_NUMBER}" ]] && printf "postage stamp block number is empty\n" && exit 1
 readonly POSTAGE_STAMP_ADDRESS="$(jq -r '.contracts.postageStamp.address | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
 [[ -z "${POSTAGE_STAMP_ADDRESS}" ]] && printf "postage stamp address is empty\n" && exit 1
 readonly POSTAGE_STAMP_BYTECODE="$(jq -r '.contracts.postageStamp.bytecode | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
@@ -77,6 +86,13 @@ package abi
 const (
 	${NETWORK^}ChainID   = ${CHAIN_ID}
 	${NETWORK^}NetworkID = ${NETWORK_ID}
+)
+
+const (
+	${NETWORK^}BzzTokenBlockNumber = ${BZZ_TOKEN_BLOCK_NUMBER}
+	${NETWORK^}BzzTokenAddress     = "${BZZ_TOKEN_ADDRESS}"
+	${NETWORK^}BzzTokenBin         = "${BZZ_TOKEN_BYTECODE}"
+	${NETWORK^}BzzTokenABI         = \`${BZZ_TOKEN_ABI}\`
 )
 
 const (
