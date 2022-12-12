@@ -454,10 +454,8 @@ contract Redistribution is AccessControl, Pausable {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
-                randomNumberTrunc = uint256(randomNumber & MaxH);
-
                 if (
-                    randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                    uint256(randomNumber & MaxH) * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
                     winnerIs = currentReveals[revIndex].overlay;
                 }
