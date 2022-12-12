@@ -623,11 +623,15 @@ describe('Redistribution', function () {
       });
 
       describe('two commits with equal stakes', async function () {
+        let priceOracle: Contract;
         let r_node_1: Contract;
         let r_node_2: Contract;
         let currentRound: number;
 
         beforeEach(async () => {
+          priceOracle = await ethers.getContract('PriceOracle', deployer);
+          await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
+
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
 

@@ -209,6 +209,7 @@ describe('PriceOracle', function () {
         //initialise, set minimum price
         const minimumPrice = await priceOracle.minimumPrice();
         minPriceString = minimumPrice.toString();
+        await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
         await priceOracle.setPrice(minPriceString);
       });
 
