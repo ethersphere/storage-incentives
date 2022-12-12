@@ -425,7 +425,8 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 commitsArrayLength = currentCommits.length;
         uint256 revealsArrayLength = currentReveals.length;
-
+        
+        uint256 revIndex;
         uint256 k = 0;
         uint256 index;
 
@@ -554,6 +555,7 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
 
+        uint256 revIndex;
         uint256 k = 0;
         uint256 index;
 
