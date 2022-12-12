@@ -42,6 +42,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 stake;
         bytes32 obfuscatedHash;
         bool revealed;
+        uint256 revealIndex;
     }
     // ...then provide the actual values that are the constituents of the pre-image of the _obfuscatedHash_
     // during the reveal phase.
@@ -292,6 +293,10 @@ contract Redistribution is AccessControl, Pausable {
         seed = keccak256(abi.encode(seed, block.difficulty));
     }
 
+    function nonceBasedRandomness(bytes32 nonce) private {
+        seed = seed ^ nonce;
+    }
+
     /**
      * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
      * @param A An overlay address to compare.
@@ -348,6 +353,7 @@ contract Redistribution is AccessControl, Pausable {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
             currentRevealRound = cr;
+            updateRandomness();
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
@@ -363,6 +369,7 @@ contract Redistribution is AccessControl, Pausable {
                 //check can only revealed once
                 require(currentCommits[i].revealed == false, "participant already revealed");
                 currentCommits[i].revealed = true;
+                currentCommits[i].revealIndex = currentReveals.length;
 
                 currentReveals.push(
                     Reveal({
@@ -375,7 +382,7 @@ contract Redistribution is AccessControl, Pausable {
                     })
                 );
 
-                updateRandomness();
+                nonceBasedRandomness(_revealNonce);
 
                 emit Revealed(
                     cr,
@@ -398,10 +405,11 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay address of the applicant.
      */
     function isWinner(bytes32 _overlay) public view returns (bool) {
-        require(currentPhaseClaim(), "winner not determined yet");
-        uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
+        require(currentPhaseClaim(), "not in claim phase");
 
+        uint256 cr = currentRound();
+
+        require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
@@ -415,40 +423,52 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
 
-        for (uint256 i = 0; i < currentReveals.length; i++) {
-            currentSum += currentReveals[i].stakeDensity;
-            randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-            randomNumberTrunc = uint256(randomNumber & MaxH);
+        uint256 commitsArrayLength = currentCommits.length;
+        uint256 revealsArrayLength = currentReveals.length;
 
-            if (randomNumberTrunc * currentSum < currentReveals[i].stakeDensity * (uint256(MaxH) + 1)) {
-                truthRevealedHash = currentReveals[i].hash;
-                truthRevealedDepth = currentReveals[i].depth;
+        uint256 k = 0;
+        uint256 index;
+
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
+            if (currentCommits[i].revealed) {
+                k++;
+                revIndex = currentCommits[i].revealIndex;
+                currentSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
+
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
+                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
+                    truthRevealedHash = currentReveals[revIndex].hash;
+                    truthRevealedDepth = currentReveals[revIndex].depth;
+                }
             }
         }
 
+        k = 0;
+
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
-        uint256 k = 0;
-        for (uint256 i = 0; i < currentReveals.length; i++) {
-            if (truthRevealedHash == currentReveals[i].hash && truthRevealedDepth == currentReveals[i].depth) {
-                currentWinnerSelectionSum += currentReveals[i].stakeDensity;
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
+            revIndex = currentCommits[i].revealIndex;
+            if (currentCommits[i].revealed && truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
+                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
-                    randomNumberTrunc * currentWinnerSelectionSum < currentReveals[i].stakeDensity * (uint256(MaxH) + 1)
+                    randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    winnerIs = currentReveals[i].overlay;
+                    winnerIs = currentReveals[revIndex];
                 }
 
                 k++;
-            }
+            } 
         }
 
         return (winnerIs == _overlay);
     }
-
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
      * @param overlay The overlay address of the applicant.
@@ -534,55 +554,53 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
 
+        uint256 k = 0;
+        uint256 index;
+
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (!currentCommits[i].revealed) {
                 // slash in later phase
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(currentCommits[i].overlay, 7 * roundLength * uint256(2**truthRevealedDepth));
                 continue;
-            }
-        }
+            } else {
+                k++;
+                revIndex = currentCommits[i].revealIndex;
+                currentSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
 
-        for (uint256 i = 0; i < revealsArrayLength; i++) {
-            currentSum += currentReveals[i].stakeDensity;
-            randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
+                randomNumberTrunc = uint256(randomNumber & MaxH);
 
-            randomNumberTrunc = uint256(randomNumber & MaxH);
-
-            // question is whether randomNumber / MaxH < probability
-            // where probability is stakeDensity / currentSum
-            // to avoid resorting to floating points all divisions should be
-            // simplified with multiplying both sides (as long as divisor > 0)
-            // randomNumber / (MaxH + 1) < stakeDensity / currentSum
-            // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
-            // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-            if (randomNumberTrunc * currentSum < currentReveals[i].stakeDensity * (uint256(MaxH) + 1)) {
-                truthRevealedHash = currentReveals[i].hash;
-                truthRevealedDepth = currentReveals[i].depth;
+                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
+                    truthRevealedHash = currentReveals[revIndex].hash;
+                    truthRevealedDepth = currentReveals[revIndex].depth;
+                }
             }
         }
 
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
 
+        k = 0;
+
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
-        uint256 k = 0;
-        for (uint256 i = 0; i < revealsArrayLength; i++) {
-            if (truthRevealedHash == currentReveals[i].hash && truthRevealedDepth == currentReveals[i].depth) {
-                currentWinnerSelectionSum += currentReveals[i].stakeDensity;
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
+            revIndex = currentCommits[i].revealIndex;
+            if (currentCommits[i].revealed && truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
+                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
-                    randomNumberTrunc * currentWinnerSelectionSum < currentReveals[i].stakeDensity * (uint256(MaxH) + 1)
+                    randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    winner = currentReveals[i];
+                    winner = currentReveals[revIndex];
                 }
 
                 k++;
             } else {
-                Stakes.freezeDeposit(currentReveals[i].overlay, 3 * roundLength * uint256(2**truthRevealedDepth));
+                Stakes.freezeDeposit(currentReveals[revIndex].overlay, 3 * roundLength * uint256(2**truthRevealedDepth));
                 // slash ph5
             }
         }
