@@ -709,10 +709,10 @@ describe('Redistribution', function () {
           const sr = await ethers.getContract('StakeRegistry');
 
           //node_2 stake is preserved and not frozen
-          expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
+          expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(stakeAmount_2);
 
           //node_1 is frozen but not slashed
-          expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(0);
+          expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(0);
         });
 
         it('if both reveal, should select correct winner', async function () {
