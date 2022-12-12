@@ -245,7 +245,8 @@ contract Redistribution is AccessControl, Pausable {
                 overlay: _overlay,
                 stake: nstake,
                 obfuscatedHash: _obfuscatedHash,
-                revealed: false
+                revealed: false,
+                revealIndex: 0
             })
         );
 
@@ -461,7 +462,7 @@ contract Redistribution is AccessControl, Pausable {
                 if (
                     randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    winnerIs = currentReveals[revIndex];
+                    winnerIs = currentReveals[revIndex].overlay;
                 }
 
                 k++;
