@@ -30,7 +30,7 @@ contract PriceOracle is AccessControl {
     uint16 maxConsideredExtraRedundancy = 4;
 
     // When the contract is paused, price changes are not effective
-    bool public isPaused = false;
+    bool public isPaused = true;
 
     // The address of the linked PostageStamp contract
     PostageStamp public postageStamp;
