@@ -428,11 +428,9 @@ contract Redistribution is AccessControl, Pausable {
         
         uint256 revIndex;
         uint256 k = 0;
-        uint256 index;
-
+        
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].revealed) {
-                k++;
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
@@ -441,6 +439,8 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
+                
+                k++;
             }
         }
 
@@ -553,16 +553,9 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 revIndex;
         uint256 k = 0;
-        uint256 index;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
-            if (!currentCommits[i].revealed) {
-                // slash in later phase
-                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(currentCommits[i].overlay, 7 * roundLength * uint256(2**truthRevealedDepth));
-                continue;
-            } else {
-                k++;
+            if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
@@ -573,6 +566,8 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
+
+                k++;
             }
         }
 
@@ -584,22 +579,29 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed && truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
-                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-
-                randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                if (
-                    randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                ) {
-                    winner = currentReveals[revIndex];
+            if (currentCommits[i].revealed ) {
+               if ( truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
+                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+    
+                    randomNumberTrunc = uint256(randomNumber & MaxH);
+    
+                    if (
+                        randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                    ) {
+                        winner = currentReveals[revIndex];
+                    }
+    
+                    k++;
+                } else {
+                    Stakes.freezeDeposit(currentReveals[revIndex].overlay, 3 * roundLength * uint256(2**truthRevealedDepth));
+                    // slash ph5
                 }
-
-                k++;
             } else {
-                Stakes.freezeDeposit(currentReveals[revIndex].overlay, 3 * roundLength * uint256(2**truthRevealedDepth));
-                // slash ph5
+                // slash in later phase
+                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
+                Stakes.freezeDeposit(currentCommits[i].overlay, 7 * roundLength * uint256(2**truthRevealedDepth));
+                continue;
             }
         }
 
