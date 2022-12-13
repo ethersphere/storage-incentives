@@ -245,6 +245,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         require(batch.owner == msg.sender, "not batch owner");
         require(minimumBucketDepth < _newDepth && batch.depth < _newDepth, "depth not increasing");
+        require(!batch.immutableFlag, "batch is immutable");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
         uint8 depthChange = _newDepth - batch.depth;
