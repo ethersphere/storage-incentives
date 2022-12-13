@@ -117,11 +117,13 @@ Consult devops/storage-incentives team for infura token or create one from [Infu
    - Mainnet: `yarn run deploy:mainnet`
    - Testnet: `yarn run deploy:testnet`
 
-**Note:** It is recommended to add `gasPrice=120000000000, // 120gwei` in [hardhat.config.ts](./hardhat.config.ts) as a fail-safe for testnet deployment.
+**Note:** It is recommended to add `gasPrice:120000000000, // 120gwei` in [hardhat.config.ts](./hardhat.config.ts) as a fail-safe for testnet deployment.
 
 **Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed if intended.
 
 **Note:** `WALLET_SECRET` can be **Mnemonic** or **Private Key**.
+
+**Note:** Same steps could be followed to deploy contracts via [Legacy Deployer](./scripts/legacy_deployer.ts). By default, all deployments are done through [EIP-1559 Deployer](./scripts/eip1559_deployer.ts). Only `mainnet`, `testnet` and `ganache` are configured and tested with `EIP-1559` transactions.
 
 #### Local
 - Run `yarn run deploy:hardhat` to deploy all contracts on hardhat environment(network).
@@ -129,10 +131,12 @@ Consult devops/storage-incentives team for infura token or create one from [Infu
   - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
       ```
       ganache: {
-            url: 'http://localhost:8545',
-            chainId: 1337,
+      url: 'http://localhost:8545',
+      accounts,
+      chainId: 1337,
       },
       ```
+  - Set `WALLET_SECRET` in your env file.
   - To run: `yarn run deploy ganache`
 
 #### Additional commands and flags:
