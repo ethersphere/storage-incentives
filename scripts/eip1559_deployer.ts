@@ -34,6 +34,10 @@ interface DeployedData {
   };
 }
 
+interface Mnemonic {
+  mnemonic: string;
+}
+
 const networkID = hre.network.config.chainId;
 const blockChainVendor = hre.network.name;
 
@@ -72,12 +76,16 @@ async function setConfigurations() {
   }
 
   let wallet: ethers.Wallet;
-  if (hre.network.config.accounts.toString().length === 66) {
-    const key: string = hre.network.config.accounts.toString();
-    wallet = new ethers.Wallet(key.toString());
+  if (Array.isArray(hre.network.config.accounts)) {
+    if (hre.network.config.accounts.length > 1) {
+      throw new Error('only 1 private key expected');
+    }
+    wallet = new ethers.Wallet(hre.network.config.accounts[0] as string);
+  } else if (isMnemonic(hre.network.config.accounts)) {
+    console.log(hre.network.config.accounts.mnemonic);
+    wallet = ethers.Wallet.fromMnemonic(hre.network.config.accounts.mnemonic);
   } else {
-    const key: any = hre.network.config.accounts;
-    wallet = ethers.Wallet.fromMnemonic(key.mnemonic);
+    throw new Error('unknown type');
   }
   switch (blockChainVendor) {
     case 'testnet':
@@ -89,6 +97,10 @@ async function setConfigurations() {
     default:
       account = wallet.connect(hre.ethers.provider);
   }
+}
+
+function isMnemonic(param: unknown): param is Mnemonic {
+  return typeof param === 'object' && typeof (param as Mnemonic).mnemonic === 'string';
 }
 
 async function deployBzzToken(deployed: DeployedData) {
@@ -315,7 +327,6 @@ async function writeURL(deployed: DeployedData) {
 }
 
 async function writeResult(deployedData: DeployedData) {
-  // Construct URL for contract
   let fileName = '';
   switch (blockChainVendor) {
     case 'testnet':
