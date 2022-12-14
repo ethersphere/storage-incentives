@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { HardhatUserConfig } from 'hardhat/types';
+import {ConfigExtender, HardhatUserConfig} from 'hardhat/types';
 import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
@@ -15,11 +15,10 @@ const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : pro
 if (walletSecret === 'undefined') {
   console.log('Please set your WALLET_SECRET in a .env file');
 }
+const accounts = walletSecret.length === 64 ? [walletSecret] : { mnemonic: walletSecret };
 
 const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
 const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
-
-const accounts = walletSecret.length === 64 ? [walletSecret] : { mnemonic: walletSecret };
 
 // Config for hardhat.
 const config: HardhatUserConfig = {
