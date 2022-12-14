@@ -4,6 +4,7 @@ import mainnetData from '../mainnet_deployed.json';
 import testnetData from '../testnet_deployed.json';
 import hre from 'hardhat';
 import { ethers } from 'ethers';
+import '@nomiclabs/hardhat-etherscan/dist/src/type-extensions';
 
 //abi imports
 import postageABI from '../artifacts/src/PostageStamp.sol/PostageStamp.json';
@@ -25,6 +26,7 @@ interface DeployedContract {
 interface DeployedData {
   chainId: number;
   networkId: number;
+  minimumBucketDepth: number;
   contracts: {
     postageStamp: DeployedContract;
     redistribution: DeployedContract;
@@ -49,6 +51,7 @@ async function main(deployedData: DeployedData = testnetData) {
       break;
     case 'testnet':
     default:
+      deployedData['minimumBucketDepth'] = 0;
       deployedData = testnetData;
       break;
   }
@@ -166,12 +169,17 @@ async function deployPostageStamp(deployedData: DeployedData) {
       hre.network.config.chainId +
       ' ,with network id ' +
       deployedData['networkId'] +
+      ' ,with minimum bucket depth ' +
+      deployedData['minimumBucketDepth'] +
       ' and bzzToken address ' +
       deployedData['contracts']['bzzToken']['address']
   );
 
   const PostageStampContract = new ethers.ContractFactory(postageABI.abi, postageABI.bytecode).connect(account);
-  const postageStampContract = await PostageStampContract.deploy(deployedData['contracts']['bzzToken']['address']);
+  const postageStampContract = await PostageStampContract.deploy(
+    deployedData['contracts']['bzzToken']['address'],
+    deployedData['minimumBucketDepth']
+  );
 
   // log tx hash
   console.log('tx hash:' + postageStampContract.deployTransaction.hash);

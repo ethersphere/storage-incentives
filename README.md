@@ -66,7 +66,7 @@ This project includes the following smart contracts and their metadata:
 
 - Metadata ([Testnet](./testnet_deployed.json),[Mainnet](./mainnet_deployed.json))
   - **Chain ID**: Chain ID of the blockchain.
-  - **Network ID**: Network ID.
+  - **Network ID**: Network ID of bee.
   - **ABI**: Interface to communicate with smart contracts.
   - **Bytecode**: Compiled object code that is executed during communication with smart contract.
   - **Address**: Address of the deployed contract on blockchcain.
