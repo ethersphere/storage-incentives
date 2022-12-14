@@ -166,7 +166,7 @@ async function deployPostageStamp(deployedData: DeployedData) {
       hre.network.config.chainId +
       ' ,with network id ' +
       deployedData['networkId'] +
-      ' , and bzzToken address ' +
+      ' and bzzToken address ' +
       deployedData['contracts']['bzzToken']['address']
   );
 
