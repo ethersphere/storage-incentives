@@ -50,6 +50,11 @@ describe('PostageStamp', function () {
       await deployments.fixture();
     });
 
+    it('should have minimum bucket depth set to 16', async function () {
+      const postageStamp = await ethers.getContract('PostageStamp');
+      expect(await postageStamp.minimumBucketDepth()).to.be.eq(16);
+    });
+
     it('should deploy PostageStamp', async function () {
       const postageStamp = await ethers.getContract('PostageStamp');
       expect(postageStamp.address).to.be.properAddress;

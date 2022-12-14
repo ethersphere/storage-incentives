@@ -155,8 +155,9 @@ async function deployPostageStamp(contractData: ContractData) {
       ' and bzzToken address ' +
       contractData.addresses.bzzToken
   );
+  const minimumBucketDepth = 16;
   const Postage = await hre.ethers.getContractFactory('PostageStamp');
-  const postageContract = await Postage.deploy(contractData.addresses.bzzToken);
+  const postageContract = await Postage.deploy(contractData.addresses.bzzToken, minimumBucketDepth);
   console.log('tx hash:' + postageContract.deployTransaction.hash);
   await postageContract.deployed();
 
