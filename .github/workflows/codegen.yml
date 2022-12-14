@@ -2,8 +2,8 @@ name: Codegen
 
 on:
   push:
-    branches:
-      - master
+    branches-ignore:
+      - '**'
     tags:
       - 'v*.*.*'
 env:
