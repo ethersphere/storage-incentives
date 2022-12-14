@@ -5,6 +5,7 @@ import testnetData from '../testnet_deployed.json';
 import hre from 'hardhat';
 import { ethers } from 'ethers';
 import '@nomiclabs/hardhat-etherscan/dist/src/type-extensions';
+import { spawnSync } from 'child_process';
 
 //abi imports
 import postageABI from '../artifacts/src/PostageStamp.sol/PostageStamp.json';
@@ -53,8 +54,8 @@ async function main(deployedData: DeployedData = testnetData) {
       deployedData = testnetData;
       break;
   }
-  // fill deployedData with already compiled data e.g. bytecode and ABI
-  await writeResult(
+  //fill deployedData with already compiled data e.g. bytecode and ABI
+  deployedData = await writeResult(
     await writeURL(
       await rolesSetter(
         await deployRedistribution(
@@ -67,6 +68,7 @@ async function main(deployedData: DeployedData = testnetData) {
       )
     )
   );
+  await verifier(deployedData);
 }
 
 async function setConfigurations() {
@@ -77,7 +79,6 @@ async function setConfigurations() {
   ) {
     throw new Error('Please set your INFURA_TOKEN in a .env file');
   }
-
   let wallet: ethers.Wallet;
   if (Array.isArray(hre.network.config.accounts)) {
     if (hre.network.config.accounts.length > 1) {
@@ -346,6 +347,8 @@ async function writeResult(deployedData: DeployedData) {
   }
 
   fs.writeFileSync(fileName, JSON.stringify(deployedData, null, '\t'));
+
+  return deployedData;
 }
 
 async function setCompiledData(deployedData: DeployedData) {
@@ -372,6 +375,68 @@ async function setCompiledData(deployedData: DeployedData) {
 
 async function deployedInfo(name: string, block: number, address: string) {
   console.log('Deployed ' + name + ' contract to address ' + address + ' with block number ' + block);
+}
+
+async function verifier(deployedData: DeployedData) {
+  switch (blockChainVendor) {
+    case 'testnet':
+      if (
+        process.env.TESTNET_ETHERSCAN_KEY === undefined ||
+        process.env.TESTNET_ETHERSCAN_KEY === null ||
+        process.env.TESTNET_ETHERSCAN_KEY.length < 34
+      ) {
+        throw new Error('API Key does not exist');
+      }
+      break;
+    case 'mainnet':
+      if (
+        process.env.MAINNET_ETHERSCAN_KEY === undefined ||
+        process.env.MAINNET_ETHERSCAN_KEY === null ||
+        process.env.MAINNET_ETHERSCAN_KEY.length < 34
+      ) {
+        throw new Error('API Key does not exist');
+      }
+      break;
+  }
+  await processExecutor(
+    deployedData['contracts']['staking']['address'],
+    deployedData['contracts']['bzzToken']['address'] + ' ' + deployedData['networkId']
+  );
+
+  await processExecutor(
+    deployedData['contracts']['postageStamp']['address'],
+    deployedData['contracts']['bzzToken']['address'] + ' ' + 16
+  );
+
+  await processExecutor(
+    deployedData['contracts']['priceOracle']['address'],
+    deployedData['contracts']['postageStamp']['address']
+  );
+
+  await processExecutor(
+    deployedData['contracts']['redistribution']['address'],
+    deployedData['contracts']['staking']['address'] +
+      ' ' +
+      deployedData['contracts']['postageStamp']['address'] +
+      ' ' +
+      deployedData['contracts']['priceOracle']['address']
+  );
+  return deployedData;
+}
+
+async function processExecutor(address: string, args: string) {
+  const sp = spawnSync('yarn run hardhat verify ' + address + ' ' + args + ' --network testnet ', [], {
+    timeout: 30000,
+    stdio: ['inherit', 'inherit', 'pipe'],
+    shell: true,
+  });
+  if (sp.stderr.toString('utf-8').includes('Already Verified')) {
+    console.log('Contract already verified');
+  } else if (sp.stderr.toString() === null || sp.stderr.toString() === '') {
+    console.log('Contract Verified Successfully');
+  } else {
+    throw new Error(sp.stderr.toString());
+  }
 }
 
 main()
