@@ -410,7 +410,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay address of the applicant.
      */
     function isWinner(bytes32 _overlay) public view returns (bool) {
-        require(currentPhaseClaim(), "not in claim phase");
+        require(currentPhaseClaim(), "winner not determined yet");
 
         uint256 cr = currentRound();
 
