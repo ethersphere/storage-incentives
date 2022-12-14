@@ -70,6 +70,9 @@ contract Redistribution is AccessControl, Pausable {
     // Role allowed to pause.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
+    uint256 public constant penaltyMultiplierDisagreement = 3;
+    uint256 public constant penaltyMultiplierNonRevealed = 7;
+
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
@@ -213,6 +216,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 _roundNumber
     ) external whenNotPaused {
         require(currentPhaseCommit(), "not in commit phase");
+        require( block.number % roundLength != ( roundLength / 4 ) - 1, "can not commit in last block of phase");
         uint256 cr = currentRound();
         require(cr <= _roundNumber, "commit round over");
         require(cr >= _roundNumber, "commit round not started yet");
@@ -424,7 +428,6 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth;
 
         uint256 commitsArrayLength = currentCommits.length;
-        uint256 revealsArrayLength = currentReveals.length;
         
         uint256 revIndex;
         uint256 k = 0;
@@ -562,6 +565,13 @@ contract Redistribution is AccessControl, Pausable {
 
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
+                // question is whether randomNumber / MaxH < probability
+                // where probability is stakeDensity / currentSum
+                // to avoid resorting to floating points all divisions should be
+                // simplified with multiplying both sides (as long as divisor > 0)
+                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
+                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
+                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
                 if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
@@ -594,13 +604,13 @@ contract Redistribution is AccessControl, Pausable {
     
                     k++;
                 } else {
-                    Stakes.freezeDeposit(currentReveals[revIndex].overlay, 3 * roundLength * uint256(2**truthRevealedDepth));
+                    Stakes.freezeDeposit(currentReveals[revIndex].overlay, penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth));
                     // slash ph5
                 }
             } else {
                 // slash in later phase
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(currentCommits[i].overlay, 7 * roundLength * uint256(2**truthRevealedDepth));
+                Stakes.freezeDeposit(currentCommits[i].overlay, penaltyMultiplierNonRevealed * roundLength * uint256(2**truthRevealedDepth));
                 continue;
             }
         }
