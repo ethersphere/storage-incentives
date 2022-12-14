@@ -38,10 +38,12 @@ interface Mnemonic {
   mnemonic: string;
 }
 
-const networkID = hre.network.config.chainId;
+let networkID = hre.network.config.chainId;
 const blockChainVendor = hre.network.name;
 
 async function main(deployedData: DeployedData = testnetData) {
+  networkID = deployedData['networkId'];
+
   await setConfigurations();
 
   switch (blockChainVendor) {
