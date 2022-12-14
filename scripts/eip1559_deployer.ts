@@ -26,7 +26,6 @@ interface DeployedContract {
 interface DeployedData {
   chainId: number;
   networkId: number;
-  minimumBucketDepth: number;
   contracts: {
     postageStamp: DeployedContract;
     redistribution: DeployedContract;
@@ -51,7 +50,6 @@ async function main(deployedData: DeployedData = testnetData) {
       break;
     case 'testnet':
     default:
-      deployedData['minimumBucketDepth'] = 0;
       deployedData = testnetData;
       break;
   }
@@ -169,17 +167,12 @@ async function deployPostageStamp(deployedData: DeployedData) {
       hre.network.config.chainId +
       ' ,with network id ' +
       deployedData['networkId'] +
-      ' ,with minimum bucket depth ' +
-      deployedData['minimumBucketDepth'] +
       ' and bzzToken address ' +
       deployedData['contracts']['bzzToken']['address']
   );
 
   const PostageStampContract = new ethers.ContractFactory(postageABI.abi, postageABI.bytecode).connect(account);
-  const postageStampContract = await PostageStampContract.deploy(
-    deployedData['contracts']['bzzToken']['address'],
-    deployedData['minimumBucketDepth']
-  );
+  const postageStampContract = await PostageStampContract.deploy(deployedData['contracts']['bzzToken']['address'], 16);
 
   // log tx hash
   console.log('tx hash:' + postageStampContract.deployTransaction.hash);

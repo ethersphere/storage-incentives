@@ -1,7 +1,6 @@
 {
   "chainId": 100,
   "networkId": 1,
-  "minimumBucketDepth": 16,
   "contracts": {
     "bzzToken": {
       "abi": [
