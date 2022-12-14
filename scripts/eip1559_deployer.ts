@@ -38,12 +38,9 @@ interface Mnemonic {
   mnemonic: string;
 }
 
-let networkID = hre.network.config.chainId;
 const blockChainVendor = hre.network.name;
 
 async function main(deployedData: DeployedData = testnetData) {
-  networkID = deployedData['networkId'];
-
   await setConfigurations();
 
   switch (blockChainVendor) {
@@ -72,9 +69,12 @@ async function main(deployedData: DeployedData = testnetData) {
 }
 
 async function setConfigurations() {
-  const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
-  if (infuraToken === 'undefined') {
-    console.log('Please set your INFURA_TOKEN in a .env file');
+  const infuraToken = process.env.INFURA_TOKEN;
+  if (
+    infuraToken === '' ||
+    (infuraToken === undefined && (blockChainVendor == 'testnet' || blockChainVendor == 'mainnet'))
+  ) {
+    throw new Error('Please set your INFURA_TOKEN in a .env file');
   }
 
   let wallet: ethers.Wallet;
@@ -84,7 +84,6 @@ async function setConfigurations() {
     }
     wallet = new ethers.Wallet(hre.network.config.accounts[0] as string);
   } else if (isMnemonic(hre.network.config.accounts)) {
-    console.log(hre.network.config.accounts.mnemonic);
     wallet = ethers.Wallet.fromMnemonic(hre.network.config.accounts.mnemonic);
   } else {
     throw new Error('unknown type');
@@ -139,12 +138,12 @@ async function deployStakeRegistry(deployedData: DeployedData) {
       ' with chain id ' +
       hre.network.config.chainId +
       ' and network id ' +
-      networkID
+      deployedData['networkId']
   );
   const StakeRegistryContract = new ethers.ContractFactory(stakingABI.abi, stakingABI.bytecode).connect(account);
   const stakeRegistryContract = await StakeRegistryContract.deploy(
     deployedData['contracts']['bzzToken']['address'],
-    networkID
+    deployedData['networkId']
   );
 
   console.log('tx hash:' + stakeRegistryContract.deployTransaction.hash);
@@ -166,7 +165,7 @@ async function deployPostageStamp(deployedData: DeployedData) {
       ' with chain id ' +
       hre.network.config.chainId +
       ' ,with network id ' +
-      networkID +
+      deployedData['networkId'] +
       ' , and bzzToken address ' +
       deployedData['contracts']['bzzToken']['address']
   );
@@ -363,8 +362,8 @@ async function setCompiledData(deployedData: DeployedData) {
   deployedData['contracts']['priceOracle']['bytecode'] = oracleABI.bytecode.toString();
 
   // set chain and network id
-  if (hre.network.config.chainId != null && networkID != null) {
-    deployedData['networkId'] = networkID;
+  if (hre.network.config.chainId != null && deployedData['networkId'] != null) {
+    deployedData['networkId'] = deployedData['networkId'];
     deployedData['chainId'] = hre.network.config.chainId;
   }
   return deployedData;
