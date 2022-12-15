@@ -397,6 +397,8 @@ async function verifier(deployedData: DeployedData) {
         throw new Error('API Key does not exist');
       }
       break;
+    default:
+      return;
   }
   await processExecutor(
     deployedData['contracts']['staking']['address'],
