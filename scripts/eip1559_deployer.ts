@@ -6,7 +6,7 @@ import hre from 'hardhat';
 import { ethers } from 'ethers';
 import '@nomiclabs/hardhat-etherscan/dist/src/type-extensions';
 import { spawnSync } from 'child_process';
-
+import { InfuraToken } from '../hardhat.config';
 //abi imports
 import postageABI from '../artifacts/src/PostageStamp.sol/PostageStamp.json';
 import redisABI from '../artifacts/src/Redistribution.sol/Redistribution.json';
@@ -42,7 +42,9 @@ interface Mnemonic {
 
 const blockChainVendor = hre.network.name;
 
-async function main(deployedData: DeployedData = testnetData) {
+async function main() {
+  let deployedData: DeployedData;
+
   await setConfigurations();
 
   switch (blockChainVendor) {
@@ -54,7 +56,7 @@ async function main(deployedData: DeployedData = testnetData) {
       deployedData = testnetData;
       break;
   }
-  //fill deployedData with already compiled data e.g. bytecode and ABI
+  // fill deployedData with already compiled data e.g. bytecode and ABI
   deployedData = await writeResult(
     await writeURL(
       await rolesSetter(
@@ -72,13 +74,6 @@ async function main(deployedData: DeployedData = testnetData) {
 }
 
 async function setConfigurations() {
-  const infuraToken = process.env.INFURA_TOKEN;
-  if (
-    infuraToken === '' ||
-    (infuraToken === undefined && (blockChainVendor == 'testnet' || blockChainVendor == 'mainnet'))
-  ) {
-    throw new Error('Please set your INFURA_TOKEN in a .env file');
-  }
   let wallet: ethers.Wallet;
   if (Array.isArray(hre.network.config.accounts)) {
     if (hre.network.config.accounts.length > 1) {
@@ -92,10 +87,10 @@ async function setConfigurations() {
   }
   switch (blockChainVendor) {
     case 'testnet':
-      account = wallet.connect(new ethers.providers.JsonRpcProvider('https://goerli.infura.io/v3/' + infuraToken));
+      account = wallet.connect(new ethers.providers.JsonRpcProvider('https://goerli.infura.io/v3/' + InfuraToken));
       break;
     case 'mainnet':
-      account = wallet.connect(new ethers.providers.JsonRpcProvider('https://mainnet.infura.io/v3/' + infuraToken));
+      account = wallet.connect(new ethers.providers.JsonRpcProvider('https://mainnet.infura.io/v3/' + InfuraToken));
       break;
     default:
       account = wallet.connect(hre.ethers.provider);
@@ -103,7 +98,7 @@ async function setConfigurations() {
 }
 
 function isMnemonic(param: unknown): param is Mnemonic {
-  return typeof param === 'object' && typeof (param as Mnemonic).mnemonic === 'string';
+  return typeof param === 'object' && param != null && 'mnemonic' in param;
 }
 
 async function deployBzzToken(deployed: DeployedData) {

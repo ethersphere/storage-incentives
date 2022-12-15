@@ -2,6 +2,7 @@ import 'hardhat-deploy-ethers';
 import * as fs from 'fs';
 import { ethers } from 'hardhat';
 import hre from 'hardhat';
+import '@nomiclabs/hardhat-etherscan/dist/src/type-extensions';
 
 interface DeployedContract {
   abi: Array<unknown>;

@@ -6,8 +6,8 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
-const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
-if (infuraToken === 'undefined') {
+export const InfuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
+if (InfuraToken === 'undefined') {
   console.log('Please set your INFURA_TOKEN in a .env file');
 }
 
@@ -112,12 +112,12 @@ const config: HardhatUserConfig = {
       chainId: 1,
     },
     testnet: {
-      url: 'https://goerli.infura.io/v3/' + infuraToken,
+      url: 'https://goerli.infura.io/v3/' + InfuraToken,
       accounts,
       chainId: 5,
     },
     mainnet: {
-      url: 'https://mainnet.infura.io/v3/' + infuraToken,
+      url: 'https://mainnet.infura.io/v3/' + InfuraToken,
       accounts,
       chainId: 100,
     },
