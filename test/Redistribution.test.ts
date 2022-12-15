@@ -571,7 +571,6 @@ describe('Redistribution', function () {
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        console.log(currentRound);
         await r_node_2.commit(obsfucatedHash, overlay_2, parseInt(currentRound));
 
         await mineNBlocks(phaseLength);
