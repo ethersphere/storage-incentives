@@ -361,8 +361,8 @@ describe('Redistribution', function () {
         const currentRound = await r_node_2.currentRound();
 
         await expect(r_node_2.commit(obsfucatedHash, overlay_2, currentRound))
-        .to.emit(redistribution, 'Committed')
-        .withArgs(currentRound, overlay_2);
+          .to.emit(redistribution, 'Committed')
+          .withArgs(currentRound, overlay_2);
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
@@ -535,6 +535,34 @@ describe('Redistribution', function () {
         );
       });
 
+      describe('when pausing', function () {
+        it('should not allow anybody but the pauser to pause', async function () {
+          const redistributionContract = await ethers.getContract('Redistribution', stamper);
+          await expect(redistributionContract.pause()).to.be.revertedWith('only pauser can pause');
+        });
+      });
+
+      describe('when unpausing', function () {
+        it('should unpause when pause and then unpause', async function () {
+          const redistributionContract = await ethers.getContract('Redistribution', deployer);
+          await redistributionContract.pause();
+          await redistributionContract.unPause();
+          expect(await redistributionContract.paused()).to.be.false;
+        });
+
+        it('should not allow anybody but the pauser to unpause', async function () {
+          const redistributionContract = await ethers.getContract('Redistribution', deployer);
+          await redistributionContract.pause();
+          const redistributionContract2 = await ethers.getContract('Redistribution', stamper);
+          await expect(redistributionContract2.unPause()).to.be.revertedWith('only pauser can unpause');
+        });
+
+        it('should not allow unpausing when not paused', async function () {
+          const redistributionContract = await ethers.getContract('Redistribution', deployer);
+          await expect(redistributionContract.unPause()).to.be.revertedWith('Pausable: not paused');
+        });
+      });
+
       it('should emit correct events', async function () {
         const initialBlockNumber = await getBlockNumber();
         expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -543,7 +571,7 @@ describe('Redistribution', function () {
         const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        console.log(currentRound)
+        console.log(currentRound);
         await r_node_2.commit(obsfucatedHash, overlay_2, parseInt(currentRound));
 
         await mineNBlocks(phaseLength);
@@ -552,7 +580,7 @@ describe('Redistribution', function () {
 
         await expect(redistribution.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2))
           .to.emit(redistribution, 'Revealed')
-          .withArgs(currentRound, overlay_2, stakeAmount_2, "6400000000000000000", hash_2, parseInt(depth_2));
+          .withArgs(currentRound, overlay_2, stakeAmount_2, '6400000000000000000', hash_2, parseInt(depth_2));
       });
     });
 

@@ -98,6 +98,23 @@ contract Redistribution is AccessControl, Pausable {
     Reveal public winner;
 
     /**
+    * @dev Pause the contract. The contract is provably stopped by renouncing
+     the pauser role and the admin role after pausing, can only be called by the `PAUSER`
+     */
+    function pause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        _pause();
+    }
+
+    /**
+     * @dev Unpause the contract, can only be called by the pauser when paused
+     */
+    function unPause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        _unpause();
+    }
+
+    /**
      * @param staking the address of the linked Staking contract.
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
@@ -428,10 +445,10 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth;
 
         uint256 commitsArrayLength = currentCommits.length;
-        
+
         uint256 revIndex;
         uint256 k = 0;
-        
+
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
@@ -442,7 +459,7 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
-                
+
                 k++;
             }
         }
@@ -464,7 +481,7 @@ contract Redistribution is AccessControl, Pausable {
                 }
 
                 k++;
-            } 
+            }
         }
 
         return (winnerIs == _overlay);
@@ -593,15 +610,15 @@ contract Redistribution is AccessControl, Pausable {
                if ( truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
                     currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                     randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-    
+
                     randomNumberTrunc = uint256(randomNumber & MaxH);
-    
+
                     if (
                         randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                     ) {
                         winner = currentReveals[revIndex];
                     }
-    
+
                     k++;
                 } else {
                     Stakes.freezeDeposit(currentReveals[revIndex].overlay, penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth));
