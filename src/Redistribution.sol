@@ -94,6 +94,23 @@ contract Redistribution is AccessControl, Pausable {
     Reveal public winner;
 
     /**
+    * @dev Pause the contract. The contract is provably stopped by renouncing
+     the pauser role and the admin role after pausing, can only be called by the `PAUSER`
+     */
+    function pause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        _pause();
+    }
+
+    /**
+     * @dev Unpause the contract, can only be called by the pauser when paused
+     */
+    function unPause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        _unpause();
+    }
+
+    /**
      * @param staking the address of the linked Staking contract.
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
