@@ -316,7 +316,10 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function nonceBasedRandomness(bytes32 nonce) private {
-        seed = seed ^ nonce;
+        seed = keccak256(abi.encode(seed));
+        if (uint256(nonce) % 2 == 0) {
+            seed = keccak256(abi.encode(seed));
+        }
     }
 
     /**
