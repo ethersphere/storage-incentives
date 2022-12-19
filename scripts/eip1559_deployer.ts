@@ -129,7 +129,11 @@ async function setConfigurations() {
       }
       break;
     case 'mainnet':
-      account = wallet.connect(new ethers.providers.JsonRpcProvider('https://mainnet.infura.io/v3/' + InfuraToken));
+      account = wallet.connect(
+        new ethers.providers.JsonRpcProvider(
+          'https://dawn-snowy-borough.xdai.discover.quiknode.pro/95488c7109982be70f1735aa936b6c259f2c988e/'
+        )
+      );
       configurations = configs['mainnet'];
       if (isMainnetKey(hre.config.etherscan.apiKey)) {
         configurations.etherscanKey = hre.config.etherscan.apiKey.mainnet;
