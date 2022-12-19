@@ -17,8 +17,30 @@ if (walletSecret === 'undefined') {
 }
 const accounts = walletSecret.length === 64 ? [walletSecret] : { mnemonic: walletSecret };
 
-const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
-const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
+let testnetEtherscanKey;
+let mainnetEtherscanKey;
+
+if (
+  process.env.TESTNET_ETHERSCAN_KEY === undefined ||
+  process.env.TESTNET_ETHERSCAN_KEY === null ||
+  process.env.TESTNET_ETHERSCAN_KEY.length < 34
+) {
+  console.log('API Key does not exist for testnet');
+  testnetEtherscanKey = '';
+} else {
+  testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
+}
+
+if (
+  process.env.MAINNET_ETHERSCAN_KEY === undefined ||
+  process.env.MAINNET_ETHERSCAN_KEY === null ||
+  process.env.MAINNET_ETHERSCAN_KEY.length < 34
+) {
+  console.log('API Key does not exist for mainnet');
+  mainnetEtherscanKey = '';
+} else {
+  mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
+}
 
 // Config for hardhat.
 const config: HardhatUserConfig = {
@@ -124,8 +146,8 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      mainnet: '<gnosis-api-key>',
-      testnet: '<goerli-api-key>',
+      mainnet: mainnetEtherscanKey,
+      testnet: testnetEtherscanKey,
     },
     customChains: [
       {

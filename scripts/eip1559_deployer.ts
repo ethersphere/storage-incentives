@@ -36,41 +36,76 @@ interface DeployedData {
   };
 }
 
+let configurations: ChainConfig;
+
+interface ChainConfig {
+  chainId?: number;
+  networkId?: number;
+  networkName: string;
+  url: string;
+  deployedData: DeployedData;
+  etherscanKey: string;
+}
+
+const configs: Record<string, ChainConfig> = {
+  testnet: {
+    chainId: hre.network.config.chainId,
+    networkId: 10,
+    networkName: hre.network.name,
+    url: hre.config.etherscan.customChains[0]['urls']['browserURL'].toString(),
+    deployedData: testnetData,
+    etherscanKey: '',
+  },
+  mainnet: {
+    chainId: hre.network.config.chainId,
+    networkId: 1,
+    networkName: hre.network.name,
+    url: hre.config.etherscan.customChains[1]['urls']['browserURL'].toString(),
+    deployedData: mainnetData,
+    etherscanKey: '',
+  },
+  private: {
+    chainId: hre.network.config.chainId,
+    networkId: 10000,
+    networkName: hre.network.name,
+    url: '',
+    deployedData: testnetData,
+    etherscanKey: '',
+  },
+};
+
 interface Mnemonic {
   mnemonic: string;
+}
+
+interface Etherscan {
+  testnet: string;
+  mainnet: string;
 }
 
 const blockChainVendor = hre.network.name;
 
 async function main() {
-  let deployedData: DeployedData;
-
   await setConfigurations();
 
-  switch (blockChainVendor) {
-    case 'mainnet':
-      deployedData = mainnetData;
-      break;
-    case 'testnet':
-    default:
-      deployedData = testnetData;
-      break;
-  }
   // fill deployedData with already compiled data e.g. bytecode and ABI
-  deployedData = await writeResult(
+  const deployedData = await writeResult(
     await writeURL(
       await rolesSetter(
         await deployRedistribution(
           await deployPriceOracle(
             await deployPostageStamp(
-              await deployStakeRegistry(await deployBzzToken(await setCompiledData(deployedData)))
+              await deployStakeRegistry(await deployBzzToken(await setCompiledData(configurations.deployedData)))
             )
           )
         )
       )
     )
   );
-  await verifier(deployedData);
+
+  if (configurations.etherscanKey.length == 34) {
+    await verifier(deployedData);
+  }
 }
 
 async function setConfigurations() {
@@ -88,12 +123,21 @@ async function setConfigurations() {
   switch (blockChainVendor) {
     case 'testnet':
       account = wallet.connect(new ethers.providers.JsonRpcProvider('https://goerli.infura.io/v3/' + InfuraToken));
+      configurations = configs['testnet'];
+      if (isTestnetKey(hre.config.etherscan.apiKey)) {
+        configurations.etherscanKey = hre.config.etherscan.apiKey.testnet;
+      }
       break;
     case 'mainnet':
       account = wallet.connect(new ethers.providers.JsonRpcProvider('https://mainnet.infura.io/v3/' + InfuraToken));
+      configurations = configs['mainnet'];
+      if (isMainnetKey(hre.config.etherscan.apiKey)) {
+        configurations.etherscanKey = hre.config.etherscan.apiKey.mainnet;
+      }
       break;
     default:
       account = wallet.connect(hre.ethers.provider);
+      configurations = configs['private'];
   }
 }
 
@@ -101,39 +145,44 @@ function isMnemonic(param: unknown): param is Mnemonic {
   return typeof param === 'object' && param != null && 'mnemonic' in param;
 }
 
-async function deployBzzToken(deployed: DeployedData) {
-  switch (blockChainVendor) {
-    case 'testnet':
-    case 'mainnet':
-      const bzzTokenAddress = deployed['contracts']['bzzToken']['address'];
-      const block = deployed['contracts']['bzzToken']['block'];
-      console.log('Using deployed BzzToken contract address ' + bzzTokenAddress + ' with block number ' + block);
+function isTestnetKey(param: unknown): param is Etherscan {
+  return typeof param === 'object' && param != null && 'testnet' in param;
+}
 
-      if (bzzTokenAddress.length < 0) {
-        throw new Error('BzzToken address not found for deployment over ' + blockChainVendor);
-      }
-      return deployed;
-    default:
-      console.log(
-        'Deploying BzzToken contract to network ' + hre.network.name + ' with chain id ' + hre.network.config.chainId
-      );
-      const TestToken = new ethers.ContractFactory(bzzTokenABI.abi, bzzTokenABI.bytecode).connect(account);
-      const testToken = await TestToken.deploy();
-      console.log('tx hash:' + testToken.deployTransaction.hash);
-      await testToken.deployed();
-      const address = testToken.address;
-      const blockNum = await getBlock(testToken.deployTransaction.hash);
-      await deployedInfo('Bzz Token', blockNum, address);
-      return await setAddressAndBlock(deployed, 'bzzToken', address, blockNum);
+function isMainnetKey(param: unknown): param is Etherscan {
+  return typeof param === 'object' && param != null && 'mainnet' in param;
+}
+
+async function deployBzzToken(deployed: DeployedData) {
+  if (configurations.networkName == 'testnet' || configurations.networkName == 'testnet') {
+    const bzzTokenAddress = deployed['contracts']['bzzToken']['address'];
+    const block = deployed['contracts']['bzzToken']['block'];
+    console.log('Using deployed BzzToken contract address ' + bzzTokenAddress + ' with block number ' + block);
+
+    if (bzzTokenAddress.length < 0) {
+      throw new Error('BzzToken address not found for deployment over ' + blockChainVendor);
+    }
+    return deployed;
   }
+  console.log(
+    'Deploying BzzToken contract to network ' + configurations.networkName + ' with chain id ' + configurations.chainId
+  );
+  const TestToken = new ethers.ContractFactory(bzzTokenABI.abi, bzzTokenABI.bytecode).connect(account);
+  const testToken = await TestToken.deploy();
+  console.log('tx hash:' + testToken.deployTransaction.hash);
+  await testToken.deployed();
+  const address = testToken.address;
+  const blockNum = await getBlock(testToken.deployTransaction.hash);
+  await deployedInfo('Bzz Token', blockNum, address);
+  return await setAddressAndBlock(deployed, 'bzzToken', address, blockNum);
 }
 
 async function deployStakeRegistry(deployedData: DeployedData) {
   console.log(
     '\nDeploying Stake Registry contract to network ' +
-      hre.network.name +
+      configurations.networkName +
       ' with chain id ' +
-      hre.network.config.chainId +
+      configurations.chainId +
       ' and network id ' +
       deployedData['networkId']
   );
@@ -158,9 +207,9 @@ async function deployStakeRegistry(deployedData: DeployedData) {
 async function deployPostageStamp(deployedData: DeployedData) {
   console.log(
     '\nDeploying Postage Stamp contract to network ' +
-      hre.network.name +
+      configurations.networkName +
       ' with chain id ' +
-      hre.network.config.chainId +
+      configurations.chainId +
       ' ,with network id ' +
       deployedData['networkId'] +
       ' and bzzToken address ' +
@@ -186,9 +235,9 @@ async function deployPostageStamp(deployedData: DeployedData) {
 async function deployPriceOracle(deployedData: DeployedData) {
   console.log(
     '\nDeploying Price Oracle contract to network ' +
-      hre.network.name +
+      configurations.networkName +
       ' with chain id ' +
-      hre.network.config.chainId +
+      configurations.chainId +
       ' and Postage Contract address ' +
       deployedData['contracts']['postageStamp']['address']
   );
@@ -212,9 +261,9 @@ async function deployPriceOracle(deployedData: DeployedData) {
 async function deployRedistribution(deployedData: DeployedData) {
   console.log(
     '\nDeploying Redistribution contract to network ' +
-      hre.network.name +
+      configurations.networkName +
       ' with chain id ' +
-      hre.network.config.chainId +
+      configurations.chainId +
       ' and \n\t Stake Registry Contract address ' +
       deployedData['contracts']['staking']['address'] +
       '\n\t Postage Contract address ' +
@@ -300,42 +349,25 @@ async function getBlock(params: string) {
 }
 
 async function writeURL(deployed: DeployedData) {
-  let urlAddress = '';
-  if (blockChainVendor === 'testnet') {
-    urlAddress = hre.config.etherscan.customChains[0]['urls']['browserURL'].toString();
-  } else if (blockChainVendor === 'mainnet') {
-    urlAddress = hre.config.etherscan.customChains[1]['urls']['browserURL'].toString();
-  }
-  switch (blockChainVendor) {
-    case 'testnet':
-    case 'mainnet':
-      deployed['contracts']['postageStamp']['url'] = urlAddress + deployed['contracts']['postageStamp']['address'];
-      deployed['contracts']['redistribution']['url'] = urlAddress + deployed['contracts']['redistribution']['address'];
-      deployed['contracts']['staking']['url'] = urlAddress + deployed['contracts']['staking']['address'];
-      deployed['contracts']['priceOracle']['url'] = urlAddress + deployed['contracts']['priceOracle']['address'];
-      break;
-    default:
-      deployed['contracts']['postageStamp']['url'] = urlAddress;
-      deployed['contracts']['redistribution']['url'] = urlAddress;
-      deployed['contracts']['staking']['url'] = urlAddress;
-      deployed['contracts']['priceOracle']['url'] = urlAddress;
-      break;
+  if (configurations.networkName == 'testnet' || configurations.networkName == 'mainnet') {
+    deployed['contracts']['postageStamp']['url'] =
+      configurations.url + deployed['contracts']['postageStamp']['address'];
+    deployed['contracts']['redistribution']['url'] =
+      configurations.url + deployed['contracts']['redistribution']['address'];
+    deployed['contracts']['staking']['url'] = configurations.url + deployed['contracts']['staking']['address'];
+    deployed['contracts']['priceOracle']['url'] = configurations.url + deployed['contracts']['priceOracle']['address'];
+  } else {
+    deployed['contracts']['postageStamp']['url'] = '';
+    deployed['contracts']['redistribution']['url'] = '';
+    deployed['contracts']['staking']['url'] = '';
+    deployed['contracts']['priceOracle']['url'] = '';
+    deployed['contracts']['bzzToken']['url'] = '';
   }
   return deployed;
 }
 
 async function writeResult(deployedData: DeployedData) {
   let fileName = '';
-  switch (blockChainVendor) {
-    case 'testnet':
-      fileName = 'testnet_deployed.json';
-      break;
-    case 'mainnet':
-      fileName = 'mainnet_deployed.json';
-      break;
-    default:
-      break;
-  }
 
   if (fileName.length == 0 || !fs.existsSync(fileName)) {
     fileName = blockChainVendor + '_deployed.json';
@@ -361,10 +393,13 @@ async function setCompiledData(deployedData: DeployedData) {
   deployedData['contracts']['priceOracle']['bytecode'] = oracleABI.bytecode.toString();
 
   // set chain and network id
-  if (hre.network.config.chainId != null && deployedData['networkId'] != null) {
-    deployedData['networkId'] = deployedData['networkId'];
-    deployedData['chainId'] = hre.network.config.chainId;
+  if (configurations.networkId != null) {
+    deployedData['networkId'] = configurations.networkId;
   }
+  if (configurations.chainId != null) {
+    deployedData['chainId'] = configurations.chainId;
+  }
+
   return deployedData;
 }
 
@@ -373,28 +408,6 @@ async function deployedInfo(name: string, block: number, address: string) {
 }
 
 async function verifier(deployedData: DeployedData) {
-  switch (blockChainVendor) {
-    case 'testnet':
-      if (
-        process.env.TESTNET_ETHERSCAN_KEY === undefined ||
-        process.env.TESTNET_ETHERSCAN_KEY === null ||
-        process.env.TESTNET_ETHERSCAN_KEY.length < 34
-      ) {
-        throw new Error('API Key does not exist');
-      }
-      break;
-    case 'mainnet':
-      if (
-        process.env.MAINNET_ETHERSCAN_KEY === undefined ||
-        process.env.MAINNET_ETHERSCAN_KEY === null ||
-        process.env.MAINNET_ETHERSCAN_KEY.length < 34
-      ) {
-        throw new Error('API Key does not exist');
-      }
-      break;
-    default:
-      return;
-  }
   await processExecutor(
     deployedData['contracts']['staking']['address'],
     deployedData['contracts']['bzzToken']['address'] + ' ' + deployedData['networkId']
