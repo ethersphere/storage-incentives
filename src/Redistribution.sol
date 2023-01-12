@@ -315,13 +315,6 @@ contract Redistribution is AccessControl, Pausable {
         seed = keccak256(abi.encode(seed, block.difficulty));
     }
 
-    function nonceBasedRandomness(bytes32 nonce) private {
-        seed = keccak256(abi.encode(seed));
-        if (uint256(nonce) % 2 == 0) {
-            seed = keccak256(abi.encode(seed));
-        }
-    }
-
     /**
      * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
      * @param A An overlay address to compare.
@@ -407,8 +400,6 @@ contract Redistribution is AccessControl, Pausable {
                     })
                 );
 
-                nonceBasedRandomness(_revealNonce);
-
                 emit Revealed(
                     cr,
                     currentCommits[i].overlay,
@@ -450,24 +441,21 @@ contract Redistribution is AccessControl, Pausable {
         uint256 commitsArrayLength = currentCommits.length;
 
         uint256 revIndex;
-        uint256 k = 0;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
 
                 if (uint256(randomNumber & MaxH) * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
-
-                k++;
             }
         }
 
-        k = 0;
+        uint256 k = 0;
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
@@ -575,13 +563,12 @@ contract Redistribution is AccessControl, Pausable {
         emit CountReveals(revealsArrayLength);
 
         uint256 revIndex;
-        uint256 k = 0;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
 
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
@@ -596,14 +583,12 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
-
-                k++;
             }
         }
 
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
 
-        k = 0;
+        uint256 k = 0;
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
