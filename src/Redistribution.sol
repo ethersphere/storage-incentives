@@ -2,6 +2,9 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "./Util/TransformedChunkProof.sol";
+import "./Util/ChunkProof.sol";
+import "./Util/PostageStampSig.sol";
 import "./PostageStamp.sol";
 import "./PriceOracle.sol";
 import "./Staking.sol";
@@ -55,6 +58,40 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth;
     }
 
+    struct ChunkInclusionProof{
+        bytes32[] proofSegments;
+        bytes32 proveSegment;
+        // _RCspan is known for RC 32*32
+
+        // Inclusion proof of transformed address
+        bytes32[] proofSegments2;
+        bytes32 proveSegment2;
+        // proveSegmentIndex2 known from deterministic random selection;
+        uint64 chunkSpan;
+        //
+        bytes32[] proofSegments3;
+        //  _proveSegment3 known, is equal _proveSegment2 
+        // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
+        // chunkSpan2 is equal to chunkSpan (as the data is the same)
+
+        address signer;
+        bytes signature;
+        bytes32 chunkAddr;
+        bytes32 postageId;
+        uint64 index;
+        uint64 timeStamp;
+
+        SOCProof[] socProofAttached;
+    }
+    
+    struct SOCProof{
+        address signer; // signer Ethereum address to check against
+        bytes signature;
+        bytes32 identifier; // 
+        bytes32 chunkAddr; // PAYLOAD?
+    }
+
+
     // The address of the linked PostageStamp contract.
     PostageStamp public PostageContract;
     // The address of the linked PriceOracle contract.
@@ -83,6 +120,12 @@ contract Redistribution is AccessControl, Pausable {
     // inputs for selection of the truth teller and beneficiary.
     bytes32 seed;
 
+    uint256 currentSum;
+    uint256 currentWinnerSelectionSum;
+
+    uint256 x;
+    uint256 y;
+
     // The miniumum stake allowed to be staked using the Staking contract.
     uint256 public minimumStake = 100000000000000000;
 
@@ -93,6 +136,10 @@ contract Redistribution is AccessControl, Pausable {
 
     // The length of a round in blocks.
     uint256 public roundLength = 152;
+
+    uint256 k;
+    uint256 revIndex;
+    uint256 segmentIndexLast;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -538,7 +585,41 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Conclude the current round by identifying the selected truth teller and beneficiary.
      * @dev
      */
-    function claim() external whenNotPaused {
+    function claim(
+        ChunkInclusionProof calldata entryProof1,
+        ChunkInclusionProof calldata entryProof2,
+        ChunkInclusionProof calldata entryProofLast
+    ) external whenNotPaused {
+
+
+        winner = winnerSelection();
+
+        // rand(14)
+        x = uint256(seed) % 15;
+        // rand(13)
+        y = uint256(seed) % 14;
+        if ( y >= x ) {
+            y++;
+        }
+
+        inclusionFunction(entryProofLast, 30);
+        stampFunction(entryProofLast);
+        inclusionFunction(entryProof1, x);
+        stampFunction(entryProof1);
+        inclusionFunction(entryProof2, y);
+        stampFunction(entryProof2);
+        
+        checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
+
+        emit WinnerSelected(winner);
+
+        PostageContract.withdraw(winner.owner);
+
+
+    }
+
+    function winnerSelection() internal returns (Reveal memory winner_) {
+
         require(currentPhaseClaim(), "not in claim phase");
 
         uint256 cr = currentRound();
@@ -548,23 +629,18 @@ contract Redistribution is AccessControl, Pausable {
 
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
 
-        uint256 currentSum;
-        uint256 currentWinnerSelectionSum;
+        currentSum = 0;
+        currentWinnerSelectionSum = 0;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
 
-        uint256 commitsArrayLength = currentCommits.length;
-        uint256 revealsArrayLength = currentReveals.length;
+        emit CountCommits(currentCommits.length);
+        emit CountReveals(currentReveals.length);
 
-        emit CountCommits(commitsArrayLength);
-        emit CountReveals(revealsArrayLength);
-
-        uint256 revIndex;
-
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < currentCommits.length; i++) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
@@ -588,11 +664,11 @@ contract Redistribution is AccessControl, Pausable {
 
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
 
-        uint256 k = 0;
+        k = 0;
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
             if (currentCommits[i].revealed ) {
                if ( truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
@@ -604,7 +680,7 @@ contract Redistribution is AccessControl, Pausable {
                     if (
                         randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                     ) {
-                        winner = currentReveals[revIndex];
+                        winner_ = currentReveals[revIndex];
                     }
 
                     k++;
@@ -620,12 +696,107 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        emit WinnerSelected(winner);
-
-        PostageContract.withdraw(winner.owner);
-
         OracleContract.adjustPrice(uint256(k));
 
+        require(winner_.owner == msg.sender, "Only selected winner can do the claim");
+
         currentClaimRound = cr;
+
+        return winner_;
+    }
+
+    function stampFunction(ChunkInclusionProof calldata entryProofLast) internal {
+    if ( entryProofLast.socProofAttached.length < 1 ) {
+        require(PostageStampSig.verify(
+            entryProofLast.signer, // signer Ethereum address to check against
+            entryProofLast.signature,
+            entryProofLast.proveSegment,
+            entryProofLast.postageId,
+            entryProofLast.index,
+            entryProofLast.timeStamp
+        ), "Stamp verification failed for element");
+
+        require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "stamped chunk not in depth");
+
+        require(PostageContract.remainingBalance(entryProofLast.postageId) > 0, "batch remaining balance validation failed for attached stamp");
+        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp");
+   
+    } else {
+        bytes32 socAddress = keccak256(abi.encodePacked(entryProofLast.socProofAttached[0].identifier, entryProofLast.socProofAttached[0].signer));
+
+        require(PostageStampSig.verify(
+            entryProofLast.signer, // signer Ethereum address to check against
+            entryProofLast.signature,
+            socAddress,
+            entryProofLast.postageId,
+            entryProofLast.index,
+            entryProofLast.timeStamp
+        ), "Stamp verification failed for element");
+
+        require(inProximity(socAddress, currentRevealRoundAnchor, winner.depth), "stamped soc not in depth");
+
+        require(PostageStampSig.socVerify(
+            entryProofLast.socProofAttached[0].signer, // signer Ethereum address to check against
+            entryProofLast.socProofAttached[0].signature,
+            entryProofLast.socProofAttached[0].identifier,
+            entryProofLast.proveSegment
+        ), "Soc verification failed for element");   
+
+        require(PostageContract.remainingBalance(entryProofLast.postageId) > 0, "batch remaining balance validation failed for attached stamp");
+        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp"); 
+       }  
+    }
+
+    function inclusionFunction(
+        ChunkInclusionProof calldata entryProofLast,
+        uint256 indexInRC
+        ) internal {
+        require(winner.hash == BMTChunk.rootHashFromInclusionProof(
+            entryProofLast.proofSegments, 
+            entryProofLast.proveSegment, 
+            indexInRC
+        ), "RC inclusion proof failed for element");
+
+        segmentIndexLast = uint256(seed) % (entryProofLast.chunkSpan / 32);  
+
+        require(entryProofLast.proofSegments2[0] == entryProofLast.proofSegments3[0], "first sister segment in data must match");
+
+        require(entryProofLast.proveSegment == BMTChunk.chunkAddressFromInclusionProof(
+            entryProofLast.proofSegments2, 
+            entryProofLast.proveSegment2, 
+            segmentIndexLast, 
+            entryProofLast.chunkSpan
+        ), "inclusion proof failed for original address of element");
+
+        require(entryProofLast.proofSegments[0] == TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+            entryProofLast.proofSegments3, 
+            entryProofLast.proveSegment2, 
+            segmentIndexLast, 
+            entryProofLast.chunkSpan, 
+            currentRevealRoundAnchor
+        ), "inclusion proof failed for transformed address of element");
+     
+    }
+
+    function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal {
+        if ( a < b ) {
+            require(uint256(trA1) < uint256(trA2), "random element order check failed");
+            require(uint256(trA2) < uint256(trALast), "last element order check failed"); 
+        } else {
+            require(uint256(trA2) < uint256(trA1), "random element order check failed");
+            require(uint256(trA1) < uint256(trALast), "last element order check failed");
+        }
+
+        estimateSize(trALast);
+    }
+
+    function estimateSize(bytes32 trALast) internal {
+        // estimate = index * ( 0xFFF / TrA)
+        // index * (0xFFF...) = index << 256 - index ~= index << 256
+        // A / B ~= A >> 16 / B >> 16
+        // ~ index << 256 >> 16  /  Tra >> 16 
+        // ~ index << 240  /  Tra >> 16
+        uint256 estimate = ( ( uint256(16) << 240 ) / ( uint256(trALast) >> 16 ) );
+        require(estimate > 1960000, "reserve size estimation check failed");
     }
 }
