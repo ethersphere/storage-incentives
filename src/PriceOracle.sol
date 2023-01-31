@@ -24,7 +24,7 @@ contract PriceOracle is AccessControl {
     uint256 public currentPrice = minimumPrice;
 
     // Constants used to modulate the price, see below usage
-    uint256[] public increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
+    uint256[] public increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
 
     uint16 targetRedundancy = 4;
     uint16 maxConsideredExtraRedundancy = 4;
