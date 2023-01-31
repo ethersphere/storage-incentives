@@ -116,7 +116,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
 describe('Stats', async function () {
   describe('two player game', async function () {
-    const trials = 100;
+    const trials = 1000;
 
     it('is fair with 1:3 stake', async function () {
       this.timeout(0);
