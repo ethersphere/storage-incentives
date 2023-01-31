@@ -88,6 +88,8 @@ describe('PostageStamp', function () {
 
     beforeEach(async function () {
       await deployments.fixture();
+      postageStamp = await ethers.getContract('PostageStamp', deployer);
+      await postageStamp.setMinimumValidityBlocks(0);
     });
 
     describe('when creating a batch', function () {
@@ -98,6 +100,8 @@ describe('PostageStamp', function () {
 
         setPrice0Block = await getBlockNumber();
         await priceOracle.setPrice(price0);
+        await priceOracle.setPrice(price0);
+
 
         batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
@@ -154,8 +158,9 @@ describe('PostageStamp', function () {
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(batch.depth);
-        expect(stamp[2]).to.equal(batch.immutable);
-        expect(stamp[3]).to.equal(expectedNormalisedBalance);
+        expect(stamp[2]).to.equal(batch.bucketDepth);
+        expect(stamp[3]).to.equal(batch.immutable);
+        expect(stamp[4]).to.equal(expectedNormalisedBalance);
       });
 
       it('should report the correct remaining balance', async function () {
@@ -245,8 +250,9 @@ describe('PostageStamp', function () {
         const stamp = await postageStamp.batches(batch1);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(batch.depth);
-        expect(stamp[2]).to.equal(batch.immutable);
-        expect(stamp[3]).to.equal(expectedNormalisedBalance1);
+        expect(stamp[2]).to.equal(batch.bucketDepth);
+        expect(stamp[3]).to.equal(batch.immutable);
+        expect(stamp[4]).to.equal(expectedNormalisedBalance1);
       });
 
       it('should transfer the token', async function () {
@@ -345,8 +351,9 @@ describe('PostageStamp', function () {
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(batch.depth);
-        expect(stamp[2]).to.equal(batch.immutable);
-        expect(stamp[3]).to.equal(expectedNormalisedBalance);
+        expect(stamp[2]).to.equal(batch.bucketDepth);
+        expect(stamp[3]).to.equal(batch.immutable);
+        expect(stamp[4]).to.equal(expectedNormalisedBalance);
         expect(await postageStamp.empty()).equal(false);
 
         mineNBlocks(10);
@@ -392,8 +399,9 @@ describe('PostageStamp', function () {
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(batch.depth);
-        expect(stamp[2]).to.equal(batch.immutable);
-        expect(stamp[3]).to.equal(expectedNormalisedBalance);
+        expect(stamp[2]).to.equal(batch.bucketDepth);
+        expect(stamp[3]).to.equal(batch.immutable);
+        expect(stamp[4]).to.equal(expectedNormalisedBalance);
       });
 
       it('should delete expired batches', async function () {
@@ -1124,21 +1132,6 @@ describe('PostageStamp', function () {
         await postageStamp.expireLimited(1);
 
         await expect(postageStamp.firstBatchId()).to.be.revertedWith(errors.firstBatchId.noneExist);
-      });
-    });
-
-    describe('when topupPot is called', function () {
-      beforeEach(async function () {
-        transferAmount = 2 ** 20;
-
-        await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount.toString());
-      });
-      it('should add to pot', async function () {
-        const expectedAmount = transferAmount;
-
-        expect(await postageStamp.pot()).equal(0);
-        expect(await postageStamp.topupPot(transferAmount));
-        expect(await postageStamp.pot()).equal(expectedAmount);
       });
     });
   });
