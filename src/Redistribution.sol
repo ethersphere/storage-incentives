@@ -74,7 +74,7 @@ contract Redistribution is AccessControl, Pausable {
         // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
         // chunkSpan2 is equal to chunkSpan (as the data is the same)
 
-        address signer;
+        // address signer; it is provided by the postage stamp contract
         bytes signature;
         bytes32 chunkAddr;
         bytes32 postageId;
@@ -705,10 +705,36 @@ contract Redistribution is AccessControl, Pausable {
         return winner_;
     }
 
-    function stampFunction(ChunkInclusionProof calldata entryProofLast) internal {
+    function postageStampBucket(bytes32 swarmAddress, uint8 batchBucketDepth) internal pure returns (uint32) {
+        uint32 prefix = uint32(uint256(swarmAddress) >> (256 - 32));
+        return prefix >> (32 - batchBucketDepth);
+    }
+
+    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal  pure returns (uint256) {
+        return 1 << (postageDepth - bucketDepth);
+    }
+
+    function indexToProximityAddress(uint64 index) internal pure returns (bytes32) {
+        return bytes32(uint256(index) << (256 - 64));
+    }
+
+    function stampFunction(ChunkInclusionProof calldata entryProofLast) view internal {
+    uint8 batchBucketDepth = PostageContract.batchBucketDepth(entryProofLast.postageId);
+    uint8 minDepth = batchBucketDepth < winner.depth ? batchBucketDepth : winner.depth;
+    bytes32 indexProximityAddress = indexToProximityAddress(entryProofLast.index);
+    require(
+        inProximity(
+            currentRevealRoundAnchor,
+            indexProximityAddress,
+            minDepth
+        ),
+        "Stamp index validity check failed against the round anchor"
+    );
+    address batchOwner = PostageContract.batchOwner(entryProofLast.postageId);
+    
     if ( entryProofLast.socProofAttached.length < 1 ) {
         require(PostageStampSig.verify(
-            entryProofLast.signer, // signer Ethereum address to check against
+            batchOwner,
             entryProofLast.signature,
             entryProofLast.proveSegment,
             entryProofLast.postageId,
@@ -717,15 +743,26 @@ contract Redistribution is AccessControl, Pausable {
         ), "Stamp verification failed for element");
 
         require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "stamped chunk not in depth");
+        require(
+            inProximity(
+                entryProofLast.proveSegment, 
+                indexProximityAddress, 
+                batchBucketDepth
+            ),
+            "Stamp index proximity check failed against chunk address"
+        );
+        uint32 stampBucket = postageStampBucket(entryProofLast.proveSegment, batchBucketDepth);
+        require(entryProofLast.index >= stampBucket && entryProofLast.index < stampBucket + postageStampIndexCount(
+            PostageContract.batchDepth(entryProofLast.postageId), batchBucketDepth
+        ), "Stamp index resides outside of the valid index set");
 
         require(PostageContract.remainingBalance(entryProofLast.postageId) > 0, "batch remaining balance validation failed for attached stamp");
         // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp");
-   
     } else {
         bytes32 socAddress = keccak256(abi.encodePacked(entryProofLast.socProofAttached[0].identifier, entryProofLast.socProofAttached[0].signer));
 
         require(PostageStampSig.verify(
-            entryProofLast.signer, // signer Ethereum address to check against
+            batchOwner,
             entryProofLast.signature,
             socAddress,
             entryProofLast.postageId,
@@ -734,6 +771,18 @@ contract Redistribution is AccessControl, Pausable {
         ), "Stamp verification failed for element");
 
         require(inProximity(socAddress, currentRevealRoundAnchor, winner.depth), "stamped soc not in depth");
+        require(
+            inProximity(
+                socAddress, 
+                indexToProximityAddress(entryProofLast.index),
+                PostageContract.batchBucketDepth(entryProofLast.postageId)
+            ),
+            "Stamp index proximity check failed against chunk address"
+        );
+        uint32 stampBucket = postageStampBucket(socAddress, batchBucketDepth);
+        require(entryProofLast.index >= stampBucket && entryProofLast.index < stampBucket + postageStampIndexCount(
+            PostageContract.batchDepth(entryProofLast.postageId), batchBucketDepth
+        ), "Stamp index resides outside of the valid index set");
 
         require(PostageStampSig.socVerify(
             entryProofLast.socProofAttached[0].signer, // signer Ethereum address to check against
