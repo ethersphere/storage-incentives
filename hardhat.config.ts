@@ -7,6 +7,7 @@ import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 import "hardhat-contract-sizer";
 import { removeConsoleLog } from 'hardhat-preprocessor';
+import '@openzeppelin/hardhat-upgrades';
 
 const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
 if (infuraToken === 'undefined') {
@@ -129,8 +130,8 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      mainnet: '<gnosis-api-key>',
-      testnet: '<goerli-api-key>',
+      mainnet: mainnetEtherscanKey!,
+      testnet: testnetEtherscanKey!,
     },
     customChains: [
       {
