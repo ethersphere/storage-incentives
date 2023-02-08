@@ -111,18 +111,18 @@ contract PostageStamp is AccessControl, Pausable, Initializable, UUPSUpgradeable
 
     /// @dev no constructor in upgradable contracts. Instead we have initializers
 
-   function initialize(uint256 _sliceCount) public initializer {
-              bzzToken = _bzzToken;
+    function initialize(uint256 _sliceCount) public initializer {
+        bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
 
-      ///@dev as there is no constructor, we need to initialise the OwnableUpgradeable explicitly
-       __AccessControl_init();
-   }
+        ///@dev as there is no constructor, we need to initialise the OwnableUpgradeable explicitly
+        __AccessControl_init();
+    }
 
-   ///@dev required by the OZ UUPS module
-   function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+    ///@dev required by the OZ UUPS module
+    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
     /**
      * @notice Create a new batch.
@@ -143,7 +143,10 @@ contract PostageStamp is AccessControl, Pausable, Initializable, UUPSUpgradeable
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
         // bucket depth should be non-zero and smaller than the depth
-        require(_bucketDepth != 0 && minimumBucketDepth <= _bucketDepth && _bucketDepth < _depth, "invalid bucket depth");
+        require(
+            _bucketDepth != 0 && minimumBucketDepth <= _bucketDepth && _bucketDepth < _depth,
+            "invalid bucket depth"
+        );
         // derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
@@ -389,7 +392,7 @@ contract PostageStamp is AccessControl, Pausable, Initializable, UUPSUpgradeable
             // so we must remove the chunks this batch contributes to the global validChunkCount
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
-            require(validChunkCount >= batchSize , "insufficient valid chunk count");
+            require(validChunkCount >= batchSize, "insufficient valid chunk count");
             validChunkCount -= batchSize;
             // since the batch expired _during_ the period we must add
             // remaining normalised payout for this batch only
@@ -415,7 +418,7 @@ contract PostageStamp is AccessControl, Pausable, Initializable, UUPSUpgradeable
      * @notice Indicates whether expired batches exist.
      */
     function expiredBatchesExist() public view returns (bool) {
-        if (empty()){
+        if (empty()) {
             return false;
         }
         return (remainingBalance(firstBatchId()) <= 0);
