@@ -41,6 +41,11 @@ contract PostageStamp is AccessControl, Pausable {
         bool immutableFlag
     );
 
+    event PotWithdrawn(
+        address recipient,
+        uint256 totalAmount
+    );
+
     /**
      * @dev Emitted when an existing batch is topped up.
      */
@@ -448,7 +453,10 @@ contract PostageStamp is AccessControl, Pausable {
 
     function withdraw(address beneficiary) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
-        require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
+        uint256 totalAmount = totalPot();
+        require(ERC20(bzzToken).transfer(beneficiary, totalAmount), "failed transfer");
+
+        emit PotWithdrawn(beneficiary, totalAmount);
         pot = 0;
     }
 
