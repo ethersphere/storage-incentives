@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
@@ -28,7 +27,7 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
  * The global figure for the currently allowed chunks is tracked by _validChunkCount_ and updated during batch _expiry_ events.
  */
 
-contract PostageStamp is AccessControl, Pausable, Initializable, UUPSUpgradeable, OwnableUpgradeable {
+contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControlUpgradeable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
     /**
@@ -111,7 +110,7 @@ contract PostageStamp is AccessControl, Pausable, Initializable, UUPSUpgradeable
 
     /// @dev no constructor in upgradable contracts. Instead we have initializers
 
-    function initialize(uint256 _sliceCount) public initializer {
+    function initialize(address _bzzToken, uint8 _minimumBucketDepth) public initializer {
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -123,6 +122,14 @@ contract PostageStamp is AccessControl, Pausable, Initializable, UUPSUpgradeable
 
     ///@dev required by the OZ UUPS module
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    function _msgSender() internal view override(Context, ContextUpgradeable) returns (address) {
+        return msg.sender;
+    }
+
+    function _msgData() internal view override(Context, ContextUpgradeable) returns (bytes calldata) {
+        return msg.data;
+    }
 
     /**
      * @notice Create a new batch.

@@ -5,7 +5,7 @@ import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
-import "hardhat-contract-sizer";
+import 'hardhat-contract-sizer';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import '@openzeppelin/hardhat-upgrades';
 
@@ -26,7 +26,14 @@ const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 // Config for hardhat.
 const config: HardhatUserConfig = {
   solidity: {
-    version: '0.8.1',
+    compilers: [
+      {
+        version: '0.8.1',
+      },
+      {
+        version: '0.8.2',
+      },
+    ],
     settings: {
       optimizer: {
         enabled: true,
