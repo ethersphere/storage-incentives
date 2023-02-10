@@ -3,14 +3,14 @@
   "proxies": [
     {
       "address": "0xF52458e65b8e3B69d93DD3803d8ef934c75E0022",
-      "txHash": "0x22a0bd39ccc41abff6e5828bb890ca5a8e45cd1dc28df3d412e3f508eee78600",
+      "txHash": "0xf35b3646f52554a56b9955ae39a0dff0ad4b1f41674566a24a4e8143cd38c0d8",
       "kind": "uups"
     }
   ],
   "impls": {
-    "06b94d922775273789ea422b820f3eb4ece8b3c9ff2cdd577f92bae86558a892": {
+    "1df427dc585bfe8b158b4872ab761bec44a5e5f09d1124e3f5c0268548c8eb6e": {
       "address": "0x9A2F29598CB0787Aa806Bbfb65B82A9e558945E7",
-      "txHash": "0x98da51c9e0cc409ebd2c3c1590746005ac5a2256b42338be75fd6cf3287d30a0",
+      "txHash": "0x4a8cc083c878895268f964b7f227412abea31fb0c02a9fbd0b36fef8f3d2fb96",
       "layout": {
         "solcVersion": "0.8.2",
         "storage": [
@@ -99,7 +99,7 @@
             "label": "batches",
             "offset": 0,
             "slot": "301",
-            "type": "t_mapping(t_bytes32,t_struct(Batch)6580_storage)",
+            "type": "t_mapping(t_bytes32,t_struct(Batch)7519_storage)",
             "contract": "PostageStamp",
             "src": "src/PostageStamp.sol:80"
           },
@@ -107,7 +107,7 @@
             "label": "tree",
             "offset": 0,
             "slot": "302",
-            "type": "t_struct(Tree)4510_storage",
+            "type": "t_struct(Tree)5449_storage",
             "contract": "PostageStamp",
             "src": "src/PostageStamp.sol:82"
           },
@@ -205,7 +205,7 @@
             "label": "mapping(address => bool)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_bytes32,t_struct(Batch)6580_storage)": {
+          "t_mapping(t_bytes32,t_struct(Batch)7519_storage)": {
             "label": "mapping(bytes32 => struct PostageStamp.Batch)",
             "numberOfBytes": "32"
           },
@@ -217,11 +217,11 @@
             "label": "mapping(bytes32 => uint256)",
             "numberOfBytes": "32"
           },
-          "t_mapping(t_uint256,t_struct(Node)4502_storage)": {
+          "t_mapping(t_uint256,t_struct(Node)5441_storage)": {
             "label": "mapping(uint256 => struct HitchensOrderStatisticsTreeLib.Node)",
             "numberOfBytes": "32"
           },
-          "t_struct(Batch)6580_storage": {
+          "t_struct(Batch)7519_storage": {
             "label": "struct PostageStamp.Batch",
             "members": [
               {
@@ -251,7 +251,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Node)4502_storage": {
+          "t_struct(Node)5441_storage": {
             "label": "struct HitchensOrderStatisticsTreeLib.Node",
             "members": [
               {
@@ -317,7 +317,7 @@
             ],
             "numberOfBytes": "64"
           },
-          "t_struct(Tree)4510_storage": {
+          "t_struct(Tree)5449_storage": {
             "label": "struct HitchensOrderStatisticsTreeLib.Tree",
             "members": [
               {
@@ -328,7 +328,7 @@
               },
               {
                 "label": "nodes",
-                "type": "t_mapping(t_uint256,t_struct(Node)4502_storage)",
+                "type": "t_mapping(t_uint256,t_struct(Node)5441_storage)",
                 "offset": 0,
                 "slot": "1"
               }

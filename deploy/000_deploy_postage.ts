@@ -16,14 +16,18 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
 
   const postageStamp = await hre.ethers.getContractFactory('PostageStamp');
-  const postageStampContract = await upgrades.deployProxy(postageStamp, [token.address, 16]);
+  const postageStampContract = await upgrades.deployProxy(postageStamp, [token.address, 16], {
+    initializer: "initialize",
+    kind: "uups",
+  });
 
+  await postageStampContract.deployed();
 
-  const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
-  await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
+  const priceOracleRole = await postageStampContract.PRICE_ORACLE_ROLE();
+  await postageStampContract.grantRole(priceOracleRole, oracle);
 
-  const redistributorRole = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
-  await execute('PostageStamp', { from: deployer }, 'grantRole', redistributorRole, redistributor);
+  const redistributorRole = await postageStampContract.REDISTRIBUTOR_ROLE();
+  await postageStampContract.grantRole(redistributorRole, redistributor);
 };
 
 export default func;
