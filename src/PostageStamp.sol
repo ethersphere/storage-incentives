@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.1;
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
@@ -27,7 +27,7 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
  * The global figure for the currently allowed chunks is tracked by _validChunkCount_ and updated during batch _expiry_ events.
  */
 
-contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControlUpgradeable {
+contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
     /**
@@ -81,7 +81,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
     // Store every batch id ordered by normalisedBalance.
     HitchensOrderStatisticsTreeLib.Tree tree;
 
-    // Address of the ERC20 token this contract references.
+    // Address of the ERC20Upgradeable token this contract references.
     address public bzzToken;
 
     // Total out payment per chunk, at the blockheight of the last price change.
@@ -97,14 +97,14 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
     uint256 public pot;
 
     // Price from the last update.
-    uint256 public lastPrice = 0;
+    uint256 public lastPrice;
     // Block at which the last update occured.
     uint256 public lastUpdatedBlock;
     // Normalised balance at the blockheight expire() was last called.
     uint256 public lastExpiryBalance;
 
     /**
-     * @param _bzzToken The ERC20 token address to reference in this contract.
+     * @param _bzzToken The ERC20Upgradeable token address to reference in this contract.
      * @param _minimumBucketDepth The minimum bucket depth of batches that can be purchased.
      */
 
@@ -112,28 +112,30 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
 
     function initialize(address _bzzToken, uint8 _minimumBucketDepth) public initializer {
         bzzToken = _bzzToken;
+        lastPrice = 0;
         minimumBucketDepth = _minimumBucketDepth;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
 
         ///@dev as there is no constructor, we need to initialise the OwnableUpgradeable explicitly
         __AccessControl_init();
+        __Pausable_init();
     }
 
     ///@dev required by the OZ UUPS module
     function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
 
-    function _msgSender() internal view override(Context, ContextUpgradeable) returns (address) {
+    function _msgSender() internal view override(ContextUpgradeable) returns (address) {
         return msg.sender;
     }
 
-    function _msgData() internal view override(Context, ContextUpgradeable) returns (bytes calldata) {
+    function _msgData() internal view override(ContextUpgradeable) returns (bytes calldata) {
         return msg.data;
     }
 
     /**
      * @notice Create a new batch.
-     * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20 token contract.
+     * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20Upgradeable token contract.
      * @param _owner Owner of the new batch.
      * @param _initialBalancePerChunk Initial balance per chunk.
      * @param _depth Initial depth of the new batch.
@@ -160,7 +162,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
-        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
+        require(ERC20Upgradeable(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         // normalisedBalance is an absolute value per chunk, as if the batch had existed
         // since the block the contract was deployed, so we must supplement this batch's
@@ -190,7 +192,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
 
     /**
      * @notice Manually create a new batch when faciliatating migration, can only be called by the Admin role.
-     * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20 token contract.
+     * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20Upgradeable token contract.
      * @param _owner Owner of the new batch.
      * @param _initialBalancePerChunk Initial balance per chunk of the batch.
      * @param _depth Initial depth of the new batch.
@@ -212,7 +214,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
-        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
+        require(ERC20Upgradeable(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
@@ -234,7 +236,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
 
     /**
      * @notice Top up an existing batch.
-     * @dev At least `_topupAmountPerChunk*2^depth` tokens must be approved in the ERC20 token contract.
+     * @dev At least `_topupAmountPerChunk*2^depth` tokens must be approved in the ERC20Upgradeable token contract.
      * @param _batchId The id of an existing batch.
      * @param _topupAmountPerChunk The amount of additional tokens to add per chunk.
      */
@@ -246,7 +248,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _topupAmountPerChunk * (1 << batch.depth);
-        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
+        require(ERC20Upgradeable(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
@@ -436,7 +438,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
      */
     function totalPot() public returns (uint256) {
         expireLimited(type(uint256).max);
-        uint256 balance = ERC20(bzzToken).balanceOf(address(this));
+        uint256 balance = ERC20Upgradeable(bzzToken).balanceOf(address(this));
         return pot < balance ? pot : balance;
     }
 
@@ -447,7 +449,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
 
     function withdraw(address beneficiary) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
-        require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
+        require(ERC20Upgradeable(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
         pot = 0;
     }
 
@@ -456,7 +458,7 @@ contract PostageStamp is Pausable, Initializable, UUPSUpgradeable, AccessControl
      * @param amount Amount of tokens the pot will be topped up by.
      */
     function topupPot(uint256 amount) external {
-        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
+        require(ERC20Upgradeable(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
         pot += amount;
     }
 }

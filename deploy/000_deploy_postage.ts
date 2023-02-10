@@ -1,5 +1,6 @@
 import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
+const { ethers, upgrades } = require("hardhat");
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts } = hre;
@@ -13,11 +14,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     log: true,
   });
 
-  await deploy('PostageStamp', {
-    from: deployer,
-    args: [token.address, 16],
-    log: true,
-  });
+
+  const postageStamp = await hre.ethers.getContractFactory('PostageStamp');
+  const postageStampContract = await upgrades.deployProxy(postageStamp, [token.address, 16]);
+
 
   const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
   await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
@@ -27,3 +27,4 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 };
 
 export default func;
+func.tags = ['Stamp'];

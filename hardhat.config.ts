@@ -25,6 +25,7 @@ const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 
 // Config for hardhat.
 const config: HardhatUserConfig = {
+  defaultNetwork: "hardhat",
   solidity: {
     compilers: [
       {
