@@ -8,26 +8,24 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
-  const token = await deploy('TestToken', {
-    from: deployer,
-    args: [],
-    log: true,
-  });
 
+  const Token = await ethers.getContractFactory('TestToken');
+  const token = await Token.deploy();
+  await token.deployed();
 
-  const postageStamp = await hre.ethers.getContractFactory('PostageStamp');
-  const postageStampContract = await upgrades.deployProxy(postageStamp, [token.address, 16], {
+  const PostageStamp = await ethers.getContractFactory('PostageStamp');
+  const postageStamp = await upgrades.deployProxy(PostageStamp, [token.address, 16], {
     initializer: "initialize",
     kind: "uups",
   });
 
-  await postageStampContract.deployed();
+  await postageStamp.deployed();
 
-  const priceOracleRole = await postageStampContract.PRICE_ORACLE_ROLE();
-  await postageStampContract.grantRole(priceOracleRole, oracle);
+  const priceOracleRole = await postageStamp.PRICE_ORACLE_ROLE();
+  await postageStamp.grantRole(priceOracleRole, oracle);
 
-  const redistributorRole = await postageStampContract.REDISTRIBUTOR_ROLE();
-  await postageStampContract.grantRole(redistributorRole, redistributor);
+  const redistributorRole = await postageStamp.REDISTRIBUTOR_ROLE();
+  await postageStamp.grantRole(redistributorRole, redistributor);
 };
 
 export default func;

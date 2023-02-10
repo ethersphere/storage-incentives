@@ -1,6 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
+const { upgrades } = require("hardhat");
 import { zeroAddress, mineNBlocks, computeBatchId, mintAndApprove, getBlockNumber } from './util/tools';
 
 interface Batch {
@@ -49,13 +50,32 @@ const errors = {
 };
 
 describe('PostageStamp', function () {
+  let postageStamp: any;
   describe('when deploying contract', function () {
     beforeEach(async function () {
-      await deployments.fixture();
+      const { deployer, oracle, redistributor } = await getNamedAccounts();
+
+      const Token = await ethers.getContractFactory('TestToken');
+      const token = await Token.deploy();
+      await token.deployed();
+
+      const PostageStamp = await ethers.getContractFactory('PostageStamp');
+      postageStamp = await upgrades.deployProxy(PostageStamp, [token.address, 16], {
+        initializer: "initialize",
+        kind: "uups",
+      });
+
+      await postageStamp.deployed();
+
+      const priceOracleRole = await postageStamp.PRICE_ORACLE_ROLE();
+      await postageStamp.grantRole(priceOracleRole, oracle);
+
+      const redistributorRole = await postageStamp.REDISTRIBUTOR_ROLE();
+      await postageStamp.grantRole(redistributorRole, redistributor);
     });
 
     it('should have minimum bucket depth set to 16', async function () {
-      const postageStamp = await ethers.getContract('PostageStamp');
+      //   const postageStamp = await ethers.getContract('PostageStamp');
       expect(await postageStamp.minimumBucketDepth()).to.be.eq(16);
     });
 
