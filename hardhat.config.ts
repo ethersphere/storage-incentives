@@ -30,17 +30,24 @@ const config: HardhatUserConfig = {
     compilers: [
       {
         version: '0.8.1',
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1,
+          },
+        },
       },
       {
         version: '0.8.2',
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1,
+          },
+        },
       },
     ],
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200,
-      },
-    },
+
   },
   preprocess: {
     eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
@@ -60,6 +67,7 @@ const config: HardhatUserConfig = {
   },
   networks: {
     hardhat: {
+      allowUnlimitedContractSize: true,
       initialBaseFeePerGas: 0,
       accounts: [
         // deployer
@@ -162,6 +170,9 @@ const config: HardhatUserConfig = {
   },
   paths: {
     sources: 'src',
+  },
+  contractSizer: {
+    runOnCompile: true,
   },
 };
 
