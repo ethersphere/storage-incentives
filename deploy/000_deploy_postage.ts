@@ -8,24 +8,49 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
-
+  // Token code
   const Token = await ethers.getContractFactory('TestToken');
   const token = await Token.deploy();
   await token.deployed();
 
+  const artifactToken = await deployments.getExtendedArtifact('TestToken');
+  let tokenDeployments = {
+    address: token.address,
+    ...artifactToken
+  }
+
+  await deployments.save('TestToken', tokenDeployments);
+
+  // Stamp code
   const PostageStamp = await ethers.getContractFactory('PostageStamp');
-  const postageStamp = await upgrades.deployProxy(PostageStamp, [token.address, 16], {
+  const postageStampProxy = await upgrades.deployProxy(PostageStamp, [token.address, 16], {
     initializer: "initialize",
     kind: "uups",
   });
 
-  await postageStamp.deployed();
+  await postageStampProxy.deployed();
 
-  const priceOracleRole = await postageStamp.PRICE_ORACLE_ROLE();
-  await postageStamp.grantRole(priceOracleRole, oracle);
+  // const impl = await upgrades.upgradeProxy(postageStampProxy, PostageStamp);
+  // console.log('Deploy PostageStamp Impl  done -> ' + impl.address);
 
-  const redistributorRole = await postageStamp.REDISTRIBUTOR_ROLE();
-  await postageStamp.grantRole(redistributorRole, redistributor);
+  const artifactStamp = await deployments.getExtendedArtifact('PostageStamp');
+  let proxyDeployments = {
+    address: postageStampProxy.address,
+    ...artifactStamp
+  }
+
+  await deployments.save('PostageStamp', proxyDeployments);
+
+  // console.log(await upgrades.erc1967.getImplementationAddress(postageStampProxy.address));
+  // console.log(postageStampProxy.address);
+
+  const priceOracleRole = await postageStampProxy.PRICE_ORACLE_ROLE();
+  await postageStampProxy.grantRole(priceOracleRole, oracle);
+
+  const redistributorRole = await postageStampProxy.REDISTRIBUTOR_ROLE();
+  await postageStampProxy.grantRole(redistributorRole, redistributor);
+
+  //console.log(await deployments.all())
 };
 
 export default func;
