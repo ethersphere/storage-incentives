@@ -9,7 +9,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
   // Token code
-
   const token = await deploy('TestToken', {
     from: deployer,
     args: [],
@@ -17,35 +16,25 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   });
 
   // Stamp code
-  const PostageStamp = await ethers.getContractFactory('PostageStamp');
-  const postageStampProxy = await upgrades.deployProxy(PostageStamp, [token.address, 16], {
-    initializer: "initialize",
-    kind: "uups",
+  await deploy('PostageStamp', {
+    from: deployer,
+    proxy: {
+      proxyContract: 'UUPS',
+      execute: {
+        init: {
+          methodName: 'initialize',
+          args: [token.address, 16],
+        },
+      },
+    },
   });
 
-  await postageStampProxy.deployed();
 
-  // const impl = await upgrades.upgradeProxy(postageStampProxy, PostageStamp);
-  // console.log('Deploy PostageStamp Impl  done -> ' + impl.address);
+  const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+  await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
 
-  const artifactStamp = await deployments.getExtendedArtifact('PostageStamp');
-  let proxyDeployments = {
-    address: postageStampProxy.address,
-    ...artifactStamp
-  }
-
-  await deployments.save('PostageStamp', proxyDeployments);
-
-  // console.log(await upgrades.erc1967.getImplementationAddress(postageStampProxy.address));
-  // console.log(postageStampProxy.address);
-
-  const priceOracleRole = await postageStampProxy.PRICE_ORACLE_ROLE();
-  await postageStampProxy.grantRole(priceOracleRole, oracle);
-
-  const redistributorRole = await postageStampProxy.REDISTRIBUTOR_ROLE();
-  await postageStampProxy.grantRole(redistributorRole, redistributor);
-
-  //console.log(await deployments.all())
+  const redistributorRole = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
+  await execute('PostageStamp', { from: deployer }, 'grantRole', redistributorRole, redistributor);
 };
 
 export default func;
