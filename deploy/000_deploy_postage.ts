@@ -9,17 +9,12 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
   // Token code
-  const Token = await ethers.getContractFactory('TestToken');
-  const token = await Token.deploy();
-  await token.deployed();
 
-  const artifactToken = await deployments.getExtendedArtifact('TestToken');
-  let tokenDeployments = {
-    address: token.address,
-    ...artifactToken
-  }
-
-  await deployments.save('TestToken', tokenDeployments);
+  const token = await deploy('TestToken', {
+    from: deployer,
+    args: [],
+    log: true,
+  });
 
   // Stamp code
   const PostageStamp = await ethers.getContractFactory('PostageStamp');
