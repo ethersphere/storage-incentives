@@ -38,7 +38,7 @@
     "ganache-cli": "^6.12.2",
     "hardhat": "^2.11.2",
     "hardhat-contract-sizer": "^2.8.0",
-    "hardhat-deploy": "^0.7.0-beta.25",
+    "hardhat-deploy": "^0.11.23",
     "hardhat-deploy-ethers": "^0.3.0-beta.5",
     "hardhat-preprocessor": "^0.1.5",
     "hardhat-tracer": "^1.1.0-rc.9",
