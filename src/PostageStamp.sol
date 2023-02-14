@@ -163,6 +163,7 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
         require(ERC20Upgradeable(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
+        // TODO remove ERC20 upgradable as for now we wont use it and will use regular erc20?
 
         // normalisedBalance is an absolute value per chunk, as if the batch had existed
         // since the block the contract was deployed, so we must supplement this batch's
