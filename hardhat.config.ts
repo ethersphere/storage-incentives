@@ -1,13 +1,13 @@
 import 'dotenv/config';
-import {ConfigExtender, HardhatUserConfig} from 'hardhat/types';
+import { HardhatUserConfig } from 'hardhat/types';
 import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
-const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
-if (infuraToken === 'undefined') {
+export const InfuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
+if (InfuraToken === 'undefined') {
   console.log('Please set your INFURA_TOKEN in a .env file');
 }
 
@@ -17,8 +17,30 @@ if (walletSecret === 'undefined') {
 }
 const accounts = walletSecret.length === 64 ? [walletSecret] : { mnemonic: walletSecret };
 
-const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
-const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
+let testnetEtherscanKey;
+let mainnetEtherscanKey;
+
+if (
+  process.env.TESTNET_ETHERSCAN_KEY === undefined ||
+  process.env.TESTNET_ETHERSCAN_KEY === null ||
+  process.env.TESTNET_ETHERSCAN_KEY.length < 34
+) {
+  console.log('API Key does not exist for testnet');
+  testnetEtherscanKey = '';
+} else {
+  testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
+}
+
+if (
+  process.env.MAINNET_ETHERSCAN_KEY === undefined ||
+  process.env.MAINNET_ETHERSCAN_KEY === null ||
+  process.env.MAINNET_ETHERSCAN_KEY.length < 34
+) {
+  console.log('API Key does not exist for mainnet');
+  mainnetEtherscanKey = '';
+} else {
+  mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
+}
 
 // Config for hardhat.
 const config: HardhatUserConfig = {
@@ -112,20 +134,20 @@ const config: HardhatUserConfig = {
       chainId: 1,
     },
     testnet: {
-      url: 'https://goerli.infura.io/v3/' + infuraToken,
+      url: 'https://goerli.infura.io/v3/' + InfuraToken,
       accounts,
       chainId: 5,
     },
     mainnet: {
-      url: 'https://mainnet.infura.io/v3/' + infuraToken,
+      url: 'https://mainnet.infura.io/v3/' + InfuraToken,
       accounts,
       chainId: 100,
     },
   },
   etherscan: {
     apiKey: {
-      mainnet: '<gnosis-api-key>',
-      testnet: '<goerli-api-key>',
+      mainnet: mainnetEtherscanKey,
+      testnet: testnetEtherscanKey,
     },
     customChains: [
       {
@@ -133,7 +155,7 @@ const config: HardhatUserConfig = {
         chainId: 5,
         urls: {
           apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/address/',
+          browserURL: 'https://goerli.etherscan.io/',
         },
       },
       {
