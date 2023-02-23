@@ -2,10 +2,13 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "./Staking.sol";
 
-/* Implement interfaces to PostageStamp contract and PriceOracle contract. We use 2 methods from them, "withdraw" to withdraw funds from Pot 
-and "adjustPrice" to change price of PostageStamps */
+/**
+ * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
+ * For PostageStmap we currently use "withdraw" to withdraw funds from Pot
+ * For PriceOracle we use "adjustPrice" to change price of PostageStamps
+ * For Staking contract we use "lastUpdatedBlockNumberOfOverlay, freezeDeposit, ownerOfOverlay, stakeOfOverlay"
+ */
 
 interface PostageStamp {
     function withdraw(address beneficiary) external;
@@ -13,6 +16,16 @@ interface PostageStamp {
 
 interface PriceOracle {
     function adjustPrice(uint256 redundancy) external;
+}
+
+interface StakeRegistry {
+    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
+
+    function freezeDeposit(bytes32 overlay, uint256 time) external;
+
+    function ownerOfOverlay(bytes32 overlay) external view returns (address);
+
+    function stakeOfOverlay(bytes32 overlay) external view returns (uint256);
 }
 
 /**
