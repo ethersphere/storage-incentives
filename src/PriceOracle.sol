@@ -2,7 +2,7 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
-interface PostageStamp {
+interface IPostageStamp {
     function setPrice(uint256 _price) external;
 }
 
@@ -37,11 +37,11 @@ contract PriceOracle is AccessControl {
     bool public isPaused = true;
 
     // The address of the linked PostageStamp contract
-    PostageStamp public postageStamp;
+    IPostageStamp public postageStamp;
 
     constructor(address _postageStamp) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        postageStamp = PostageStamp(_postageStamp);
+        postageStamp = IPostageStamp(_postageStamp);
     }
 
     /**

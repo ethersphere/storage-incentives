@@ -10,15 +10,15 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * For Staking contract we use "lastUpdatedBlockNumberOfOverlay, freezeDeposit, ownerOfOverlay, stakeOfOverlay"
  */
 
-interface PostageStamp {
+interface IPostageStamp {
     function withdraw(address beneficiary) external;
 }
 
-interface PriceOracle {
+interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
 }
 
-interface StakeRegistry {
+interface IStakeRegistry {
     function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
 
     function freezeDeposit(bytes32 overlay, uint256 time) external;
@@ -79,11 +79,11 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     // The address of the linked PostageStamp contract.
-    PostageStamp public PostageContract;
+    IPostageStamp public PostageContract;
     // The address of the linked PriceOracle contract.
-    PriceOracle public OracleContract;
+    IPriceOracle public OracleContract;
     // The address of the linked Staking contract.
-    StakeRegistry public Stakes;
+    IStakeRegistry public Stakes;
 
     // Commits for the current round.
     Commit[] public currentCommits;
@@ -147,9 +147,9 @@ contract Redistribution is AccessControl, Pausable {
         address postageContract,
         address oracleContract
     ) {
-        Stakes = StakeRegistry(staking);
-        PostageContract = PostageStamp(postageContract);
-        OracleContract = PriceOracle(oracleContract);
+        Stakes = IStakeRegistry(staking);
+        PostageContract = IPostageStamp(postageContract);
+        OracleContract = IPriceOracle(oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
