@@ -2,15 +2,15 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
+interface PostageStamp {
+    function setPrice(uint256 _price) external;
+}
+
 /**
  * @title PriceOracle contract.
  * @author The Swarm Authors.
  * @dev The price oracle contract emits a price feed using events.
  */
-
-interface PostageStampInterface {
-    function setPrice(uint256 _price) external;
-}
 
 contract PriceOracle is AccessControl {
     /**
@@ -37,11 +37,11 @@ contract PriceOracle is AccessControl {
     bool public isPaused = true;
 
     // The address of the linked PostageStamp contract
-    PostageStampInterface public postageStamp;
+    PostageStamp public postageStamp;
 
     constructor(address _postageStamp) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        postageStamp = PostageStampInterface(_postageStamp);
+        postageStamp = PostageStamp(_postageStamp);
     }
 
     /**
