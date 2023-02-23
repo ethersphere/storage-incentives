@@ -2,9 +2,18 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "./PostageStamp.sol";
-import "./PriceOracle.sol";
 import "./Staking.sol";
+
+/* Implement interfaces to PostageStamp contract and PriceOracle contract. We use 2 methods from them, "withdraw" to withdraw funds from Pot 
+and "adjustPrice" to change price of PostageStamps */
+
+interface PostageStamp {
+    function withdraw(address beneficiary) external;
+}
+
+interface PriceOracle {
+    function adjustPrice(uint256 redundancy) external;
+}
 
 /**
  * @title Redistribution contract
@@ -34,6 +43,7 @@ import "./Staking.sol";
  * is withdrawn and transferred to that beneficiaries address. Nodes that have revealed values that differ from the truth,
  * have their stakes "frozen" for a period of rounds proportional to their reported depth.
  */
+
 contract Redistribution is AccessControl, Pausable {
     // An eligible user may commit to an _obfuscatedHash_ during the commit phase...
     struct Commit {
@@ -191,7 +201,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function currentPhaseReveal() public view returns (bool) {
         uint256 number = block.number % roundLength;
-        if ( number >= roundLength / 4 && number < roundLength / 2 ) {
+        if (number >= roundLength / 4 && number < roundLength / 2) {
             return true;
         }
         return false;
@@ -200,8 +210,8 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @notice Returns true if current block is during claim phase.
      */
-    function currentPhaseClaim() public view returns (bool){
-        if ( block.number % roundLength >= roundLength / 2 ) {
+    function currentPhaseClaim() public view returns (bool) {
+        if (block.number % roundLength >= roundLength / 2) {
             return true;
         }
         return false;
@@ -233,7 +243,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 _roundNumber
     ) external whenNotPaused {
         require(currentPhaseCommit(), "not in commit phase");
-        require( block.number % roundLength != ( roundLength / 4 ) - 1, "can not commit in last block of phase");
+        require(block.number % roundLength != (roundLength / 4) - 1, "can not commit in last block of phase");
         uint256 cr = currentRound();
         require(cr <= _roundNumber, "commit round over");
         require(cr >= _roundNumber, "commit round not started yet");
@@ -448,7 +458,10 @@ contract Redistribution is AccessControl, Pausable {
                 currentSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
 
-                if (uint256(randomNumber & MaxH) * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
+                if (
+                    uint256(randomNumber & MaxH) * currentSum <
+                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                ) {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
@@ -461,12 +474,17 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed && truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
+            if (
+                currentCommits[i].revealed &&
+                truthRevealedHash == currentReveals[revIndex].hash &&
+                truthRevealedDepth == currentReveals[revIndex].depth
+            ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
                 if (
-                    uint256(randomNumber & MaxH) * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                    uint256(randomNumber & MaxH) * currentWinnerSelectionSum <
+                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
                     winnerIs = currentReveals[revIndex].overlay;
                 }
@@ -477,6 +495,7 @@ contract Redistribution is AccessControl, Pausable {
 
         return (winnerIs == _overlay);
     }
+
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
      * @param overlay The overlay address of the applicant.
@@ -594,28 +613,38 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed ) {
-               if ( truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
+            if (currentCommits[i].revealed) {
+                if (
+                    truthRevealedHash == currentReveals[revIndex].hash &&
+                    truthRevealedDepth == currentReveals[revIndex].depth
+                ) {
                     currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                     randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
                     randomNumberTrunc = uint256(randomNumber & MaxH);
 
                     if (
-                        randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                        randomNumberTrunc * currentWinnerSelectionSum <
+                        currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                     ) {
                         winner = currentReveals[revIndex];
                     }
 
                     k++;
                 } else {
-                    Stakes.freezeDeposit(currentReveals[revIndex].overlay, penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth));
+                    Stakes.freezeDeposit(
+                        currentReveals[revIndex].overlay,
+                        penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth)
+                    );
                     // slash ph5
                 }
             } else {
                 // slash in later phase
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(currentCommits[i].overlay, penaltyMultiplierNonRevealed * roundLength * uint256(2**truthRevealedDepth));
+                Stakes.freezeDeposit(
+                    currentCommits[i].overlay,
+                    penaltyMultiplierNonRevealed * roundLength * uint256(2**truthRevealedDepth)
+                );
                 continue;
             }
         }
