@@ -589,28 +589,156 @@ describe('Redistribution', function () {
           expect(await redistribution.currentPhaseCommit()).to.be.true;
 
           const r_node_2 = await ethers.getContract('Redistribution', node_2);
+          const sanityHash = '0xfb136d8ba19a0d65be10d3e589f36ab0728fb66830611d0d37a36bb1c1b6cda3';
+          const sanityDepth = '0x02';
 
-          const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          const obsfucatedHash = encodeAndHash(overlay_2, sanityDepth, sanityHash, reveal_nonce_2);
 
           const currentRound = await r_node_2.currentRound();
+          const currentSeed = await redistribution.currentSeed();
+          console.log('currentseed', currentSeed);
           await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
           expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
           await mineNBlocks(phaseLength);
 
-          await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_2.reveal(overlay_2, sanityDepth, sanityHash, reveal_nonce_2);
 
-          expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
+          const currentSeeed = await redistribution.currentSeed();
+          console.log('currentseed', currentSeeed);
+
+          expect((await r_node_2.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
           expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
           expect((await r_node_2.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
-          expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
+          expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
 
           await mineNBlocks(phaseLength);
-
+          const proof1 = {
+            proofSegments: [
+              '0x00071ab825246a679b93444f40225a849883b3b46ad598d4d621711ca0ecce23',
+              '0xdba9952a9dfc77c6f84337333eaa535da2089e9b61f2bc1bbd0f4fede9716b51',
+              '0x5bdc660b89d60dc0ca1fa85d0fa2f365fa7fbe0e6c6127625bb95b67618c98b6',
+              '0xcace30f44b6bccccec9cbb7030d593eb8956fc1b204289b7ec1a9a349f6b1b0d',
+              '0xe64e06f69d0eb53786c232093d2bcaf51c4061809a71ab4883dab7cf64a7da7c',
+              '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
+              '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
+            ],
+            proveSegment: '0x5b0da638543d4d0638a3fe90cf597bd4ed1c90eff0b65c86630853d9d149b7c8',
+            proofSegments2: [
+              '0x1906c88bb278b82f612568fcdea66e3e565a7abf00c8dd43f71d8441fe5c0b25',
+              '0xd4f31f7d58aacc4218d498c241eb2e31b93efff910b668c2bbeecfd7f6a66eb7',
+              '0x3fcaa2514d79920dbd74fa5044c0ff0c2be52838d68960b62b76c5030bf31aa5',
+              '0xcebbc88f6536899668d1c9a3994dd8d8efbe8ec27c22b2b4a2fb8604532f628f',
+              '0x5d82e2e9bbcf7eb71ae087aa0fcef362905e26ed8ab3f60658d08fddb0f99938',
+              '0xcd0eba6b37a79b2076204d86e1983cea933f4fd7eb83edbc71fd65e50a91e046',
+              '0x3471c8eafa9580ee505cc0d260965b65b9b5586fec0b94ee925f9133b958711f',
+            ],
+            proveSegment2: '0x143b1985048f49773e00240f17ae9b7158b07519e2ec914e907fd8184ce2fe3b',
+            chunkSpan: '0x0810000000000000',
+            proofSegments3: [
+              '0x1906c88bb278b82f612568fcdea66e3e565a7abf00c8dd43f71d8441fe5c0b25',
+              '0xd4f31f7d58aacc4218d498c241eb2e31b93efff910b668c2bbeecfd7f6a66eb7',
+              '0x3fcaa2514d79920dbd74fa5044c0ff0c2be52838d68960b62b76c5030bf31aa5',
+              '0xcebbc88f6536899668d1c9a3994dd8d8efbe8ec27c22b2b4a2fb8604532f628f',
+              '0x5d82e2e9bbcf7eb71ae087aa0fcef362905e26ed8ab3f60658d08fddb0f99938',
+              '0xcd0eba6b37a79b2076204d86e1983cea933f4fd7eb83edbc71fd65e50a91e046',
+              '0x3471c8eafa9580ee505cc0d260965b65b9b5586fec0b94ee925f9133b958711f',
+            ],
+            signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
+            signature:
+              '0xd5b125282bb0404dfe7b08ec76c5e731cc668c3c7c7c19cae0a0672c8292342571679518621fb19d304ba4e8c7ba0a4383e606323860ff4d2d1d0e276e52e90a1b',
+            chunkAddr: '0x5b0da638543d4d0638a3fe90cf597bd4ed1c90eff0b65c86630853d9d149b7c8',
+            postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
+            index: '0x00005b0d00000004',
+            timeStamp: '0x1748029c25a7eff8',
+            socProofAttached: [],
+          };
+          const proof2 = {
+            proofSegments: [
+              '0x00022081bbfa666d51e4830e36f845e5f9131f45689a65aecf25229dde5db9a4',
+              '0xa38dbe249d554e5698ba1b8b14a0de0ed5d8dc421da531b73b479f473392363a',
+              '0x35ad7d4f7e6e76b86b499596295bd5f6a4ddad41deb8c8bed831582287ba67e2',
+              '0x555953f1852ca95b37ea7f0adcc640db84ac1e94b81cd9809b893951838201de',
+              '0x9aee3582e8ebbea44c0e5ece72f314c9bdf60121a08afb5b5f500ac7b06a22c0',
+              '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
+              '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
+            ],
+            proveSegment: '0x433c85b377d216b61c027f20d3d0a4a556a90ad129d2ab295d681f73c1c2125e',
+            proofSegments2: [
+              '0xc57727c1d51502fa582649ccefa911a3a9b360ef4cfd32e4f64ba74868970873',
+              '0x285db3449e2bf0153327ee8487fc4a524e22e61cf2d290d7b13af20d6dcf497f',
+              '0xdc63c3fd7473df8b464c2ae96081dffabf910ee4afe00435aec66662111e454e',
+              '0xf1c261681558f31fde1f428df1229d7f79fa5ed4cc5b3ab1e84597cbebbb9210',
+              '0xfa9d8607614355ee6b35b028f68a278e6e0d9dc67556735f88374fde78f6a826',
+              '0x0b0a04facfffc991cfaa979456f0b8083139a87b8f602f0fdbdd35fc2857d610',
+              '0xbe3522b76d61e418490926332abbc0496f2abdfe8a7f133f7b953ef92369b2b9',
+            ],
+            proveSegment2: '0x5eb3b220f1f4484195c10fdb2eccf2de9f4631ab5f7e06f06c718e14f520972a',
+            chunkSpan: '0x0810000000000000',
+            proofSegments3: [
+              '0xc57727c1d51502fa582649ccefa911a3a9b360ef4cfd32e4f64ba74868970873',
+              '0x285db3449e2bf0153327ee8487fc4a524e22e61cf2d290d7b13af20d6dcf497f',
+              '0xdc63c3fd7473df8b464c2ae96081dffabf910ee4afe00435aec66662111e454e',
+              '0xf1c261681558f31fde1f428df1229d7f79fa5ed4cc5b3ab1e84597cbebbb9210',
+              '0xfa9d8607614355ee6b35b028f68a278e6e0d9dc67556735f88374fde78f6a826',
+              '0x0b0a04facfffc991cfaa979456f0b8083139a87b8f602f0fdbdd35fc2857d610',
+              '0xbe3522b76d61e418490926332abbc0496f2abdfe8a7f133f7b953ef92369b2b9',
+            ],
+            signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
+            signature:
+              '0xf745bc4fec87c23db52dceb7c58cfc758c5db8fb61571a3aeb783bde648dc460672b2b76f7666fe11f82eaedce28fb5f9ac8af23e487d330a72179c1f34b76c61c',
+            chunkAddr: '0x433c85b377d216b61c027f20d3d0a4a556a90ad129d2ab295d681f73c1c2125e',
+            postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
+            index: '0x0000433c0000000a',
+            timeStamp: '0x174802a714cee58d',
+            socProofAttached: [],
+          };
+          const proofLast = {
+            proofSegments: [
+              '0x0009f25bbb1573d86c405a7ad0ccac18487df7d9a2ea26e2f1abb2e2353fc684',
+              '0x17b826915358907d9fbc76e22f4b6d65a9f4247a84b8a193310f9f2dafe73264',
+              '0x7e8377b11f4722fbec349b05a47275105537ed55591cac1561520b8146a54ca9',
+              '0xcace30f44b6bccccec9cbb7030d593eb8956fc1b204289b7ec1a9a349f6b1b0d',
+              '0xe64e06f69d0eb53786c232093d2bcaf51c4061809a71ab4883dab7cf64a7da7c',
+              '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
+              '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
+            ],
+            proveSegment: '0x794432b0716cabf4728a5d6fa9054f912f73e72be5acc92fae6fac101ed3b2ad',
+            proofSegments2: [
+              '0x90bf20273d1c24770ada32e4e478c325152bab1ef99005fafeefb643a7e8c380',
+              '0x7eac718983aefa95aa65d6605eab62c507a6d4b15118c90f1d4e8e5fa7f5a542',
+              '0xd9e4945b5e364799e146bf1c9cdb723255a7b5c45b23283041e98024ab39685a',
+              '0x866a67f3855db013e933e5473ef991854d8106d46bc9d9ddf607460276d3a9da',
+              '0x78c78509420624e1c910e16bb25fda763bab33588ad2eb4155531a519cf50cd1',
+              '0x3e3d94006d96deaabd528914be9bfe0d927799ba5c3b9a6c7ff139bde0eef062',
+              '0x269e910cd30018a6b5316f7c37dd0b91d2464e8bb9eb6ed1a6330ed75877f775',
+            ],
+            proveSegment2: '0x312d419565e602cb1cfece3665e14f1c17174c759a5a162a9c2e7e3c4645cb79',
+            chunkSpan: '0x0810000000000000',
+            proofSegments3: [
+              '0x90bf20273d1c24770ada32e4e478c325152bab1ef99005fafeefb643a7e8c380',
+              '0x7eac718983aefa95aa65d6605eab62c507a6d4b15118c90f1d4e8e5fa7f5a542',
+              '0xd9e4945b5e364799e146bf1c9cdb723255a7b5c45b23283041e98024ab39685a',
+              '0x866a67f3855db013e933e5473ef991854d8106d46bc9d9ddf607460276d3a9da',
+              '0x78c78509420624e1c910e16bb25fda763bab33588ad2eb4155531a519cf50cd1',
+              '0x3e3d94006d96deaabd528914be9bfe0d927799ba5c3b9a6c7ff139bde0eef062',
+              '0x269e910cd30018a6b5316f7c37dd0b91d2464e8bb9eb6ed1a6330ed75877f775',
+            ],
+            signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
+            signature:
+              '0x685e7cbab3692acae3cab12dadf2ed3f692d3ab9585b06cc47103f49409a7e031efe5791a9fdbf9da0405b4eb4a2db099a4ecacfe0417ef5836af6f9ad6d52fe1c',
+            chunkAddr: '0x794432b0716cabf4728a5d6fa9054f912f73e72be5acc92fae6fac101ed3b2ad',
+            postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
+            index: '0x0000794400000005',
+            timeStamp: '0x174802831c43667a',
+            socProofAttached: [],
+          };
           //calculates totalpot
-          const tx2 = await r_node_2.claim();
+          console.log('hejho1');
+          const tx2 = await r_node_2.claim(proof1, proof2, proofLast);
+          console.log('hejho');
           const receipt2 = await tx2.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
