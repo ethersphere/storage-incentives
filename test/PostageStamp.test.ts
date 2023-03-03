@@ -15,6 +15,7 @@ interface Batch {
 let stamper: string;
 let deployer: string;
 let oracle: string;
+let node_0: string;
 let others: string[];
 
 before(async function () {
@@ -22,6 +23,7 @@ before(async function () {
   deployer = namedAccounts.deployer;
   stamper = namedAccounts.stamper;
   oracle = namedAccounts.oracle;
+  node_0 = namedAccounts.node_0;
   others = await getUnnamedAccounts();
 });
 
@@ -1027,6 +1029,11 @@ describe('PostageStamp', function () {
 
         await priceOracle.setPrice(price0);
 
+        const deployerInstance = await ethers.getSigner(deployer);
+        const deployerContract = postageStamp.connect(deployerInstance);
+        const redisRole = await deployerContract.REDISTRIBUTOR_ROLE();
+        await deployerContract.grantRole(redisRole, stamper);
+
         batch0 = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abce',
           initialPaymentPerChunk: price0 * initialBatch0Blocks,
@@ -1143,6 +1150,15 @@ describe('PostageStamp', function () {
         await postageStamp.expireLimited(1);
 
         await expect(postageStamp.firstBatchId()).to.be.revertedWith(errors.firstBatchId.noneExist);
+      });
+
+      it('check the pot', async function () {
+        await mineNBlocks(1);
+        // await postageStamp.expireLimited(30);
+
+        //  let pot = await postageStamp.totalPot();
+
+        // await postageStamp.withdraw(node_0);
       });
     });
 
