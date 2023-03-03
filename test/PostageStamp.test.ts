@@ -1029,6 +1029,7 @@ describe('PostageStamp', function () {
 
         await priceOracle.setPrice(price0);
 
+        // Grant redis role so we can do withdraw
         const deployerInstance = await ethers.getSigner(deployer);
         const deployerContract = postageStamp.connect(deployerInstance);
         const redisRole = await deployerContract.REDISTRIBUTOR_ROLE();
@@ -1152,13 +1153,12 @@ describe('PostageStamp', function () {
         await expect(postageStamp.firstBatchId()).to.be.revertedWith(errors.firstBatchId.noneExist);
       });
 
-      it('check the pot', async function () {
+      // Attack where we raise price a lot and then take out funds
+      it('make attack in one block', async function () {
+        await priceOracle.setPrice(100000);
         await mineNBlocks(1);
-        // await postageStamp.expireLimited(30);
-
-        //  let pot = await postageStamp.totalPot();
-
-        // await postageStamp.withdraw(node_0);
+        await postageStamp.expireLimited(30);
+        await postageStamp.withdraw(node_0);
       });
     });
 

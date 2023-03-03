@@ -453,8 +453,8 @@ contract PostageStamp is AccessControl, Pausable {
     function totalPot() public returns (uint256) {
         expireLimited(type(uint256).max);
         uint256 balance = ERC20(bzzToken).balanceOf(address(this));
-        console.log(balance);
-        console.log(pot);
+        // console.log(balance);
+        // console.log(pot);
         return pot < balance ? pot : balance;
     }
 
@@ -465,12 +465,19 @@ contract PostageStamp is AccessControl, Pausable {
 
     function withdraw(address beneficiary) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
+        uint256 balance = ERC20(bzzToken).balanceOf(address(this));
+        console.log("Currenct Balance:", balance);
+
         uint256 totalAmount = totalPot();
+        pot = 0;
         require(ERC20(bzzToken).transfer(beneficiary, totalAmount), "failed transfer");
 
         emit PotWithdrawn(beneficiary, totalAmount);
-        pot = 0;
-        console.log(pot);
+
+        console.log("Amount drained:", totalAmount);
+
+        uint256 balanceAfter = ERC20(bzzToken).balanceOf(address(this));
+        console.log("Balance after:", balanceAfter);
     }
 
     function batchOwner(bytes32 _batchId) public view returns (address) {
