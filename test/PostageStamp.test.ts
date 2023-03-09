@@ -36,7 +36,7 @@ const errors = {
     doesNotExist: 'batch does not exist or expired',
   },
   erc20: {
-    exceedsBalance: 'ERC20: transfer amount exceeds balance',
+    exceedsBalance: 'ERC20: insufficient allowance',
   },
   createBatch: {
     invalidDepth: 'invalid bucket depth',
