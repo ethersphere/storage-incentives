@@ -115,7 +115,6 @@ const config: HardhatUserConfig = {
           balance: '10000000000000000000000',
         },
       ],
-
       hardfork: 'merge',
     },
     localhost: {
@@ -129,15 +128,15 @@ const config: HardhatUserConfig = {
       chainId: 5,
     },
     mainnet: {
-      url: 'https://mainnet.infura.io/v3/' + infuraToken,
+      url: 'https://rpc.gnosischain.com',
       accounts,
       chainId: 100,
     },
   },
   etherscan: {
     apiKey: {
-      mainnet: '<gnosis-api-key>',
-      testnet: '<goerli-api-key>',
+      mainnet: mainnetEtherscanKey!,
+      testnet: testnetEtherscanKey!,
     },
     customChains: [
       {
