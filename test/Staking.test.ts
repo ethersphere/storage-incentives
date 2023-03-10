@@ -14,7 +14,7 @@ const freezeTime = 3;
 
 const errors = {
   deposit: {
-    noBalance: 'ERC20: transfer amount exceeds balance',
+    noBalance: 'ERC20: insufficient allowance',
     noZeroAddress: 'owner cannot be the zero address',
     belowMinimum: 'cannot be below the minimum stake value',
     onlyOwner: 'only owner can update stake',

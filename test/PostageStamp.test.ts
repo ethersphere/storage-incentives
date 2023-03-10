@@ -36,7 +36,7 @@ const errors = {
     doesNotExist: 'batch does not exist or expired',
   },
   erc20: {
-    exceedsBalance: 'ERC20: transfer amount exceeds balance',
+    exceedsBalance: 'ERC20: insufficient allowance',
   },
   createBatch: {
     invalidDepth: 'invalid bucket depth',
@@ -690,9 +690,7 @@ describe('PostageStamp', function () {
       });
 
       it('should not top up with insufficient funds', async function () {
-        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk + 1)).to.be.revertedWith(
-          'ERC20: transfer amount exceeds balance'
-        );
+        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk + 1)).to.be.revertedWith(errors.erc20.exceedsBalance);
       });
 
       it('should not top up expired batches', async function () {
@@ -1257,7 +1255,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('ERC20: transfer amount exceeds balance');
+        ).to.be.revertedWith(errors.erc20.exceedsBalance);
       });
 
       it('should not allow zero address as owner', async function () {
