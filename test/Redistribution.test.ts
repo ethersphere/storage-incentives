@@ -589,14 +589,14 @@ describe('Redistribution', function () {
           expect(await redistribution.currentPhaseCommit()).to.be.true;
 
           const r_node_2 = await ethers.getContract('Redistribution', node_2);
-          const sanityHash = '0xfb136d8ba19a0d65be10d3e589f36ab0728fb66830611d0d37a36bb1c1b6cda3';
+          const sanityHash = '0x595c4d3b144b02d312f016ca3bc5455278e144b3fbd95317d5a8af21f78f249c';
           const sanityDepth = '0x02';
 
           const obsfucatedHash = encodeAndHash(overlay_2, sanityDepth, sanityHash, reveal_nonce_2);
 
           const currentRound = await r_node_2.currentRound();
           const currentSeed = await redistribution.currentSeed();
-          console.log('currentseed', currentSeed);
+          console.log('Anchor', currentSeed);
           await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
 
           expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
@@ -606,7 +606,7 @@ describe('Redistribution', function () {
           await r_node_2.reveal(overlay_2, sanityDepth, sanityHash, reveal_nonce_2);
 
           const currentSeeed = await redistribution.currentSeed();
-          console.log('currentseed', currentSeeed);
+          console.log('Anchor2', currentSeeed);
 
           expect((await r_node_2.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
@@ -617,122 +617,122 @@ describe('Redistribution', function () {
           await mineNBlocks(phaseLength);
           const proof1 = {
             proofSegments: [
-              '0x00071ab825246a679b93444f40225a849883b3b46ad598d4d621711ca0ecce23',
-              '0xdba9952a9dfc77c6f84337333eaa535da2089e9b61f2bc1bbd0f4fede9716b51',
-              '0x5bdc660b89d60dc0ca1fa85d0fa2f365fa7fbe0e6c6127625bb95b67618c98b6',
-              '0xcace30f44b6bccccec9cbb7030d593eb8956fc1b204289b7ec1a9a349f6b1b0d',
-              '0xe64e06f69d0eb53786c232093d2bcaf51c4061809a71ab4883dab7cf64a7da7c',
+              '0x0008977eb8e7d936515729797269287e5fe2953c2c092e8286f4cf8b6162f324',
+              '0x90a2ae4a0a0c576b79c70843255732b5478b15c2df09074348ba73bd4c633446',
+              '0x559481379882da6ec53e19f85cb33b0379b87e4ca06e550816e25f9f73327500',
+              '0xc4afbb31b6b7421d31b902b87580f9bf611cac9648221b348f90763dfd9056f0',
+              '0x8cc036d1fc363fca716fd24a6e2edecd938b3aa713178159a21078c555dd8b98',
               '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
               '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
             ],
-            proveSegment: '0x5b0da638543d4d0638a3fe90cf597bd4ed1c90eff0b65c86630853d9d149b7c8',
+            proveSegment: '0x59ff9d39c4f79d52cf359b4aa692f4e38f5fae73fd3a27a853a5bde840824b4f',
             proofSegments2: [
-              '0x1906c88bb278b82f612568fcdea66e3e565a7abf00c8dd43f71d8441fe5c0b25',
-              '0xd4f31f7d58aacc4218d498c241eb2e31b93efff910b668c2bbeecfd7f6a66eb7',
-              '0x3fcaa2514d79920dbd74fa5044c0ff0c2be52838d68960b62b76c5030bf31aa5',
-              '0xcebbc88f6536899668d1c9a3994dd8d8efbe8ec27c22b2b4a2fb8604532f628f',
-              '0x5d82e2e9bbcf7eb71ae087aa0fcef362905e26ed8ab3f60658d08fddb0f99938',
-              '0xcd0eba6b37a79b2076204d86e1983cea933f4fd7eb83edbc71fd65e50a91e046',
-              '0x3471c8eafa9580ee505cc0d260965b65b9b5586fec0b94ee925f9133b958711f',
+              '0xeaf0c20e66431318588b0124df474939c03147abcd431914c669048c7232a056',
+              '0xece3c06a6be2d9a8e587eeed991d7090251fcaf5eb791a3f78e6de801096be67',
+              '0x8f683767e1c3d1efffaf87bdeda9e23ac93f9774b092b59905b00192c7ef5ef1',
+              '0x9456d8307cc2c0bb3167b19c4a28d920401f2d03f7756435e0f1f422aa338c7e',
+              '0x31e639d24eca596babd877ccfc16b251da5134a8f690c780e41ef00f98a2a54c',
+              '0x6215605de002abc412f01a61b23205f7f92d8048e6cb1d22573f5bfd73e723a4',
+              '0xb06881c47e1988f2073da4058dbcf2a865b82b62e36362aca5e0b333374776fd',
             ],
-            proveSegment2: '0x143b1985048f49773e00240f17ae9b7158b07519e2ec914e907fd8184ce2fe3b',
-            chunkSpan: '0x0810000000000000',
+            proveSegment2: '0xe0659677b31c319a270a085e390cc9ccac7ae69654d3b024d5ad240b4a32e63c',
+            chunkSpan: 4096,
             proofSegments3: [
-              '0x1906c88bb278b82f612568fcdea66e3e565a7abf00c8dd43f71d8441fe5c0b25',
-              '0xd4f31f7d58aacc4218d498c241eb2e31b93efff910b668c2bbeecfd7f6a66eb7',
-              '0x3fcaa2514d79920dbd74fa5044c0ff0c2be52838d68960b62b76c5030bf31aa5',
-              '0xcebbc88f6536899668d1c9a3994dd8d8efbe8ec27c22b2b4a2fb8604532f628f',
-              '0x5d82e2e9bbcf7eb71ae087aa0fcef362905e26ed8ab3f60658d08fddb0f99938',
-              '0xcd0eba6b37a79b2076204d86e1983cea933f4fd7eb83edbc71fd65e50a91e046',
-              '0x3471c8eafa9580ee505cc0d260965b65b9b5586fec0b94ee925f9133b958711f',
+              '0xeaf0c20e66431318588b0124df474939c03147abcd431914c669048c7232a056',
+              '0x394ecc849a2c659f2cf8bda075ea784c9ec371e212d65dc8ad351dcf829ea562',
+              '0x90bc53779f9e961da26677f2d41782d38c1b7659a32a82b604b70f9fd7ecc160',
+              '0xe54be7143405a7e8f5aa37e79e01fdee931df438c178b1ce2915f04f08a1cf78',
+              '0x109b2a41f452c421cf35235f99910b094394c6edd24a172058331442944a27c2',
+              '0xccdc5bcf06275ea21e1620b61d580df4375f22632da803347bc09bdf88d94dd7',
+              '0x1d8e4099abfc9def90fef5c1f2cb17bd4ca2ed483a366a4e69522816a39b6a86',
             ],
             signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
             signature:
-              '0xd5b125282bb0404dfe7b08ec76c5e731cc668c3c7c7c19cae0a0672c8292342571679518621fb19d304ba4e8c7ba0a4383e606323860ff4d2d1d0e276e52e90a1b',
-            chunkAddr: '0x5b0da638543d4d0638a3fe90cf597bd4ed1c90eff0b65c86630853d9d149b7c8',
+              '0xe29fc202acb53cb26bcdea3c25de8538bf594368d736426b037c7cd7f317250e35377fbb70dbbdf366f50b94f71ae0f8100f0db4fb0a119f2b699c336d9581591c',
+            chunkAddr: '0x59ff9d39c4f79d52cf359b4aa692f4e38f5fae73fd3a27a853a5bde840824b4f',
             postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
-            index: '0x00005b0d00000004',
-            timeStamp: '0x1748029c25a7eff8',
+            index: '0x000059ff00000005',
+            timeStamp: '0x174802a3fd401668',
             socProofAttached: [],
           };
           const proof2 = {
             proofSegments: [
-              '0x00022081bbfa666d51e4830e36f845e5f9131f45689a65aecf25229dde5db9a4',
-              '0xa38dbe249d554e5698ba1b8b14a0de0ed5d8dc421da531b73b479f473392363a',
-              '0x35ad7d4f7e6e76b86b499596295bd5f6a4ddad41deb8c8bed831582287ba67e2',
-              '0x555953f1852ca95b37ea7f0adcc640db84ac1e94b81cd9809b893951838201de',
-              '0x9aee3582e8ebbea44c0e5ece72f314c9bdf60121a08afb5b5f500ac7b06a22c0',
+              '0x66bbac0b46ec5a17f84038334c8b8d04ebff0f97e01fb65eda96230a60f803d6',
+              '0xd9476da2f17ca41ff9b249b9065f6044793e65cb6b10770561114dd700566fd9',
+              '0xfbe5dbc8458d651fb0527f54e32bee159dacd983354f45a91bc9daa44331e5db',
+              '0x4494463531123e698b68c0cb06fba477e135950060d6af4a45dc3704dece64be',
+              '0x81a02ee14728a239c96baee5c6195399b309ffd4f979d44b53e9500d983ce413',
               '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
               '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
             ],
-            proveSegment: '0x433c85b377d216b61c027f20d3d0a4a556a90ad129d2ab295d681f73c1c2125e',
+            proveSegment: '0x00014723e5c60a83f7c792f4948b29c080758da3b5ceb741e9f49bcbdbd4b73c',
             proofSegments2: [
-              '0xc57727c1d51502fa582649ccefa911a3a9b360ef4cfd32e4f64ba74868970873',
-              '0x285db3449e2bf0153327ee8487fc4a524e22e61cf2d290d7b13af20d6dcf497f',
-              '0xdc63c3fd7473df8b464c2ae96081dffabf910ee4afe00435aec66662111e454e',
-              '0xf1c261681558f31fde1f428df1229d7f79fa5ed4cc5b3ab1e84597cbebbb9210',
-              '0xfa9d8607614355ee6b35b028f68a278e6e0d9dc67556735f88374fde78f6a826',
-              '0x0b0a04facfffc991cfaa979456f0b8083139a87b8f602f0fdbdd35fc2857d610',
-              '0xbe3522b76d61e418490926332abbc0496f2abdfe8a7f133f7b953ef92369b2b9',
+              '0x7ae024555791802aa807d6630f07936b6d3666b9d22a34fc56600a69f511f8ab',
+              '0x62f70c8040f47222546a7b9a2c5d3559d5a5442e02b7ff7591c3e5b5d0537426',
+              '0x5bfd8f58b954aba5c20105e562d4b8e4375bf64364954bb7c6b8347b44f6b95e',
+              '0x07560235a5773092e45fce06bf3ee750d92ffb21a85ee0e344abfdc000665c1c',
+              '0x0708e1b4a5310c2c4f375595f81561dd3f30c6749a786c6018369216262a0b3a',
+              '0x813fe204be3a063f11116e9c905b9b25e77c15b2c8ec9fbd311ea2e2c465f758',
+              '0x38a3d01541022c161894a493897489bba7750bef7aa0ad7cb6e04c2d2a24aa6f',
             ],
-            proveSegment2: '0x5eb3b220f1f4484195c10fdb2eccf2de9f4631ab5f7e06f06c718e14f520972a',
-            chunkSpan: '0x0810000000000000',
+            proveSegment2: '0x925f6f9ba7f0bd99f9f0a392b458fe8c02305d2116dd905c0c40b911e19ca609',
+            chunkSpan: 4096,
             proofSegments3: [
-              '0xc57727c1d51502fa582649ccefa911a3a9b360ef4cfd32e4f64ba74868970873',
-              '0x285db3449e2bf0153327ee8487fc4a524e22e61cf2d290d7b13af20d6dcf497f',
-              '0xdc63c3fd7473df8b464c2ae96081dffabf910ee4afe00435aec66662111e454e',
-              '0xf1c261681558f31fde1f428df1229d7f79fa5ed4cc5b3ab1e84597cbebbb9210',
-              '0xfa9d8607614355ee6b35b028f68a278e6e0d9dc67556735f88374fde78f6a826',
-              '0x0b0a04facfffc991cfaa979456f0b8083139a87b8f602f0fdbdd35fc2857d610',
-              '0xbe3522b76d61e418490926332abbc0496f2abdfe8a7f133f7b953ef92369b2b9',
+              '0x7ae024555791802aa807d6630f07936b6d3666b9d22a34fc56600a69f511f8ab',
+              '0xa369f6d8775f93b8d3d24e51b30d184ba3fde2734e4f9eaeaa4e5b4a1200b7f2',
+              '0x21e47e41f39912b1a2b22d0145c5acd9d40fe3b961b14f1e298ad425260b705b',
+              '0x5fd3bbcdfd5744122502dafe411a6dcc3c3523575b49e2c60f82c4caf2620874',
+              '0x05b1bfb7cf78f2f57bd85786f08a2cc6b55f8bab1701b761aa106db0ce95743a',
+              '0x598f801c18f8d0e68c2d944717039779d770a34ba6e4a5808a48511aead4d90d',
+              '0xdb79be6e82a1f9060603b940f1b3485c40c5dce2a164843b4cec2d54475e2bf3',
             ],
             signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
             signature:
-              '0xf745bc4fec87c23db52dceb7c58cfc758c5db8fb61571a3aeb783bde648dc460672b2b76f7666fe11f82eaedce28fb5f9ac8af23e487d330a72179c1f34b76c61c',
-            chunkAddr: '0x433c85b377d216b61c027f20d3d0a4a556a90ad129d2ab295d681f73c1c2125e',
+              '0x25ae2e0b3c280bdf5645c36321a960c59e608801a9067f3e179e7af89fd99e6869905b189b0047004cea38144011ed6567d3dbac4fbc2dd6e44019fcbcf5f1c41c',
+            chunkAddr: '0x66bbac0b46ec5a17f84038334c8b8d04ebff0f97e01fb65eda96230a60f803d6',
             postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
-            index: '0x0000433c0000000a',
-            timeStamp: '0x174802a714cee58d',
+            index: '0x000066bb00000004',
+            timeStamp: '0x174802902dda646c',
             socProofAttached: [],
           };
           const proofLast = {
             proofSegments: [
-              '0x0009f25bbb1573d86c405a7ad0ccac18487df7d9a2ea26e2f1abb2e2353fc684',
-              '0x17b826915358907d9fbc76e22f4b6d65a9f4247a84b8a193310f9f2dafe73264',
-              '0x7e8377b11f4722fbec349b05a47275105537ed55591cac1561520b8146a54ca9',
-              '0xcace30f44b6bccccec9cbb7030d593eb8956fc1b204289b7ec1a9a349f6b1b0d',
-              '0xe64e06f69d0eb53786c232093d2bcaf51c4061809a71ab4883dab7cf64a7da7c',
+              '0x00098237b57a6f21ba7c70c9c521587899904efc00f1d0f073a1716631451344',
+              '0x8a1851e15d2c304a317ce7f3bb1ea68b13bc8320bce28999c2e5526bc87b3cb6',
+              '0x5aeecb79ef43e422179bd3872b1b019b6db0717f23da5b69dbde32619ea58019',
+              '0xc4afbb31b6b7421d31b902b87580f9bf611cac9648221b348f90763dfd9056f0',
+              '0x8cc036d1fc363fca716fd24a6e2edecd938b3aa713178159a21078c555dd8b98',
               '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
               '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
             ],
-            proveSegment: '0x794432b0716cabf4728a5d6fa9054f912f73e72be5acc92fae6fac101ed3b2ad',
+            proveSegment: '0x733d810abda2e4625356112a301ff79e8952e0667ddf1a0dc2230714819de505',
             proofSegments2: [
-              '0x90bf20273d1c24770ada32e4e478c325152bab1ef99005fafeefb643a7e8c380',
-              '0x7eac718983aefa95aa65d6605eab62c507a6d4b15118c90f1d4e8e5fa7f5a542',
-              '0xd9e4945b5e364799e146bf1c9cdb723255a7b5c45b23283041e98024ab39685a',
-              '0x866a67f3855db013e933e5473ef991854d8106d46bc9d9ddf607460276d3a9da',
-              '0x78c78509420624e1c910e16bb25fda763bab33588ad2eb4155531a519cf50cd1',
-              '0x3e3d94006d96deaabd528914be9bfe0d927799ba5c3b9a6c7ff139bde0eef062',
-              '0x269e910cd30018a6b5316f7c37dd0b91d2464e8bb9eb6ed1a6330ed75877f775',
+              '0x5acd849feaa9e301b0fa24434476aeffd0d2bb8df3434ba67c95334ee3d6def2',
+              '0x7689ad1dcf3eff0a9ec78b1284fc36e69458c9d5c5aaf9ec98b933f0f86bc7ce',
+              '0x1cec5f3778c10fb16f868896998eb956c2a8dee82fccf5c708ea5a8334fc3d25',
+              '0x16d28fd7c0dd2f4142bd4979d9dea0642fc9d1a1c10039782a34c96d09a0fa71',
+              '0xfad3b2e81d1325bc9eec771b59a1a50dd319779642c4a918e3e2d2dd6c47bc02',
+              '0xddc661cd42f02b483a27547b53e532fc57bba22ce76b9e0100caeaf9fcdcd4f9',
+              '0x0ea2fa2db5ee2654aaa21330146f5e31f60a901c1dcbf2e64bcee3209fab4218',
             ],
-            proveSegment2: '0x312d419565e602cb1cfece3665e14f1c17174c759a5a162a9c2e7e3c4645cb79',
-            chunkSpan: '0x0810000000000000',
+            proveSegment2: '0xf5024bf1ad9c04815a40b64b0c9a7837f8805a72d2a1d9050d00be9e02b71d54',
+            chunkSpan: 4096,
             proofSegments3: [
-              '0x90bf20273d1c24770ada32e4e478c325152bab1ef99005fafeefb643a7e8c380',
-              '0x7eac718983aefa95aa65d6605eab62c507a6d4b15118c90f1d4e8e5fa7f5a542',
-              '0xd9e4945b5e364799e146bf1c9cdb723255a7b5c45b23283041e98024ab39685a',
-              '0x866a67f3855db013e933e5473ef991854d8106d46bc9d9ddf607460276d3a9da',
-              '0x78c78509420624e1c910e16bb25fda763bab33588ad2eb4155531a519cf50cd1',
-              '0x3e3d94006d96deaabd528914be9bfe0d927799ba5c3b9a6c7ff139bde0eef062',
-              '0x269e910cd30018a6b5316f7c37dd0b91d2464e8bb9eb6ed1a6330ed75877f775',
+              '0x5acd849feaa9e301b0fa24434476aeffd0d2bb8df3434ba67c95334ee3d6def2',
+              '0x476815da5ec8ed6ad4729a96cc5c0d606585d2d480b2b26644644344076fad8f',
+              '0x000ce246b5cd39a10ea19f17db37b31850200e12bf31bce8e1ff2a4ac387f0c2',
+              '0x15a1e82610094b3e95102bab0a6969b52fb4486afdd2e753fd87cf1c9ee5eea7',
+              '0xaf30b8a18c316b148cc4ce2271721e1fd815abe6ef70c4efd3be3dd06fbf5906',
+              '0x113db758b3e1482234ce758f344a2635c292063a026636cd639827a64209344f',
+              '0x50f419eebbdc2c09543cf6240545eeadc22c87aaf53fbf90d1a38e0010559f78',
             ],
             signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
             signature:
-              '0x685e7cbab3692acae3cab12dadf2ed3f692d3ab9585b06cc47103f49409a7e031efe5791a9fdbf9da0405b4eb4a2db099a4ecacfe0417ef5836af6f9ad6d52fe1c',
-            chunkAddr: '0x794432b0716cabf4728a5d6fa9054f912f73e72be5acc92fae6fac101ed3b2ad',
+              '0x9f69e09fa325d90a200d3646122092e05505a6d39270297621cdda02f62879053d2236330ff7e4ea73b229b23059f4bf1f45a3d65e24d4bea588ddadbbabaf841b',
+            chunkAddr: '0x733d810abda2e4625356112a301ff79e8952e0667ddf1a0dc2230714819de505',
             postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
-            index: '0x0000794400000005',
-            timeStamp: '0x174802831c43667a',
+            index: '0x0000733d00000000',
+            timeStamp: '0x17480263ce37ae40',
             socProofAttached: [],
           };
           //calculates totalpot
