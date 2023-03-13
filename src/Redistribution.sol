@@ -139,7 +139,7 @@ contract Redistribution is AccessControl, Pausable {
 
     uint256 k;
     uint256 revIndex;
-    uint256 segmentIndexLast;
+    uint256 randomChunkSegmentIndex;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -604,9 +604,9 @@ contract Redistribution is AccessControl, Pausable {
 
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
-        inclusionFunction(entryProof1, x);
+        inclusionFunction(entryProof1, x * 2);
         stampFunction(entryProof1);
-        inclusionFunction(entryProof2, y);
+        inclusionFunction(entryProof2, y * 2);
         stampFunction(entryProof2);
         
         checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
@@ -751,27 +751,28 @@ contract Redistribution is AccessControl, Pausable {
         ChunkInclusionProof calldata entryProofLast,
         uint256 indexInRC
         ) internal {
-        require(winner.hash == BMTChunk.rootHashFromInclusionProof(
+        require(winner.hash == BMTChunk.chunkAddressFromInclusionProof(
             entryProofLast.proofSegments, 
             entryProofLast.proveSegment, 
-            indexInRC
+            indexInRC,
+            32 * 32
         ), "RC inclusion proof failed for element");
 
-        segmentIndexLast = uint256(seed) % (entryProofLast.chunkSpan / 32);  
+        randomChunkSegmentIndex = uint256(seed) % 128;
 
         require(entryProofLast.proofSegments2[0] == entryProofLast.proofSegments3[0], "first sister segment in data must match");
 
         require(entryProofLast.proveSegment == BMTChunk.chunkAddressFromInclusionProof(
             entryProofLast.proofSegments2, 
             entryProofLast.proveSegment2, 
-            segmentIndexLast, 
+            randomChunkSegmentIndex, 
             entryProofLast.chunkSpan
         ), "inclusion proof failed for original address of element");
 
         require(entryProofLast.proofSegments[0] == TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
             entryProofLast.proofSegments3, 
             entryProofLast.proveSegment2, 
-            segmentIndexLast, 
+            randomChunkSegmentIndex, 
             entryProofLast.chunkSpan, 
             currentRevealRoundAnchor
         ), "inclusion proof failed for transformed address of element");
