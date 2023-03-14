@@ -657,7 +657,7 @@ describe('Redistribution', function () {
           };
           const proof2 = {
             proofSegments: [
-              '0x66bbac0b46ec5a17f84038334c8b8d04ebff0f97e01fb65eda96230a60f803d6',
+              '0x00014723e5c60a83f7c792f4948b29c080758da3b5ceb741e9f49bcbdbd4b73c',
               '0xd9476da2f17ca41ff9b249b9065f6044793e65cb6b10770561114dd700566fd9',
               '0xfbe5dbc8458d651fb0527f54e32bee159dacd983354f45a91bc9daa44331e5db',
               '0x4494463531123e698b68c0cb06fba477e135950060d6af4a45dc3704dece64be',
@@ -665,7 +665,7 @@ describe('Redistribution', function () {
               '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
               '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
             ],
-            proveSegment: '0x00014723e5c60a83f7c792f4948b29c080758da3b5ceb741e9f49bcbdbd4b73c',
+            proveSegment: '0x66bbac0b46ec5a17f84038334c8b8d04ebff0f97e01fb65eda96230a60f803d6',
             proofSegments2: [
               '0x7ae024555791802aa807d6630f07936b6d3666b9d22a34fc56600a69f511f8ab',
               '0x62f70c8040f47222546a7b9a2c5d3559d5a5442e02b7ff7591c3e5b5d0537426',
@@ -736,9 +736,7 @@ describe('Redistribution', function () {
             socProofAttached: [],
           };
           //calculates totalpot
-          console.log('hejho1');
           const tx2 = await r_node_2.claim(proof1, proof2, proofLast);
-          console.log('hejho');
           const receipt2 = await tx2.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -769,11 +767,11 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
           expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
           expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000'); //stakedensity
-          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_2);
-          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
+          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(sanityHash);
+          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(sanityDepth));
 
-          expect(TruthSelectedEvent.args[0]).to.be.eq(hash_2);
-          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_2));
+          expect(TruthSelectedEvent.args[0]).to.be.eq(sanityHash);
+          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(sanityDepth));
         });
       });
 
