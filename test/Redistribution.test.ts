@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
-import { Contract } from 'ethers';
+import { BigNumber, Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
 
 const phaseLength = 38;
@@ -766,7 +766,9 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
           expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
-          expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000'); //stakedensity
+          expect(WinnerSelectedEvent.args[0][3]).to.be.eq(
+            BigNumber.from(stakeAmount_0).mul(BigNumber.from(sanityDepth).pow(2))
+          ); //stakedensity?
           expect(WinnerSelectedEvent.args[0][4]).to.be.eq(sanityHash);
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(sanityDepth));
 
