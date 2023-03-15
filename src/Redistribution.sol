@@ -423,9 +423,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function isWinner(bytes32 _overlay) public view returns (bool) {
         require(currentPhaseClaim(), "winner not determined yet");
-
         uint256 cr = currentRound();
-
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
@@ -435,13 +433,11 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 revIndex;
+        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        uint256 k = 0;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
-
-        uint256 k = 0;
-
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
         for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
@@ -543,7 +539,6 @@ contract Redistribution is AccessControl, Pausable {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 // question is whether randomNumber / MaxH < probability
@@ -569,25 +564,21 @@ contract Redistribution is AccessControl, Pausable {
      */
     function claim() external whenNotPaused {
         require(currentPhaseClaim(), "not in claim phase");
-
         uint256 cr = currentRound();
-
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
         uint256 currentWinnerSelectionSum;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
-
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 revIndex;
+        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        uint256 k = 0;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
-
-        uint256 k = 0;
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
         for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
