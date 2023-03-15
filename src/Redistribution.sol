@@ -598,33 +598,43 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed) {
+
+            // Select winner with valid truth
+            if (
+                currentCommits[i].revealed &&
+                truthRevealedHash == currentReveals[revIndex].hash &&
+                truthRevealedDepth == currentReveals[revIndex].depth
+            ) {
+                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
                 if (
-                    truthRevealedHash == currentReveals[revIndex].hash &&
-                    truthRevealedDepth == currentReveals[revIndex].depth
+                    randomNumberTrunc * currentWinnerSelectionSum <
+                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-
-                    randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                    if (
-                        randomNumberTrunc * currentWinnerSelectionSum <
-                        currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                    ) {
-                        winner = currentReveals[revIndex];
-                    }
-
-                    k++;
-                } else {
-                    Stakes.freezeDeposit(
-                        currentReveals[revIndex].overlay,
-                        penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
-                    );
-                    // slash ph5
+                    winner = currentReveals[revIndex];
                 }
-            } else {
-                // slash in later phase
+
+                k++;
+            }
+
+            // Freeze deposit if any truth is false
+            if (
+                currentCommits[i].revealed &&
+                (truthRevealedHash != currentReveals[revIndex].hash ||
+                    truthRevealedDepth != currentReveals[revIndex].depth)
+            ) {
+                Stakes.freezeDeposit(
+                    currentReveals[revIndex].overlay,
+                    penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                );
+            }
+
+            // Slash deposits if revealed is false
+            if (!currentCommits[i].revealed) {
+                // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
                     currentCommits[i].overlay,
