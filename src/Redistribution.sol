@@ -142,11 +142,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
      */
-    constructor(
-        address staking,
-        address postageContract,
-        address oracleContract
-    ) {
+    constructor(address staking, address postageContract, address oracleContract) {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
@@ -250,11 +246,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
      * and be derived from the same key pair as the message sender.
      */
-    function commit(
-        bytes32 _obfuscatedHash,
-        bytes32 _overlay,
-        uint256 _roundNumber
-    ) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint256 _roundNumber) external whenNotPaused {
         require(currentPhaseCommit(), "not in commit phase");
         require(block.number % roundLength != (roundLength / 4) - 1, "can not commit in last block of phase");
         uint256 cr = currentRound();
@@ -344,15 +336,11 @@ contract Redistribution is AccessControl, Pausable {
      * @param B An overlay address to compare.
      * @param minimum Minimum proximity order.
      */
-    function inProximity(
-        bytes32 A,
-        bytes32 B,
-        uint8 minimum
-    ) public pure returns (bool) {
+    function inProximity(bytes32 A, bytes32 B, uint8 minimum) public pure returns (bool) {
         if (minimum == 0) {
             return true;
         }
-        return uint256(A ^ B) < uint256(2**(256 - minimum));
+        return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 
     /**
@@ -379,12 +367,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param _hash The reserve commitment hash.
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
-    function reveal(
-        bytes32 _overlay,
-        uint8 _depth,
-        bytes32 _hash,
-        bytes32 _revealNonce
-    ) external whenNotPaused {
+    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
 
         uint256 cr = currentRound();
@@ -417,7 +400,7 @@ contract Redistribution is AccessControl, Pausable {
                         owner: currentCommits[i].owner,
                         overlay: currentCommits[i].overlay,
                         stake: currentCommits[i].stake,
-                        stakeDensity: currentCommits[i].stake * uint256(2**_depth),
+                        stakeDensity: currentCommits[i].stake * uint256(2 ** _depth),
                         hash: _hash,
                         depth: _depth
                     })
@@ -427,7 +410,7 @@ contract Redistribution is AccessControl, Pausable {
                     cr,
                     currentCommits[i].overlay,
                     currentCommits[i].stake,
-                    currentCommits[i].stake * uint256(2**_depth),
+                    currentCommits[i].stake * uint256(2 ** _depth),
                     _hash,
                     _depth
                 );
@@ -647,7 +630,7 @@ contract Redistribution is AccessControl, Pausable {
                 } else {
                     Stakes.freezeDeposit(
                         currentReveals[revIndex].overlay,
-                        penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth)
+                        penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
                     );
                     // slash ph5
                 }
@@ -656,7 +639,7 @@ contract Redistribution is AccessControl, Pausable {
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
                     currentCommits[i].overlay,
-                    penaltyMultiplierNonRevealed * roundLength * uint256(2**truthRevealedDepth)
+                    penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
                 );
                 continue;
             }
