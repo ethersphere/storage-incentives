@@ -593,7 +593,6 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         uint256 k = 0;
-
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
@@ -607,7 +606,6 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
@@ -643,14 +641,14 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
+        // Emit function Events
         emit CountCommitsReveals(commitsArrayLength, revealsArrayLength);
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit WinnerSelected(winner);
 
+        // Apply Important state changes
         PostageContract.withdraw(winner.owner);
-
         OracleContract.adjustPrice(uint256(k));
-
         currentClaimRound = cr;
     }
 }
