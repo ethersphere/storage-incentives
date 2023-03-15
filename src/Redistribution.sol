@@ -162,14 +162,9 @@ contract Redistribution is AccessControl, Pausable {
 
     // Next two events to be removed after testing phase pending some other usefulness being found.
     /**
-     * @dev Emits the number of commits being processed by the claim phase.
+     * @dev Emits the number of commits and reveals being processed by the claim phase.
      */
-    event CountCommits(uint256 _count);
-
-    /**
-     * @dev Emits the number of reveals being processed by the claim phase.
-     */
-    event CountReveals(uint256 _count);
+    event CountCommitsReveals(uint256 _count, uint256 _count);
 
     /**
      * @dev Logs that an overlay has committed
@@ -573,10 +568,6 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 commitsArrayLength = currentCommits.length;
         uint256 revealsArrayLength = currentReveals.length;
-
-        emit CountCommits(commitsArrayLength);
-        emit CountReveals(revealsArrayLength);
-
         uint256 revIndex;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
@@ -644,6 +635,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
+        emit CountCommitsReveals(commitsArrayLength, revealsArrayLength);
         emit WinnerSelected(winner);
 
         PostageContract.withdraw(winner.owner);
