@@ -429,41 +429,21 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-
-        uint256 currentSum;
         uint256 currentWinnerSelectionSum;
         bytes32 winnerIs;
         bytes32 randomNumber;
-
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-
-        uint256 commitsArrayLength = currentCommits.length;
-
         uint256 revIndex;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
-            if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-
-                if (
-                    uint256(randomNumber & MaxH) * currentSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                ) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
-                }
-            }
-        }
+        // Get current truth
+        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
         uint256 k = 0;
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
             if (
                 currentCommits[i].revealed &&
@@ -545,32 +525,20 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Conclude the current round by identifying the selected truth teller and beneficiary.
+     * @notice Helper function to get this round truth
      * @dev
      */
-    function claim() external whenNotPaused {
-        require(currentPhaseClaim(), "not in claim phase");
-
-        uint256 cr = currentRound();
-
-        require(cr == currentRevealRound, "round received no reveals");
-        require(cr > currentClaimRound, "round already received successful claim");
-
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-
+    function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
         uint256 currentSum;
-        uint256 currentWinnerSelectionSum;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-
-        uint256 commitsArrayLength = currentCommits.length;
-        uint256 revealsArrayLength = currentReveals.length;
         uint256 revIndex;
+        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < currentCommits.length; i++) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
@@ -592,10 +560,36 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
+        return (truthRevealedHash, truthRevealedDepth);
+    }
+
+    /**
+     * @notice Conclude the current round by identifying the selected truth teller and beneficiary.
+     * @dev
+     */
+    function claim() external whenNotPaused {
+        require(currentPhaseClaim(), "not in claim phase");
+
+        uint256 cr = currentRound();
+
+        require(cr == currentRevealRound, "round received no reveals");
+        require(cr > currentClaimRound, "round already received successful claim");
+
+        uint256 currentWinnerSelectionSum;
+        bytes32 randomNumber;
+        uint256 randomNumberTrunc;
+
+        bytes32 truthRevealedHash;
+        uint8 truthRevealedDepth;
+        uint256 revIndex;
+
+        // Get current truth
+        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
+
         uint256 k = 0;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
 
             // Select winner with valid truth
@@ -642,7 +636,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         // Emit function Events
-        emit CountCommitsReveals(commitsArrayLength, revealsArrayLength);
+        emit CountCommitsReveals(currentCommits.length, currentReveals.length);
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit WinnerSelected(winner);
 
