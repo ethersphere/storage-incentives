@@ -641,7 +641,6 @@ contract Redistribution is AccessControl, Pausable {
                     currentCommits[i].overlay,
                     penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
                 );
-                continue;
             }
         }
 
