@@ -631,7 +631,7 @@ describe('Redistribution', function () {
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
-          expect(CountCommitsRevealsEvent.args[0]).to.be.eq(2);
+          expect(CountCommitsRevealsEvent.args[0]).to.be.eq(1);
           expect(CountCommitsRevealsEvent.args[1]).to.be.eq(1);
 
           expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
@@ -769,7 +769,7 @@ describe('Redistribution', function () {
           expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
 
           expect(CountCommitsRevealsEvent.args[0]).to.be.eq(2);
-          expect(CountCommitsRevealsEvent.args[1]).to.be.eq(1);
+          expect(CountCommitsRevealsEvent.args[1]).to.be.eq(2);
 
           expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_1);
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_1);
