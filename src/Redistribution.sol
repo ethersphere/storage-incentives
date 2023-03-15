@@ -592,8 +592,6 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-
         uint256 k = 0;
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
@@ -636,6 +634,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         emit CountCommitsReveals(commitsArrayLength, revealsArrayLength);
+        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit WinnerSelected(winner);
 
         PostageContract.withdraw(winner.owner);
