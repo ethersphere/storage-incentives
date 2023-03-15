@@ -164,7 +164,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Emits the number of commits and reveals being processed by the claim phase.
      */
-    event CountCommitsReveals(uint256 _count, uint256 _count);
+    event CountCommitsReveals(uint256 _count, uint256 _count2);
 
     /**
      * @dev Logs that an overlay has committed
