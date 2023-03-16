@@ -164,7 +164,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Emits the number of commits and reveals being processed by the claim phase.
      */
-    event CountCommitsReveals(uint256 _count, uint256 _count2);
+    event CountCommitsReveals(uint256 countCommits, uint256 countReveals);
 
     /**
      * @dev Logs that an overlay has committed
@@ -430,6 +430,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 currentWinnerSelectionSum;
         bytes32 winnerIs;
         bytes32 randomNumber;
+        uint256 randomNumberTrunc;
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 revIndex;
@@ -441,6 +442,8 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
+
+            // Deterministically read winner
             if (
                 currentCommits[i].revealed &&
                 truthRevealedHash == currentReveals[revIndex].hash &&
@@ -448,9 +451,10 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
-                    uint256(randomNumber & MaxH) * currentWinnerSelectionSum <
+                    randomNumberTrunc * currentWinnerSelectionSum <
                     currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
                     winnerIs = currentReveals[revIndex].overlay;
