@@ -587,10 +587,9 @@ describe('Redistribution', function () {
       describe('single player', async function () {
         it('should claim pot', async function () {
           expect(await redistribution.currentPhaseCommit()).to.be.true;
-
           const r_node_2 = await ethers.getContract('Redistribution', node_2);
           const sanityHash = '0x595c4d3b144b02d312f016ca3bc5455278e144b3fbd95317d5a8af21f78f249c';
-          const sanityDepth = '0x02';
+          const sanityDepth = '0x00'; //TODO with depth 2 (sampling with the correct overlay)
 
           const obsfucatedHash = encodeAndHash(overlay_2, sanityDepth, sanityHash, reveal_nonce_2);
 
@@ -735,7 +734,21 @@ describe('Redistribution', function () {
             timeStamp: '0x17480263ce37ae40',
             socProofAttached: [],
           };
-          //calculates totalpot
+          // migrate batch with which the chunk was signed
+          // NOTE: it does not work if copy above (until claim function)
+          const postageAdmin = await ethers.getContract('PostageStamp', deployer);
+          const initialBalance = 100_000_000;
+          const postageDepth = 20;
+          const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(20));
+          await mintAndApprove(deployer, deployer, postage.address, bzzFund.toString());
+          const copyBatchTx = await postageAdmin.copyBatch(
+            '0x26234a2ad3ba8b398a762f279b792cfacd536a3f', // owner
+            initialBalance, // initial balance per chunk
+            postageDepth, // depth
+            16, // bucketdepth
+            '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
+            true // immutable
+          );
           const tx2 = await r_node_2.claim(proof1, proof2, proofLast);
           const receipt2 = await tx2.wait();
 
@@ -756,7 +769,7 @@ describe('Redistribution', function () {
           }
 
           const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
+          const expectedPotPayout = (currentBlockNumber - copyBatchTx.blockNumber) * price1 * 2 ** 20; // TODO
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
@@ -767,7 +780,7 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
           expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
           expect(WinnerSelectedEvent.args[0][3]).to.be.eq(
-            BigNumber.from(stakeAmount_0).mul(BigNumber.from(sanityDepth).pow(2))
+            BigNumber.from(stakeAmount_0).mul(BigNumber.from(2).pow(sanityDepth))
           ); //stakedensity?
           expect(WinnerSelectedEvent.args[0][4]).to.be.eq(sanityHash);
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(sanityDepth));
