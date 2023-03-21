@@ -110,6 +110,8 @@ contract Redistribution is AccessControl, Pausable {
     uint256 public constant penaltyMultiplierDisagreement = 3;
     uint256 public constant penaltyMultiplierNonRevealed = 7;
 
+    uint8 constant COLLISION_DEPTH = 16;
+
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
@@ -602,10 +604,13 @@ contract Redistribution is AccessControl, Pausable {
             y++;
         }
 
+        require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
+        require(inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof1, x * 2);
         stampFunction(entryProof1);
+        require(inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof2, y * 2);
         stampFunction(entryProof2);
         
@@ -705,34 +710,37 @@ contract Redistribution is AccessControl, Pausable {
         return winner_;
     }
 
-    function postageStampBucket(bytes32 swarmAddress, uint8 batchBucketDepth) internal pure returns (uint32) {
+    function addressToBucket(bytes32 swarmAddress) internal pure returns (uint32) {
         uint32 prefix = uint32(uint256(swarmAddress) >> (256 - 32));
-        return prefix >> (32 - batchBucketDepth);
+        return prefix >> (32 - COLLISION_DEPTH);
     }
 
     function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal  pure returns (uint256) {
         return 1 << (postageDepth - bucketDepth);
     }
 
-    function indexToProximityAddress(uint64 index) internal pure returns (bytes32) {
+    function bucketToProximityAddress(uint64 index) internal pure returns (bytes32) {
         return bytes32(uint256(index) << (256 - 64));
     }
 
+    function getPostageIndex(uint64 signedIndex) internal pure returns (uint32) {
+        return uint32(signedIndex);
+    }
+
+    function getPostageBucket(uint64 signedIndex) internal pure returns (uint64) {
+        return uint32(signedIndex >> 32);
+    }
+
     function stampFunction(ChunkInclusionProof calldata entryProofLast) view internal {
-    uint8 batchBucketDepth = PostageContract.batchBucketDepth(entryProofLast.postageId);
-    uint8 minDepth = batchBucketDepth < winner.depth ? batchBucketDepth : winner.depth;
-    bytes32 indexProximityAddress = indexToProximityAddress(entryProofLast.index);
-    require(
-        inProximity(
-            currentRevealRoundAnchor,
-            indexProximityAddress,
-            minDepth
-        ),
-        "Stamp index validity check failed against the round anchor"
-    );
-    address batchOwner = PostageContract.batchOwner(entryProofLast.postageId);
-    
-    if ( entryProofLast.socProofAttached.length < 1 ) {
+        // authentic
+        uint8 batchBucketDepth = PostageContract.batchBucketDepth(entryProofLast.postageId);
+        uint32 postageIndex = getPostageIndex(entryProofLast.index);
+        uint256 maxPostageIndex = postageStampIndexCount(batchBucketDepth, COLLISION_DEPTH);
+        // available
+        require(postageIndex < maxPostageIndex, "Stamp index resides outside of the valid index set");
+
+        address batchOwner = PostageContract.batchOwner(entryProofLast.postageId);
+        // authorized
         require(PostageStampSig.verify(
             batchOwner,
             entryProofLast.signature,
@@ -742,58 +750,36 @@ contract Redistribution is AccessControl, Pausable {
             entryProofLast.timeStamp
         ), "Stamp verification failed for element");
 
-        require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "stamped chunk not in depth");
+        // TODO alive
+        require(
+            PostageContract.remainingBalance(entryProofLast.postageId) > 0, 
+            "batch remaining balance validation failed for attached stamp"
+        );
+
+        // aligned
+        bytes32 postageBucketAddress = bucketToProximityAddress(getPostageBucket(entryProofLast.index));
         require(
             inProximity(
                 entryProofLast.proveSegment, 
-                indexProximityAddress, 
+                postageBucketAddress, 
                 batchBucketDepth
             ),
             "Stamp index proximity check failed against chunk address"
         );
-        uint32 stampBucket = postageStampBucket(entryProofLast.proveSegment, batchBucketDepth);
-        require(entryProofLast.index >= stampBucket && entryProofLast.index < stampBucket + postageStampIndexCount(
-            PostageContract.batchDepth(entryProofLast.postageId), batchBucketDepth
-        ), "Stamp index resides outside of the valid index set");
 
-        require(PostageContract.remainingBalance(entryProofLast.postageId) > 0, "batch remaining balance validation failed for attached stamp");
-        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp");
-    } else {
-        bytes32 socAddress = keccak256(abi.encodePacked(entryProofLast.socProofAttached[0].identifier, entryProofLast.socProofAttached[0].signer));
-
-        require(PostageStampSig.verify(
-            batchOwner,
-            entryProofLast.signature,
-            socAddress,
-            entryProofLast.postageId,
-            entryProofLast.index,
-            entryProofLast.timeStamp
-        ), "Stamp verification failed for element");
-
-        require(inProximity(socAddress, currentRevealRoundAnchor, winner.depth), "stamped soc not in depth");
-        require(
-            inProximity(
-                socAddress, 
-                indexToProximityAddress(entryProofLast.index),
-                PostageContract.batchBucketDepth(entryProofLast.postageId)
-            ),
-            "Stamp index proximity check failed against chunk address"
-        );
-        uint32 stampBucket = postageStampBucket(socAddress, batchBucketDepth);
-        require(entryProofLast.index >= stampBucket && entryProofLast.index < stampBucket + postageStampIndexCount(
-            PostageContract.batchDepth(entryProofLast.postageId), batchBucketDepth
-        ), "Stamp index resides outside of the valid index set");
-
-        require(PostageStampSig.socVerify(
-            entryProofLast.socProofAttached[0].signer, // signer Ethereum address to check against
-            entryProofLast.socProofAttached[0].signature,
-            entryProofLast.socProofAttached[0].identifier,
-            entryProofLast.proveSegment
-        ), "Soc verification failed for element");   
-
-        require(PostageContract.remainingBalance(entryProofLast.postageId) > 0, "batch remaining balance validation failed for attached stamp");
+        // FOR LATER USE
+        // bytes32 socAddress = keccak256(abi.encodePacked(entryProofLast.socProofAttached[0].identifier, entryProofLast.socProofAttached[0].signer));
         // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp"); 
-       }  
+
+        if ( entryProofLast.socProofAttached.length > 0 ) {
+            require(PostageStampSig.socVerify(
+                entryProofLast.socProofAttached[0].signer, // signer Ethereum address to check against
+                entryProofLast.socProofAttached[0].signature,
+                entryProofLast.socProofAttached[0].identifier,
+                entryProofLast.proveSegment
+            ), "Soc verification failed for element");
+            // TODO check soc address and wrapped addr in postage stamp
+        }
     }
 
     function inclusionFunction(
