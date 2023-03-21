@@ -106,7 +106,7 @@ contract PostageStamp is AccessControl, Pausable {
     // Price from the last update.
     uint256 public lastPrice = 0;
     // Block at which the last update occured.
-    uint256 public lastUpdatedBlock;
+    uint256 public lastPriceUpdatedBlock;
     // Normalised balance at the blockheight expire() was last called.
     uint256 public lastExpiryBalance;
 
@@ -323,7 +323,7 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         lastPrice = _price;
-        lastUpdatedBlock = block.number;
+        lastPriceUpdatedBlock = block.number;
 
         emit PriceUpdate(_price);
     }
@@ -339,7 +339,7 @@ contract PostageStamp is AccessControl, Pausable {
      * Only Batches with a normalised balance greater than this are valid.
      */
     function currentTotalOutPayment() public view returns (uint256) {
-        uint256 blocks = block.number - lastUpdatedBlock;
+        uint256 blocks = block.number - lastPriceUpdatedBlock;
         uint256 increaseSinceLastUpdate = lastPrice * (blocks);
         return totalOutPayment + (increaseSinceLastUpdate);
     }
@@ -370,7 +370,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Return true if no batches exist
      */
-    function empty() public view returns (bool) {
+    function isBatchesTreeEmpty() public view returns (bool) {
         return tree.count() == 0;
     }
 
@@ -395,21 +395,18 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 leb = lastExpiryBalance;
         uint256 i;
         for (i = 0; i < limit; i++) {
-            if (empty()) {
-                lastExpiryBalance = currentTotalOutPayment();
-                break;
-            }
             // get the batch with the smallest normalised balance
             bytes32 fbi = firstBatchId();
-            // if the batch with the smallest balance has not yet expired
-            // we have already reached the end of the batches we need
+
+            // if the batch tree is empty or if the batch with the smallest balance
+            // has not yet expired we have already reached the end of the batches we need
             // to expire, so exit the loop
-            if (remainingBalance(fbi) > 0) {
-                // the upper bound of the normalised balance for which we will check if batches have expired
+            if (isBatchesTreeEmpty() || remainingBalance(fbi) > 0) {
                 // value is updated when there are no expired batches left
                 lastExpiryBalance = currentTotalOutPayment();
                 break;
             }
+
             // otherwise, the batch with the smallest balance has expired,
             // so we must remove the chunks this batch contributes to the global validChunkCount
             Batch storage batch = batches[fbi];
@@ -440,7 +437,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Indicates whether expired batches exist.
      */
     function expiredBatchesExist() public view returns (bool) {
-        if (empty()) {
+        if (isBatchesTreeEmpty()) {
             return false;
         }
         return (remainingBalance(firstBatchId()) <= 0);
