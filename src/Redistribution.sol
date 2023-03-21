@@ -750,9 +750,9 @@ contract Redistribution is AccessControl, Pausable {
             entryProofLast.timeStamp
         ), "Stamp verification failed for element");
 
-        // TODO alive
+        // alive
         require(
-            PostageContract.remainingBalance(entryProofLast.postageId) > 0, 
+            PostageContract.remainingBalance(entryProofLast.postageId) >= PostageContract.minimumInitialBalancePerChunk(),
             "batch remaining balance validation failed for attached stamp"
         );
 

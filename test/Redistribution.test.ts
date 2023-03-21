@@ -735,8 +735,10 @@ describe('Redistribution', function () {
             socProofAttached: [],
           };
           // migrate batch with which the chunk was signed
-          // NOTE: it does not work if copy above (until claim function)
           const postageAdmin = await ethers.getContract('PostageStamp', deployer);
+          // set minimum required blocks for postage stamp lifetime to 0 for tests
+          // NOTE: it does not work if copy above (until claim function)
+          await postageAdmin.setMinimumValidityBlocks(0);
           const initialBalance = 100_000_000;
           const postageDepth = 20;
           const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(20));
