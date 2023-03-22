@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.1;
 
-library PostageStampSig {
+library Signatures {
       /** Hash of the message to sign */
-    function getMessageHash(
+    function getPostageMessageHash(
         bytes32 _chunkAddr,
         bytes32 _batchId,
         uint64 _index,
@@ -12,7 +12,7 @@ library PostageStampSig {
         return keccak256(abi.encodePacked(_chunkAddr, _batchId, _index, _timeStamp));
     }
 
-    function verify(
+    function postageVerify(
         address _signer, // signer Ethereum address to check against
         bytes memory _signature,
         bytes32 _chunkAddr,
@@ -20,7 +20,7 @@ library PostageStampSig {
         uint64 _index,
         uint64 _timeStamp
     ) internal pure returns (bool) {
-        bytes32 messageHash = getMessageHash(_chunkAddr, _postageId, _index, _timeStamp);
+        bytes32 messageHash = getPostageMessageHash(_chunkAddr, _postageId, _index, _timeStamp);
         bytes32 ethMessageHash = getEthSignedMessageHash(messageHash); 
 
         return recoverSigner(ethMessageHash, _signature) == _signer;

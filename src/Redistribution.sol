@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
-import "./Util/PostageStampSig.sol";
+import "./Util/Signatures.sol";
 import "./PostageStamp.sol";
 import "./PriceOracle.sol";
 import "./Staking.sol";
@@ -605,12 +605,17 @@ contract Redistribution is AccessControl, Pausable {
         require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
+        socFunction(entryProofLast);
+        
         require(inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof1, x * 2);
         stampFunction(entryProof1);
+        socFunction(entryProofLast);
+
         require(inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof2, y * 2);
         stampFunction(entryProof2);
+        socFunction(entryProofLast);
         
         checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
 
@@ -725,6 +730,18 @@ contract Redistribution is AccessControl, Pausable {
         return uint32(signedIndex >> 32);
     }
 
+    function socFunction(ChunkInclusionProof calldata entryProofLast) pure internal {
+        if(entryProofLast.socProofAttached.length == 0) return;
+
+        require(Signatures.socVerify(
+            entryProofLast.socProofAttached[0].signer, // signer Ethereum address to check against
+            entryProofLast.socProofAttached[0].signature,
+            entryProofLast.socProofAttached[0].identifier,
+            entryProofLast.proveSegment
+        ), "Soc verification failed for element");
+        // TODO check soc address and wrapped addr in postage stamp
+    }
+
     function stampFunction(ChunkInclusionProof calldata entryProofLast) view internal {
         // authentic
         uint8 batchDepth = PostageContract.batchDepth(entryProofLast.postageId);
@@ -736,7 +753,7 @@ contract Redistribution is AccessControl, Pausable {
 
         address batchOwner = PostageContract.batchOwner(entryProofLast.postageId);
         // authorized
-        require(PostageStampSig.verify(
+        require(Signatures.postageVerify(
             batchOwner,
             entryProofLast.signature,
             entryProofLast.proveSegment,
@@ -762,16 +779,6 @@ contract Redistribution is AccessControl, Pausable {
         // FOR LATER USE
         // bytes32 socAddress = keccak256(abi.encodePacked(entryProofLast.socProofAttached[0].identifier, entryProofLast.socProofAttached[0].signer));
         // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp"); 
-
-        if ( entryProofLast.socProofAttached.length > 0 ) {
-            require(PostageStampSig.socVerify(
-                entryProofLast.socProofAttached[0].signer, // signer Ethereum address to check against
-                entryProofLast.socProofAttached[0].signature,
-                entryProofLast.socProofAttached[0].identifier,
-                entryProofLast.proveSegment
-            ), "Soc verification failed for element");
-            // TODO check soc address and wrapped addr in postage stamp
-        }
     }
 
     function inclusionFunction(
