@@ -88,12 +88,12 @@ const configs: Record<string, ChainConfig> = {
 const config: ChainConfig = configs[hre.network.name]
   ? configs[hre.network.name]
   : ({
-      chainId: hre.network.config.chainId,
-      networkId: networkDeployedData.networkId ? networkDeployedData.networkId : hre.network.config.chainId,
-      networkName: hre.network.name,
-      deployedData: networkDeployedData,
-      url: '',
-    } as ChainConfig);
+    chainId: hre.network.config.chainId,
+    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : hre.network.config.chainId,
+    networkName: hre.network.name,
+    deployedData: networkDeployedData,
+    url: '',
+  } as ChainConfig);
 
 async function main() {
   let contractData = {
@@ -135,9 +135,9 @@ async function deployBzzToken(deployed: DeployedData, contractData: ContractData
     contractData.blocks.bzzToken = testTokenContract.deployTransaction.blockNumber as number;
     console.log(
       'Deployed BzzToken contract to address ' +
-        contractData.addresses.bzzToken +
-        ' with block number ' +
-        contractData.blocks.bzzToken
+      contractData.addresses.bzzToken +
+      ' with block number ' +
+      contractData.blocks.bzzToken
     );
     return contractData;
   }
@@ -146,9 +146,9 @@ async function deployBzzToken(deployed: DeployedData, contractData: ContractData
   contractData.blocks.bzzToken = deployed['contracts']['bzzToken']['block'];
   console.log(
     'Using deployed BzzToken contract address ' +
-      contractData.addresses.bzzToken +
-      ' with block number ' +
-      contractData.blocks.bzzToken
+    contractData.addresses.bzzToken +
+    ' with block number ' +
+    contractData.blocks.bzzToken
   );
   return contractData;
 }
@@ -156,11 +156,11 @@ async function deployBzzToken(deployed: DeployedData, contractData: ContractData
 async function deployStaking(contractData: ContractData) {
   console.log(
     '\nDeploying Stake Registry contract to network ' +
-      config.networkName +
-      ' with chain id ' +
-      config.chainId +
-      ' and network id ' +
-      config.networkId
+    config.networkName +
+    ' with chain id ' +
+    config.chainId +
+    ' and network id ' +
+    config.networkId
   );
   const stakeRegistry = await hre.ethers.getContractFactory('StakeRegistry');
   const stakeRegistryContract = await stakeRegistry.deploy(contractData.addresses.bzzToken, config.networkId);
@@ -173,9 +173,9 @@ async function deployStaking(contractData: ContractData) {
   contractData.addresses.staking = stakeRegistryContract.address;
   console.log(
     'Deployed Stake Registry contract to address ' +
-      contractData.addresses.staking +
-      ' with block number ' +
-      contractData.blocks.staking
+    contractData.addresses.staking +
+    ' with block number ' +
+    contractData.blocks.staking
   );
   return contractData;
 }
@@ -183,11 +183,11 @@ async function deployStaking(contractData: ContractData) {
 async function deployPostageStamp(contractData: ContractData) {
   console.log(
     '\nDeploying Postage Stamp contract to network ' +
-      config.networkName +
-      ' with chain id ' +
-      config.chainId +
-      ' and bzzToken address ' +
-      contractData.addresses.bzzToken
+    config.networkName +
+    ' with chain id ' +
+    config.chainId +
+    ' and bzzToken address ' +
+    contractData.addresses.bzzToken
   );
 
   const minimumBucketDepth = 16;
@@ -203,9 +203,9 @@ async function deployPostageStamp(contractData: ContractData) {
   contractData.addresses.postageStamp = postageStampContract.address;
   console.log(
     'Deployed Postage contract to address ' +
-      contractData.addresses.postageStamp +
-      ' with block number ' +
-      contractData.blocks.postageStamp
+    contractData.addresses.postageStamp +
+    ' with block number ' +
+    contractData.blocks.postageStamp
   );
   return contractData;
 }
@@ -213,11 +213,11 @@ async function deployPostageStamp(contractData: ContractData) {
 async function deployPriceOracle(contractData: ContractData) {
   console.log(
     '\nDeploying Price Oracle contract to network ' +
-      config.networkName +
-      ' with chain id ' +
-      config.chainId +
-      ' and Postage Contract address ' +
-      contractData.addresses.postageStamp
+    config.networkName +
+    ' with chain id ' +
+    config.chainId +
+    ' and Postage Contract address ' +
+    contractData.addresses.postageStamp
   );
 
   const priceOracle = await hre.ethers.getContractFactory('PriceOracle');
@@ -231,9 +231,9 @@ async function deployPriceOracle(contractData: ContractData) {
   contractData.addresses.priceOracle = priceOracleContract.address;
   console.log(
     'Deployed Price Oracle contract to address ' +
-      contractData.addresses.priceOracle +
-      ' with block number ' +
-      contractData.blocks.priceOracle
+    contractData.addresses.priceOracle +
+    ' with block number ' +
+    contractData.blocks.priceOracle
   );
   return contractData;
 }
@@ -241,15 +241,15 @@ async function deployPriceOracle(contractData: ContractData) {
 async function deployRedistribution(contractData: ContractData) {
   console.log(
     '\nDeploying Redistribution contract to network ' +
-      config.networkName +
-      ' with chain id ' +
-      config.chainId +
-      ' and \n\t Stake Registry Contract address ' +
-      contractData.addresses.staking +
-      '\n\t Postage Contract address ' +
-      contractData.addresses.postageStamp +
-      '\n\t Price Oracle Contract address ' +
-      contractData.addresses.priceOracle
+    config.networkName +
+    ' with chain id ' +
+    config.chainId +
+    ' and \n\t Stake Registry Contract address ' +
+    contractData.addresses.staking +
+    '\n\t Postage Contract address ' +
+    contractData.addresses.postageStamp +
+    '\n\t Price Oracle Contract address ' +
+    contractData.addresses.priceOracle
   );
 
   const redistribution = await hre.ethers.getContractFactory('Redistribution');
@@ -268,9 +268,9 @@ async function deployRedistribution(contractData: ContractData) {
   contractData.addresses.redistribution = redistributionContract.address;
   console.log(
     'Deployed Redistribution contract to address ' +
-      contractData.addresses.redistribution +
-      ' with block number ' +
-      contractData.blocks.redistribution
+    contractData.addresses.redistribution +
+    ' with block number ' +
+    contractData.blocks.redistribution
   );
   return contractData;
 }

@@ -6,7 +6,7 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
-const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
+export const infuraToken = process.env.INFURA_TOKEN === undefined ? 'undefined' : process.env.INFURA_TOKEN;
 if (infuraToken === 'undefined') {
   console.log('Please set your INFURA_TOKEN in a .env file');
 }
