@@ -749,7 +749,7 @@ contract Redistribution is AccessControl, Pausable {
         uint32 postageIndex = getPostageIndex(entryProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
-        require(postageIndex < maxPostageIndex, "Stamp index resides outside of the valid index set");
+        require(postageIndex < maxPostageIndex, "Stamp available: index resides outside of the valid index set");
 
         address batchOwner = PostageContract.batchOwner(entryProof.postageId);
         // authorized
@@ -760,12 +760,12 @@ contract Redistribution is AccessControl, Pausable {
             entryProof.postageId,
             entryProof.index,
             entryProof.timeStamp
-        ), "Stamp verification failed for element");
+        ), "Stamp authorized: signature recovery failed for element");
 
         // alive
         require(
             PostageContract.remainingBalance(entryProof.postageId) >= PostageContract.minimumInitialBalancePerChunk(),
-            "batch remaining balance validation failed for attached stamp"
+            "Stamp alive: batch remaining balance validation failed for attached stamp"
         );
 
         // aligned
