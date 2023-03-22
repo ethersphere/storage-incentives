@@ -1,10 +1,11 @@
 import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig, developmentChains } from '../helper-hardhat-config';
+import verify from '../utils/verify';
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts, network } = hre;
-  const { deploy, execute, read } = deployments;
+  const { deploy, execute, read, log } = deployments;
 
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
@@ -14,9 +15,11 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     log: true,
   });
 
-  await deploy('PostageStamp', {
+  const args = [token.address, 16];
+
+  const postageStamp = await deploy('PostageStamp', {
     from: deployer,
-    args: [token.address, 16],
+    args: args,
     log: true,
     // we need to wait if on a live network so we can verify properly
     waitConfirmations: networkConfig[network.name].blockConfirmations || 1,
@@ -27,6 +30,12 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const redistributorRole = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
   await execute('PostageStamp', { from: deployer }, 'grantRole', redistributorRole, redistributor);
+
+  if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
+    log('Verifying...');
+    await verify(postageStamp.address, args);
+  }
+  log('----------------------------------------------------');
 };
 
 export default func;
