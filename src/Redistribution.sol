@@ -606,7 +606,7 @@ contract Redistribution is AccessControl, Pausable {
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
         socFunction(entryProofLast);
-        
+
         require(inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof1, x * 2);
         stampFunction(entryProof1);
@@ -742,35 +742,35 @@ contract Redistribution is AccessControl, Pausable {
         // TODO check soc address and wrapped addr in postage stamp
     }
 
-    function stampFunction(ChunkInclusionProof calldata entryProofLast) view internal {
+    function stampFunction(ChunkInclusionProof calldata entryProof) view internal {
         // authentic
-        uint8 batchDepth = PostageContract.batchDepth(entryProofLast.postageId);
-        uint8 bucketDepth = PostageContract.batchBucketDepth(entryProofLast.postageId);
-        uint32 postageIndex = getPostageIndex(entryProofLast.index);
+        uint8 batchDepth = PostageContract.batchDepth(entryProof.postageId);
+        uint8 bucketDepth = PostageContract.batchBucketDepth(entryProof.postageId);
+        uint32 postageIndex = getPostageIndex(entryProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
         require(postageIndex < maxPostageIndex, "Stamp index resides outside of the valid index set");
 
-        address batchOwner = PostageContract.batchOwner(entryProofLast.postageId);
+        address batchOwner = PostageContract.batchOwner(entryProof.postageId);
         // authorized
         require(Signatures.postageVerify(
             batchOwner,
-            entryProofLast.signature,
-            entryProofLast.proveSegment,
-            entryProofLast.postageId,
-            entryProofLast.index,
-            entryProofLast.timeStamp
+            entryProof.signature,
+            entryProof.proveSegment,
+            entryProof.postageId,
+            entryProof.index,
+            entryProof.timeStamp
         ), "Stamp verification failed for element");
 
         // alive
         require(
-            PostageContract.remainingBalance(entryProofLast.postageId) >= PostageContract.minimumInitialBalancePerChunk(),
+            PostageContract.remainingBalance(entryProof.postageId) >= PostageContract.minimumInitialBalancePerChunk(),
             "batch remaining balance validation failed for attached stamp"
         );
 
         // aligned
-        uint64 postageBucket = getPostageBucket(entryProofLast.index);
-        uint64 addressBucket = addressToBucket(entryProofLast.proveSegment, bucketDepth);
+        uint64 postageBucket = getPostageBucket(entryProof.index);
+        uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
         require(
             postageBucket == addressBucket,
             "Stamp aligned: postage bucket differs from address bucket"
@@ -782,32 +782,32 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function inclusionFunction(
-        ChunkInclusionProof calldata entryProofLast,
+        ChunkInclusionProof calldata entryProof,
         uint256 indexInRC
         ) internal {
         require(winner.hash == BMTChunk.chunkAddressFromInclusionProof(
-            entryProofLast.proofSegments, 
-            entryProofLast.proveSegment, 
+            entryProof.proofSegments, 
+            entryProof.proveSegment, 
             indexInRC,
             32 * 32
         ), "RC inclusion proof failed for element");
 
         randomChunkSegmentIndex = uint256(seed) % 128;
 
-        require(entryProofLast.proofSegments2[0] == entryProofLast.proofSegments3[0], "first sister segment in data must match");
+        require(entryProof.proofSegments2[0] == entryProof.proofSegments3[0], "first sister segment in data must match");
 
-        require(entryProofLast.proveSegment == BMTChunk.chunkAddressFromInclusionProof(
-            entryProofLast.proofSegments2, 
-            entryProofLast.proveSegment2, 
+        require(entryProof.proveSegment == BMTChunk.chunkAddressFromInclusionProof(
+            entryProof.proofSegments2, 
+            entryProof.proveSegment2, 
             randomChunkSegmentIndex, 
-            entryProofLast.chunkSpan
+            entryProof.chunkSpan
         ), "inclusion proof failed for original address of element");
 
-        require(entryProofLast.proofSegments[0] == TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-            entryProofLast.proofSegments3, 
-            entryProofLast.proveSegment2, 
+        require(entryProof.proofSegments[0] == TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+            entryProof.proofSegments3, 
+            entryProof.proveSegment2, 
             randomChunkSegmentIndex, 
-            entryProofLast.chunkSpan, 
+            entryProof.chunkSpan, 
             currentRevealRoundAnchor
         ), "inclusion proof failed for transformed address of element");
      
