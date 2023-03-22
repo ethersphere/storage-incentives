@@ -439,8 +439,9 @@ contract Redistribution is AccessControl, Pausable {
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
+        uint256 commitsArrayLength = currentCommits.length;
 
-        for (uint256 i = 0; i < currentCommits.length; i++) {
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
 
             // Deterministically read winner
@@ -537,8 +538,9 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth;
         uint256 revIndex;
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
+        uint256 commitsArrayLength = currentCommits.length;
 
-        for (uint256 i = 0; i < currentCommits.length; i++) {
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
@@ -583,8 +585,10 @@ contract Redistribution is AccessControl, Pausable {
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
+        uint256 commitsArrayLength = currentCommits.length;
+        uint256 revealsArrayLength = currentReveals.length;
 
-        for (uint256 i = 0; i < currentCommits.length; i++) {
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
 
             // Select winner with valid truth
@@ -631,7 +635,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         // Emit function Events
-        emit CountCommitsReveals(currentCommits.length, currentReveals.length);
+        emit CountCommitsReveals(commitsArrayLength, revealsArrayLength);
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit WinnerSelected(winner);
 
