@@ -9,6 +9,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
+  // Skip this one for mainent and testnet
   const token = await deploy('TestToken', {
     from: deployer,
     args: [],
@@ -31,10 +32,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const redistributorRole = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
   await execute('PostageStamp', { from: deployer }, 'grantRole', redistributorRole, redistributor);
 
-  if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
-    log('Verifying...');
-    await verify(postageStamp.address, args);
-  }
   log('----------------------------------------------------');
 };
 
