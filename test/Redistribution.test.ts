@@ -740,8 +740,8 @@ describe('Redistribution', function () {
           // NOTE: it does not work if copy above (until claim function)
           await postageAdmin.setMinimumValidityBlocks(0);
           const initialBalance = 100_000_000;
-          const postageDepth = 20;
-          const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(20));
+          const postageDepth = 24;
+          const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
           await mintAndApprove(deployer, deployer, postage.address, bzzFund.toString());
           const copyBatchTx = await postageAdmin.copyBatch(
             '0x26234a2ad3ba8b398a762f279b792cfacd536a3f', // owner
