@@ -110,8 +110,6 @@ contract Redistribution is AccessControl, Pausable {
     uint256 public constant penaltyMultiplierDisagreement = 3;
     uint256 public constant penaltyMultiplierNonRevealed = 7;
 
-    uint8 constant COLLISION_DEPTH = 16;
-
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
@@ -710,17 +708,13 @@ contract Redistribution is AccessControl, Pausable {
         return winner_;
     }
 
-    function addressToBucket(bytes32 swarmAddress) internal pure returns (uint32) {
+    function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {
         uint32 prefix = uint32(uint256(swarmAddress) >> (256 - 32));
-        return prefix >> (32 - COLLISION_DEPTH);
+        return prefix >> (32 - bucketDepth);
     }
 
     function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal  pure returns (uint256) {
         return 1 << (postageDepth - bucketDepth);
-    }
-
-    function bucketToProximityAddress(uint64 index) internal pure returns (bytes32) {
-        return bytes32(uint256(index) << (256 - 64));
     }
 
     function getPostageIndex(uint64 signedIndex) internal pure returns (uint32) {
@@ -733,9 +727,10 @@ contract Redistribution is AccessControl, Pausable {
 
     function stampFunction(ChunkInclusionProof calldata entryProofLast) view internal {
         // authentic
-        uint8 batchBucketDepth = PostageContract.batchBucketDepth(entryProofLast.postageId);
+        uint8 batchDepth = PostageContract.batchDepth(entryProofLast.postageId);
+        uint8 bucketDepth = PostageContract.batchBucketDepth(entryProofLast.postageId);
         uint32 postageIndex = getPostageIndex(entryProofLast.index);
-        uint256 maxPostageIndex = postageStampIndexCount(batchBucketDepth, COLLISION_DEPTH);
+        uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
         require(postageIndex < maxPostageIndex, "Stamp index resides outside of the valid index set");
 
@@ -757,14 +752,11 @@ contract Redistribution is AccessControl, Pausable {
         );
 
         // aligned
-        bytes32 postageBucketAddress = bucketToProximityAddress(getPostageBucket(entryProofLast.index));
+        uint64 postageBucket = getPostageBucket(entryProofLast.index);
+        uint64 addressBucket = addressToBucket(entryProofLast.proveSegment, bucketDepth);
         require(
-            inProximity(
-                entryProofLast.proveSegment, 
-                postageBucketAddress, 
-                batchBucketDepth
-            ),
-            "Stamp index proximity check failed against chunk address"
+            postageBucket == addressBucket,
+            "Stamp aligned: postage bucket differs from address bucket"
         );
 
         // FOR LATER USE
