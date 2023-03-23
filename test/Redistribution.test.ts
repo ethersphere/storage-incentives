@@ -613,7 +613,7 @@ describe('Redistribution', function () {
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsRevealsEvent;
+          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;
@@ -621,8 +621,11 @@ describe('Redistribution', function () {
             if (e.event == 'TruthSelected') {
               TruthSelectedEvent = e;
             }
-            if (e.event == 'CountCommitsReveals') {
-              CountCommitsRevealsEvent = e;
+            if (e.event == 'CountCommits') {
+              CountCommitsEvent = e;
+            }
+            if (e.event == 'CountReveals') {
+              CountRevealsEvent = e;
             }
           }
 
@@ -631,8 +634,8 @@ describe('Redistribution', function () {
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
-          expect(CountCommitsRevealsEvent.args[0]).to.be.eq(1);
-          expect(CountCommitsRevealsEvent.args[1]).to.be.eq(1);
+          expect(CountCommitsEvent.args[0]).to.be.eq(1);
+          expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
           expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
@@ -687,7 +690,7 @@ describe('Redistribution', function () {
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsRevealsEvent;
+          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;
@@ -695,8 +698,11 @@ describe('Redistribution', function () {
             if (e.event == 'TruthSelected') {
               TruthSelectedEvent = e;
             }
-            if (e.event == 'CountCommitsReveals') {
-              CountCommitsRevealsEvent = e;
+            if (e.event == 'CountCommits') {
+              CountCommitsEvent = e;
+            }
+            if (e.event == 'CountReveals') {
+              CountRevealsEvent = e;
             }
           }
 
@@ -708,8 +714,8 @@ describe('Redistribution', function () {
 
           expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
 
-          expect(CountCommitsRevealsEvent.args[0]).to.be.eq(2);
-          expect(CountCommitsRevealsEvent.args[1]).to.be.eq(1);
+          expect(CountCommitsEvent.args[0]).to.be.eq(2);
+          expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
           expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
@@ -750,7 +756,7 @@ describe('Redistribution', function () {
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsRevealsEvent;
+          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;
@@ -758,8 +764,11 @@ describe('Redistribution', function () {
             if (e.event == 'TruthSelected') {
               TruthSelectedEvent = e;
             }
-            if (e.event == 'CountCommitsReveals') {
-              CountCommitsRevealsEvent = e;
+            if (e.event == 'CountCommits') {
+              CountCommitsEvent = e;
+            }
+            if (e.event == 'CountReveals') {
+              CountRevealsEvent = e;
             }
           }
 
@@ -768,8 +777,8 @@ describe('Redistribution', function () {
 
           expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
 
-          expect(CountCommitsRevealsEvent.args[0]).to.be.eq(2);
-          expect(CountCommitsRevealsEvent.args[1]).to.be.eq(2);
+          expect(CountCommitsEvent.args[0]).to.be.eq(2);
+          expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
           expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_1);
           expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_1);
