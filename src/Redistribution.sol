@@ -162,9 +162,14 @@ contract Redistribution is AccessControl, Pausable {
 
     // Next two events to be removed after testing phase pending some other usefulness being found.
     /**
-     * @dev Emits the number of commits and reveals being processed by the claim phase.
+     * @dev Emits the number of commits being processed by the claim phase.
      */
-    event CountCommitsReveals(uint256 countCommits, uint256 countReveals);
+    event CountCommits(uint256 _count);
+
+    /**
+     * @dev Emits the number of reveals being processed by the claim phase.
+     */
+    event CountReveals(uint256 _count);
 
     /**
      * @dev Logs that an overlay has committed
@@ -635,7 +640,8 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         // Emit function Events
-        emit CountCommitsReveals(commitsArrayLength, revealsArrayLength);
+        emit CountCommits(commitsArrayLength);
+        emit CountReveals(revealsArrayLength);
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit WinnerSelected(winner);
 
