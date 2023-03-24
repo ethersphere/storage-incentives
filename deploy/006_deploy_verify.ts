@@ -19,8 +19,8 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(postageStamp.address, argsStamp);
+    log('----------------------------------------------------');
   }
-  log('----------------------------------------------------');
 
   // Verify oracle
   const priceOracle = await get('PriceOracle');
@@ -29,8 +29,8 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(priceOracle.address, argsOracle);
+    log('----------------------------------------------------');
   }
-  log('----------------------------------------------------');
 
   // Verify staking
   const staking = await get('StakeRegistry');
@@ -39,8 +39,8 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(staking.address, argStaking);
+    log('----------------------------------------------------');
   }
-  log('----------------------------------------------------');
 
   // Verify redistribution
   const redistribution = await get('Redistribution');
@@ -49,8 +49,8 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(redistribution.address, argRedistribution);
+    log('----------------------------------------------------');
   }
-  log('----------------------------------------------------');
 };
 
 export default func;
