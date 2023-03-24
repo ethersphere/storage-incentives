@@ -34,11 +34,21 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   // Verify staking
   const staking = await get('StakeRegistry');
-  const argstaking = [token.address, networkID];
+  const argStaking = [token.address, networkID];
 
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
-    await verify(staking.address, argstaking);
+    await verify(staking.address, argStaking);
+  }
+  log('----------------------------------------------------');
+
+  // Verify redistribution
+  const redistribution = await get('Redistribution');
+  const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
+
+  if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
+    log('Verifying...');
+    await verify(redistribution.address, argRedistribution);
   }
   log('----------------------------------------------------');
 };
