@@ -8,9 +8,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deploy, get, read, execute, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const priceOracle = await deploy('PriceOracle', {
+  const args = [(await get('PostageStamp')).address];
+  await deploy('PriceOracle', {
     from: deployer,
-    args: [(await get('PostageStamp')).address],
+    args: args,
     log: true,
     // we need to wait if on a live network so we can verify properly
     waitConfirmations: networkConfig[network.name].blockConfirmations || 1,

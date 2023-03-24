@@ -18,7 +18,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const args = [token.address, 16];
 
-  const postageStamp = await deploy('PostageStamp', {
+  await deploy('PostageStamp', {
     from: deployer,
     args: args,
     log: true,

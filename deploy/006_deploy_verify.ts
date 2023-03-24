@@ -9,11 +9,13 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
-  // Verify postageStamp
+  // contract veryfing vars
   const token = await get('TestToken');
   const postageStamp = await get('PostageStamp');
   const argsStamp = [token.address, 16];
+  const networkID = 0; //test network
 
+  // Verify postageStamp
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(postageStamp.address, argsStamp);
@@ -27,6 +29,16 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(priceOracle.address, argsOracle);
+  }
+  log('----------------------------------------------------');
+
+  // Verify staking
+  const staking = await get('StakeRegistry');
+  const argstaking = [token.address, networkID];
+
+  if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
+    log('Verifying...');
+    await verify(staking.address, argstaking);
   }
   log('----------------------------------------------------');
 };
