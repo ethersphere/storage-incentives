@@ -1,6 +1,6 @@
 import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains } from '../helper-hardhat-config';
+import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
 import * as fs from 'fs';
 
 interface DeployedContract {
@@ -58,43 +58,47 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const stakingContract = await get('StakeRegistry');
   const redisContract = await get('Redistribution');
 
-  console.log(stakingContract.receipt!.blockNumber);
-
-  // TODO rework tokendata to use predifned bytecode and address and blocknumber when testnet or mainet
-  // Token data
-  deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
-  deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode!;
-  deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
-  deployedData['contracts']['bzzToken']['block'] = tokenContract.receipt!.blockNumber;
-  deployedData['contracts']['bzzToken']['url'] = networkConfig[network.name].scanLink + tokenContract.address;
+  // Insert already deployed data if it is mainnet or testnet
+  if (!developmentChains.includes(network.name)) {
+    network.name == 'mainnet'
+      ? (deployedData['contracts']['bzzToken'] = deployedBzzData.mainnet)
+      : (deployedData['contracts']['bzzToken'] = deployedBzzData.testnet);
+  } else {
+    // Token data for dev chains
+    deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
+    deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode!;
+    deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
+    deployedData['contracts']['bzzToken']['block'] = tokenContract.receipt!.blockNumber;
+    deployedData['contracts']['bzzToken']['url'] = '';
+  }
 
   // PostageStamp data
   deployedData['contracts']['postageStamp']['abi'] = stampsContract.abi;
   deployedData['contracts']['postageStamp']['bytecode'] = stampsContract.bytecode!;
   deployedData['contracts']['postageStamp']['address'] = stampsContract.address;
   deployedData['contracts']['postageStamp']['block'] = stampsContract.receipt!.blockNumber;
-  deployedData['contracts']['postageStamp']['url'] = networkConfig[network.name].scanLink + stampsContract.address;
+  deployedData['contracts']['postageStamp']['url'] = '';
 
   // Redistribution data
   deployedData['contracts']['redistribution']['abi'] = redisContract.abi;
   deployedData['contracts']['redistribution']['bytecode'] = redisContract.bytecode!;
   deployedData['contracts']['redistribution']['address'] = redisContract.address;
   deployedData['contracts']['redistribution']['block'] = redisContract.receipt!.blockNumber;
-  deployedData['contracts']['redistribution']['url'] = networkConfig[network.name].scanLink + redisContract.address;
+  deployedData['contracts']['redistribution']['url'] = '';
 
   // Staking data
   deployedData['contracts']['staking']['abi'] = stakingContract.abi;
   deployedData['contracts']['staking']['bytecode'] = stakingContract.bytecode!;
   deployedData['contracts']['staking']['address'] = stakingContract.address;
   deployedData['contracts']['staking']['block'] = stakingContract.receipt!.blockNumber;
-  deployedData['contracts']['staking']['url'] = networkConfig[network.name].scanLink + stakingContract.address;
+  deployedData['contracts']['staking']['url'] = '';
 
   // Oracle data
   deployedData['contracts']['priceOracle']['abi'] = oracleContract.abi;
   deployedData['contracts']['priceOracle']['bytecode'] = oracleContract.bytecode!;
   deployedData['contracts']['priceOracle']['address'] = oracleContract.address;
   deployedData['contracts']['priceOracle']['block'] = oracleContract.receipt!.blockNumber;
-  deployedData['contracts']['priceOracle']['url'] = networkConfig[network.name].scanLink + oracleContract.address;
+  deployedData['contracts']['priceOracle']['url'] = '';
 
   await writeResult(deployedData);
   log('----------------------------------------------------');
