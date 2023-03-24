@@ -1,7 +1,6 @@
 import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig, developmentChains } from '../helper-hardhat-config';
-import verify from '../utils/verify';
 import * as fs from 'fs';
 
 interface DeployedContract {
@@ -27,8 +26,6 @@ interface DeployedData {
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy, execute, get, read, log } = deployments;
-
-  const { deployer, oracle, redistributor } = await getNamedAccounts();
 
   var deployedData: DeployedData;
 
@@ -63,6 +60,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   console.log(stakingContract.receipt!.blockNumber);
 
+  // TODO rework tokendata to use predifned bytecode and address and blocknumber when testnet or mainet
   // Token data
   deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
   deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode!;
