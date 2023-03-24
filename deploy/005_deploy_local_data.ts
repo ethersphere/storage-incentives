@@ -29,9 +29,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   var deployedData: DeployedData;
 
+  // Chain ID and Network ID are often the same but could be different https://chainid.network/chains_mini.json
   deployedData = {
-    chainId: networkConfig[network.name].chainID,
-    networkId: networkConfig[network.name].networkID,
+    chainId: network.config.chainId,
+    networkId: network.config.chainId,
     contracts: {
       bzzToken: {} as DeployedContract,
       staking: {} as DeployedContract,

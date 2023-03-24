@@ -2,8 +2,6 @@
 
 export interface networkConfigItem {
   blockConfirmations?: number;
-  networkID?: number;
-  chainID?: number;
 }
 
 export interface networkConfigInfo {
@@ -11,23 +9,13 @@ export interface networkConfigInfo {
 }
 
 export const networkConfig: networkConfigInfo = {
-  localhost: {
-    networkID: 0,
-    chainID: 0,
-  },
-  hardhat: {
-    networkID: 0,
-    chainID: 0,
-  },
+  localhost: {},
+  hardhat: {},
   testnet: {
     blockConfirmations: 6,
-    networkID: 5,
-    chainID: 5,
   },
   mainnet: {
     blockConfirmations: 6,
-    networkID: 100,
-    chainID: 100,
   },
 };
 

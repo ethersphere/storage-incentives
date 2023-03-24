@@ -44,7 +44,7 @@ const config: HardhatUserConfig = {
     node_3: 9,
     node_4: 10,
   },
-  defaultNetwork: "hardhat",
+  defaultNetwork: 'hardhat',
   networks: {
     hardhat: {
       initialBaseFeePerGas: 0,
