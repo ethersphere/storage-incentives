@@ -27,7 +27,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployments, getNamedAccounts, network } = hre;
   const { deploy, execute, get, read, log } = deployments;
 
-  var deployedData: DeployedData;
+  let deployedData: DeployedData;
 
   // Chain ID and Network ID are often the same but could be different https://chainid.network/chains_mini.json
   deployedData = {

@@ -9,7 +9,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deployer, pauser } = await getNamedAccounts();
 
   // Overlays in tests are hardcoded with 0 ID so we need to use it for testing
-  let networkID: Number = 0;
+  let networkID: number = 0;
   if (!developmentChains.includes(network.name)) {
     networkID = network.config.chainId!;
   }
