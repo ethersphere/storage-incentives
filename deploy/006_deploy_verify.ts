@@ -4,10 +4,8 @@ import { networkConfig, developmentChains } from '../helper-hardhat-config';
 import verify from '../utils/verify';
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts, network } = hre;
-  const { deploy, execute, read, log, get } = deployments;
-
-  const { deployer, oracle, redistributor } = await getNamedAccounts();
+  const { deployments, network } = hre;
+  const { log, get } = deployments;
 
   // contract veryfing vars
   const token = await get('TestToken');
@@ -20,33 +18,27 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     log('Verifying...');
     await verify(postageStamp.address, argsStamp);
     log('----------------------------------------------------');
-  }
 
-  // Verify oracle
-  const priceOracle = await get('PriceOracle');
-  const argsOracle = [postageStamp.address];
+    // Verify oracle
+    const priceOracle = await get('PriceOracle');
+    const argsOracle = [postageStamp.address];
 
-  if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(priceOracle.address, argsOracle);
     log('----------------------------------------------------');
-  }
 
-  // Verify staking
-  const staking = await get('StakeRegistry');
-  const argStaking = [token.address, networkID];
+    // Verify staking
+    const staking = await get('StakeRegistry');
+    const argStaking = [token.address, networkID];
 
-  if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(staking.address, argStaking);
     log('----------------------------------------------------');
-  }
 
-  // Verify redistribution
-  const redistribution = await get('Redistribution');
-  const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
+    // Verify redistribution
+    const redistribution = await get('Redistribution');
+    const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
 
-  if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     log('Verifying...');
     await verify(redistribution.address, argRedistribution);
     log('----------------------------------------------------');
@@ -54,4 +46,4 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 };
 
 export default func;
-func.tags = ['all', 'etherscan', 'verify'];
+func.tags = ['all', 'verify'];
