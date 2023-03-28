@@ -13,7 +13,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const token = await get('TestToken');
   const postageStamp = await get('PostageStamp');
   const argsStamp = [token.address, 16];
-  const networkID = 0; //test network
+  const networkID = network.config.chainId!;
 
   // Verify postageStamp
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
