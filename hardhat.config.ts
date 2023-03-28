@@ -120,7 +120,7 @@ const config: HardhatUserConfig = {
     localhost: {
       url: 'http://localhost:8545',
       accounts,
-      chainId: 1,
+      chainId: 31337,
     },
     testnet: {
       url: 'https://goerli.infura.io/v3/' + infuraToken,
