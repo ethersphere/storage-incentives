@@ -123,12 +123,12 @@ const config: HardhatUserConfig = {
     },
     testnet: {
       url: 'https://goerli.infura.io/v3/' + infuraToken,
-      accounts: ["we need to add private keys here"],
+      accounts: [], // we need to add private keys here
       chainId: 5,
     },
     mainnet: {
       url: 'https://rpc.gnosischain.com',
-      accounts: ["we need to add private keys here"],
+      accounts: [], // we need to add private keys here
       chainId: 100,
     },
   },
