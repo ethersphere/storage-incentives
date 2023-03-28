@@ -6,18 +6,20 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, execute, read, log } = deployments;
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
+  const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
+
   // Skip this one for mainent and testnet
   const token = await deploy('TestToken', {
     from: deployer,
-    args: [],
+    args: argsToken,
     log: true,
   });
 
-  const args = [token.address, 16];
+  const argsStamp = [token.address, 16];
 
   await deploy('PostageStamp', {
     from: deployer,
-    args: args,
+    args: argsStamp,
     log: true,
     // we need to wait if on a live network so we can verify properly
     waitConfirmations: networkConfig[network.name].blockConfirmations || 1,
