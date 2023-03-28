@@ -1,19 +1,28 @@
 import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains } from '../helper-hardhat-config';
+import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, execute, read, log } = deployments;
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
-  const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
+  let token;
+  if (developmentChains.includes(network.name)) {
+    const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
 
-  // Skip this one for mainent and testnet
-  const token = await deploy('TestToken', {
-    from: deployer,
-    args: argsToken,
-    log: true,
-  });
+    token = await deploy('TestToken', {
+      from: deployer,
+      args: argsToken,
+      log: true,
+    });
+  }
+  if (network.name == 'testnet') {
+    token = await ethers.getContractAt('Token', deployedBzzData[network.name].address);
+  }
+
+  if (network.name == 'mainnet') {
+    token = await ethers.getContractAt('TokenProxy', deployedBzzData[network.name].address);
+  }
 
   const argsStamp = [token.address, 16];
 
