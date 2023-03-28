@@ -119,17 +119,16 @@ const config: HardhatUserConfig = {
     },
     localhost: {
       url: 'http://localhost:8545',
-      accounts,
       chainId: 31337,
     },
     testnet: {
       url: 'https://goerli.infura.io/v3/' + infuraToken,
-      accounts,
+      accounts: ["we need to add private keys here"],
       chainId: 5,
     },
     mainnet: {
       url: 'https://rpc.gnosischain.com',
-      accounts,
+      accounts: ["we need to add private keys here"],
       chainId: 100,
     },
   },
@@ -144,7 +143,7 @@ const config: HardhatUserConfig = {
         chainId: 5,
         urls: {
           apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/address/',
+          browserURL: 'https://goerli.etherscan.io/',
         },
       },
       {
@@ -152,7 +151,7 @@ const config: HardhatUserConfig = {
         chainId: 100,
         urls: {
           apiURL: 'https://gnosisscan.io/apis',
-          browserURL: 'https://gnosisscan.io/address/',
+          browserURL: 'https://gnosisscan.io/',
         },
       },
     ],
