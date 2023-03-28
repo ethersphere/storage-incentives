@@ -23,9 +23,8 @@ interface DeployedData {
   };
 }
 
-const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts, network } = hre;
-  const { deploy, execute, get, read, log } = deployments;
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+  const { get, log } = deployments;
 
   // Chain ID and Network ID are often the same but could be different https://chainid.network/chains_mini.json
   const deployedData = {

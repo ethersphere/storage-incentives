@@ -3,8 +3,7 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig, developmentChains } from '../helper-hardhat-config';
 import verify from '../utils/verify';
 
-const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, network } = hre;
+const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
   // contract veryfing vars

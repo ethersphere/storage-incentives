@@ -1,10 +1,8 @@
 import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig, developmentChains } from '../helper-hardhat-config';
-import verify from '../utils/verify';
 
-const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts, network } = hre;
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
   const { deploy, get, read, execute, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
