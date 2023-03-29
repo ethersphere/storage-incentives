@@ -41,10 +41,7 @@ contract PostageStamp is AccessControl, Pausable {
         bool immutableFlag
     );
 
-    event PotWithdrawn(
-        address recipient,
-        uint256 totalAmount
-    );
+    event PotWithdrawn(address recipient, uint256 totalAmount);
 
     /**
      * @dev Emitted when an existing batch is topped up.
@@ -102,8 +99,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     // Lottery pot at last update.
     uint256 public pot;
-    
-    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280 
+
+    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
     uint256 public minimumValidityBlocks = 17280;
 
     // Price from the last update.
@@ -143,11 +140,17 @@ contract PostageStamp is AccessControl, Pausable {
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
         // bucket depth should be non-zero and smaller than the depth
-        require(_bucketDepth != 0 && minimumBucketDepth <= _bucketDepth && _bucketDepth < _depth, "invalid bucket depth");
+        require(
+            _bucketDepth != 0 && minimumBucketDepth <= _bucketDepth && _bucketDepth < _depth,
+            "invalid bucket depth"
+        );
         // derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
-        require(_initialBalancePerChunk >= minimumInitialBalancePerChunk(), "insufficient initial balance for 24h minimum validity");
+        require(
+            _initialBalancePerChunk >= minimumInitialBalancePerChunk(),
+            "insufficient initial balance for 24h minimum validity"
+        );
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
@@ -237,7 +240,10 @@ contract PostageStamp is AccessControl, Pausable {
         require(batch.owner != address(0), "batch does not exist or has expired");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
         require(batch.depth > minimumBucketDepth, "batch too small to renew");
-        require(remainingBalance(_batchId) + (_topupAmountPerChunk) >= minimumInitialBalancePerChunk(), "insufficient topped up balance for 24h minimum validity");
+        require(
+            remainingBalance(_batchId) + (_topupAmountPerChunk) >= minimumInitialBalancePerChunk(),
+            "insufficient topped up balance for 24h minimum validity"
+        );
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _topupAmountPerChunk * (1 << batch.depth);
@@ -268,7 +274,10 @@ contract PostageStamp is AccessControl, Pausable {
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
-        require(newRemainingBalance >= minimumInitialBalancePerChunk(), "remaining balance after depth increase wouldn't meet 24h minimum validity");
+        require(
+            newRemainingBalance >= minimumInitialBalancePerChunk(),
+            "remaining balance after depth increase wouldn't meet 24h minimum validity"
+        );
         // expire batches up to current block before amending validChunkCount to include
         // the new chunks resultant of the depth increase
         expireLimited(type(uint256).max);
@@ -361,7 +370,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Return true if no batches exist
      */
-    function empty() public view returns (bool) {
+    function isBatchesTreeEmpty() public view returns (bool) {
         return tree.count() == 0;
     }
 
@@ -386,7 +395,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 leb = lastExpiryBalance;
         uint256 i;
         for (i = 0; i < limit; i++) {
-            if (empty()) {
+            if (isBatchesTreeEmpty()) {
                 lastExpiryBalance = currentTotalOutPayment();
                 break;
             }
@@ -405,7 +414,7 @@ contract PostageStamp is AccessControl, Pausable {
             // so we must remove the chunks this batch contributes to the global validChunkCount
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
-            require(validChunkCount >= batchSize , "insufficient valid chunk count");
+            require(validChunkCount >= batchSize, "insufficient valid chunk count");
             validChunkCount -= batchSize;
             // since the batch expired _during_ the period we must add
             // remaining normalised payout for this batch only
@@ -431,7 +440,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Indicates whether expired batches exist.
      */
     function expiredBatchesExist() public view returns (bool) {
-        if (empty()){
+        if (isBatchesTreeEmpty()) {
             return false;
         }
         return (remainingBalance(firstBatchId()) <= 0);
@@ -460,31 +469,27 @@ contract PostageStamp is AccessControl, Pausable {
         pot = 0;
     }
 
-
     function batchOwner(bytes32 _batchId) public view returns (address) {
         return batches[_batchId].owner;
     }
-    
+
     function batchDepth(bytes32 _batchId) public view returns (uint8) {
         return batches[_batchId].depth;
     }
-    
+
     function batchBucketDepth(bytes32 _batchId) public view returns (uint8) {
         return batches[_batchId].bucketDepth;
     }
-    
+
     function batchImmutableFlag(bytes32 _batchId) public view returns (bool) {
         return batches[_batchId].immutableFlag;
     }
-    
+
     function batchNormalisedBalance(bytes32 _batchId) public view returns (uint256) {
         return batches[_batchId].normalisedBalance;
     }
-    
+
     function batchLastUpdatedBlockNumber(bytes32 _batchId) public view returns (uint256) {
         return batches[_batchId].lastUpdatedBlockNumber;
     }
-    
-
-
 }
