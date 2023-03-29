@@ -7,15 +7,15 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
   let token;
-  if (developmentChains.includes(network.name)) {
-    const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
 
-    token = await deploy('TestToken', {
-      from: deployer,
-      args: argsToken,
-      log: true,
-    });
-  }
+  const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
+
+  token = await deploy('TestToken', {
+    from: deployer,
+    args: argsToken,
+    log: true,
+  });
+
   if (network.name == 'testnet') {
     token = await ethers.getContractAt('Token', deployedBzzData[network.name].address);
   }

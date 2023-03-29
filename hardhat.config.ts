@@ -122,8 +122,8 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     testnet: {
-      url: 'https://goerli.infura.io/v3/' + infuraToken,
-      accounts: [], // we need to add private keys here
+      url: 'https://goerli.blockpi.network/v1/rpc/public',
+      accounts: ['0x0d8f0a76e88539c4ceaa6ad01372cce44fb621b56b34b2cc614b4c77fb081f20'], // we need to add private keys here
       chainId: 5,
     },
     mainnet: {
