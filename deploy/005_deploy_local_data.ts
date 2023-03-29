@@ -1,6 +1,5 @@
-import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
+import { developmentChains, deployedBzzData } from '../helper-hardhat-config';
 import * as fs from 'fs';
 
 interface DeployedContract {
