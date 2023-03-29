@@ -9,5 +9,12 @@ contract TestToken is ERC20PresetMinterPauser {
     constructor(string memory name, string memory symbol, uint256 initialSupply) ERC20PresetMinterPauser(name, symbol) {
         _initialSupply = initialSupply;
         _mint(msg.sender, initialSupply);
+        // TODO Setup additional roles for multisig?
+        // _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+    }
+
+    // We use 16 decimals for BZZ/gBzz token so we need to override it here
+    function decimals() public view virtual override returns (uint8) {
+        return 16;
     }
 }
