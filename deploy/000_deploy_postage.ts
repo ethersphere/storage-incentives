@@ -17,6 +17,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       log: true,
     });
   }
+
   if (network.name == 'testnet') {
     token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
   }

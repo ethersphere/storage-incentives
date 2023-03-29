@@ -365,12 +365,12 @@ describe('PostageStamp', function () {
         expect(stamp[2]).to.equal(batch.bucketDepth);
         expect(stamp[3]).to.equal(batch.immutable);
         expect(stamp[4]).to.equal(expectedNormalisedBalance);
-        expect(await postageStampStamper.empty()).equal(false);
+        expect(await postageStampStamper.isBatchesTreeEmpty()).equal(false);
 
         mineNBlocks(10);
         await postageStampStamper.expireLimited(maxInt256);
 
-        expect(await postageStampStamper.empty()).equal(true);
+        expect(await postageStampStamper.isBatchesTreeEmpty()).equal(true);
       });
 
       it('should not allow batch creation when paused', async function () {
@@ -1345,7 +1345,7 @@ describe('PostageStamp', function () {
         expect(stamp[2]).to.equal(batch.bucketDepth);
         expect(stamp[3]).to.equal(batch.immutable);
         expect(stamp[4]).to.equal(batch.initialPaymentPerChunk);
-        const isEmpty = await postageStampStamper.empty();
+        const isEmpty = await postageStampStamper.isBatchesTreeEmpty();
         expect(isEmpty).equal(false);
       });
 
