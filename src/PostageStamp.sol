@@ -370,7 +370,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Return true if no batches exist
      */
-    function empty() public view returns (bool) {
+    function isBatchesTreeEmpty() public view returns (bool) {
         return tree.count() == 0;
     }
 
@@ -395,7 +395,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 leb = lastExpiryBalance;
         uint256 i;
         for (i = 0; i < limit; i++) {
-            if (empty()) {
+            if (isBatchesTreeEmpty()) {
                 lastExpiryBalance = currentTotalOutPayment();
                 break;
             }
@@ -440,7 +440,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Indicates whether expired batches exist.
      */
     function expiredBatchesExist() public view returns (bool) {
-        if (empty()) {
+        if (isBatchesTreeEmpty()) {
             return false;
         }
         return (remainingBalance(firstBatchId()) <= 0);

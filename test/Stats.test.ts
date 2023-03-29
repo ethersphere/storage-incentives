@@ -1,5 +1,5 @@
 import { expect } from './util/chai';
-import { ethers, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
+import { ethers, getNamedAccounts, getUnnamedAccounts, deployments } from 'hardhat';
 import { mineNBlocks, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
 
 const phaseLength = 38;
@@ -118,6 +118,9 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 }
 
 describe('Stats', async function () {
+  beforeEach(async function () {
+    await deployments.fixture();
+  });
   describe('two player game', async function () {
     const trials = 150;
 
