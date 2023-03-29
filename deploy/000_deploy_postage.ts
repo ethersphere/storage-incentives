@@ -8,20 +8,21 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   let token;
 
-  const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
+  if (developmentChains.includes(network.name)) {
+    const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
 
-  token = await deploy('TestToken', {
-    from: deployer,
-    args: argsToken,
-    log: true,
-  });
-
+    token = await deploy('TestToken', {
+      from: deployer,
+      args: argsToken,
+      log: true,
+    });
+  }
   if (network.name == 'testnet') {
-    token = await ethers.getContractAt('Token', deployedBzzData[network.name].address);
+    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
   }
 
   if (network.name == 'mainnet') {
-    token = await ethers.getContractAt('TokenProxy', deployedBzzData[network.name].address);
+    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
   }
 
   const argsStamp = [token.address, 16];
