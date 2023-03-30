@@ -1,10 +1,14 @@
 import 'dotenv/config';
-import { ConfigExtender, HardhatUserConfig } from 'hardhat/types';
+import { HardhatUserConfig } from 'hardhat/types';
 import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
+
+// Set Private RPCs if added, otherwise use Public that are hardcoded in this config
+const PRIVATE_RPC_MAINNET = process.env.PRIVATE_RPC_MAINNET === undefined ? 'undefined' : process.env.PRIVATE_RPC_MAINNET;
+const PRIVATE_RPC_TESTNET = process.env.PRIVATE_RPC_TESTNET === undefined ? 'undefined' : process.env.PRIVATE_RPC_TESTNET;
 
 const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : process.env.WALLET_SECRET;
 if (walletSecret === 'undefined') {
@@ -117,20 +121,20 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     testnet: {
-      url: 'https://goerli.blockpi.network/v1/rpc/public',
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.blockpi.network/v1/rpc/public',
       accounts,
       chainId: 5,
     },
     mainnet: {
-      url: 'https://rpc.gnosischain.com',
+      url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
       accounts,
       chainId: 100,
     },
   },
   etherscan: {
     apiKey: {
-      mainnet: mainnetEtherscanKey!,
-      testnet: testnetEtherscanKey!,
+      mainnet: mainnetEtherscanKey ? mainnetEtherscanKey : '',
+      testnet: testnetEtherscanKey ? testnetEtherscanKey : '',
     },
     customChains: [
       {

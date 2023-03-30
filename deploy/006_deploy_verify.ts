@@ -7,7 +7,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
   // contract veryfing vars
   const token = await get('TestToken');
-  const networkID = network.config.chainId!;
+  const networkID = network.config.chainId as number;
 
   if (!developmentChains.includes(network.name) && process.env.MAINNET_ETHERSCAN_KEY) {
     // Verify postageStamp
