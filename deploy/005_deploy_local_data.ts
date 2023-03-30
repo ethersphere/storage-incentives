@@ -22,7 +22,7 @@ interface DeployedData {
   };
 }
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+const func: DeployFunction = async function ({ deployments, network }) {
   const { get, log } = deployments;
 
   // Chain ID and Network ID are often the same but could be different https://chainid.network/chains_mini.json
