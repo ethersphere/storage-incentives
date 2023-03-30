@@ -11,6 +11,7 @@ export interface networkConfigInfo {
 export const networkConfig: networkConfigInfo = {
   localhost: {},
   hardhat: {},
+  sepolia: {},
   testnet: {
     blockConfirmations: 6,
   },

@@ -123,8 +123,13 @@ const config: HardhatUserConfig = {
     },
     testnet: {
       url: 'https://goerli.blockpi.network/v1/rpc/public',
-      accounts: ['0x0d8f0a76e88539c4ceaa6ad01372cce44fb621b56b34b2cc614b4c77fb081f20'], // we need to add private keys here
+      accounts: accounts, // we need to add private keys here
       chainId: 5,
+    },
+    sepolia: {
+      url: `https://rpc2.sepolia.org`,
+      accounts: accounts, // we need to add private keys here
+      chainId: 11155111,
     },
     mainnet: {
       url: 'https://rpc.gnosischain.com',
@@ -136,6 +141,7 @@ const config: HardhatUserConfig = {
     apiKey: {
       mainnet: mainnetEtherscanKey!,
       testnet: testnetEtherscanKey!,
+      sepolia: testnetEtherscanKey,
     },
     customChains: [
       {
