@@ -690,7 +690,9 @@ describe('PostageStamp', function () {
       });
 
       it('should not top up with insufficient funds', async function () {
-        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk + 1)).to.be.revertedWith(errors.erc20.exceedsBalance);
+        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk + 1)).to.be.revertedWith(
+          errors.erc20.exceedsBalance
+        );
       });
 
       it('should not top up expired batches', async function () {
