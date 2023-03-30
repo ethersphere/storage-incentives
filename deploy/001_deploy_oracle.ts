@@ -10,7 +10,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     from: deployer,
     args: args,
     log: true,
-    waitConfirmations: networkConfig[network.name].blockConfirmations || 1,
+    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
 
   const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');

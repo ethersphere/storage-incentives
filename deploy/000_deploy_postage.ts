@@ -5,7 +5,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, execute, read, log } = deployments;
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
-  // Skip this one for mainent and testnet
+  // TODO Skip this one for mainent and testnet
   const token = await deploy('TestToken', {
     from: deployer,
     args: [],
@@ -18,7 +18,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     from: deployer,
     args: args,
     log: true,
-    waitConfirmations: networkConfig[network.name].blockConfirmations || 1,
+    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
 
   const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
