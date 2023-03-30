@@ -7,8 +7,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   // Overlays in tests are hardcoded with 0 ID so we need to use it for testing
   let networkID = 0;
-  if (!developmentChains.includes(network.name)) {
-    networkID = network.config.chainId!;
+  if (!developmentChains.includes(network.name) && network.config.chainId) {
+    networkID = network.config.chainId;
   }
 
   const args = [(await get('TestToken')).address, networkID];
