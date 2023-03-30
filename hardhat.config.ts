@@ -6,11 +6,6 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
-export const infuraToken = process.env.INFURA_TOKEN ? 'undefined' : process.env.INFURA_TOKEN;
-if (infuraToken === 'undefined') {
-  console.log('Please set your INFURA_TOKEN in a .env file');
-}
-
 const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : process.env.WALLET_SECRET;
 if (walletSecret === 'undefined') {
   console.log('Please set your WALLET_SECRET in a .env file');
