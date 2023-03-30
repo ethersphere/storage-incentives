@@ -63,38 +63,45 @@ const func: DeployFunction = async function ({ deployments, network }) {
   } else {
     // Token data for dev chains
     deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
-    deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode!;
+    deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
     deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
-    deployedData['contracts']['bzzToken']['block'] = tokenContract.receipt!.blockNumber;
+    deployedData['contracts']['bzzToken']['block'] =
+      tokenContract.receipt && tokenContract.receipt.blockNumber !== undefined ? tokenContract.receipt.blockNumber : 0;
     deployedData['contracts']['bzzToken']['url'] = '';
   }
 
   // PostageStamp data
   deployedData['contracts']['postageStamp']['abi'] = stampsContract.abi;
-  deployedData['contracts']['postageStamp']['bytecode'] = stampsContract.bytecode!;
+  deployedData['contracts']['postageStamp']['bytecode'] = stampsContract.bytecode ? stampsContract.bytecode : '';
   deployedData['contracts']['postageStamp']['address'] = stampsContract.address;
-  deployedData['contracts']['postageStamp']['block'] = stampsContract.receipt!.blockNumber;
+  deployedData['contracts']['postageStamp']['block'] =
+    stampsContract.receipt && stampsContract.receipt.blockNumber !== undefined ? stampsContract.receipt.blockNumber : 0;
   deployedData['contracts']['postageStamp']['url'] = '';
 
   // Redistribution data
   deployedData['contracts']['redistribution']['abi'] = redisContract.abi;
-  deployedData['contracts']['redistribution']['bytecode'] = redisContract.bytecode!;
+  deployedData['contracts']['redistribution']['bytecode'] = redisContract.bytecode ? redisContract.bytecode : '';
   deployedData['contracts']['redistribution']['address'] = redisContract.address;
-  deployedData['contracts']['redistribution']['block'] = redisContract.receipt!.blockNumber;
+  deployedData['contracts']['redistribution']['block'] =
+    redisContract.receipt && redisContract.receipt.blockNumber !== undefined ? redisContract.receipt.blockNumber : 0;
   deployedData['contracts']['redistribution']['url'] = '';
 
   // Staking data
   deployedData['contracts']['staking']['abi'] = stakingContract.abi;
-  deployedData['contracts']['staking']['bytecode'] = stakingContract.bytecode!;
+  deployedData['contracts']['staking']['bytecode'] = stakingContract.bytecode ? stakingContract.bytecode : '';
   deployedData['contracts']['staking']['address'] = stakingContract.address;
-  deployedData['contracts']['staking']['block'] = stakingContract.receipt!.blockNumber;
+  deployedData['contracts']['staking']['block'] =
+    stakingContract.receipt && stakingContract.receipt.blockNumber !== undefined
+      ? stakingContract.receipt.blockNumber
+      : 0;
   deployedData['contracts']['staking']['url'] = '';
 
   // Oracle data
   deployedData['contracts']['priceOracle']['abi'] = oracleContract.abi;
-  deployedData['contracts']['priceOracle']['bytecode'] = oracleContract.bytecode!;
+  deployedData['contracts']['priceOracle']['bytecode'] = oracleContract.bytecode ? oracleContract.bytecode : '';
   deployedData['contracts']['priceOracle']['address'] = oracleContract.address;
-  deployedData['contracts']['priceOracle']['block'] = oracleContract.receipt!.blockNumber;
+  deployedData['contracts']['priceOracle']['block'] =
+    oracleContract.receipt && oracleContract.receipt.blockNumber !== undefined ? oracleContract.receipt.blockNumber : 0;
   deployedData['contracts']['priceOracle']['url'] = '';
 
   await writeResult(deployedData);
