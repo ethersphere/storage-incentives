@@ -147,7 +147,7 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
           chainId: 1337,
     },
     ```
-  - To run: `hardhat deploy --netowrk ganache`
+  - To run: `hardhat deploy --network ganache`
 
 #### Additional commands and flags:
 
