@@ -121,14 +121,16 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
 
 ##### Steps
 
-1. Run `hardhat compile` to get all the contracts compiled.
-2. Run `hardhat test` to run all the tests.
+1. Run `yarn hardhat compile` to get all the contracts compiled.
+2. Run `yarn hardhat test` to run all the tests.
 3. Configure `.env` file
    - Set your `WALLET_SECRET` in the `.env` file.
    - Set your `INFURA_TOKEN` in the `.env` file.
 4. To deploy all contracts and set roles:
-   - Mainnet: `hardhat deploy --network mainnet`
-   - Testnet: `hardhat deploy --network testnet`
+   - Mainnet: `yarn hardhat deploy --network mainnet`
+   - Testnet: `yarn hardhat deploy --network testnet`
+
+**Note** can also use npx instead of yarn, so it would be 'yarn hardhat compile'. For fastest typing you can install https://hardhat.org/hardhat-runner/docs/guides/command-line-completion and then just run 'hh compile' 'hh test'
 
 **Note:** If using Goerli as tesnet be aware that GAS prices are very high and maybe you will should add custom gasPrice that is very high if you want to get your picked up fast, set it in hardhat.config.ts or as options when deploying
 
