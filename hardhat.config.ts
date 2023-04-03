@@ -125,6 +125,11 @@ const config: HardhatUserConfig = {
       accounts,
       chainId: 5,
     },
+    sepolia: {
+      url: `https://rpc2.sepolia.org`,
+      accounts,
+      chainId: 11155111,
+    },
     mainnet: {
       url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
       accounts,
@@ -135,6 +140,7 @@ const config: HardhatUserConfig = {
     apiKey: {
       mainnet: mainnetEtherscanKey ? mainnetEtherscanKey : '',
       testnet: testnetEtherscanKey ? testnetEtherscanKey : '',
+      sepolia: testnetEtherscanKey ? testnetEtherscanKey : '',
     },
     customChains: [
       {
