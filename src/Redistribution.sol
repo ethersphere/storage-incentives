@@ -590,8 +590,6 @@ contract Redistribution is AccessControl, Pausable {
         ChunkInclusionProof calldata entryProof2,
         ChunkInclusionProof calldata entryProofLast
     ) external whenNotPaused {
-
-
         winner = winnerSelection();
 
         // rand(14)
@@ -622,8 +620,6 @@ contract Redistribution is AccessControl, Pausable {
         emit WinnerSelected(winner);
 
         PostageContract.withdraw(winner.owner);
-
-
     }
 
     function winnerSelection() internal returns (Reveal memory winner_) {
