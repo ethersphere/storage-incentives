@@ -381,7 +381,10 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 cr = currentRound();
 
+        // Check status of commit phase
         require(cr == currentCommitRound, "round received no commits");
+
+        // Setup state for new reveal round on first reveal
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
@@ -399,7 +402,7 @@ contract Redistribution is AccessControl, Pausable {
                     inProximity(currentCommits[i].overlay, currentRevealRoundAnchor, _depth),
                     "anchor out of self reported depth"
                 );
-                //check can only revealed once
+                // Check if overlay tried to reveal more then once
                 require(currentCommits[i].revealed == false, "participant already revealed");
                 currentCommits[i].revealed = true;
                 currentCommits[i].revealIndex = currentReveals.length;
