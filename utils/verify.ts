@@ -1,6 +1,6 @@
 import { run } from 'hardhat';
 
-const verify = async (contractAddress: string, args: any[]) => {
+const verify = async (contractAddress: string, args: unknown[]): Promise<void> => {
   // eslint-disable-line @typescript-eslint/no-explicit-any
   console.log('Verifying contract...');
   try {
@@ -8,11 +8,13 @@ const verify = async (contractAddress: string, args: any[]) => {
       address: contractAddress,
       constructorArguments: args,
     });
-  } catch (e: any) {
-    if (e.message.toLowerCase().includes('already verified')) {
-      console.log('Already verified!');
-    } else {
-      console.log(e);
+  } catch (e: unknown) {
+    if (e instanceof Error) {
+      if (e.message.toLowerCase().includes('already verified')) {
+        console.log('Already verified!');
+      } else {
+        console.log(e);
+      }
     }
   }
 };
