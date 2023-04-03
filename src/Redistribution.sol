@@ -12,6 +12,10 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 
 interface IPostageStamp {
     function withdraw(address beneficiary) external;
+
+    function validChunkCount() external view returns (uint256);
+
+    function pot() external view returns (uint256);
 }
 
 interface IPriceOracle {
@@ -175,6 +179,11 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Logs that an overlay has committed
      */
     event Committed(uint256 roundNumber, bytes32 overlay);
+
+    /**
+     * @dev Postagestamp contract current status of important values
+     */
+    event PostageStampStatus(uint256 validChunkCount, uint256 pot);
 
     /**
      * @dev Logs that an overlay has revealed
@@ -639,15 +648,16 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
+        // Apply Important state changes
+        PostageContract.withdraw(winner.owner);
+        OracleContract.adjustPrice(uint256(k));
+        currentClaimRound = cr;
+
         // Emit function Events
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit WinnerSelected(winner, cr);
-
-        // Apply Important state changes
-        PostageContract.withdraw(winner.owner);
-        OracleContract.adjustPrice(uint256(k));
-        currentClaimRound = cr;
+        emit PostageStampStatus(PostageContract.validChunkCount(), PostageContract.pot());
     }
 }
