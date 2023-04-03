@@ -46,7 +46,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     }
 
     fs.writeFileSync(fileName, JSON.stringify(deployedData, null, '\t'));
-    return log('Data saved to ' + fileName);
+    log('Data saved to ' + fileName);
   }
 
   const tokenContract = await get('TestToken');
@@ -66,7 +66,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
     deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
     deployedData['contracts']['bzzToken']['block'] =
-      tokenContract.receipt && tokenContract.receipt.blockNumber !== undefined ? tokenContract.receipt.blockNumber : 0;
+      tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 0;
     deployedData['contracts']['bzzToken']['url'] = '';
   }
 
@@ -75,7 +75,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
   deployedData['contracts']['postageStamp']['bytecode'] = stampsContract.bytecode ? stampsContract.bytecode : '';
   deployedData['contracts']['postageStamp']['address'] = stampsContract.address;
   deployedData['contracts']['postageStamp']['block'] =
-    stampsContract.receipt && stampsContract.receipt.blockNumber !== undefined ? stampsContract.receipt.blockNumber : 0;
+    stampsContract.receipt && stampsContract.receipt.blockNumber ? stampsContract.receipt.blockNumber : 0;
   deployedData['contracts']['postageStamp']['url'] = '';
 
   // Redistribution data
@@ -83,7 +83,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
   deployedData['contracts']['redistribution']['bytecode'] = redisContract.bytecode ? redisContract.bytecode : '';
   deployedData['contracts']['redistribution']['address'] = redisContract.address;
   deployedData['contracts']['redistribution']['block'] =
-    redisContract.receipt && redisContract.receipt.blockNumber !== undefined ? redisContract.receipt.blockNumber : 0;
+    redisContract.receipt && redisContract.receipt.blockNumber ? redisContract.receipt.blockNumber : 0;
   deployedData['contracts']['redistribution']['url'] = '';
 
   // Staking data
@@ -91,7 +91,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
   deployedData['contracts']['staking']['bytecode'] = stakingContract.bytecode ? stakingContract.bytecode : '';
   deployedData['contracts']['staking']['address'] = stakingContract.address;
   deployedData['contracts']['staking']['block'] =
-    stakingContract.receipt && stakingContract.receipt.blockNumber !== undefined
+    stakingContract.receipt && stakingContract.receipt.blockNumber
       ? stakingContract.receipt.blockNumber
       : 0;
   deployedData['contracts']['staking']['url'] = '';
@@ -101,7 +101,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
   deployedData['contracts']['priceOracle']['bytecode'] = oracleContract.bytecode ? oracleContract.bytecode : '';
   deployedData['contracts']['priceOracle']['address'] = oracleContract.address;
   deployedData['contracts']['priceOracle']['block'] =
-    oracleContract.receipt && oracleContract.receipt.blockNumber !== undefined ? oracleContract.receipt.blockNumber : 0;
+    oracleContract.receipt && oracleContract.receipt.blockNumber ? oracleContract.receipt.blockNumber : 0;
   deployedData['contracts']['priceOracle']['url'] = '';
 
   await writeResult(deployedData);
