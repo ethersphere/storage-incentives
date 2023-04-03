@@ -1,22 +1,32 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig } from '../helper-hardhat-config';
+import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, execute, read, log } = deployments;
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
-  // TODO Skip this one for mainent and testnet
-  const token = await deploy('TestToken', {
-    from: deployer,
-    args: [],
-    log: true,
-  });
+  let token;
+  if (developmentChains.includes(network.name)) {
+    token = await deploy('TestToken', {
+      from: deployer,
+      args: [],
+      log: true,
+    });
+  }
 
-  const args = [token.address, 16];
+  if (network.name == 'testnet') {
+    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
+  }
+
+  if (network.name == 'mainnet') {
+    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
+  }
+
+  const argsStamp = [token.address, 16];
 
   await deploy('PostageStamp', {
     from: deployer,
-    args: args,
+    args: argsStamp,
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
