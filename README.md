@@ -106,8 +106,8 @@ To get started with this project, follow these steps:
 ### [Tests](./test)
 
 - Unit Tests
-  - Run `hardhat test` to run all the tests.
-  - Run `hardhat coverage` to see the coverage of smart contracts.
+  - Run `yarn hardhat test` to run all the tests.
+  - Run `yarn hardhat coverage` to see the coverage of smart contracts.
 
 ### Deployments
 
@@ -140,7 +140,7 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
 
 #### Local
 
-- Run `hardhat deploy` to deploy all contracts on hardhat environment(network).
+- Run `yarn hardhat deploy` to deploy all contracts on hardhat environment(network).
 - To deploy on Ganache (or other networks):
   - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
     ```
@@ -149,13 +149,13 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
           chainId: 1337,
     },
     ```
-  - To run: `hardhat deploy --network ganache`
+  - To run: `yarn hardhat deploy --network ganache`
 
 #### Additional commands and flags:
 
 - Make necessary changes to [hardhat.config.ts](./hardhat.config.ts).
   - List of available configs can be found [here](https://hardhat.org/hardhat-runner/docs/config).
-- Run script `hardhat run <script> --network <network>`
+- Run script `yarn hardhat run <script> --network <network>`
   - **Network**: Configure network name
   - **Script**: Configure script name and path
 
