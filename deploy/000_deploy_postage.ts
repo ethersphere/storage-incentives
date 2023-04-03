@@ -5,7 +5,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, execute, read, log } = deployments;
   const { deployer, oracle, redistributor } = await getNamedAccounts();
 
-  let token;
+  let token = null;
   if (developmentChains.includes(network.name)) {
     token = await deploy('TestToken', {
       from: deployer,
@@ -20,6 +20,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   if (network.name == 'mainnet') {
     token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
+  }
+
+  if (token == null) {
+    throw new Error(`Unsupported network: ${network.name}`);
   }
 
   const argsStamp = [token.address, 16];

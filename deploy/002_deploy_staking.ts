@@ -1,7 +1,7 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains } from '../helper-hardhat-config';
+import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, get, read, execute, log } = deployments;
   const { deployer, pauser } = await getNamedAccounts();
 
@@ -11,7 +11,24 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     networkID = network.config.chainId;
   }
 
-  const args = [(await get('TestToken')).address, networkID];
+  let token = null;
+  if (developmentChains.includes(network.name)) {
+    token = await get('TestToken');
+  }
+
+  if (network.name == 'testnet') {
+    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
+  }
+
+  if (network.name == 'mainnet') {
+    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
+  }
+
+  if (token == null) {
+    throw new Error(`Unsupported network: ${network.name}`);
+  }
+
+  const args = [token.address, networkID];
   await deploy('StakeRegistry', {
     from: deployer,
     args: args,
