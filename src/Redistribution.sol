@@ -153,7 +153,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Emitted when the winner of a round is selected in the claim phase.
      */
-    event WinnerSelected(Reveal winner);
+    event WinnerSelected(Reveal winner, uint256 roundNumber);
 
     /**
      * @dev Emitted when the truth oracle of a round is selected in the claim phase.
@@ -643,7 +643,7 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-        emit WinnerSelected(winner);
+        emit WinnerSelected(winner, cr);
 
         // Apply Important state changes
         PostageContract.withdraw(winner.owner);
