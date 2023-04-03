@@ -186,6 +186,11 @@ contract Redistribution is AccessControl, Pausable {
     event PostageStampStatus(uint256 validChunkCount, uint256 pot);
 
     /**
+     * @dev Bytes32 anhor of current reveal round
+     */
+    event CurrentRevealAnchor(uint256 roundNumber, bytes32 anchor);
+
+    /**
      * @dev Logs that an overlay has revealed
      */
     event Revealed(
@@ -384,12 +389,13 @@ contract Redistribution is AccessControl, Pausable {
         // Check status of commit phase
         require(cr == currentCommitRound, "round received no commits");
 
-        // Setup state for new reveal round on first reveal
+        // Set state for new reveal round on first reveal
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
             currentRevealRound = cr;
             updateRandomness();
+            emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
