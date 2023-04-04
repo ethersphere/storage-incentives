@@ -19,12 +19,20 @@ async function main() {
       '0x3e475aEAB162E28fee46E69225af446D3c4f3Bd3',
     ];
   }
+
+  // Deploy the contract
   const redisFactory = await ethers.getContractFactory('Redistribution');
   console.log('Deploying contract...');
   const redis = await redisFactory.deploy(...args);
   await redis.deployed();
   console.log(`Deployed contract to: ${redis.address}`);
   await redis.deployTransaction.wait(6);
+
+  // Change roles on current stamps contract
+  const postageStampContract = await ethers.getContractAt('PostageStamp', '0x30d155478eF27Ab32A1D578BE7b84BC5988aF381');
+  const getRole = await postageStampContract.REDISTRIBUTOR_ROLE();
+  const tx = await postageStampContract.grantRole(getRole, redis.address);
+  console.log('Transaction hash:', tx.hash);
 
   if (process.env.MAINNET_ETHERSCAN_KEY || process.env.TESTNET_ETHERSCAN_KEY) {
     console.log('Verifying...');
