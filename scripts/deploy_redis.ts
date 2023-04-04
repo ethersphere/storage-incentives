@@ -18,10 +18,8 @@ async function main() {
     console.log(`Deployed contract to: ${redis.address}`);
     await redis.deployTransaction.wait(6);
 
-    if (network.name == 'testnet' || network.name == 'sepolia') {
-      console.log('Verifying...');
-      await verify(redis.address, args);
-    }
+    console.log('Verifying...');
+    await verify(redis.address, args);
   }
 }
 
