@@ -138,9 +138,9 @@ const config: HardhatUserConfig = {
   },
   etherscan: {
     apiKey: {
-      mainnet: mainnetEtherscanKey ? mainnetEtherscanKey : '',
-      testnet: testnetEtherscanKey ? testnetEtherscanKey : '',
-      sepolia: testnetEtherscanKey ? testnetEtherscanKey : '',
+      mainnet: mainnetEtherscanKey || '',
+      testnet: testnetEtherscanKey || '',
+      sepolia: testnetEtherscanKey || '',
     },
     customChains: [
       {

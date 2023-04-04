@@ -128,7 +128,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @dev Emitted when the winner of a round is selected in the claim phase with current round number
+     * @dev Emitted when the winner of a round is selected in the claim phase
      */
     event WinnerSelected(Reveal winner);
 
@@ -153,9 +153,9 @@ contract Redistribution is AccessControl, Pausable {
      */
     event Committed(uint256 roundNumber, bytes32 overlay);
     /**
-     * @dev Postagestamp contract current status of important values
+     * @dev Emit from Postagestamp contract valid chunk count at the end of claim
      */
-    event PostageStampStatus(uint256 validChunkCount, uint256 pot);
+    event ChunkCount(uint256 validChunkCount);
 
     /**
      * @dev Bytes32 anhor of current reveal round
@@ -648,7 +648,7 @@ contract Redistribution is AccessControl, Pausable {
 
         PostageContract.withdraw(winner.owner);
 
-        emit PostageStampStatus(PostageContract.validChunkCount(), PostageContract.pot());
+        emit ChunkCount(PostageContract.validChunkCount());
 
         OracleContract.adjustPrice(uint256(k));
 
