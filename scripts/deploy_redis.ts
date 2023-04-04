@@ -30,9 +30,9 @@ async function main() {
 
   // Change roles on current stamps contract
   const postageStampContract = await ethers.getContractAt('PostageStamp', '0x30d155478eF27Ab32A1D578BE7b84BC5988aF381');
-  const getRole = await postageStampContract.REDISTRIBUTOR_ROLE();
-  const tx = await postageStampContract.grantRole(getRole, redis.address);
-  console.log('Transaction hash:', tx.hash);
+  const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
+  const tx = await postageStampContract.grantRole(redistributorRole, redis.address);
+  console.log('Changed REDISTRIBUTOR ROLE at : ', tx.hash);
 
   if (process.env.MAINNET_ETHERSCAN_KEY || process.env.TESTNET_ETHERSCAN_KEY) {
     console.log('Verifying...');
