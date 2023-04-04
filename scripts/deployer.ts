@@ -2,6 +2,7 @@ import 'hardhat-deploy-ethers';
 import * as fs from 'fs';
 import { ethers } from 'hardhat';
 import hre from 'hardhat';
+import { ENV_ORACLE_BEE_VERSION } from './utils';
 
 interface DeployedContract {
   abi: Array<unknown>;
@@ -31,6 +32,7 @@ interface ContractData {
     postageStamp: string;
     priceOracle: string;
     redistribution: string;
+    envOracle: string;
   };
   blocks: {
     bzzToken: number;
@@ -38,6 +40,7 @@ interface ContractData {
     postageStamp: number;
     priceOracle: number;
     redistribution: number;
+    envOracle: number;
   };
 }
 
@@ -103,6 +106,7 @@ async function main() {
       postageStamp: '',
       priceOracle: '',
       redistribution: '',
+      envOracle: '',
     },
     blocks: {
       bzzToken: 0,
@@ -110,6 +114,7 @@ async function main() {
       postageStamp: 0,
       priceOracle: 0,
       redistribution: 0,
+      envOracle: 0,
     },
   };
 
@@ -120,6 +125,7 @@ async function main() {
   contractData = await deployRedistribution(
     await deployPriceOracle(await deployPostageStamp(await deployStaking(contractData)))
   );
+  contractData = await deployEnvOracle(contractData, ENV_ORACLE_BEE_VERSION);
   await rolesSetter(contractData);
   await writeResult(config.deployedData, contractData);
 }
@@ -206,6 +212,28 @@ async function deployPostageStamp(contractData: ContractData) {
       contractData.addresses.postageStamp +
       ' with block number ' +
       contractData.blocks.postageStamp
+  );
+  return contractData;
+}
+
+async function deployEnvOracle(contractData: ContractData, minimumBeeVersion: string) {
+  console.log('\nDeploying Env Oracle contract to network ' + config.networkName + ' with chain id ' + config.chainId);
+
+  const EnvOracle = await ethers.getContractFactory('EnvOracle');
+  const envOracle = await EnvOracle.deploy(minimumBeeVersion);
+  console.log('tx hash:' + envOracle.deployTransaction.hash);
+  await envOracle.deployed();
+
+  const { provider } = hre.network;
+  const txReceipt = await provider.send('eth_getTransactionReceipt', [envOracle.deployTransaction.hash]);
+
+  contractData.blocks.envOracle = parseInt(txReceipt.blockNumber, 16);
+  contractData.addresses.envOracle = envOracle.address;
+  console.log(
+    'Deployed Env Oracle contract to address ' +
+      contractData.addresses.envOracle +
+      ' with block number ' +
+      contractData.blocks.envOracle
   );
   return contractData;
 }
