@@ -2,7 +2,7 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
-  const { deploy, get, read, execute, log } = deployments;
+  const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
   // Overlays in tests are hardcoded with 0 ID so we need to use it for testing

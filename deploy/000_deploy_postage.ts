@@ -2,8 +2,8 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
-  const { deploy, execute, read, log } = deployments;
-  const { deployer, oracle, redistributor } = await getNamedAccounts();
+  const { deploy, log } = deployments;
+  const { deployer } = await getNamedAccounts();
 
   let token = null;
   if (developmentChains.includes(network.name)) {
