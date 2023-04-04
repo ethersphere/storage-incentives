@@ -31,18 +31,21 @@ contract EnvOracle is AccessControl {
     bytes memory versionBytes = bytes(_minimumBeeVersion);
     uint256 bytelength = versionBytes.length;
     bool zeroStarted;
+    bool started;
 
     for (uint256 i = 0; i < bytelength; i++) {
       bytes1 b = versionBytes[i];
       if (b == dot) {
         dotCount += 1;
         zeroStarted = false;
+        started = false;
       } else {
         require(b >= 0x30 && b <= 0x39 && !zeroStarted, "Minimum Bee version should be in semver form");
-        if (b == 0x30) {
+        if (b == 0x30 && !started) {
           zeroStarted = true;
         }
       }
+      started = true;
     }
 
     require(dotCount == 2, "Minimum Bee version should be in semver form");

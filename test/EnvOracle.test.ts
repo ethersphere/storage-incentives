@@ -30,6 +30,7 @@ describe('EnvOracle', function () {
 
     await setterChecker('0.0.1');
     await setterChecker('99.999.9999');
+    await setterChecker('10.101.101');
   });
 
   it('should not change the version in a wrong format', async () => {
@@ -38,6 +39,7 @@ describe('EnvOracle', function () {
     };
 
     await revertedChecker('0.0.1.');
+    await revertedChecker('01.0.1');
     await revertedChecker('0.a.1');
     await revertedChecker('0.1');
     await revertedChecker('0.0.-1');
