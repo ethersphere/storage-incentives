@@ -130,7 +130,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Emitted when the winner of a round is selected in the claim phase with current round number
      */
-    event WinnerSelected(Reveal winner, uint256 roundNumber);
+    event WinnerSelected(Reveal winner);
 
     /**
      * @dev Emitted when the truth oracle of a round is selected in the claim phase.
@@ -644,7 +644,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        emit WinnerSelected(winner, cr);
+        emit WinnerSelected(winner);
 
         PostageContract.withdraw(winner.owner);
 

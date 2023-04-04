@@ -4,7 +4,8 @@ import verify from '../utils/verify';
 
 async function main() {
   if (network.name == 'testnet' || network.name == 'sepolia') {
-    // Staking, Stamps, Oracle
+    // Staking, Stamps, Oracle args
+    // TODO add admin roles to constructor so I can deploy from any account and set to current admin
     const args = [
       '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac',
       '0x1f87FEDa43e6ABFe1058E96A07d0ea182e7dc9BD',
