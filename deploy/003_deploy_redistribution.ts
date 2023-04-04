@@ -17,38 +17,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
 
-  const redistributorRoleStakeRegistry = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
-  await execute(
-    'StakeRegistry',
-    { from: deployer },
-    'grantRole',
-    redistributorRoleStakeRegistry,
-    (
-      await get('Redistribution')
-    ).address
-  );
-
-  const redistributorRolePostageStamp = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
-  await execute(
-    'PostageStamp',
-    { from: deployer },
-    'grantRole',
-    redistributorRolePostageStamp,
-    (
-      await get('Redistribution')
-    ).address
-  );
-
-  const priceUpdaterRoleOracle = await read('PriceOracle', 'PRICE_UPDATER_ROLE');
-  await execute(
-    'PriceOracle',
-    { from: deployer },
-    'grantRole',
-    priceUpdaterRoleOracle,
-    (
-      await get('Redistribution')
-    ).address
-  );
   log('----------------------------------------------------');
 };
 

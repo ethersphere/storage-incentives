@@ -3,7 +3,7 @@ import { networkConfig, developmentChains, deployedBzzData } from '../helper-har
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, get, read, execute, log } = deployments;
-  const { deployer, pauser } = await getNamedAccounts();
+  const { deployer } = await getNamedAccounts();
 
   // Overlays in tests are hardcoded with 0 ID so we need to use it for testing
   let networkID = 0;
@@ -32,8 +32,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
 
-  const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
-  await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
   log('----------------------------------------------------');
 };
 

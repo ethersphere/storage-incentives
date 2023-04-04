@@ -31,12 +31,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
 
-  const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
-  await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
-
-  const redistributorRole = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
-  await execute('PostageStamp', { from: deployer }, 'grantRole', redistributorRole, redistributor);
-
   log('----------------------------------------------------');
 };
 
