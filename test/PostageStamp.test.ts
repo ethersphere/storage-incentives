@@ -3,6 +3,7 @@ import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardh
 import { Contract } from 'ethers';
 import { zeroAddress, mineNBlocks, computeBatchId, mintAndApprove, getBlockNumber } from './util/tools';
 
+const { read, execute } = deployments;
 interface Batch {
   id?: string;
   nonce: string;
@@ -52,6 +53,8 @@ describe('PostageStamp', function () {
   describe('when deploying contract', function () {
     beforeEach(async function () {
       await deployments.fixture();
+      const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+      await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
     });
 
     it('should have minimum bucket depth set to 16', async function () {
@@ -94,6 +97,8 @@ describe('PostageStamp', function () {
       await deployments.fixture();
       const postageStamp = await ethers.getContract('PostageStamp', deployer);
       await postageStamp.setMinimumValidityBlocks(0);
+      const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+      await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
     });
 
     describe('when creating a batch', function () {
