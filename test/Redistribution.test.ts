@@ -60,12 +60,12 @@ let node_4: string;
 const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb02efb';
 const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_4 = '0x06';
-// FDP Play node keys - claim data 
+// FDP Play node keys - claim data
 // queen node
 let node_5: string;
-const overlay_5 = '0x676790fcae312292ffc17b7f7c84d5b9acc51ef0ea3f27d0ff3bada3362abc5d';
+const overlay_5 = '0x676720d79d609ed462fadf6f14eb1bf9ec1a90999dd45a671d79a89c7b5ac9d8';
 const stakeAmount_5 = '100000000000000000';
-const nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003ba6';
 const depth_5 = '0x02';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -223,7 +223,7 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
       await sr_node_4.depositStake(node_4, nonce_4, stakeAmount_3);
 
-      const sr_node_5 = (await ethers.getContract('StakeRegistry', node_5));
+      const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
       await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
 
@@ -600,151 +600,151 @@ describe('Redistribution', function () {
       describe('single player', async function () {
         it('should claim pot', async function () {
           expect(await redistribution.currentPhaseCommit()).to.be.true;
-          const r_node_2 = await ethers.getContract('Redistribution', node_2);
-          const sanityHash = '0x595c4d3b144b02d312f016ca3bc5455278e144b3fbd95317d5a8af21f78f249c';
+          const r_node_5 = await ethers.getContract('Redistribution', node_5);
+          const sanityHash = '0x68f0edd3c3dc674236c7a27ee5c06fdc65b18ec9a532e21a15393d77d3aa24aa';
           const sanityDepth = '0x00'; //TODO with depth 2 (sampling with the correct overlay)
 
-          const obsfucatedHash = encodeAndHash(overlay_2, sanityDepth, sanityHash, reveal_nonce_2);
+          const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
-          const currentRound = await r_node_2.currentRound();
+          const currentRound = await r_node_5.currentRound();
           const currentSeed = await redistribution.currentSeed();
           console.log('Anchor', currentSeed);
-          await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
+          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
 
-          expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
           await mineNBlocks(phaseLength);
 
-          await r_node_2.reveal(overlay_2, sanityDepth, sanityHash, reveal_nonce_2);
+          await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_2);
 
           const currentSeeed = await redistribution.currentSeed();
           console.log('Anchor2', currentSeeed);
 
-          expect((await r_node_2.currentReveals(0)).hash).to.be.eq(sanityHash);
-          expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
-          expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
-          expect((await r_node_2.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
-          expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
+          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
+          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
+          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
 
           await mineNBlocks(phaseLength);
           const proof1 = {
             proofSegments: [
-              '0x0008977eb8e7d936515729797269287e5fe2953c2c092e8286f4cf8b6162f324',
-              '0x90a2ae4a0a0c576b79c70843255732b5478b15c2df09074348ba73bd4c633446',
-              '0x559481379882da6ec53e19f85cb33b0379b87e4ca06e550816e25f9f73327500',
-              '0xc4afbb31b6b7421d31b902b87580f9bf611cac9648221b348f90763dfd9056f0',
-              '0x8cc036d1fc363fca716fd24a6e2edecd938b3aa713178159a21078c555dd8b98',
+              '0x000046fa2570ad9d3e29fc7174f2b2dee13febc77d28a11a5339a32c0507ec4d',
+              '0xa897b7e490aa0825b4d950415b1d200a237af2e41f5d951e68830a9a8243a4c5',
+              '0xeaaddfb6b5e2b7b0d1e026816824cee29964153fdff5f0beba9b07fb9bb47547',
+              '0x0927f60771ca65552e75d8f79d75c60d5b5ce10d341519e0df120eb63ee22d0f',
+              '0x00c80922a147fe02dfae9d0f479668b77f0f65d87f18b901f38a62b531054117',
               '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
               '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
             ],
-            proveSegment: '0x59ff9d39c4f79d52cf359b4aa692f4e38f5fae73fd3a27a853a5bde840824b4f',
+            proveSegment: '0x506208613c9f517152251de468b48892f279c8d39a7112d0494de9f6281f5cfd',
             proofSegments2: [
-              '0xeaf0c20e66431318588b0124df474939c03147abcd431914c669048c7232a056',
-              '0xece3c06a6be2d9a8e587eeed991d7090251fcaf5eb791a3f78e6de801096be67',
-              '0x8f683767e1c3d1efffaf87bdeda9e23ac93f9774b092b59905b00192c7ef5ef1',
-              '0x9456d8307cc2c0bb3167b19c4a28d920401f2d03f7756435e0f1f422aa338c7e',
-              '0x31e639d24eca596babd877ccfc16b251da5134a8f690c780e41ef00f98a2a54c',
-              '0x6215605de002abc412f01a61b23205f7f92d8048e6cb1d22573f5bfd73e723a4',
-              '0xb06881c47e1988f2073da4058dbcf2a865b82b62e36362aca5e0b333374776fd',
+              '0x315bf9838e71d8210240c23c2159ecb4a52a133b663f93fc8012a079c7283798',
+              '0x914c28674d542979dbe19ce49dd78a40d5826fb7d0fd44139d5b3f39436c6209',
+              '0x0c86a4bd6293c08351deefb62612e28cdf563ed82944929d041f70d638b1e62d',
+              '0x81b41c2aa8eaf9561b0499d7b2155e7d0e1a4b88d81fbcea6bc034bb07ce7099',
+              '0xce8ce57fdd4ef6912a463ea9dbdc50d1ff136cb14e5fade92b116635cd0ee7d0',
+              '0x5dd96db629bbbe4d751db3ce7591a3446165f87baeae3f9e038124725d3771f3',
+              '0x1a841c60cb299453e4414ea8b4afdb5470595f73234722f9925545ca49007f5f',
             ],
-            proveSegment2: '0xe0659677b31c319a270a085e390cc9ccac7ae69654d3b024d5ad240b4a32e63c',
+            proveSegment2: '0xedbcddde9e2570df6e4e320f9859a46ddc9b47904f33cdc22d8885d462ffb5b0',
             chunkSpan: 4096,
             proofSegments3: [
-              '0xeaf0c20e66431318588b0124df474939c03147abcd431914c669048c7232a056',
-              '0x394ecc849a2c659f2cf8bda075ea784c9ec371e212d65dc8ad351dcf829ea562',
-              '0x90bc53779f9e961da26677f2d41782d38c1b7659a32a82b604b70f9fd7ecc160',
-              '0xe54be7143405a7e8f5aa37e79e01fdee931df438c178b1ce2915f04f08a1cf78',
-              '0x109b2a41f452c421cf35235f99910b094394c6edd24a172058331442944a27c2',
-              '0xccdc5bcf06275ea21e1620b61d580df4375f22632da803347bc09bdf88d94dd7',
-              '0x1d8e4099abfc9def90fef5c1f2cb17bd4ca2ed483a366a4e69522816a39b6a86',
+              '0x315bf9838e71d8210240c23c2159ecb4a52a133b663f93fc8012a079c7283798',
+              '0x720ebcf3fe3244ac69519fe74a162d31623feba9e07b842566c1aa0b2495ff93',
+              '0x2231123bd58d7ad9476ace8d61eb78c2d77206343a135ad1215765f9a0ffeba9',
+              '0xaf2354e89aeec4697d1043d5f67e17b580e4cfa40f276e1e4e1dba6f3f6f286d',
+              '0xbcfda2209908e1d557bf9c308348675d7373530d502f8f4db3d9feed8f204b5b',
+              '0xe6c8ec4b033bf61d98b7e53120e66489dab793a38d0721839ec9984a84894017',
+              '0x09f7e6f6f70d0262656e91289c8ee0a5df36686a877b6a185a4aba8ad6239948',
             ],
             signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
             signature:
-              '0xe29fc202acb53cb26bcdea3c25de8538bf594368d736426b037c7cd7f317250e35377fbb70dbbdf366f50b94f71ae0f8100f0db4fb0a119f2b699c336d9581591c',
-            chunkAddr: '0x59ff9d39c4f79d52cf359b4aa692f4e38f5fae73fd3a27a853a5bde840824b4f',
-            postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
-            index: '0x000059ff00000005',
-            timeStamp: '0x174802a3fd401668',
+              '0x54e892bc39e760b2212016889bc1b82d6fbb6e044a109d4a9828830bb5f2ea2a77251f0b142a589d8635e707786e3be68bc6a5f87eb3e7a8f16819891e6579d11b',
+            chunkAddr: '0x506208613c9f517152251de468b48892f279c8d39a7112d0494de9f6281f5cfd',
+            postageId: '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
+            index: '0x000050620000000f',
+            timeStamp: '0x175173b0fbc488a3',
             socProofAttached: [],
           };
           const proof2 = {
             proofSegments: [
-              '0x00014723e5c60a83f7c792f4948b29c080758da3b5ceb741e9f49bcbdbd4b73c',
-              '0xd9476da2f17ca41ff9b249b9065f6044793e65cb6b10770561114dd700566fd9',
-              '0xfbe5dbc8458d651fb0527f54e32bee159dacd983354f45a91bc9daa44331e5db',
-              '0x4494463531123e698b68c0cb06fba477e135950060d6af4a45dc3704dece64be',
-              '0x81a02ee14728a239c96baee5c6195399b309ffd4f979d44b53e9500d983ce413',
+              '0x0000c0500c74c6a6201d0aa4349b4d4399a136156b111207d3c1285de58bdc08',
+              '0x5a5d171be4828e358c5beef2580400becf69a087f340e06f4c26fdf722938298',
+              '0x6e4a802ef7af46a1dbc09648d6f527e3a156dac39b338a98b59791c6c9acb80e',
+              '0x29a54b68c80366632f7a5da3849d44c6ac7fe34057483060eaeed7e028c21617',
+              '0x79cc755e6634f472c743f9522dbccdf49314d3823be409b085b42436588878fd',
               '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
               '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
             ],
-            proveSegment: '0x66bbac0b46ec5a17f84038334c8b8d04ebff0f97e01fb65eda96230a60f803d6',
+            proveSegment: '0x66fe8ec62b532cd397b59cd9f2f50a57c698a04b5c9f42bb2e432db8c659f11d',
             proofSegments2: [
-              '0x7ae024555791802aa807d6630f07936b6d3666b9d22a34fc56600a69f511f8ab',
-              '0x62f70c8040f47222546a7b9a2c5d3559d5a5442e02b7ff7591c3e5b5d0537426',
-              '0x5bfd8f58b954aba5c20105e562d4b8e4375bf64364954bb7c6b8347b44f6b95e',
-              '0x07560235a5773092e45fce06bf3ee750d92ffb21a85ee0e344abfdc000665c1c',
-              '0x0708e1b4a5310c2c4f375595f81561dd3f30c6749a786c6018369216262a0b3a',
-              '0x813fe204be3a063f11116e9c905b9b25e77c15b2c8ec9fbd311ea2e2c465f758',
-              '0x38a3d01541022c161894a493897489bba7750bef7aa0ad7cb6e04c2d2a24aa6f',
+              '0x2286cca7fd51ab30e573c33f0e03a40833345b1db9ec1aa156e585379912d40a',
+              '0x47ba7f4568d8fbb4d3d7d211cedf329927e65129530233b07d7fdb2214a5a239',
+              '0x5e53ed23000a33d5db1d0719bd6917003d91f3cc53746e762bc85605fd6ae6b7',
+              '0x0e2dfb4b5b71ac1d016c7361e1788f567e3ea8bdb82e625944ba18976d6eac3e',
+              '0x3fa9e8ef6b21f91dd0707713bd1c2e321dcd1d2261fb2c4c60159d76120e1a7a',
+              '0xe3ffab1f353520057ee198ce759e2f4bc3a7de46e058dd03c763b961cdced73a',
+              '0xb1b6c47e389147f020c067f248770676c68c6d93dc45fc3995c4821ef8aaf655',
             ],
-            proveSegment2: '0x925f6f9ba7f0bd99f9f0a392b458fe8c02305d2116dd905c0c40b911e19ca609',
+            proveSegment2: '0xacab96a91176330f0be68acf5a79761fa6aed3716fa524106c98a3dc6bdb6eee',
             chunkSpan: 4096,
             proofSegments3: [
-              '0x7ae024555791802aa807d6630f07936b6d3666b9d22a34fc56600a69f511f8ab',
-              '0xa369f6d8775f93b8d3d24e51b30d184ba3fde2734e4f9eaeaa4e5b4a1200b7f2',
-              '0x21e47e41f39912b1a2b22d0145c5acd9d40fe3b961b14f1e298ad425260b705b',
-              '0x5fd3bbcdfd5744122502dafe411a6dcc3c3523575b49e2c60f82c4caf2620874',
-              '0x05b1bfb7cf78f2f57bd85786f08a2cc6b55f8bab1701b761aa106db0ce95743a',
-              '0x598f801c18f8d0e68c2d944717039779d770a34ba6e4a5808a48511aead4d90d',
-              '0xdb79be6e82a1f9060603b940f1b3485c40c5dce2a164843b4cec2d54475e2bf3',
+              '0x2286cca7fd51ab30e573c33f0e03a40833345b1db9ec1aa156e585379912d40a',
+              '0x6d4781d8bf806915712f8bb5bdc6617d7c62b9a152b7e092c302823a4d4e9f27',
+              '0x55122159abd98e04c513c5e0fa1335741ec8a95ee5f9ccf828adf9018e5deeac',
+              '0x10affdb0b3d54ec7214246ed0d8aaf22aa5d3f9b3d0552ce038c6ae0b8844501',
+              '0x952898b0ac301c0adfe2efa3f974253e64428d4f4615953d9ebfbc8c7ac027a9',
+              '0xf6ff2d1e8a913c12df8656e23b9b072119d27c94ea4061e908d2db4bb95ed13e',
+              '0xc21d9575c126015b603a0b7591484d716bf5987f1e354b75447205df5e16c473',
             ],
             signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
             signature:
-              '0x25ae2e0b3c280bdf5645c36321a960c59e608801a9067f3e179e7af89fd99e6869905b189b0047004cea38144011ed6567d3dbac4fbc2dd6e44019fcbcf5f1c41c',
-            chunkAddr: '0x66bbac0b46ec5a17f84038334c8b8d04ebff0f97e01fb65eda96230a60f803d6',
-            postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
-            index: '0x000066bb00000004',
-            timeStamp: '0x174802902dda646c',
+              '0x2d81f504f2d4dfd740f077fca3d7e52adf392bf810b08b1d86cb8fca75340f9729ccdcb2304d0bd967a002ad11ddb949df4326167557271034f2cf611a20f93b1b',
+            chunkAddr: '0x66fe8ec62b532cd397b59cd9f2f50a57c698a04b5c9f42bb2e432db8c659f11d',
+            postageId: '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
+            index: '0x000066fe00000025',
+            timeStamp: '0x17519106a71e7360',
             socProofAttached: [],
           };
           const proofLast = {
             proofSegments: [
-              '0x00098237b57a6f21ba7c70c9c521587899904efc00f1d0f073a1716631451344',
-              '0x8a1851e15d2c304a317ce7f3bb1ea68b13bc8320bce28999c2e5526bc87b3cb6',
-              '0x5aeecb79ef43e422179bd3872b1b019b6db0717f23da5b69dbde32619ea58019',
-              '0xc4afbb31b6b7421d31b902b87580f9bf611cac9648221b348f90763dfd9056f0',
-              '0x8cc036d1fc363fca716fd24a6e2edecd938b3aa713178159a21078c555dd8b98',
+              '0x0000d583bd3b31260ce2208e756907ca2385a409b6785dbd43616a28965bcce4',
+              '0x4a7982c1e030bfedc49eebc06f3521baebb021851c5dc5c256ddd945f3477bb0',
+              '0x6e4a802ef7af46a1dbc09648d6f527e3a156dac39b338a98b59791c6c9acb80e',
+              '0x29a54b68c80366632f7a5da3849d44c6ac7fe34057483060eaeed7e028c21617',
+              '0x79cc755e6634f472c743f9522dbccdf49314d3823be409b085b42436588878fd',
               '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
               '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
             ],
-            proveSegment: '0x733d810abda2e4625356112a301ff79e8952e0667ddf1a0dc2230714819de505',
+            proveSegment: '0x7d9f8f77a88fefb813050911e2f2d3b07687348004f786d3e9282dbf65bafe4e',
             proofSegments2: [
-              '0x5acd849feaa9e301b0fa24434476aeffd0d2bb8df3434ba67c95334ee3d6def2',
-              '0x7689ad1dcf3eff0a9ec78b1284fc36e69458c9d5c5aaf9ec98b933f0f86bc7ce',
-              '0x1cec5f3778c10fb16f868896998eb956c2a8dee82fccf5c708ea5a8334fc3d25',
-              '0x16d28fd7c0dd2f4142bd4979d9dea0642fc9d1a1c10039782a34c96d09a0fa71',
-              '0xfad3b2e81d1325bc9eec771b59a1a50dd319779642c4a918e3e2d2dd6c47bc02',
-              '0xddc661cd42f02b483a27547b53e532fc57bba22ce76b9e0100caeaf9fcdcd4f9',
-              '0x0ea2fa2db5ee2654aaa21330146f5e31f60a901c1dcbf2e64bcee3209fab4218',
+              '0x5f5062500ad07960935ca2d5a4162de872ee755c856586b5a5a40cdfbe6c3c3e',
+              '0x56f40ecbde394c4bed4412838939979ec71ee3392de25df88fd7314c23e193d8',
+              '0xd4198d19dec00d00e081b47ec1bf261684efb2d3833e39f663489eb4520e3944',
+              '0xad27e0e971ec6e813590d66968114f951da15e772ed330fa682a1bded3cd9a35',
+              '0x1794f901233be79a4075af9b4d39fae1db43e9065314b2909328d1982cc8e6d3',
+              '0x997c84f55704f9e6146f08753b5400df0e717e8263b0f877022339e10ad14a7b',
+              '0x0a4039c5d200874f61c570fe632b9f96c43614580b67e2dab8f3e058d29ee853',
             ],
-            proveSegment2: '0xf5024bf1ad9c04815a40b64b0c9a7837f8805a72d2a1d9050d00be9e02b71d54',
+            proveSegment2: '0x3a083361212560c68c1bdebffaa2ff02d7962d8b9d040e4cdb4639d01311791e',
             chunkSpan: 4096,
             proofSegments3: [
-              '0x5acd849feaa9e301b0fa24434476aeffd0d2bb8df3434ba67c95334ee3d6def2',
-              '0x476815da5ec8ed6ad4729a96cc5c0d606585d2d480b2b26644644344076fad8f',
-              '0x000ce246b5cd39a10ea19f17db37b31850200e12bf31bce8e1ff2a4ac387f0c2',
-              '0x15a1e82610094b3e95102bab0a6969b52fb4486afdd2e753fd87cf1c9ee5eea7',
-              '0xaf30b8a18c316b148cc4ce2271721e1fd815abe6ef70c4efd3be3dd06fbf5906',
-              '0x113db758b3e1482234ce758f344a2635c292063a026636cd639827a64209344f',
-              '0x50f419eebbdc2c09543cf6240545eeadc22c87aaf53fbf90d1a38e0010559f78',
+              '0x5f5062500ad07960935ca2d5a4162de872ee755c856586b5a5a40cdfbe6c3c3e',
+              '0xe9a701f13309492778a9f3c28ffbc30ab6ed919aac09036f158ab99c7fbe5e19',
+              '0xfb9d1dba010d7658ae53400dc9c09373cbfa0a3bdfaddaf8f14e570a9b269417',
+              '0x5c9fda5e3d50f6804168c457de264b7516db6950cb1d3fa160e52d3307d8cb9c',
+              '0x1441ea808197e2d8b89d5fe2bb83028a39c7ff449ea91a634e2560e9f59ea1cc',
+              '0x3cf619c97f029287ae3fd78932f5ded765bc72c5ba1c7676d045511e22d5cf90',
+              '0xb887be343a4078915b502d4cbee5cbe321543008bf04bf90a24926e65db86891',
             ],
             signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
             signature:
-              '0x9f69e09fa325d90a200d3646122092e05505a6d39270297621cdda02f62879053d2236330ff7e4ea73b229b23059f4bf1f45a3d65e24d4bea588ddadbbabaf841b',
-            chunkAddr: '0x733d810abda2e4625356112a301ff79e8952e0667ddf1a0dc2230714819de505',
-            postageId: '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
-            index: '0x0000733d00000000',
-            timeStamp: '0x17480263ce37ae40',
+              '0xfd17d3df147a08ef41d777fc71d085d80e7a6bf3d02af7362b176602672daefa17088d6e7eea1f54456e08e0208336081dbde84e0ab17be86a1cc71307cd3a3b1b',
+            chunkAddr: '0x7d9f8f77a88fefb813050911e2f2d3b07687348004f786d3e9282dbf65bafe4e',
+            postageId: '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
+            index: '0x00007d9f00000019',
+            timeStamp: '0x1751873a0eb5bfa1',
             socProofAttached: [],
           };
           // migrate batch with which the chunk was signed
@@ -753,7 +753,7 @@ describe('Redistribution', function () {
           // NOTE: it does not work if copy above (until claim function)
           await postageAdmin.setMinimumValidityBlocks(0);
           const initialBalance = 100_000_000;
-          const postageDepth = 24;
+          const postageDepth = 27;
           const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
           await mintAndApprove(deployer, deployer, postage.address, bzzFund.toString());
           const copyBatchTx = await postageAdmin.copyBatch(
@@ -761,10 +761,10 @@ describe('Redistribution', function () {
             initialBalance, // initial balance per chunk
             postageDepth, // depth
             16, // bucketdepth
-            '0x04ccccad30cd5eec1b30c4d488911f1d3a82f8029ba3e88aa94567d298a6d429',
+            '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
             true // immutable
           );
-          const tx2 = await r_node_2.claim(proof1, proof2, proofLast);
+          const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           const receipt2 = await tx2.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -791,9 +791,9 @@ describe('Redistribution', function () {
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
+          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
+          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
+          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
           expect(WinnerSelectedEvent.args[0][3]).to.be.eq(
             BigNumber.from(stakeAmount_0).mul(BigNumber.from(2).pow(sanityDepth))
           ); //stakedensity?
