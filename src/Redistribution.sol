@@ -70,8 +70,8 @@ contract Redistribution is AccessControl, Pausable {
     // Role allowed to pause.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    uint256 public constant penaltyMultiplierDisagreement = 3;
-    uint256 public constant penaltyMultiplierNonRevealed = 7;
+    uint256 public penaltyMultiplierDisagreement = 1;
+    uint256 public penaltyMultiplierNonRevealed = 2;
 
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
@@ -173,6 +173,15 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 reserveCommitment,
         uint8 depth
     );
+
+    /**
+     * @notice Set freezing parameters
+     */
+    function setFreezingParams(uint256 _penaltyMultiplierDisagreement, uint256 _penaltyMultiplierNonRevealed) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
+        penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
+    }
 
     /**
      * @notice The number of the current round.
