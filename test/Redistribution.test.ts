@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
-import { BigNumber, Contract } from 'ethers';
+import { BigNumber, Contract, getDefaultProvider, providers, Wallet } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
 
 const phaseLength = 38;
@@ -62,7 +62,7 @@ const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555
 const depth_4 = '0x06';
 // FDP Play node keys - claim data 
 // queen node
-const node_5 = '0x195cf6324303f6941ad119d0a1d2e862d810078e1370b8d205552a543ff40aab';
+let node_5: string;
 const overlay_5 = '0x676790fcae312292ffc17b7f7c84d5b9acc51ef0ea3f27d0ff3bada3362abc5d';
 const stakeAmount_5 = '100000000000000000';
 const nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -79,6 +79,7 @@ before(async function () {
   node_2 = namedAccounts.node_2;
   node_3 = namedAccounts.node_3;
   node_4 = namedAccounts.node_4;
+  node_5 = namedAccounts.node_5;
 });
 
 const errors = {
@@ -222,7 +223,7 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
       await sr_node_4.depositStake(node_4, nonce_4, stakeAmount_3);
 
-      const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
+      const sr_node_5 = (await ethers.getContract('StakeRegistry', node_5));
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
       await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
 
