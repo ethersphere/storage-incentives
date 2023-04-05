@@ -2,8 +2,6 @@ import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
 import { arrayify, hexlify } from '@ethersproject/bytes';
 
-const zeroAddress = '0x0000000000000000000000000000000000000000';
-
 function computeBatchId(sender: string, nonce: string): string {
   const abi = new ethers.utils.AbiCoder();
   const encoded = abi.encode(['address', 'bytes32'], [sender, nonce]);
@@ -106,7 +104,6 @@ async function mineOverlaysInDepth(
 }
 
 export {
-  zeroAddress,
   computeBatchId,
   mineNBlocks,
   getBlockNumber,

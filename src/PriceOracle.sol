@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
-
-interface IPostageStamp {
-    function setPrice(uint256 _price) external;
-}
+import "./PostageStamp.sol";
 
 /**
  * @title PriceOracle contract.
  * @author The Swarm Authors.
  * @dev The price oracle contract emits a price feed using events.
  */
-
 contract PriceOracle is AccessControl {
     /**
      *@dev Emitted on every price update.
@@ -28,7 +24,7 @@ contract PriceOracle is AccessControl {
     uint256 public currentPrice = minimumPrice;
 
     // Constants used to modulate the price, see below usage
-    uint256[] public increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+    uint256[] public increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
 
     uint16 targetRedundancy = 4;
     uint16 maxConsideredExtraRedundancy = 4;
@@ -37,11 +33,11 @@ contract PriceOracle is AccessControl {
     bool public isPaused = true;
 
     // The address of the linked PostageStamp contract
-    IPostageStamp public postageStamp;
+    PostageStamp public postageStamp;
 
     constructor(address _postageStamp) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        postageStamp = IPostageStamp(_postageStamp);
+        postageStamp = PostageStamp(_postageStamp);
     }
 
     /**

@@ -1,5 +1,5 @@
 import { expect } from './util/chai';
-import { ethers, getNamedAccounts, getUnnamedAccounts, deployments } from 'hardhat';
+import { ethers, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { mineNBlocks, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
 
 const phaseLength = 38;
@@ -30,9 +30,6 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
   const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
   await postageStampOracle.setPrice(price1);
-
-  const postageStampAdmin = await ethers.getContract('PostageStamp', deployer);
-  await postageStampAdmin.setMinimumValidityBlocks(0);
 
   const batchSize = 2 ** batch.depth;
   const transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
@@ -118,11 +115,8 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 }
 
 describe('Stats', async function () {
-  beforeEach(async function () {
-    await deployments.fixture();
-  });
   describe('two player game', async function () {
-    const trials = 150;
+    const trials = 1500;
 
     it('is fair with 1:3 stake', async function () {
       this.timeout(0);
