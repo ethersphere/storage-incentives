@@ -70,8 +70,8 @@ contract Redistribution is AccessControl, Pausable {
     // Role allowed to pause.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    uint256 public constant penaltyMultiplierDisagreement = 3;
-    uint256 public constant penaltyMultiplierNonRevealed = 7;
+    uint256 public constant penaltyMultiplierDisagreement = 1;
+    uint256 public constant penaltyMultiplierNonRevealed = 2;
 
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
