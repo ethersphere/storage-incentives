@@ -6,7 +6,7 @@ import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './ut
 const phaseLength = 38;
 const roundLength = 152;
 
-const increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+const increaseRate = [0, 1069, 1048, 1032, 1024, 1021, 1015, 1003, 980];
 
 const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
