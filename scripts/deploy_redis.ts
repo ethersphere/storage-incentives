@@ -14,7 +14,6 @@ interface DeployedContract {
 }
 
 interface DeployedData {
-  exists: boolean;
   chainId: number;
   networkId: number;
   contracts: {
@@ -54,10 +53,8 @@ interface ChainConfig {
 let networkDeployedData: DeployedData;
 try {
   networkDeployedData = require('../' + network.name + '_deployed.json');
-  networkDeployedData.exists = true;
 } catch (e) {
   networkDeployedData = {
-    exists: false,
     chainId: 0,
     networkId: 0,
     contracts: {
