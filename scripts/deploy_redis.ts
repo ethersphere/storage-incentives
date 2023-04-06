@@ -1,6 +1,10 @@
 import 'hardhat-deploy-ethers';
-import { ethers, network } from 'hardhat';
+import '@nomiclabs/hardhat-etherscan';
+import { ethers, network, hre } from 'hardhat';
 import verify from '../utils/verify';
+
+
+
 
 async function main() {
   // This is deployer script for emergency deployment of only the redistribution contract with some quick fixes
@@ -33,6 +37,16 @@ async function main() {
   const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
   const tx = await postageStampContract.grantRole(redistributorRole, redis.address);
   console.log('Changed REDISTRIBUTOR ROLE at : ', tx.hash);
+
+  // Change roles on current staking contract
+  const stakingContract = await ethers.getContractAt('StakeRegistry', args[0]);
+  const tx2 = await stakingContract.grantRole(redistributorRole, redis.address);
+  console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
+
+  // Add metadata for Bee Node
+
+  //networkDeployedData = require('../' + network.name + '_deployed.json');
+  //const deployed = await JSON.parse(JSON.stringify(networkDeployedData).toString());
 
   if (process.env.MAINNET_ETHERSCAN_KEY || process.env.TESTNET_ETHERSCAN_KEY) {
     console.log('Verifying...');
