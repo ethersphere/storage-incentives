@@ -122,15 +122,15 @@ async function main() {
   await redis.deployTransaction.wait(6);
 
   // Change roles on current stamps contract
-  const postageStampContract = await ethers.getContractAt('PostageStamp', args[1]);
-  const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
-  const tx = await postageStampContract.grantRole(redistributorRole, redis.address);
-  console.log('Changed REDISTRIBUTOR ROLE at : ', tx.hash);
+  // const postageStampContract = await ethers.getContractAt('PostageStamp', args[1]);
+  // const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
+  // const tx = await postageStampContract.grantRole(redistributorRole, redis.address);
+  // console.log('Changed REDISTRIBUTOR ROLE at : ', tx.hash);
 
-  // Change roles on current staking contract
-  const stakingContract = await ethers.getContractAt('StakeRegistry', args[0]);
-  const tx2 = await stakingContract.grantRole(redistributorRole, redis.address);
-  console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
+  // // Change roles on current staking contract
+  // const stakingContract = await ethers.getContractAt('StakeRegistry', args[0]);
+  // const tx2 = await stakingContract.grantRole(redistributorRole, redis.address);
+  // console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
 
   // Add metadata for Bee Node
   const deployed = await JSON.parse(JSON.stringify(config.deployedData).toString());
