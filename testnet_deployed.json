@@ -1,6 +1,6 @@
 {
 	"chainId": 5,
-	"networkId": 10,
+	"networkId": 5,
 	"contracts": {
 		"bzzToken": {
 			"abi": [
