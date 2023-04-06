@@ -139,7 +139,7 @@ async function main() {
   deployed['contracts']['redistribution']['bytecode'] = redisABI.bytecode.toString();
   deployed['contracts']['redistribution']['address'] = redis.address;
   deployed['contracts']['redistribution']['block'] = redis.deployTransaction.blockNumber;
-  deployed['contracts']['redistribution']['url'] = config.url;
+  deployed['contracts']['redistribution']['url'] = config.url + redis.address
 
   fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
 

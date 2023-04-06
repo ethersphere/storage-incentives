@@ -19,8 +19,6 @@ const accounts = walletSecret.length === 64 ? [walletSecret] : { mnemonic: walle
 const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
 const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 
-console.log(PRIVATE_RPC_TESTNET);
-
 // Config for hardhat.
 const config: HardhatUserConfig = {
   solidity: {
