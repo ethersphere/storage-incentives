@@ -7,8 +7,8 @@ import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
-const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? 'undefined' : process.env.PRIVATE_RPC_MAINNET;
-const PRIVATE_RPC_TESTNET = !process.env.PRIVATE_RPC_TESTNET ? 'undefined' : process.env.PRIVATE_RPC_TESTNET;
+const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? undefined : process.env.PRIVATE_RPC_MAINNET;
+const PRIVATE_RPC_TESTNET = !process.env.PRIVATE_RPC_TESTNET ? undefined : process.env.PRIVATE_RPC_TESTNET;
 
 const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : process.env.WALLET_SECRET;
 if (walletSecret === 'undefined') {
@@ -121,7 +121,7 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     testnet: {
-      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.blockpi.network/v1/rpc/public',
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
       accounts,
       chainId: 5,
     },
