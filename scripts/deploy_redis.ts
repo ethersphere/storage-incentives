@@ -87,13 +87,12 @@ const configs: Record<string, ChainConfig> = {
 const config: ChainConfig = configs[network.name]
   ? configs[network.name]
   : ({
-    chainId: network.config.chainId,
-    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : network.config.chainId,
-    networkName: network.name,
-    deployedData: networkDeployedData,
-    url: '',
-  } as ChainConfig);
-
+      chainId: network.config.chainId,
+      networkId: networkDeployedData.networkId ? networkDeployedData.networkId : network.config.chainId,
+      networkName: network.name,
+      deployedData: networkDeployedData,
+      url: '',
+    } as ChainConfig);
 
 async function main() {
   // This is deployer script for emergency deployment of only the redistribution contract with some quick fixes
@@ -139,7 +138,7 @@ async function main() {
   deployed['contracts']['redistribution']['bytecode'] = redisABI.bytecode.toString();
   deployed['contracts']['redistribution']['address'] = redis.address;
   deployed['contracts']['redistribution']['block'] = redis.deployTransaction.blockNumber;
-  deployed['contracts']['redistribution']['url'] = config.url + redis.address
+  deployed['contracts']['redistribution']['url'] = config.url + redis.address;
 
   fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
 
