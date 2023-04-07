@@ -25,23 +25,6 @@ interface DeployedData {
   };
 }
 
-interface ContractData {
-  addresses: {
-    bzzToken: string;
-    staking: string;
-    postageStamp: string;
-    priceOracle: string;
-    redistribution: string;
-  };
-  blocks: {
-    bzzToken: number;
-    staking: number;
-    postageStamp: number;
-    priceOracle: number;
-    redistribution: number;
-  };
-}
-
 interface ChainConfig {
   chainId?: number;
   networkId?: number;
