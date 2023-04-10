@@ -101,7 +101,7 @@ async function main() {
   const redis = await redisFactory.deploy(...args);
   await redis.deployed();
   console.log(`Deployed contract to: ${redis.address}`);
-  await redis.deployTransaction.wait(6);
+  const deploymentReceipt = await redis.deployTransaction.wait(6);
 
   // Change roles on current stamps contract
   const postageStampContract = await ethers.getContractAt('PostageStamp', args[1]);
@@ -120,7 +120,7 @@ async function main() {
   deployed['contracts']['redistribution']['abi'] = redisABI.abi;
   deployed['contracts']['redistribution']['bytecode'] = redisABI.bytecode.toString();
   deployed['contracts']['redistribution']['address'] = redis.address;
-  deployed['contracts']['redistribution']['block'] = redis.deployTransaction.blockNumber;
+  deployed['contracts']['redistribution']['block'] = deploymentReceipt.blockNumber;
   deployed['contracts']['redistribution']['url'] = config.url + redis.address;
 
   fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
