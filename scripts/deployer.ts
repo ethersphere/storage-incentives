@@ -71,14 +71,14 @@ try {
 const configs: Record<string, ChainConfig> = {
   testnet: {
     chainId: hre.network.config.chainId,
-    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : 10,
+    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : 5,
     networkName: hre.network.name,
     deployedData: networkDeployedData,
     url: hre.config.etherscan.customChains[0]['urls']['browserURL'].toString(),
   },
   mainnet: {
     chainId: hre.network.config.chainId,
-    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : 1,
+    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : 100,
     networkName: hre.network.name,
     deployedData: networkDeployedData,
     url: hre.config.etherscan.customChains[1]['urls']['browserURL'].toString(),
