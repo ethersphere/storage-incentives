@@ -41,6 +41,8 @@ contract PostageStamp is AccessControl, Pausable {
         bool immutableFlag
     );
 
+    event PotWithdrawn(address recipient, uint256 totalAmount);
+
     /**
      * @dev Emitted when an existing batch is topped up.
      */
@@ -61,10 +63,14 @@ contract PostageStamp is AccessControl, Pausable {
         address owner;
         // Current depth of this batch.
         uint8 depth;
+        //
+        uint8 bucketDepth;
         // Whether this batch is immutable.
         bool immutableFlag;
         // Normalised balance per chunk.
         uint256 normalisedBalance;
+        //
+        uint256 lastUpdatedBlockNumber;
     }
 
     // Role allowed to increase totalOutPayment.
@@ -93,6 +99,9 @@ contract PostageStamp is AccessControl, Pausable {
 
     // Lottery pot at last update.
     uint256 public pot;
+
+    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
+    uint256 public minimumValidityBlocks = 17280;
 
     // Price from the last update.
     uint256 public lastPrice = 0;
@@ -131,11 +140,17 @@ contract PostageStamp is AccessControl, Pausable {
     ) external whenNotPaused {
         require(_owner != address(0), "owner cannot be the zero address");
         // bucket depth should be non-zero and smaller than the depth
-        require(_bucketDepth != 0 && minimumBucketDepth <= _bucketDepth && _bucketDepth < _depth, "invalid bucket depth");
+        require(
+            _bucketDepth != 0 && minimumBucketDepth <= _bucketDepth && _bucketDepth < _depth,
+            "invalid bucket depth"
+        );
         // derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
         require(batches[batchId].owner == address(0), "batch already exists");
-
+        require(
+            _initialBalancePerChunk >= minimumInitialBalancePerChunk(),
+            "insufficient initial balance for 24h minimum validity"
+        );
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
@@ -154,8 +169,10 @@ contract PostageStamp is AccessControl, Pausable {
         batches[batchId] = Batch({
             owner: _owner,
             depth: _depth,
+            bucketDepth: _bucketDepth,
             immutableFlag: _immutable,
-            normalisedBalance: normalisedBalance
+            normalisedBalance: normalisedBalance,
+            lastUpdatedBlockNumber: block.number
         });
 
         require(normalisedBalance > 0, "normalisedBalance cannot be zero");
@@ -199,8 +216,10 @@ contract PostageStamp is AccessControl, Pausable {
         batches[_batchId] = Batch({
             owner: _owner,
             depth: _depth,
+            bucketDepth: _bucketDepth,
             immutableFlag: _immutable,
-            normalisedBalance: normalisedBalance
+            normalisedBalance: normalisedBalance,
+            lastUpdatedBlockNumber: block.number
         });
 
         require(normalisedBalance > 0, "normalisedBalance cannot be zero");
@@ -221,11 +240,14 @@ contract PostageStamp is AccessControl, Pausable {
         require(batch.owner != address(0), "batch does not exist or has expired");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
         require(batch.depth > minimumBucketDepth, "batch too small to renew");
+        require(
+            remainingBalance(_batchId) + (_topupAmountPerChunk) >= minimumInitialBalancePerChunk(),
+            "insufficient topped up balance for 24h minimum validity"
+        );
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _topupAmountPerChunk * (1 << batch.depth);
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
-
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
         batch.normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
@@ -252,6 +274,10 @@ contract PostageStamp is AccessControl, Pausable {
         // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
+        require(
+            newRemainingBalance >= minimumInitialBalancePerChunk(),
+            "remaining balance after depth increase wouldn't meet 24h minimum validity"
+        );
         // expire batches up to current block before amending validChunkCount to include
         // the new chunks resultant of the depth increase
         expireLimited(type(uint256).max);
@@ -260,6 +286,8 @@ contract PostageStamp is AccessControl, Pausable {
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
         batch.depth = _newDepth;
+        batch.lastUpdatedBlockNumber = block.number;
+
         batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);
         tree.insert(_batchId, batch.normalisedBalance);
 
@@ -300,6 +328,11 @@ contract PostageStamp is AccessControl, Pausable {
         emit PriceUpdate(_price);
     }
 
+    function setMinimumValidityBlocks(uint256 _value) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only administrator can set minimum validity blocks");
+        minimumValidityBlocks = _value;
+    }
+
     /**
      * @notice Total per-chunk cost since the contract's deployment.
      * @dev Returns the total normalised all-time per chunk payout.
@@ -309,6 +342,10 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 blocks = block.number - lastUpdatedBlock;
         uint256 increaseSinceLastUpdate = lastPrice * (blocks);
         return totalOutPayment + (increaseSinceLastUpdate);
+    }
+
+    function minimumInitialBalancePerChunk() public view returns (uint256) {
+        return minimumValidityBlocks * lastPrice;
     }
 
     /**
@@ -333,7 +370,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Return true if no batches exist
      */
-    function empty() public view returns (bool) {
+    function isBatchesTreeEmpty() public view returns (bool) {
         return tree.count() == 0;
     }
 
@@ -358,7 +395,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 leb = lastExpiryBalance;
         uint256 i;
         for (i = 0; i < limit; i++) {
-            if (empty()) {
+            if (isBatchesTreeEmpty()) {
                 lastExpiryBalance = currentTotalOutPayment();
                 break;
             }
@@ -377,7 +414,7 @@ contract PostageStamp is AccessControl, Pausable {
             // so we must remove the chunks this batch contributes to the global validChunkCount
             Batch storage batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
-            require(validChunkCount >= batchSize , "insufficient valid chunk count");
+            require(validChunkCount >= batchSize, "insufficient valid chunk count");
             validChunkCount -= batchSize;
             // since the batch expired _during_ the period we must add
             // remaining normalised payout for this batch only
@@ -403,7 +440,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @notice Indicates whether expired batches exist.
      */
     function expiredBatchesExist() public view returns (bool) {
-        if (empty()){
+        if (isBatchesTreeEmpty()) {
             return false;
         }
         return (remainingBalance(firstBatchId()) <= 0);
@@ -425,16 +462,34 @@ contract PostageStamp is AccessControl, Pausable {
 
     function withdraw(address beneficiary) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
-        require(ERC20(bzzToken).transfer(beneficiary, totalPot()), "failed transfer");
+        uint256 totalAmount = totalPot();
+        require(ERC20(bzzToken).transfer(beneficiary, totalAmount), "failed transfer");
+
+        emit PotWithdrawn(beneficiary, totalAmount);
         pot = 0;
     }
 
-    /**
-     * @notice Topup the pot.
-     * @param amount Amount of tokens the pot will be topped up by.
-     */
-    function topupPot(uint256 amount) external {
-        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
-        pot += amount;
+    function batchOwner(bytes32 _batchId) public view returns (address) {
+        return batches[_batchId].owner;
+    }
+
+    function batchDepth(bytes32 _batchId) public view returns (uint8) {
+        return batches[_batchId].depth;
+    }
+
+    function batchBucketDepth(bytes32 _batchId) public view returns (uint8) {
+        return batches[_batchId].bucketDepth;
+    }
+
+    function batchImmutableFlag(bytes32 _batchId) public view returns (bool) {
+        return batches[_batchId].immutableFlag;
+    }
+
+    function batchNormalisedBalance(bytes32 _batchId) public view returns (uint256) {
+        return batches[_batchId].normalisedBalance;
+    }
+
+    function batchLastUpdatedBlockNumber(bytes32 _batchId) public view returns (uint256) {
+        return batches[_batchId].lastUpdatedBlockNumber;
     }
 }

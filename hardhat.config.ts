@@ -132,6 +132,7 @@ const config: HardhatUserConfig = {
     },
     mainnet: {
       url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
+
       accounts,
       chainId: 100,
     },

@@ -2,9 +2,33 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "./PostageStamp.sol";
-import "./PriceOracle.sol";
-import "./Staking.sol";
+
+/**
+ * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
+ * For PostageStmap we currently use "withdraw" to withdraw funds from Pot
+ * For PriceOracle we use "adjustPrice" to change price of PostageStamps
+ * For Staking contract we use "lastUpdatedBlockNumberOfOverlay, freezeDeposit, ownerOfOverlay, stakeOfOverlay"
+ */
+
+interface IPostageStamp {
+    function withdraw(address beneficiary) external;
+
+    function validChunkCount() external view returns (uint256);
+}
+
+interface IPriceOracle {
+    function adjustPrice(uint256 redundancy) external;
+}
+
+interface IStakeRegistry {
+    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
+
+    function freezeDeposit(bytes32 overlay, uint256 time) external;
+
+    function ownerOfOverlay(bytes32 overlay) external view returns (address);
+
+    function stakeOfOverlay(bytes32 overlay) external view returns (uint256);
+}
 
 /**
  * @title Redistribution contract
@@ -34,6 +58,7 @@ import "./Staking.sol";
  * is withdrawn and transferred to that beneficiaries address. Nodes that have revealed values that differ from the truth,
  * have their stakes "frozen" for a period of rounds proportional to their reported depth.
  */
+
 contract Redistribution is AccessControl, Pausable {
     // An eligible user may commit to an _obfuscatedHash_ during the commit phase...
     struct Commit {
@@ -56,11 +81,11 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     // The address of the linked PostageStamp contract.
-    PostageStamp public PostageContract;
+    IPostageStamp public PostageContract;
     // The address of the linked PriceOracle contract.
-    PriceOracle public OracleContract;
+    IPriceOracle public OracleContract;
     // The address of the linked Staking contract.
-    StakeRegistry public Stakes;
+    IStakeRegistry public Stakes;
 
     // Commits for the current round.
     Commit[] public currentCommits;
@@ -120,9 +145,9 @@ contract Redistribution is AccessControl, Pausable {
      * @param oracleContract the address of the linked PriceOracle contract.
      */
     constructor(address staking, address postageContract, address oracleContract) {
-        Stakes = StakeRegistry(staking);
-        PostageContract = PostageStamp(postageContract);
-        OracleContract = PriceOracle(oracleContract);
+        Stakes = IStakeRegistry(staking);
+        PostageContract = IPostageStamp(postageContract);
+        OracleContract = IPriceOracle(oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
@@ -325,10 +350,6 @@ contract Redistribution is AccessControl, Pausable {
         seed = keccak256(abi.encode(seed, block.difficulty));
     }
 
-    function nonceBasedRandomness(bytes32 nonce) private {
-        seed = seed ^ nonce;
-    }
-
     /**
      * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
      * @param A An overlay address to compare.
@@ -406,8 +427,6 @@ contract Redistribution is AccessControl, Pausable {
                     })
                 );
 
-                nonceBasedRandomness(_revealNonce);
-
                 emit Revealed(
                     cr,
                     currentCommits[i].overlay,
@@ -430,51 +449,28 @@ contract Redistribution is AccessControl, Pausable {
      */
     function isWinner(bytes32 _overlay) public view returns (bool) {
         require(currentPhaseClaim(), "winner not determined yet");
-
         uint256 cr = currentRound();
-
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-
-        uint256 currentSum;
         uint256 currentWinnerSelectionSum;
         bytes32 winnerIs;
         bytes32 randomNumber;
-
+        uint256 randomNumberTrunc;
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-
-        uint256 commitsArrayLength = currentCommits.length;
-
         uint256 revIndex;
+        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
         uint256 k = 0;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
-            if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
-
-                if (
-                    uint256(randomNumber & MaxH) * currentSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                ) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
-                }
-
-                k++;
-            }
-        }
-
-        k = 0;
-
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        // Get current truth
+        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
+        uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
+
+            // Deterministically read winner
             if (
                 currentCommits[i].revealed &&
                 truthRevealedHash == currentReveals[revIndex].hash &&
@@ -482,9 +478,10 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
-                    uint256(randomNumber & MaxH) * currentWinnerSelectionSum <
+                    randomNumberTrunc * currentWinnerSelectionSum <
                     currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
                     winnerIs = currentReveals[revIndex].overlay;
@@ -555,42 +552,25 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Conclude the current round by identifying the selected truth teller and beneficiary.
+     * @notice Helper function to get this round truth
      * @dev
      */
-    function claim() external whenNotPaused {
-        require(currentPhaseClaim(), "not in claim phase");
-
-        uint256 cr = currentRound();
-
-        require(cr == currentRevealRound, "round received no reveals");
-        require(cr > currentClaimRound, "round already received successful claim");
-
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-
+    function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
         uint256 currentSum;
-        uint256 currentWinnerSelectionSum;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-
-        uint256 commitsArrayLength = currentCommits.length;
-        uint256 revealsArrayLength = currentReveals.length;
-
-        emit CountCommits(commitsArrayLength);
-        emit CountReveals(revealsArrayLength);
-
         uint256 revIndex;
-        uint256 k = 0;
+        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
+        uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, k));
-
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 // question is whether randomNumber / MaxH < probability
@@ -604,63 +584,92 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
-
-                k++;
             }
         }
 
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
+        return (truthRevealedHash, truthRevealedDepth);
+    }
 
-        k = 0;
+    /**
+     * @notice Conclude the current round by identifying the selected truth teller and beneficiary.
+     * @dev
+     */
+    function claim() external whenNotPaused {
+        require(currentPhaseClaim(), "not in claim phase");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+        require(cr > currentClaimRound, "round already received successful claim");
 
+        uint256 currentWinnerSelectionSum;
+        bytes32 randomNumber;
+        uint256 randomNumberTrunc;
+        bytes32 truthRevealedHash;
+        uint8 truthRevealedDepth;
+        uint256 revIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        uint256 k = 0;
+
+        // Get current truth
+        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
+        uint256 commitsArrayLength = currentCommits.length;
+        uint256 revealsArrayLength = currentReveals.length;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed) {
+
+            // Select winner with valid truth
+            if (
+                currentCommits[i].revealed &&
+                truthRevealedHash == currentReveals[revIndex].hash &&
+                truthRevealedDepth == currentReveals[revIndex].depth
+            ) {
+                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
                 if (
-                    truthRevealedHash == currentReveals[revIndex].hash &&
-                    truthRevealedDepth == currentReveals[revIndex].depth
+                    randomNumberTrunc * currentWinnerSelectionSum <
+                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-
-                    randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                    if (
-                        randomNumberTrunc * currentWinnerSelectionSum <
-                        currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                    ) {
-                        winner = currentReveals[revIndex];
-                    }
-
-                    k++;
-                } else {
-                    Stakes.freezeDeposit(
-                        currentReveals[revIndex].overlay,
-                        penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
-                    );
-                    // slash ph5
+                    winner = currentReveals[revIndex];
                 }
-            } else {
-                // slash in later phase
+
+                k++;
+            }
+
+            // Freeze deposit if any truth is false
+            if (
+                currentCommits[i].revealed &&
+                (truthRevealedHash != currentReveals[revIndex].hash ||
+                    truthRevealedDepth != currentReveals[revIndex].depth)
+            ) {
+                Stakes.freezeDeposit(
+                    currentReveals[revIndex].overlay,
+                    penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                );
+            }
+
+            // Slash deposits if revealed is false
+            if (!currentCommits[i].revealed) {
+                // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
                     currentCommits[i].overlay,
                     penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
                 );
-                continue;
             }
         }
 
-        emit WinnerSelected(winner);
-
+        // Apply Important state changes
         PostageContract.withdraw(winner.owner);
-
-        emit ChunkCount(PostageContract.validChunkCount());
-
         OracleContract.adjustPrice(uint256(k));
-
         currentClaimRound = cr;
+
+        // Emit function Events
+        emit CountCommits(commitsArrayLength);
+        emit CountReveals(revealsArrayLength);
+        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
+        emit WinnerSelected(winner);
+        emit ChunkCount(PostageContract.validChunkCount());
     }
 }
