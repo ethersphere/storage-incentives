@@ -155,7 +155,7 @@ const config: HardhatUserConfig = {
         network: 'mainnet',
         chainId: 100,
         urls: {
-          apiURL: 'https://gnosisscan.io/apis',
+          apiURL: 'https://api.gnosisscan.io/',
           browserURL: 'https://gnosisscan.io/address/',
         },
       },
