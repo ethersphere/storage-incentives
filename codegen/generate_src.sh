@@ -104,9 +104,9 @@ const (
 
 const (
 	${NETWORK^}PostageStampBlockNumber  = ${POSTAGE_BLOCK_NUMBER}
-	${NETWORK^}PostageStampStampBin     = "${POSTAGE_STAMP_BYTECODE}"
-	${NETWORK^}PostageStampStampAddress = "${POSTAGE_STAMP_ADDRESS}"
-	${NETWORK^}PostageStampStampABI     = \`${POSTAGE_STAMP_ABI}\`
+	${NETWORK^}PostageStampBin          = "${POSTAGE_STAMP_BYTECODE}"
+	${NETWORK^}PostageStampAddress      = "${POSTAGE_STAMP_ADDRESS}"
+	${NETWORK^}PostageStampABI          = \`${POSTAGE_STAMP_ABI}\`
 )
 
 const (
