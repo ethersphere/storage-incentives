@@ -12,6 +12,8 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 
 interface IPostageStamp {
     function withdraw(address beneficiary) external;
+
+    function validChunkCount() external view returns (uint256);
 }
 
 interface IPriceOracle {
@@ -93,8 +95,8 @@ contract Redistribution is AccessControl, Pausable {
     // Role allowed to pause.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    uint256 public constant penaltyMultiplierDisagreement = 3;
-    uint256 public constant penaltyMultiplierNonRevealed = 7;
+    uint256 public penaltyMultiplierDisagreement = 1;
+    uint256 public penaltyMultiplierNonRevealed = 2;
 
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
@@ -151,7 +153,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @dev Emitted when the winner of a round is selected in the claim phase.
+     * @dev Emitted when the winner of a round is selected in the claim phase
      */
     event WinnerSelected(Reveal winner);
 
@@ -175,6 +177,15 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Logs that an overlay has committed
      */
     event Committed(uint256 roundNumber, bytes32 overlay);
+    /**
+     * @dev Emit from Postagestamp contract valid chunk count at the end of claim
+     */
+    event ChunkCount(uint256 validChunkCount);
+
+    /**
+     * @dev Bytes32 anhor of current reveal round
+     */
+    event CurrentRevealAnchor(uint256 roundNumber, bytes32 anchor);
 
     /**
      * @dev Logs that an overlay has revealed
@@ -187,6 +198,15 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 reserveCommitment,
         uint8 depth
     );
+
+    /**
+     * @notice Set freezing parameters
+     */
+    function setFreezingParams(uint256 _penaltyMultiplierDisagreement, uint256 _penaltyMultiplierNonRevealed) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
+        penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
+    }
 
     /**
      * @notice The number of the current round.
@@ -377,6 +397,7 @@ contract Redistribution is AccessControl, Pausable {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
             currentRevealRound = cr;
+            emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
             updateRandomness();
         }
 
@@ -639,15 +660,16 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
+        // Apply Important state changes
+        PostageContract.withdraw(winner.owner);
+        OracleContract.adjustPrice(uint256(k));
+        currentClaimRound = cr;
+
         // Emit function Events
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit WinnerSelected(winner);
-
-        // Apply Important state changes
-        PostageContract.withdraw(winner.owner);
-        OracleContract.adjustPrice(uint256(k));
-        currentClaimRound = cr;
+        emit ChunkCount(PostageContract.validChunkCount());
     }
 }
