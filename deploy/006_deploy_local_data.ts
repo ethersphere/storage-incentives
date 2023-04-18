@@ -49,7 +49,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     log('Data saved to ' + fileName);
   }
 
-  const tokenContract = await get('TestToken');
+
   const stampsContract = await get('PostageStamp');
   const oracleContract = await get('PriceOracle');
   const stakingContract = await get('StakeRegistry');
@@ -62,6 +62,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
       : (deployedData['contracts']['bzzToken'] = deployedBzzData.testnet);
   } else {
     // Token data for dev chains
+    const tokenContract = await get('TestToken');
     deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
     deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
     deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
@@ -107,4 +108,4 @@ const func: DeployFunction = async function ({ deployments, network }) {
 };
 
 export default func;
-func.tags = ['all', 'local'];
+func.tags = ['main', 'local'];

@@ -24,4 +24,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 };
 
 export default func;
-func.tags = ['all', 'postageStamp_roles', 'roles'];
+func.tags = ['main', 'postageStamp_roles', 'roles'];

@@ -45,4 +45,4 @@ const func: DeployFunction = async function ({ deployments, network }) {
 };
 
 export default func;
-func.tags = ['all', 'verify'];
+func.tags = ['main', 'verify'];

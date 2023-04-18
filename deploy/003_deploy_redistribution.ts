@@ -22,4 +22,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['all', 'redistribution', 'contracts'];
+func.tags = ['main', 'redistribution', 'contracts'];

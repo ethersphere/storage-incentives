@@ -21,4 +21,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 };
 
 export default func;
-func.tags = ['all', 'redistribution_roles', 'roles'];
+func.tags = ['main', 'redistribution_roles', 'roles'];
