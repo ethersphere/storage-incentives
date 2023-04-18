@@ -45,7 +45,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
       fileName = network.name + '_deployed.json';
     }
 
-    fs.writeFileSync(fileName, JSON.stringify(deployedData, null, '\t'));
+    fs.writeFileSync(fileName, JSON.stringify(deployedData, null, '\t') + '\n');
     log('Data saved to ' + fileName);
   }
 
