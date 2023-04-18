@@ -1,7 +1,6 @@
 import { run } from 'hardhat';
 
 const verify = async (contractAddress: string, args: unknown[]): Promise<void> => {
-  // eslint-disable-line @typescript-eslint/no-explicit-any
   console.log('Verifying contract...');
   try {
     await run('verify:verify', {
