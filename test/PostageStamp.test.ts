@@ -53,8 +53,6 @@ describe('PostageStamp', function () {
   describe('when deploying contract', function () {
     beforeEach(async function () {
       await deployments.fixture();
-      const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
-      await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
     });
 
     it('should have minimum bucket depth set to 16', async function () {
