@@ -2,7 +2,7 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { deploy, get, read, execute, log } = deployments;
+  const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
   const args = [(await get('PostageStamp')).address];
@@ -10,14 +10,11 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     from: deployer,
     args: args,
     log: true,
-    // we need to wait if on a live network so we can verify properly
-    waitConfirmations: networkConfig[network.name].blockConfirmations || 1,
+    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
 
-  const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
-  await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, (await get('PriceOracle')).address);
   log('----------------------------------------------------');
 };
 
 export default func;
-func.tags = ['all', 'oracle', 'contracts'];
+func.tags = ['main', 'oracle', 'contracts'];

@@ -3,6 +3,7 @@ import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardh
 import { Contract } from 'ethers';
 import { zeroAddress, mineNBlocks, computeBatchId, mintAndApprove, getBlockNumber } from './util/tools';
 
+const { read, execute } = deployments;
 interface Batch {
   id?: string;
   nonce: string;
@@ -94,6 +95,8 @@ describe('PostageStamp', function () {
       await deployments.fixture();
       const postageStamp = await ethers.getContract('PostageStamp', deployer);
       await postageStamp.setMinimumValidityBlocks(0);
+      const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+      await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
     });
 
     describe('when creating a batch', function () {
@@ -690,7 +693,9 @@ describe('PostageStamp', function () {
       });
 
       it('should not top up with insufficient funds', async function () {
-        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk + 1)).to.be.revertedWith(errors.erc20.exceedsBalance);
+        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk + 1)).to.be.revertedWith(
+          errors.erc20.exceedsBalance
+        );
       });
 
       it('should not top up expired batches', async function () {
