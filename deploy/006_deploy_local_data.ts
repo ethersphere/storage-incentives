@@ -1,5 +1,5 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
+import { developmentChains, deployedBzzData } from '../helper-hardhat-config';
 import * as fs from 'fs';
 
 interface DeployedContract {
@@ -22,7 +22,7 @@ interface DeployedData {
   };
 }
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+const func: DeployFunction = async function ({ deployments, network }) {
   const { get, log } = deployments;
 
   // Chain ID and Network ID are often the same but could be different https://chainid.network/chains_mini.json
@@ -45,11 +45,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       fileName = network.name + '_deployed.json';
     }
 
-    fs.writeFileSync(fileName, JSON.stringify(deployedData, null, '\t'));
-    return log('Data saved to ' + fileName);
+    fs.writeFileSync(fileName, JSON.stringify(deployedData, null, '\t') + '\n');
+    log('Data saved to ' + fileName);
   }
 
-  const tokenContract = await get('TestToken');
   const stampsContract = await get('PostageStamp');
   const oracleContract = await get('PriceOracle');
   const stakingContract = await get('StakeRegistry');
@@ -62,39 +61,45 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       : (deployedData['contracts']['bzzToken'] = deployedBzzData.testnet);
   } else {
     // Token data for dev chains
+    const tokenContract = await get('TestToken');
     deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
-    deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode!;
+    deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
     deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
-    deployedData['contracts']['bzzToken']['block'] = tokenContract.receipt!.blockNumber;
+    deployedData['contracts']['bzzToken']['block'] =
+      tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 0;
     deployedData['contracts']['bzzToken']['url'] = '';
   }
 
   // PostageStamp data
   deployedData['contracts']['postageStamp']['abi'] = stampsContract.abi;
-  deployedData['contracts']['postageStamp']['bytecode'] = stampsContract.bytecode!;
+  deployedData['contracts']['postageStamp']['bytecode'] = stampsContract.bytecode ? stampsContract.bytecode : '';
   deployedData['contracts']['postageStamp']['address'] = stampsContract.address;
-  deployedData['contracts']['postageStamp']['block'] = stampsContract.receipt!.blockNumber;
+  deployedData['contracts']['postageStamp']['block'] =
+    stampsContract.receipt && stampsContract.receipt.blockNumber ? stampsContract.receipt.blockNumber : 0;
   deployedData['contracts']['postageStamp']['url'] = '';
 
   // Redistribution data
   deployedData['contracts']['redistribution']['abi'] = redisContract.abi;
-  deployedData['contracts']['redistribution']['bytecode'] = redisContract.bytecode!;
+  deployedData['contracts']['redistribution']['bytecode'] = redisContract.bytecode ? redisContract.bytecode : '';
   deployedData['contracts']['redistribution']['address'] = redisContract.address;
-  deployedData['contracts']['redistribution']['block'] = redisContract.receipt!.blockNumber;
+  deployedData['contracts']['redistribution']['block'] =
+    redisContract.receipt && redisContract.receipt.blockNumber ? redisContract.receipt.blockNumber : 0;
   deployedData['contracts']['redistribution']['url'] = '';
 
   // Staking data
   deployedData['contracts']['staking']['abi'] = stakingContract.abi;
-  deployedData['contracts']['staking']['bytecode'] = stakingContract.bytecode!;
+  deployedData['contracts']['staking']['bytecode'] = stakingContract.bytecode ? stakingContract.bytecode : '';
   deployedData['contracts']['staking']['address'] = stakingContract.address;
-  deployedData['contracts']['staking']['block'] = stakingContract.receipt!.blockNumber;
+  deployedData['contracts']['staking']['block'] =
+    stakingContract.receipt && stakingContract.receipt.blockNumber ? stakingContract.receipt.blockNumber : 0;
   deployedData['contracts']['staking']['url'] = '';
 
   // Oracle data
   deployedData['contracts']['priceOracle']['abi'] = oracleContract.abi;
-  deployedData['contracts']['priceOracle']['bytecode'] = oracleContract.bytecode!;
+  deployedData['contracts']['priceOracle']['bytecode'] = oracleContract.bytecode ? oracleContract.bytecode : '';
   deployedData['contracts']['priceOracle']['address'] = oracleContract.address;
-  deployedData['contracts']['priceOracle']['block'] = oracleContract.receipt!.blockNumber;
+  deployedData['contracts']['priceOracle']['block'] =
+    oracleContract.receipt && oracleContract.receipt.blockNumber ? oracleContract.receipt.blockNumber : 0;
   deployedData['contracts']['priceOracle']['url'] = '';
 
   await writeResult(deployedData);
@@ -102,4 +107,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['all', 'local'];
+func.tags = ['main', 'local'];
