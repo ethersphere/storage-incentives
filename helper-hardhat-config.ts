@@ -1,9 +1,7 @@
-// Chain IDs are often the same but could be different https://chainid.network/chains_mini.json
-
 export interface networkConfigItem {
   blockConfirmations?: number;
+  multisig?: string;
 }
-
 export interface networkConfigInfo {
   [key: string]: networkConfigItem;
 }
@@ -14,9 +12,11 @@ export const networkConfig: networkConfigInfo = {
   sepolia: {},
   testnet: {
     blockConfirmations: 6,
+    multisig: "0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1"
   },
   mainnet: {
     blockConfirmations: 6,
+    multisig: "0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1"
   },
 };
 
