@@ -3,6 +3,7 @@ import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
 
+const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
@@ -14,7 +15,7 @@ const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972
 const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
 
 // Named accounts used by tests.
-let deployer: string, stamper: string;
+let deployer: string, stamper: string, pauser: string;
 
 let node_0: string;
 const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
@@ -66,6 +67,7 @@ before(async function () {
   const namedAccounts = await getNamedAccounts();
   deployer = namedAccounts.deployer;
   stamper = namedAccounts.stamper;
+  pauser = namedAccounts.pauser;
   node_0 = namedAccounts.node_0;
   node_1 = namedAccounts.node_1;
   node_2 = namedAccounts.node_2;
@@ -170,6 +172,9 @@ describe('Redistribution', function () {
       await deployments.fixture();
       redistribution = await ethers.getContract('Redistribution');
       token = await ethers.getContract('TestToken', deployer);
+
+      const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+      await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
 
       //initialise, set minimum price, todo: move to deployment
       const priceOracle = await ethers.getContract('PriceOracle', deployer);

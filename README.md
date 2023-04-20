@@ -52,17 +52,21 @@ Relinquish admin rights...
 # Deployment and Bootstrapping Procedure
 
 ...
+
 ## Contents:
+
 ### Smart Contracts and Metadata
+
 This project includes the following smart contracts and their metadata:
+
 - [Smart Contracts](./src)
+
   - Redistribution
   - Staking Registry
   - Price Oracle
   - Postage Stamps
     - HitchensOrderStatisticsTreeLib
   - Test Token
-
 
 - Metadata ([Testnet](./testnet_deployed.json),[Mainnet](./mainnet_deployed.json))
   - **Chain ID**: Chain ID of the blockchain.
@@ -74,6 +78,7 @@ This project includes the following smart contracts and their metadata:
   - **URL**: URL for analyzing the transaction.
 
 ### [Scripts](./scripts)
+
 - Script for deploying all and individual contracts
 - Script assigning roles/permissions for smart contracts
   - Redistributor role
@@ -81,12 +86,15 @@ This project includes the following smart contracts and their metadata:
   - Price Updater role
 
 ## Project Setup
+
 ### Prerequisites
+
 To set up the project, you will need `yarn` and `node`.
 
 The project has been tested with the latest node LTS (Erbium). A `.nvmrc` file is also provided.
 
 ### Setup
+
 To get started with this project, follow these steps:
 
 1. Clone the repo.
@@ -96,49 +104,58 @@ To get started with this project, follow these steps:
 ## Run
 
 ### [Tests](./test)
+
 - Unit Tests
-  - Run `yarn run test` to run all the tests.
-  - Run `yarn run test:coverage` to see the coverage of smart contracts.
+  - Run `yarn hardhat test` to run all the tests.
+  - Run `yarn hardhat coverage` to see the coverage of smart contracts.
 
 ### Deployments
 
-#### Remote
+#### Method
+
+All deployments and Tests are fully dependant on Hardhat Deploy library https://github.com/wighawag/hardhat-deploy and follow best practices used there
 
 ##### Prerequisites
-Consult devops/storage-incentives team for infura token or create one from [Infura website](https://infura.io/).
+
+Feel free to use public RPCs but if you want extra security and speed, feel free to use Infura, Alchemy or any other private RPC and add full path with your KEY to .env file
 
 ##### Steps
-1. Run `yarn run compile` to get all the contracts compiled.
-2. Run `yarn run test` to run all the tests.
+
+1. Run `yarn hardhat compile` to get all the contracts compiled.
+2. Run `yarn hardhat test` to run all the tests.
 3. Configure `.env` file
    - Set your `WALLET_SECRET` in the `.env` file.
    - Set your `INFURA_TOKEN` in the `.env` file.
 4. To deploy all contracts and set roles:
-   - Mainnet: `yarn run deploy:mainnet`
-   - Testnet: `yarn run deploy:testnet`
+   - Mainnet: `yarn hardhat deploy --network mainnet`
+   - Testnet: `yarn hardhat deploy --network testnet`
 
-**Note:** It is recommended to add `gasPrice=120000000000, // 120gwei` in [hardhat.config.ts](./hardhat.config.ts) as a fail-safe for testnet deployment.
+**Note** can also use npx instead of yarn, so it would be 'yarn hardhat compile'. For fastest typing you can install https://hardhat.org/hardhat-runner/docs/guides/command-line-completion and then just run 'hh compile' 'hh test'
 
-**Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed if intended.
+**Note:** If using Goerli as tesnet be aware that GAS prices are very high and maybe you will should add custom gasPrice that is very high if you want to get your picked up fast, set it in hardhat.config.ts or as options when deploying
+
+**Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed as bee node is picking them up as data that is used in nodes. This is done utilizing codegen/generate_src.sh script that is activated as github action, more on this at the bottom in Releasing section
 
 **Note:** `WALLET_SECRET` can be **Mnemonic** or **Private Key**.
 
 #### Local
-- Run `yarn run deploy:hardhat` to deploy all contracts on hardhat environment(network).
+
+- Run `yarn hardhat deploy` to deploy all contracts on hardhat environment(network).
 - To deploy on Ganache (or other networks):
   - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
-      ```
-      ganache: {
-            url: 'http://localhost:8545',
-            chainId: 1337,
-      },
-      ```
-  - To run: `yarn run deploy ganache`
+    ```
+    ganache: {
+          url: 'http://localhost:8545',
+          chainId: 1337,
+    },
+    ```
+  - To run: `yarn hardhat deploy --network ganache`
 
 #### Additional commands and flags:
-* Make necessary changes to [hardhat.config.ts](./hardhat.config.ts).
-  * List of available configs can be found [here](https://hardhat.org/hardhat-runner/docs/config).
-* Run script `yarn hardhat run <script> --network <network>`
+
+- Make necessary changes to [hardhat.config.ts](./hardhat.config.ts).
+  - List of available configs can be found [here](https://hardhat.org/hardhat-runner/docs/config).
+- Run script `yarn hardhat run <script> --network <network>`
   - **Network**: Configure network name
   - **Script**: Configure script name and path
 

@@ -7,6 +7,7 @@ import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
+
 const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? undefined : process.env.PRIVATE_RPC_MAINNET;
 const PRIVATE_RPC_TESTNET = !process.env.PRIVATE_RPC_TESTNET ? undefined : process.env.PRIVATE_RPC_TESTNET;
 
@@ -132,7 +133,6 @@ const config: HardhatUserConfig = {
     },
     mainnet: {
       url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
-
       accounts,
       chainId: 100,
     },
@@ -149,7 +149,7 @@ const config: HardhatUserConfig = {
         chainId: 5,
         urls: {
           apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/address/',
+          browserURL: 'https://goerli.etherscan.io/',
         },
       },
       {
