@@ -9,7 +9,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   let token = null;
 
   if (developmentChains.includes(network.name)) {
-    const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
+    const argsToken = ['TEST', 'TST', '1249989122910552325012092', deployer];
 
     token = await deploy('TestToken', {
       from: deployer,
@@ -19,7 +19,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   }
 
   if (network.name == 'testnet' || network.name == 'sepolia') {
-    const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000'];
+    const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000', networkConfig[network.name]?.multisig];
     token = await deploy('TestToken', {
       from: deployer,
       args: argsToken,
