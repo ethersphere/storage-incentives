@@ -113,6 +113,10 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
+
+    // alpha=1% k=16 n=1M
+    uint256 public constant SAMPLE_MAX_VALUE = 94730660000000000000000000000000000000000000000000000000000000000000000000;
+
     // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 currentRevealRoundAnchor;
 
@@ -809,7 +813,7 @@ contract Redistribution is AccessControl, Pausable {
      
     }
 
-    function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal {
+    function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
         if ( a < b ) {
             require(uint256(trA1) < uint256(trA2), "random element order check failed");
             require(uint256(trA2) < uint256(trALast), "last element order check failed"); 
@@ -821,13 +825,7 @@ contract Redistribution is AccessControl, Pausable {
         estimateSize(trALast);
     }
 
-    function estimateSize(bytes32 trALast) internal {
-        // estimate = index * ( 0xFFF / TrA)
-        // index * (0xFFF...) = index << 256 - index ~= index << 256
-        // A / B ~= A >> 16 / B >> 16
-        // ~ index << 256 >> 16  /  Tra >> 16 
-        // ~ index << 240  /  Tra >> 16
-        uint256 estimate = ( ( uint256(16) << 240 ) / ( uint256(trALast) >> 16 ) );
-        require(estimate > 1960000, "reserve size estimation check failed");
+    function estimateSize(bytes32 trALast) internal pure {
+        require(uint256(trALast) < SAMPLE_MAX_VALUE, "reserve size estimation check failed");
     }
 }
