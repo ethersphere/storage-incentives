@@ -149,7 +149,7 @@ const config: HardhatUserConfig = {
         chainId: 5,
         urls: {
           apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/address/',
+          browserURL: 'https://goerli.etherscan.io/',
         },
       },
       {
