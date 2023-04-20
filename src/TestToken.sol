@@ -15,6 +15,7 @@ contract TestToken is ERC20PresetMinterPauser {
         _initialSupply = initialSupply;
         // Setup multisig as main admin
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
+        renounceRole(DEFAULT_ADMIN_ROLE, _msgSender());
         _mint(multisig, initialSupply);
     }
 
