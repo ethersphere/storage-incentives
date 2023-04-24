@@ -12,7 +12,7 @@ interface DeployedContract {
 
 interface DeployedData {
   chainId: number;
-  networkId: number;
+  swarmNetworkId: number;
   contracts: {
     postageStamp: DeployedContract;
     redistribution: DeployedContract;
@@ -25,10 +25,9 @@ interface DeployedData {
 const func: DeployFunction = async function ({ deployments, network }) {
   const { get, log } = deployments;
 
-  // Chain ID and Network ID are often the same but could be different https://chainid.network/chains_mini.json
   const deployedData = {
     chainId: network.config.chainId,
-    networkId: network.config.chainId,
+    swarmNetworkId: networkConfig[network.name]?.swarmNetworkId  ? networkConfig[network.name]?.swarmNetworkId : 1,
     contracts: {
       bzzToken: {} as DeployedContract,
       staking: {} as DeployedContract,
