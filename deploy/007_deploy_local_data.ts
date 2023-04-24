@@ -53,10 +53,7 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
   const oracleContract = await get('PriceOracle');
   const stakingContract = await get('StakeRegistry');
   const redisContract = await get('Redistribution');
-  const browserURL = config.etherscan.customChains.find(
-    (chain) => chain.network === network.name
-  )?.urls.browserURL;
-
+  const browserURL = config.etherscan.customChains.find((chain) => chain.network === network.name)?.urls.browserURL;
 
   // Insert already deployed data if it is mainnet or testnet
   if (!developmentChains.includes(network.name)) {
