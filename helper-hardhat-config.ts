@@ -2,7 +2,7 @@
 
 export interface networkConfigItem {
   blockConfirmations?: number;
-  swarmNetworkId?:number;
+  swarmNetworkId?: number;
 }
 
 export interface networkConfigInfo {

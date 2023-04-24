@@ -1,5 +1,5 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { developmentChains, deployedBzzData } from '../helper-hardhat-config';
+import { developmentChains, deployedBzzData, networkConfig } from '../helper-hardhat-config';
 import * as fs from 'fs';
 
 interface DeployedContract {
@@ -27,7 +27,8 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
   const deployedData = {
     chainId: network.config.chainId,
-    swarmNetworkId: networkConfig[network.name]?.swarmNetworkId  ? networkConfig[network.name]?.swarmNetworkId : 1,
+
+    swarmNetworkId: networkConfig[network.name]?.swarmNetworkId ? networkConfig[network.name]?.swarmNetworkId : 1,
     contracts: {
       bzzToken: {} as DeployedContract,
       staking: {} as DeployedContract,

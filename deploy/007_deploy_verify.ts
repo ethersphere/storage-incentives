@@ -1,10 +1,9 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { developmentChains, deployedBzzData } from '../helper-hardhat-config';
+import { deployedBzzData } from '../helper-hardhat-config';
 import verify from '../utils/verify';
 
 const func: DeployFunction = async function ({ deployments, network, ethers }) {
   const { log, get } = deployments;
-
 
   if ((network.name == 'mainnet' || network.name == 'testnet') && process.env.MAINNET_ETHERSCAN_KEY) {
     // contract veryfing vars
