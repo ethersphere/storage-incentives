@@ -2,6 +2,7 @@
 
 export interface networkConfigItem {
   blockConfirmations?: number;
+  swarmNetworkId?: number;
 }
 
 export interface networkConfigInfo {
@@ -13,9 +14,11 @@ export const networkConfig: networkConfigInfo = {
   hardhat: {},
   testnet: {
     blockConfirmations: 6,
+    swarmNetworkId: 10,
   },
   mainnet: {
     blockConfirmations: 6,
+    swarmNetworkId: 1,
   },
 };
 
