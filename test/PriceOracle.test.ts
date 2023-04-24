@@ -96,7 +96,7 @@ describe('PriceOracle', function () {
         const currentPrice = await priceOracle.currentPrice();
         const newPrice = parseInt(currentPrice) + 1024;
 
-        const priceOracleN = await ethers.getContract('PriceOracle', others[1]);
+        const priceOracleN = await ethers.getContract('PriceOracle', others[0]);
         await expect(priceOracleN.setPrice(newPrice)).to.be.revertedWith(errors.manual.notAdmin);
 
         const priceOracleU = await ethers.getContract('PriceOracle', updater);

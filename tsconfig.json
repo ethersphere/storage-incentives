@@ -9,5 +9,6 @@
     "outDir": "dist",
     "resolveJsonModule": true
   },
-  "include": ["hardhat.config.ts", "./scripts", "./deploy", "./test"]
+  "include": ["hardhat.config.ts", "./scripts", "./deploy", "./test", "./utils"],
+  "exclude": ["node_modules", "**/*.spec.ts"]
 }

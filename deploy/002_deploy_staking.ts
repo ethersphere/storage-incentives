@@ -1,21 +1,39 @@
-import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
+import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
 
-const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts } = hre;
-  const { deploy, get, read, execute } = deployments;
-  const { deployer, pauser } = await getNamedAccounts();
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
+  const { deploy, get, log } = deployments;
+  const { deployer } = await getNamedAccounts();
 
-  const networkID = 0; //test network
+  // Overlays in tests are hardcoded with 0 ID so we need to use it for testing
+  let networkID = 0;
+  if (!developmentChains.includes(network.name) && network.config.chainId) {
+    networkID = network.config.chainId;
+  }
 
+  let token = null;
+  if (developmentChains.includes(network.name)) {
+    token = await get('TestToken');
+  }
+
+  if (network.name == 'mainnet' || network.name == 'testnet') {
+    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
+  }
+
+  if (token == null) {
+    throw new Error(`Unsupported network: ${network.name}`);
+  }
+
+  const args = [token.address, networkID];
   await deploy('StakeRegistry', {
     from: deployer,
-    args: [(await get('TestToken')).address, networkID],
+    args: args,
     log: true,
+    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
 
-  const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
-  await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
+  log('----------------------------------------------------');
 };
 
 export default func;
+func.tags = ['main', 'staking', 'contracts'];

@@ -3,6 +3,7 @@ import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber } from './util/tools';
 
+const { read, execute } = deployments;
 let deployer: string;
 let redistributor: string;
 let pauser: string;
@@ -14,7 +15,7 @@ const freezeTime = 3;
 
 const errors = {
   deposit: {
-    noBalance: 'ERC20: transfer amount exceeds balance',
+    noBalance: 'ERC20: insufficient allowance',
     noZeroAddress: 'owner cannot be the zero address',
     belowMinimum: 'cannot be below the minimum stake value',
     onlyOwner: 'only owner can update stake',
@@ -69,6 +70,8 @@ describe('Staking', function () {
     beforeEach(async function () {
       stakeRegistry = await ethers.getContract('StakeRegistry');
       await deployments.fixture();
+      const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+      await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
     });
 
     it('should deploy StakeRegistry', async function () {

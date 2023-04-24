@@ -1,12 +1,13 @@
 import { expect } from './util/chai';
-import { ethers, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
+import { ethers, getNamedAccounts, getUnnamedAccounts, deployments } from 'hardhat';
 import { mineNBlocks, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
 
+const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
 // Named accounts used by tests.
-let deployer: string, stamper: string, oracle: string;
+let deployer: string, stamper: string, oracle: string, pauser: string;
 let others: string[];
 
 // Before the tests, assign accounts
@@ -15,6 +16,7 @@ before(async function () {
   deployer = namedAccounts.deployer;
   stamper = namedAccounts.stamper;
   oracle = namedAccounts.oracle;
+  pauser = namedAccounts.pauser;
   others = await getUnnamedAccounts();
 });
 
@@ -118,8 +120,16 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 }
 
 describe('Stats', async function () {
+  beforeEach(async function () {
+    await deployments.fixture();
+    const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+    await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
+
+    const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+    await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
+  });
   describe('two player game', async function () {
-    const trials = 100;
+    const trials = 150;
 
     it('is fair with 1:3 stake', async function () {
       this.timeout(0);
