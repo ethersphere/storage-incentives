@@ -1,10 +1,8 @@
-// Chain IDs are often the same but could be different https://chainid.network/chains_mini.json
-
 export interface networkConfigItem {
   blockConfirmations?: number;
   swarmNetworkId?: number;
+  multisig?: string;
 }
-
 export interface networkConfigInfo {
   [key: string]: networkConfigItem;
 }
@@ -12,13 +10,16 @@ export interface networkConfigInfo {
 export const networkConfig: networkConfigInfo = {
   localhost: {},
   hardhat: {},
+  sepolia: {},
   testnet: {
     blockConfirmations: 6,
     swarmNetworkId: 10,
+    multisig: '0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1',
   },
   mainnet: {
     blockConfirmations: 6,
     swarmNetworkId: 1,
+    multisig: '0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1',
   },
 };
 
