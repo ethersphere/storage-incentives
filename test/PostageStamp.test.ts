@@ -107,7 +107,6 @@ describe('PostageStamp', function () {
 
         setPrice0Block = await getBlockNumber();
         await priceOracle.setPrice(price0);
-        await priceOracle.setPrice(price0);
 
         batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',

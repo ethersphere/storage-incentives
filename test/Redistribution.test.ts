@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
-import { BigNumber, Contract, getDefaultProvider, providers, Wallet } from 'ethers';
+import { BigNumber, Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
 
 const { read, execute } = deployments;
@@ -787,11 +787,10 @@ describe('Redistribution', function () {
               CountRevealsEvent = e;
             }
           }
-
-          const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - copyBatchTx.blockNumber) * price1 * 2 ** 20; // TODO
-
-          expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
+          const expectedPotPayout =
+            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** postageDepth +
+            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
+          expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
 
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
