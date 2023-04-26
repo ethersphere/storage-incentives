@@ -2,6 +2,7 @@ import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { BigNumber, Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
+import { proximity } from '../utils';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -69,6 +70,19 @@ const stakeAmount_5 = '100000000000000000';
 const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003ba6';
 const depth_5 = '0x02';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+
+/**
+ * checks whether there is enough blocks for the 1st phase and if not it mines blocks until the next round
+ * @param txNo how many transactions needs to be executed in the 1st phase (e.g. commits)
+ */
+async function startRoundFixture(txNo = 0) {
+  const currentBlockNumber = await getBlockNumber();
+  const roundBlocks = currentBlockNumber % roundLength;
+  // 2: 1 for the current block another 1 is for the last block of the phase is forbidden
+  if (roundBlocks >= phaseLength - txNo - 2) {
+    await mineNBlocks(roundLength - roundBlocks); // beginning of the round
+  }
+}
 
 // Before the tests, assign accounts
 before(async function () {
@@ -816,6 +830,15 @@ describe('Redistribution', function () {
         let currentRound: number;
 
         beforeEach(async () => {
+          await startRoundFixture(2);
+
+          // anchor fixture
+          let currentSeed = await redistribution.currentSeed();
+          while (proximity(currentSeed, overlay_2) < Number(depth_2)) {
+            await mineNBlocks(roundLength);
+            currentSeed = await redistribution.currentSeed();
+          }
+
           priceOracle = await ethers.getContract('PriceOracle', deployer);
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
