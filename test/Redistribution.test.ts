@@ -3,6 +3,7 @@ import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { BigNumber, Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
 import { proximity } from '../utils';
+import { node5_proof1 } from './claim-proofs';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -36,8 +37,10 @@ const reveal_nonce_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415
 
 let node_1: string;
 const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
+const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc99f9f91e915';
 const stakeAmount_1 = '100000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
 const hash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_1 = '0x06';
 const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -68,8 +71,8 @@ let node_5: string;
 const overlay_5 = '0x676720d79d609ed462fadf6f14eb1bf9ec1a90999dd45a671d79a89c7b5ac9d8';
 const stakeAmount_5 = '100000000000000000';
 const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003ba6';
-const depth_5 = '0x02';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const { depth: depth_5, hash: hash_5 } = node5_proof1;
 
 /**
  * checks whether there is enough blocks for the 1st phase and if not it mines blocks until the next round
@@ -230,6 +233,11 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, node_1, sr_node_1.address, stakeAmount_1);
       await sr_node_1.depositStake(node_1, nonce_1, stakeAmount_1);
 
+      // 16 depth neighbourhood with node_5
+      const sr_node_1_n_25 = await ethers.getContract('StakeRegistry', node_1);
+      await mintAndApprove(deployer, node_1, sr_node_1_n_25.address, stakeAmount_1);
+      await sr_node_1.depositStake(node_1, nonce_1_n_25, stakeAmount_1);
+
       const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
       await mintAndApprove(deployer, node_2, sr_node_2.address, stakeAmount_2);
       await sr_node_2.depositStake(node_2, nonce_2, stakeAmount_2);
@@ -247,6 +255,7 @@ describe('Redistribution', function () {
       await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
 
       await mineNBlocks(roundLength * 2);
+      await startRoundFixture();
       // await setPrevRandDAO();
     });
 
@@ -618,16 +627,21 @@ describe('Redistribution', function () {
     describe('claim phase', async function () {
       describe('single player', async function () {
         it('should claim pot', async function () {
+          // anchor fixture
+          let currentSeed = await redistribution.currentSeed();
+          while (proximity(currentSeed, overlay_5) < Number(depth_5)) {
+            await mineNBlocks(roundLength);
+            currentSeed = await redistribution.currentSeed();
+          }
+          console.log('Anchor', currentSeed);
+
           expect(await redistribution.currentPhaseCommit()).to.be.true;
           const r_node_5 = await ethers.getContract('Redistribution', node_5);
-          const sanityHash = '0x55bf7024605c9399996151d0dc3d0314cc7545df3c2ed07488767886ce0bee3b';
-          const sanityDepth = '0x00'; //TODO with depth 2 (sampling with the correct overlay)
+          const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
 
           const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          const currentSeed = await redistribution.currentSeed();
-          console.log('Anchor', currentSeed);
           await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
@@ -646,126 +660,6 @@ describe('Redistribution', function () {
           expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
 
           await mineNBlocks(phaseLength);
-          const proof1 = {
-            proofSegments: [
-              '0x00004c7edfc532aa02128e84eb60dd945393abb715608bf6a64ec4c2f57c5e30',
-              '0xa897b7e490aa0825b4d950415b1d200a237af2e41f5d951e68830a9a8243a4c5',
-              '0x5778e85e06dc344c78db8ce3e7023e8745467760dbbd5cfd23d48e90f87a266c',
-              '0x44b8002d4e5b8aebc5899e6f902da6cc9a6fa62ad3bd3b224926b4bf7dd84aeb',
-              '0xdb5250abd7a2024fe90b242d366d758c88c88c5a1943db513d5cae7224000138',
-              '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
-              '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
-            ],
-            proveSegment: '0x393f9c405119b2ee0c974fa1a55cbdfef18cc2144b859050fee0205c818a0603',
-            proofSegments2: [
-              '0x350e986831bca61a98736f651e54f8ce4c7c5e1666dcbfc9a3b6ad127902d126',
-              '0x9904eacf14512f4a21456483c2d69e67efb55a3d0ccee0dac1d6a2c187173b9e',
-              '0x0725738f481814df727ddf0ff5cb15d56d4268459c8838782f89d1ec7bcb7c90',
-              '0x7169e87b3a1e40fe798d0720af900555c6de09371af69beff852125612e71097',
-              '0xd7745f3def9fbd25704680ea83c1c0b9f257c516f19193dadd3383d87a693362',
-              '0x8874f6946700318dc5089facbac6cca24df9a5cc764f4bf3d81fed67056bf68a',
-              '0xd87da8f20293f48dbe7ca582f988ab2a9feabaa9f1a9ea1aba6412469d4e3608',
-            ],
-            proveSegment2: '0xa45136252ae4c79b4e8bb50a87bc655fd70f6747e59e6280467fa97f662bc464',
-            chunkSpan: 4096,
-            proofSegments3: [
-              '0x350e986831bca61a98736f651e54f8ce4c7c5e1666dcbfc9a3b6ad127902d126',
-              '0x95c6b7efc3ed72b59b884ee73c0c8506af4c8ec43b9abab0a5165b3fb84f866e',
-              '0xa2548ec95b8a2fac79fb3102190c0c19cf830b38b479bdf7aae71c1433e4808d',
-              '0x7101977e4e27fdcad3455a45947c875e2ea9b1ec6b40bceb1272a54aea949492',
-              '0x1da5102a4fb6a23e5851ad6e16318ed7e717c39b8780f488275cc9de9e9cee15',
-              '0x775645567eb363fa559a96893189831b7cad98f562dc07b63a751a28f14c1076',
-              '0x6dcc1ee0a9b531a6aa00b11fedb7073df5fb1e4c6a80ee09001ba8d72b9f725d',
-            ],
-            signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
-            signature:
-              '0x8d122e7c2bd5af66014f42ca84296e051f1def57af560006db4397c7dc381b193d96648741026a6c0b639dcb9dc617d46ff5e169dbf86356ecc4ea9f38d4569b1b',
-            chunkAddr: '0x393f9c405119b2ee0c974fa1a55cbdfef18cc2144b859050fee0205c818a0603',
-            postageId: '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
-            index: '0x0000393f00000030',
-            timeStamp: '0x17522192d5ffa29b',
-            socProofAttached: [],
-          };
-          const proof2 = {
-            proofSegments: [
-              '0x000046fa2570ad9d3e29fc7174f2b2dee13febc77d28a11a5339a32c0507ec4d',
-              '0xd0b6ebf40ddd9ed35dcb664a8e7a9191b24ecce4c88a8185c5407de50d218e97',
-              '0xd915691bc18dbb5225aea3b14368affd7641b01b65b82683027334ed631419fe',
-              '0x917056589c590e40b9751b5507bf7b988ee562682f765f080e882488eab5b6ff',
-              '0x3ec366648492196cc175bb66162fefe42b3cd2818732a28650e103e1bbff89d2',
-              '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
-              '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
-            ],
-            proveSegment: '0x506208613c9f517152251de468b48892f279c8d39a7112d0494de9f6281f5cfd',
-            proofSegments2: [
-              '0x20c2d6f574cf6e086f862dd2d25b79fa2f3d8c7796b89db2f461b68ceff00cfe',
-              '0xfb634dfa76b137bbb1ad3cf2495cfe99494e10a615e871c82e8bece51a0fdb6c',
-              '0x9808b8cf933ae4b09d65bb10ea54cdb56a59f5767579c08900aacea4469f9d95',
-              '0xbf665bea440e7a8d3935099cfe98a02e4b408b8e4d93f87bba89125b88a6cb5e',
-              '0x9953e39ca51d8b653992959582d1fd60aaddf3fbb8ed7178300d36bd02d28b8d',
-              '0xa3ae076724c284ae700a0afdeec86ca962e8d007786add9aba61c5f0ac26d8d0',
-              '0x1a841c60cb299453e4414ea8b4afdb5470595f73234722f9925545ca49007f5f',
-            ],
-            proveSegment2: '0x608021a5980d56e648b9855c16f7cab12edc2e8666865e9905c30f845ef651b6',
-            chunkSpan: 4096,
-            proofSegments3: [
-              '0x20c2d6f574cf6e086f862dd2d25b79fa2f3d8c7796b89db2f461b68ceff00cfe',
-              '0xad7a95e02a83851127473b4d55128b49294343380b1c69c31d9576f0b2b1f5b3',
-              '0xa3f52a1ef26673818a44a2525d12ce73c73c8619bb7b408114902e71f0c0ebd3',
-              '0x494c0e7269d0865d5086be1cf75dfea80d09952999694370d730bd16122538d2',
-              '0xf2739f20ccd09630ab33a97d8034b78460092df061788e9b35d58835f64e9247',
-              '0x3716527e2ce7db9c7390ca049675f584b90cb94627c4def545cb0689a7af6daa',
-              '0x09f7e6f6f70d0262656e91289c8ee0a5df36686a877b6a185a4aba8ad6239948',
-            ],
-            signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
-            signature:
-              '0x54e892bc39e760b2212016889bc1b82d6fbb6e044a109d4a9828830bb5f2ea2a77251f0b142a589d8635e707786e3be68bc6a5f87eb3e7a8f16819891e6579d11b',
-            chunkAddr: '0x506208613c9f517152251de468b48892f279c8d39a7112d0494de9f6281f5cfd',
-            postageId: '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
-            index: '0x000050620000000f',
-            timeStamp: '0x175173b0fbc488a3',
-            socProofAttached: [],
-          };
-          const proofLast = {
-            proofSegments: [
-              '0x00006829034ff570fe03a91f72437ebc27f1718b77f3ea5ae10c28dad3b87569',
-              '0x92bed13ea63cb001694d7cd0b1d8ed4a9ca9759ceca92eccd76809b718cecc4f',
-              '0xa0ea9d1d1c5ad5afdfd4e4a5dfb4a70e547ff6020a3a3f90770d4df5d4c4ab62',
-              '0xd419e6356e0609131fb841abbe512a6707e7df5849b81181ecc30d7c2e948b02',
-              '0xdb5250abd7a2024fe90b242d366d758c88c88c5a1943db513d5cae7224000138',
-              '0x0eb01ebfc9ed27500cd4dfc979272d1f0913cc9f66540d7e8005811109e1cf2d',
-              '0x887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968',
-            ],
-            proveSegment: '0x6980bcddb97047aaaec76772114013651ca2e9031f92f3cc1e8136ff6c3a78aa',
-            proofSegments2: [
-              '0x2cbc6f08df82cd68deb1cdd2addb2e9b24fb824cc3322efb7fccde5d50ce8eb3',
-              '0xd0a385f71642414c8cf350ed345215fb3258f0a4ce62969514498c953683c6ef',
-              '0xe29c064b68fca5df2249564c2d39595e22b5de93adbcebc683e35de1b311aa6a',
-              '0xac8525d36c19a38b710e10d4f66531ab1190c7ef8a54fac1a8b739d90adf2d1d',
-              '0x854e01c35693502b6a6c26a047503fadce9f62f589c2a1883b68b02fccdc37cb',
-              '0x1b57b27a2cc22dfe689776aeb3b8a63045a911d227ac68b0cce7226676fe6da8',
-              '0xb758a8c76cff96c102fd7eba3c4a6d44aa0c05f15f49a6428924430aedafb952',
-            ],
-            proveSegment2: '0x29ce03259117ff60d0c909df2c338aedcf41c66fa215e19beb4926985574757f',
-            chunkSpan: 4096,
-            proofSegments3: [
-              '0x2cbc6f08df82cd68deb1cdd2addb2e9b24fb824cc3322efb7fccde5d50ce8eb3',
-              '0x2bb01374ec583aa5f15a59257ac28a4dca7c7eea29872ccdf240519a87fc278f',
-              '0x201aa91ad86c8b17bfd68b2483b95cf1e8b223b4f612b9d8e702039671a13c14',
-              '0x465125f41dae3b8d1954c20096978bd5ef4eee2d12111f54764f74fb9666bd3c',
-              '0x1c3046b8e3d407d683b7632a7b60bef3bc71eaa87b1d297eb959f91e77ee4e43',
-              '0x9aaba0e82950f1e1bc320d3c235a8df7eda7edde1e0c63dc3204f061d96a7e70',
-              '0x014b3dff33c6856ae822e433f43c00c8fe1bfae79aa2bcdaf90f76c464a4a6e5',
-            ],
-            signer: '0x26234a2ad3ba8b398a762f279b792cfacd536a3f',
-            signature:
-              '0xb0428004374d42a20e6381a896f9a65819c9179c089471a01288b0b33f0994b342decd062fa67ec3c9ae8d7fcd838a75da39bc3b972e80366f06eea73576a6291b',
-            chunkAddr: '0x6980bcddb97047aaaec76772114013651ca2e9031f92f3cc1e8136ff6c3a78aa',
-            postageId: '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
-            index: '0x0000698000000030',
-            timeStamp: '0x1752c0bf80b32258',
-            socProofAttached: [],
-          };
           // migrate batch with which the chunk was signed
           const postageAdmin = await ethers.getContract('PostageStamp', deployer);
           // set minimum required blocks for postage stamp lifetime to 0 for tests
@@ -783,6 +677,7 @@ describe('Redistribution', function () {
             '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
             true // immutable
           );
+          console.log(`first batch block number: ${stampCreatedBlock}; \n copybatch: ${copyBatchTx.blockNumber}`);
           const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           const receipt2 = await tx2.wait();
 
@@ -801,11 +696,11 @@ describe('Redistribution', function () {
               CountRevealsEvent = e;
             }
           }
+
           const expectedPotPayout =
-            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** postageDepth +
+            (receipt2.blockNumber - copyBatchTx.blockNumber) * price1 * 2 ** postageDepth +
             (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
           expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
-
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
@@ -826,7 +721,7 @@ describe('Redistribution', function () {
       describe('two commits with equal stakes', async function () {
         let priceOracle: Contract;
         let r_node_1: Contract;
-        let r_node_2: Contract;
+        let r_node_5: Contract;
         let currentRound: number;
 
         beforeEach(async () => {
@@ -843,35 +738,34 @@ describe('Redistribution', function () {
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
           r_node_1 = await ethers.getContract('Redistribution', node_1);
-          r_node_2 = await ethers.getContract('Redistribution', node_2);
+          r_node_5 = await ethers.getContract('Redistribution', node_2);
 
           currentRound = await r_node_1.currentRound();
 
-          const obsfucatedHash_1 = encodeAndHash(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_1.commit(obsfucatedHash_1, overlay_1, currentRound);
+          const obsfucatedHash_1 = encodeAndHash(overlay_1_n_25, depth_1, hash_1, reveal_nonce_0);
+          await r_node_1.commit(obsfucatedHash_1, overlay_1_n_25, currentRound);
 
-          const obsfucatedHash_2 = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-          await r_node_2.commit(obsfucatedHash_2, overlay_2, currentRound);
+          const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
+          await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
 
           await mineNBlocks(phaseLength);
-          console.log("current block num", await getBlockNumber());
         });
 
         it('if only one reveal, should freeze non-revealer and select revealer as winner', async function () {
           const nodesInNeighbourhood = 1;
 
           //do not reveal node_1
-          await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
 
-          expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
-          expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
-          expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
-          expect((await r_node_2.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
-          expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
+          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(hash_5);
+          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
+          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(depth_5));
 
           await mineNBlocks(phaseLength);
 
-          const tx2 = await r_node_2.claim();
+          const tx2 = await r_node_5.claim();
           const receipt2 = await tx2.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -930,12 +824,12 @@ describe('Redistribution', function () {
           const nodesInNeighbourhood = 2;
 
           await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_5.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
           await mineNBlocks(phaseLength);
 
           expect(await r_node_1.isWinner(overlay_1)).to.be.false;
-          expect(await r_node_2.isWinner(overlay_2)).to.be.true;
+          expect(await r_node_5.isWinner(overlay_2)).to.be.true;
 
           const tx2 = await r_node_1.claim();
           const receipt2 = await tx2.wait();
@@ -990,7 +884,7 @@ describe('Redistribution', function () {
 
         it('if incorrect winner claims, correct winner is paid', async function () {
           await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_5.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
           await mineNBlocks(phaseLength);
 
