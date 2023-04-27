@@ -78,8 +78,8 @@ const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 async function startRoundFixture(txNo = 0) {
   const currentBlockNumber = await getBlockNumber();
   const roundBlocks = currentBlockNumber % roundLength;
-  // 2: 1 for the current block another 1 is for the last block of the phase is forbidden
-  if (roundBlocks >= phaseLength - txNo - 2) {
+  // 1 is for the last block of the phase is forbidden
+  if (roundBlocks >= phaseLength - txNo - 1) {
     await mineNBlocks(roundLength - roundBlocks); // beginning of the round
   }
 }
@@ -830,7 +830,7 @@ describe('Redistribution', function () {
         let currentRound: number;
 
         beforeEach(async () => {
-          await startRoundFixture(2);
+          await startRoundFixture(3);
 
           // anchor fixture
           let currentSeed = await redistribution.currentSeed();
@@ -854,6 +854,7 @@ describe('Redistribution', function () {
           await r_node_2.commit(obsfucatedHash_2, overlay_2, currentRound);
 
           await mineNBlocks(phaseLength);
+          console.log("current block num", await getBlockNumber());
         });
 
         it('if only one reveal, should freeze non-revealer and select revealer as winner', async function () {
