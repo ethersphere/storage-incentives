@@ -211,6 +211,9 @@ contract PostageStamp is AccessControl, Pausable {
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
 
+        //update validChunkCount to remove currently expired batches
+        expireLimited(type(uint256).max);
+
         validChunkCount += 1 << _depth;
 
         batches[_batchId] = Batch({
