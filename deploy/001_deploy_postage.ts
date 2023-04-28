@@ -4,7 +4,7 @@ import { networkConfig } from '../helper-hardhat-config';
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
   const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
-  const argsStamp = [(await get('TestToken')).address, 16];
+  const argsStamp = [(await get('TestToken')).address, 16, networkConfig[network.name]?.multisig];
 
   await deploy('PostageStamp', {
     from: deployer,

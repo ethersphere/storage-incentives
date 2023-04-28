@@ -5,7 +5,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const args = [(await get('PostageStamp')).address];
+  const args = [(await get('PostageStamp')).address,  networkConfig[network.name]?.multisig];
   await deploy('PriceOracle', {
     from: deployer,
     args: args,
