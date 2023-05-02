@@ -8,9 +8,9 @@ export interface networkConfigInfo {
 }
 
 export const networkConfig: networkConfigInfo = {
-  localhost: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8',},
-  hardhat: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8',},
-  sepolia: { multisig: '0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1',},
+  localhost: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
+  hardhat: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
+  sepolia: { multisig: '0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1' },
   testnet: {
     blockConfirmations: 6,
     swarmNetworkId: 10,
