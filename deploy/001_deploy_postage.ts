@@ -1,14 +1,22 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, upgrades }) {
   const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
   const argsStamp = [(await get('TestToken')).address, 16];
 
   await deploy('PostageStamp', {
     from: deployer,
-    args: argsStamp,
+    proxy: {
+      proxyContract: 'UUPS',
+      execute: {
+        init: {
+          methodName: 'initialize',
+          args: argsStamp,
+        },
+      },
+    },
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });

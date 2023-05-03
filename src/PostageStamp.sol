@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/AccessControl.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 
 /**
@@ -25,7 +27,7 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
  * The global figure for the currently allowed chunks is tracked by _validChunkCount_ and updated during batch _expiry_ events.
  */
 
-contract PostageStamp is AccessControl, Pausable {
+contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeable, PausableUpgradeable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
     /**
@@ -114,11 +116,30 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _bzzToken The ERC20 token address to reference in this contract.
      * @param _minimumBucketDepth The minimum bucket depth of batches that can be purchased.
      */
-    constructor(address _bzzToken, uint8 _minimumBucketDepth) {
+
+    // @dev no constructor in upgradable contracts. Instead we have initializers
+
+    function initialize(address _bzzToken, uint8 _minimumBucketDepth) public initializer {
         bzzToken = _bzzToken;
+        lastPrice = 0;
         minimumBucketDepth = _minimumBucketDepth;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
+
+        ///@dev as there is no constructor, we need to initialise the OwnableUpgradeable explicitly
+        __AccessControl_init();
+        __Pausable_init();
+    }
+
+    ///@dev required by the OZ UUPS module
+    function _authorizeUpgrade(address) internal override onlyRole(DEFAULT_ADMIN_ROLE) {}
+
+    function _msgSender() internal view override(ContextUpgradeable) returns (address) {
+        return msg.sender;
+    }
+
+    function _msgData() internal view override(ContextUpgradeable) returns (bytes calldata) {
+        return msg.data;
     }
 
     /**
