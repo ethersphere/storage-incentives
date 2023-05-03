@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.1;
+pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -133,11 +133,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param nonce Nonce that was used for overlay calculation.
      * @param amount Deposited amount of ERC20 tokens.
      */
-    function depositStake(
-        address _owner,
-        bytes32 nonce,
-        uint256 amount
-    ) external whenNotPaused {
+    function depositStake(address _owner, bytes32 nonce, uint256 amount) external whenNotPaused {
         require(_owner == msg.sender, "only owner can update stake");
 
         bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));

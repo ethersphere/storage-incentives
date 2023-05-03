@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.1;
+pragma solidity ^0.8.18;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -121,7 +121,6 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
 
     function initialize(address _bzzToken, uint8 _minimumBucketDepth) public initializer {
         bzzToken = _bzzToken;
-        lastPrice = 0;
         minimumBucketDepth = _minimumBucketDepth;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);

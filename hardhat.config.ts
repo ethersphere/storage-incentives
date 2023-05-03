@@ -26,26 +26,13 @@ const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 // Config for hardhat.
 const config: HardhatUserConfig = {
   solidity: {
-    compilers: [
-      {
-        version: '0.8.1',
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
-        },
+    version: '0.8.18',
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
       },
-      {
-        version: '0.8.2',
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
-        },
-      },
-    ],
+    },
   },
   preprocess: {
     eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
