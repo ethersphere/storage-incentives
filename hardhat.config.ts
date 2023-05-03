@@ -5,6 +5,8 @@ import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
+import 'hardhat-contract-sizer';
+import { removeConsoleLog } from 'hardhat-preprocessor';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
 
@@ -30,6 +32,9 @@ const config: HardhatUserConfig = {
         runs: 200,
       },
     },
+  },
+  preprocess: {
+    eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
   },
   namedAccounts: {
     deployer: 0,
@@ -164,6 +169,9 @@ const config: HardhatUserConfig = {
   },
   paths: {
     sources: 'src',
+  },
+  contractSizer: {
+    runOnCompile: true,
   },
 };
 
