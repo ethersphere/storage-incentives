@@ -34,7 +34,7 @@
     "ethereumjs-abi": "^0.6.8",
     "ethers": "^5.7.0",
     "ganache-cli": "^6.12.2",
-    "hardhat": "^2.11.2",
+    "hardhat": "^2.14.0",
     "hardhat-deploy": "^0.11.26",
     "hardhat-deploy-ethers": "^0.3.0-beta.13",
     "hardhat-tracer": "^2.1.2",
