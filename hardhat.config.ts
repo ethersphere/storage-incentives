@@ -2,11 +2,11 @@ import 'dotenv/config';
 import { HardhatUserConfig } from 'hardhat/types';
 import 'solidity-coverage';
 import 'hardhat-deploy';
-import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 import 'hardhat-contract-sizer';
 import { removeConsoleLog } from 'hardhat-preprocessor';
+import '@nomiclabs/hardhat-ethers';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
 
