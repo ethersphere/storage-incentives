@@ -10,11 +10,10 @@ export interface networkConfigInfo {
 export const networkConfig: networkConfigInfo = {
   localhost: {},
   hardhat: {},
-  sepolia: {},
   testnet: {
     blockConfirmations: 6,
     swarmNetworkId: 10,
-    multisig: '0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1',
+    multisig: '0x0B86A5028A642D40032984E3d129B7304953C8c3',
   },
   mainnet: {
     blockConfirmations: 6,
