@@ -127,12 +127,7 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     testnet: {
-      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
-      accounts,
-      chainId: 5,
-    },
-    sepolia: {
-      url: `https://rpc2.sepolia.org`,
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://rpc2.sepolia.org',
       accounts,
       chainId: 11155111,
     },
@@ -146,15 +141,14 @@ const config: HardhatUserConfig = {
     apiKey: {
       mainnet: mainnetEtherscanKey || '',
       testnet: testnetEtherscanKey || '',
-      sepolia: testnetEtherscanKey || '',
     },
     customChains: [
       {
         network: 'testnet',
-        chainId: 5,
+        chainId: 11155111,
         urls: {
-          apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/',
+          apiURL: 'https://api-sepolia.etherscan.io/api',
+          browserURL: 'https://sepolia.etherscan.io/',
         },
       },
       {
