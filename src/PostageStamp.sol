@@ -121,7 +121,7 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
         // Need to set default values here as state is in proxy
-        minimumValidityBlocks = 12280;
+        minimumValidityBlocks = 17280;
         lastPrice = 0;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
