@@ -101,12 +101,10 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
 
     // Lottery pot at last update.
     uint256 public pot;
-
     // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
     uint256 public minimumValidityBlocks;
-
     // Price from the last update.
-    uint256 public lastPrice = 0;
+    uint256 public lastPrice;
     // Block at which the last update occured.
     uint256 public lastUpdatedBlock;
     // Normalised balance at the blockheight expire() was last called.
@@ -123,7 +121,8 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
         // Need to set default values here as state is in proxy
-        minimumValidityBlocks = 17280;
+        minimumValidityBlocks = 12280;
+        lastPrice = 0;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
 
