@@ -10,8 +10,15 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
     const token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
     const networkID = network.config.chainId as number;
 
+    // Verify postageStamp proxy
+    const postageStampProxy = await get('PostageStamp');
+
+    log('Verifying...');
+    await verify(postageStampProxy.address, []);
+    log('----------------------------------------------------');
+
     // Verify postageStamp
-    const postageStamp = await get('PostageStamp');
+    const postageStamp = await get('PostageStamp_Implementation');
     const argsStamp = [token.address, 16];
 
     log('Verifying...');

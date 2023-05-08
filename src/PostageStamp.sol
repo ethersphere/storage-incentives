@@ -103,7 +103,7 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
     uint256 public pot;
 
     // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
-    uint256 public minimumValidityBlocks = 17280;
+    uint256 public minimumValidityBlocks;
 
     // Price from the last update.
     uint256 public lastPrice = 0;
@@ -122,6 +122,8 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
     function initialize(address _bzzToken, uint8 _minimumBucketDepth) public initializer {
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
+        // Need to set default values here as state is in proxy
+        minimumValidityBlocks = 17280;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
 
