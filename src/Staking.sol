@@ -60,10 +60,10 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _bzzToken Address of the staked ERC20 token
      * @param _NetworkId Swarm network ID
      */
-    constructor(address _bzzToken, uint64 _NetworkId) {
+    constructor(address _bzzToken, uint64 _NetworkId, address multisig) {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 
@@ -133,11 +133,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param nonce Nonce that was used for overlay calculation.
      * @param amount Deposited amount of ERC20 tokens.
      */
-    function depositStake(
-        address _owner,
-        bytes32 nonce,
-        uint256 amount
-    ) external whenNotPaused {
+    function depositStake(address _owner, bytes32 nonce, uint256 amount) external whenNotPaused {
         require(_owner == msg.sender, "only owner can update stake");
 
         bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));
