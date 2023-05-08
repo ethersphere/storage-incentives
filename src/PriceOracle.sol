@@ -39,8 +39,8 @@ contract PriceOracle is AccessControl {
     // The address of the linked PostageStamp contract
     IPostageStamp public postageStamp;
 
-    constructor(address _postageStamp) {
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+    constructor(address _postageStamp, address multisig) {
+        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
     }
 
