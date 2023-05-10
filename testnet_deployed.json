@@ -1741,6 +1741,13 @@
 					"type": "function"
 				},
 				{
+					"inputs": [],
+					"name": "increment",
+					"outputs": [],
+					"stateMutability": "nonpayable",
+					"type": "function"
+				},
+				{
 					"inputs": [
 						{
 							"internalType": "address",

@@ -138,7 +138,7 @@ contract PostageStamp is Initializable, UUPSUpgradeable, AccessControlUpgradeabl
         return msg.sender;
     }
 
-    function _msgData() internal view override(ContextUpgradeable) returns (bytes calldata) {
+    function _msgData() internal pure override(ContextUpgradeable) returns (bytes calldata) {
         return msg.data;
     }
 

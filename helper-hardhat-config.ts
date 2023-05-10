@@ -8,13 +8,12 @@ export interface networkConfigInfo {
 }
 
 export const networkConfig: networkConfigInfo = {
-  localhost: {},
-  hardhat: {},
-  sepolia: {},
+  localhost: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
+  hardhat: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
   testnet: {
     blockConfirmations: 6,
     swarmNetworkId: 10,
-    multisig: '0x6bD7b86C826b1Ba35Fd00e249DcE887e4DBBf9b1',
+    multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
   mainnet: {
     blockConfirmations: 6,
