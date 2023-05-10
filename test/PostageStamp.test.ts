@@ -1,9 +1,9 @@
 import { expect } from './util/chai';
-import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
+import { ethers, deployments, getNamedAccounts, getUnnamedAccounts, upgrades } from 'hardhat';
 import { Contract } from 'ethers';
 import { zeroAddress, mineNBlocks, computeBatchId, mintAndApprove, getBlockNumber } from './util/tools';
 
-const { read, execute } = deployments;
+const { read, execute, get } = deployments;
 interface Batch {
   id?: string;
   nonce: string;
@@ -97,6 +97,25 @@ describe('PostageStamp', function () {
       await postageStamp.setMinimumValidityBlocks(0);
       const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
       await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
+    });
+
+    describe('when upgrading proxy', function () {
+      it('value of minimumValidityBlocks should be specific', async function () {
+        const PostageStampV2Factory = await ethers.getContractFactory('PostageStampV2');
+        //const proxyContract = await ethers.getContract('PostageStamp', deployer);
+        const proxyContractFactory = await ethers.getContractFactory('PostageStamp');
+        const proxyContract = await get('PostageStamp_Proxy');
+
+        await upgrades.forceImport(proxyContract.address, proxyContractFactory, { kind: 'uups' });
+
+        const postageStampV2 = await upgrades.upgradeProxy(proxyContract.address, PostageStampV2Factory);
+        await postageStampV2.incrementByOne();
+
+        console.log(await postageStampV2.minimumValidityBlocks());
+
+        // const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+        // await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause');
+      });
     });
 
     describe('when creating a batch', function () {
