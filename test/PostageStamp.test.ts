@@ -102,19 +102,17 @@ describe('PostageStamp', function () {
     describe('when upgrading proxy', function () {
       it('value of minimumValidityBlocks should be specific', async function () {
         const PostageStampV2Factory = await ethers.getContractFactory('PostageStampV2');
-        //const proxyContract = await ethers.getContract('PostageStamp', deployer);
         const proxyContractFactory = await ethers.getContractFactory('PostageStamp');
         const proxyContract = await get('PostageStamp_Proxy');
+        const incrementedValue = 17281;
 
+        // Force Import with data from hh deploy and upgrade contract to Mock V2
         await upgrades.forceImport(proxyContract.address, proxyContractFactory, { kind: 'uups' });
-
         const postageStampV2 = await upgrades.upgradeProxy(proxyContract.address, PostageStampV2Factory);
         await postageStampV2.incrementByOne();
 
-        console.log(await postageStampV2.minimumValidityBlocks());
-
-        // const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
-        // await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause');
+        let minimumValidityValue = ethers.BigNumber.from(await postageStampV2.minimumValidityBlocks());
+        expect(minimumValidityValue.toNumber()).to.equal(incrementedValue);
       });
     });
 
