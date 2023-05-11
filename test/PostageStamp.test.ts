@@ -114,6 +114,25 @@ describe('PostageStamp', function () {
         let minimumValidityValue = ethers.BigNumber.from(await postageStampV2.minimumValidityBlocks());
         expect(minimumValidityValue.toNumber()).to.equal(incrementedValue);
       });
+
+      it('adding new state variable through proxy', async function () {
+        const proxyContract = await get('PostageStamp_Proxy');
+        const proxyContractStorageZero = await ethers.provider.getStorageAt(proxyContract.address, 0);
+        const PostageStampV3Factory = await ethers.getContractFactory('PostageStampV3');
+        const proxyContractFactory = await ethers.getContractFactory('PostageStamp');
+        const testString = 'Nickless';
+
+        // Force Import with data from hh deploy and upgrade contract to Mock V2
+        await upgrades.forceImport(proxyContract.address, proxyContractFactory, { kind: 'uups' });
+        const postageStampV3 = await upgrades.upgradeProxy(proxyContract.address, PostageStampV3Factory);
+        await postageStampV3.setString(testString);
+        const testStringContract = await postageStampV3.testString();
+        expect(testStringContract).to.equal(testString);
+
+        // We are checking did storage slot zero got overriden by upgrade, should be the same as before upgrade
+        const proxyContractStorageZeroAfterUpgrade = await ethers.provider.getStorageAt(proxyContract.address, 0);
+        expect(proxyContractStorageZero).to.equal(proxyContractStorageZeroAfterUpgrade);
+      });
     });
 
     describe('when creating a batch', function () {
