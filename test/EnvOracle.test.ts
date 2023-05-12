@@ -44,6 +44,10 @@ describe('EnvOracle', function () {
     await revertedChecker('0.1');
     await revertedChecker('0.0.-1');
     await revertedChecker('0.0.');
+    await revertedChecker('0..');
+    await revertedChecker('.0.');
+    await revertedChecker('..0');
+    await revertedChecker('..');
     await revertedChecker('');
   });
 

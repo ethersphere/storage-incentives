@@ -49,6 +49,8 @@ contract EnvOracle is AccessControl {
       started = true;
     }
 
-    require(dotCount == 2 && versionBytes[bytelength - 1] != DOT, "Minimum Bee version should be in semver form");
+    require(dotCount == 2 
+      && versionBytes[bytelength - 1] != DOT 
+      && bytelength >= 5, "Minimum Bee version should be in semver form");
   }
 }
