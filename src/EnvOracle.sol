@@ -11,6 +11,8 @@ contract EnvOracle is AccessControl {
   // states the minimum Bee version from which the stack can be used
   string public minimumBeeVersion;
 
+  bytes1 constant DOT = 0x2E;
+
   constructor(string memory _minimumBeeVersion) {
     _assertMinimumBeeVersion(_minimumBeeVersion);
     _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
@@ -26,7 +28,6 @@ contract EnvOracle is AccessControl {
   }
 
   function _assertMinimumBeeVersion(string memory _minimumBeeVersion) internal pure {
-    bytes1 dot = 0x2E;
     uint8 dotCount = 0;
     bytes memory versionBytes = bytes(_minimumBeeVersion);
     uint256 bytelength = versionBytes.length;
@@ -35,7 +36,7 @@ contract EnvOracle is AccessControl {
 
     for (uint256 i = 0; i < bytelength; i++) {
       bytes1 b = versionBytes[i];
-      if (b == dot) {
+      if (b == DOT) {
         dotCount += 1;
         zeroStarted = false;
         started = false;
@@ -48,6 +49,6 @@ contract EnvOracle is AccessControl {
       started = true;
     }
 
-    require(dotCount == 2, "Minimum Bee version should be in semver form");
+    require(dotCount == 2 && versionBytes[bytelength - 1] != DOT, "Minimum Bee version should be in semver form");
   }
 }
