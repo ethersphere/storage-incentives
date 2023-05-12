@@ -2,7 +2,7 @@ import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { BigNumber, Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
-import { proximity } from '../utils';
+import { proximity } from './util/tools';
 import { node5_proof1 } from './claim-proofs';
 
 const { read, execute } = deployments;
