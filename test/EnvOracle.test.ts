@@ -24,13 +24,19 @@ describe('EnvOracle', function () {
 
   it('should change the version to different correct ones', async () => {
     const setterChecker = async function (version: string) {
-      await envOracle.setMinimumBeeVersion(version);
+      const tx = await envOracle.setMinimumBeeVersion(version);
       expect(await envOracle.minimumBeeVersion()).to.equal(version);
+
+      const receipt = await tx.wait();
+      const beeVersionChangedEvent = receipt.events[0];
+      expect(beeVersionChangedEvent.event).to.be.equal('MinimumBeeVersionChanged');
+      expect(beeVersionChangedEvent.args[0]).to.be.equal(version);
     };
 
     await setterChecker('0.0.1');
     await setterChecker('99.999.9999');
     await setterChecker('10.101.101');
+    await setterChecker('100.100.100');
   });
 
   it('should not change the version in a wrong format', async () => {
@@ -47,6 +53,7 @@ describe('EnvOracle', function () {
     await revertedChecker('0..');
     await revertedChecker('.0.');
     await revertedChecker('..0');
+    await revertedChecker('11..0');
     await revertedChecker('..');
     await revertedChecker('');
   });
