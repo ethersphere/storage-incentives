@@ -1,9 +1,7 @@
-import { HardhatRuntimeEnvironment } from 'hardhat/types';
 import { DeployFunction } from 'hardhat-deploy/types';
 import { ENV_ORACLE_BEE_VERSION } from '../helper-hardhat-config';
 
-const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deployments, getNamedAccounts } = hre;
+const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
   const { deploy } = deployments;
   const { deployer } = await getNamedAccounts();
   const args = [ENV_ORACLE_BEE_VERSION];
@@ -16,3 +14,4 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 };
 
 export default func;
+func.tags = ['main', 'env_oracle', 'contracts'];
