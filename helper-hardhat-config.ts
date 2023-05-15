@@ -13,7 +13,7 @@ export const networkConfig: networkConfigInfo = {
   testnet: {
     blockConfirmations: 6,
     swarmNetworkId: 10,
-    multisig: '0x0B86A5028A642D40032984E3d129B7304953C8c3',
+    multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
   mainnet: {
     blockConfirmations: 6,
