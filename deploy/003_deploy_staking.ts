@@ -6,10 +6,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer } = await getNamedAccounts();
 
   // Overlays in tests are hardcoded with 0 ID so we need to use it for testing
-  let networkID = 0;
-  if (!developmentChains.includes(network.name) && network.config.chainId) {
-    networkID = network.config.chainId;
-  }
+  let swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
 
   let token = null;
   if (developmentChains.includes(network.name)) {
@@ -24,7 +21,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     throw new Error(`Unsupported network: ${network.name}`);
   }
 
-  const args = [token.address, networkID, networkConfig[network.name]?.multisig];
+  const args = [token.address, swarmNetworkID, networkConfig[network.name]?.multisig];
   await deploy('StakeRegistry', {
     from: deployer,
     args: args,

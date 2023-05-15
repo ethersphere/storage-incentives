@@ -8,8 +8,8 @@ export interface networkConfigInfo {
 }
 
 export const networkConfig: networkConfigInfo = {
-  localhost: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
-  hardhat: { multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
+  localhost: { swarmNetworkId: 0, multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
+  hardhat: { swarmNetworkId: 0, multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
   testnet: {
     blockConfirmations: 6,
     swarmNetworkId: 10,
