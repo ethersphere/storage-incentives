@@ -4,9 +4,7 @@ import { networkConfig, developmentChains, deployedBzzData } from '../helper-har
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
-
-  // Overlays in tests are hardcoded with 0 ID so we need to use it for testing
-  let swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
+  const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
 
   let token = null;
   if (developmentChains.includes(network.name)) {
