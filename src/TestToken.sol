@@ -17,7 +17,7 @@ contract TestToken is ERC20PresetMinterPauser {
         _mint(multisig, initialSupply);
     }
 
-    // We use 16 decimals for BZZ/gBzz token so we need to override it here
+    // We use 16 decimals for BZZ/sBZZ token so we need to override it here
     function decimals() public view virtual override returns (uint8) {
         return 16;
     }
