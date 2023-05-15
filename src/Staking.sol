@@ -167,16 +167,15 @@ contract StakeRegistry is AccessControl, Pausable {
     function withdrawFromStake(bytes32 overlay, uint256 amount) external whenPaused {
         require(stakes[overlay].owner == msg.sender, "only owner can withdraw stake");
         uint256 withDrawLimit = amount;
-        if (amount > stakes[overlay].stakeAmount) {
+        if (withDrawLimit >= stakes[overlay].stakeAmount) {
             withDrawLimit = stakes[overlay].stakeAmount;
+            delete stakes[overlay];
+            require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
         }
 
         if (withDrawLimit < stakes[overlay].stakeAmount) {
             stakes[overlay].stakeAmount -= withDrawLimit;
             stakes[overlay].lastUpdatedBlockNumber = block.number;
-            require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
-        } else {
-            delete stakes[overlay];
             require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
         }
     }
