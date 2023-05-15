@@ -263,11 +263,11 @@ describe('Redistribution', function () {
       it('should be in the correct round', async function () {
         const initialBlockNumber = await getBlockNumber();
 
-        expect(await redistribution.currentRound()).to.be.eq(2);
+        expect(await redistribution.currentRound()).to.be.eq(3);
 
         await mineNBlocks(roundLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + roundLength);
-        expect(await redistribution.currentRound()).to.be.eq(3);
+        expect(await redistribution.currentRound()).to.be.eq(4);
       });
 
       it('should be in the correct phase', async function () {
