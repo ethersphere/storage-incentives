@@ -51,17 +51,17 @@ contract StakeRegistry is AccessControl, Pausable {
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
     // Swarm network ID
-    uint64 NetworkId;
+    uint64 internal swarmNetworkId;
 
     // Address of the staked ERC20 token
     address public bzzToken;
 
     /**
      * @param _bzzToken Address of the staked ERC20 token
-     * @param _NetworkId Swarm network ID
+     * @param _swarmNetworkId Swarm network ID
      */
-    constructor(address _bzzToken, uint64 _NetworkId, address multisig) {
-        NetworkId = _NetworkId;
+    constructor(address _bzzToken, uint64 _swarmNetworkId, address multisig) {
+        swarmNetworkId = _swarmNetworkId;
         bzzToken = _bzzToken;
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
@@ -136,7 +136,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function depositStake(address _owner, bytes32 nonce, uint256 amount) external whenNotPaused {
         require(_owner == msg.sender, "only owner can update stake");
 
-        bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));
+        bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(swarmNetworkId), nonce));
 
         uint256 updatedAmount = amount;
 
