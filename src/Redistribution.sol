@@ -20,6 +20,10 @@ interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
 }
 
+interface IEnvOracle {
+    function minimumBeeVersion() external view returns (string memory);
+}
+
 interface IStakeRegistry {
     function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
 
@@ -86,6 +90,8 @@ contract Redistribution is AccessControl, Pausable {
     IPriceOracle public OracleContract;
     // The address of the linked Staking contract.
     IStakeRegistry public Stakes;
+    // The address of the linked EnvOracle contract.
+    IEnvOracle public EnvOracleContract;
 
     // Commits for the current round.
     Commit[] public currentCommits;
@@ -144,10 +150,17 @@ contract Redistribution is AccessControl, Pausable {
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
      */
-    constructor(address staking, address postageContract, address oracleContract, address multisig) {
+    constructor(
+        address staking,
+        address postageContract,
+        address oracleContract,
+        address envOracleContract,
+        address multisig
+    ) {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
+        EnvOracleContract = IEnvOracle(envOracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
@@ -254,6 +267,13 @@ contract Redistribution is AccessControl, Pausable {
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
         return currentReveals;
+    }
+
+    /**
+     * @notice Returns current minimum bee node version.
+     */
+    function currentMinimumBeeVersion() public view returns (string memory) {
+        return EnvOracleContract.minimumBeeVersion();
     }
 
     /**

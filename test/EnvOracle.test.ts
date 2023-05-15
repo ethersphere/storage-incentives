@@ -9,17 +9,19 @@ const errors = {
 };
 
 describe('EnvOracle', function () {
-  let envOracle: Contract;
+  let envOracle: Contract, redistributionContract: Contract;
   let otherAccounts: string[];
 
   beforeEach(async function () {
     await deployments.fixture();
     envOracle = await ethers.getContract('EnvOracle');
+    redistributionContract = await ethers.getContract('Redistribution');
     otherAccounts = await getUnnamedAccounts();
   });
 
   it('should match the deployed minimum Bee version with the default one', async () => {
     expect(await envOracle.minimumBeeVersion()).to.equal(ENV_ORACLE_BEE_VERSION);
+    expect(await redistributionContract.currentMinimumBeeVersion()).to.equal(ENV_ORACLE_BEE_VERSION);
   });
 
   it('should change the version to different correct ones', async () => {
