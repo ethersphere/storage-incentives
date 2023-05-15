@@ -4,5 +4,21 @@ pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol";
 
 contract TestToken is ERC20PresetMinterPauser {
-    constructor() ERC20PresetMinterPauser("Test", "TST") {}
+    uint256 private _initialSupply;
+
+    constructor(
+        string memory name,
+        string memory symbol,
+        uint256 initialSupply,
+        address multisig
+    ) ERC20PresetMinterPauser(name, symbol) {
+        _initialSupply = initialSupply;
+        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
+        _mint(multisig, initialSupply);
+    }
+
+    // We use 16 decimals for BZZ/sBZZ token so we need to override it here
+    function decimals() public view virtual override returns (uint8) {
+        return 16;
+    }
 }

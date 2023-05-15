@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { Contract } from 'ethers';
 import { ethers, deployments, getUnnamedAccounts } from 'hardhat';
-import { ENV_ORACLE_BEE_VERSION } from '../scripts/utils';
+import { ENV_ORACLE_BEE_VERSION } from '../helper-hardhat-config';
 
 const errors = {
   setMinimumBeeVersion: 'Minimum Bee version should be in semver form',
