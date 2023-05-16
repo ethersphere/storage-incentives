@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { BigNumber, Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, ZERO_32_BYTES } from './util/tools';
 import { proximity } from './util/tools';
 import { node5_proof1 } from './claim-proofs';
 
@@ -11,7 +11,10 @@ const roundLength = 152;
 
 const increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
 
-const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
+// round anchor after startRoundFixture()
+const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
+// start round number after mintToNode(red, 0) -> without claim
+const roundAnchorBase = '0xa54b3e90672405a607381bd4d34034a12c5aad31607067a7ad26573f504ad6e2';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
 
 const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
@@ -74,6 +77,11 @@ const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const { depth: depth_5, hash: hash_5 } = node5_proof1;
 
+// start round number after startRoundFixture()
+const startRoundNumber = 3;
+// start round number after mintToNode(red, 0) -> without claim
+const startRndNumBase = 38;
+
 /**
  * checks whether there is enough blocks for the 1st phase and if not it mines blocks until the next round
  * @param txNo how many transactions needs to be executed in the 1st phase (e.g. commits)
@@ -86,6 +94,28 @@ async function startRoundFixture(txNo = 0) {
     await mineNBlocks(roundLength - roundBlocks); // beginning of the round
   }
 }
+
+function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): string {
+  const differenceString = '0x' + (difference - 1).toString(16).padStart(64, '0');
+  const currentAnchor = ethers.utils.keccak256(
+    new Uint8Array([...ethers.utils.arrayify(previousAnchor), ...ethers.utils.arrayify(differenceString)])
+  );
+
+  return currentAnchor;
+}
+
+/**
+ * Mines blocks until the given node's neighbourhood
+ * @param redistribution inited Redistribution contract
+ * @param nodeNo node's index in the top-level defined node data.
+ */
+const mineToNode = async (redistribution: Contract, nodeNo: number) => {
+  let currentSeed = await redistribution.currentSeed();
+  while (proximity(currentSeed, eval(`overlay_${nodeNo}`)) < Number(eval(`depth_${nodeNo}`))) {
+    await mineNBlocks(roundLength);
+    currentSeed = await redistribution.currentSeed();
+  }
+};
 
 // Before the tests, assign accounts
 before(async function () {
@@ -263,11 +293,11 @@ describe('Redistribution', function () {
       it('should be in the correct round', async function () {
         const initialBlockNumber = await getBlockNumber();
 
-        expect(await redistribution.currentRound()).to.be.eq(3);
+        expect(await redistribution.currentRound()).to.be.eq(startRoundNumber);
 
         await mineNBlocks(roundLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + roundLength);
-        expect(await redistribution.currentRound()).to.be.eq(4);
+        expect(await redistribution.currentRound()).to.be.eq(startRoundNumber + 1);
       });
 
       it('should be in the correct phase', async function () {
@@ -301,18 +331,19 @@ describe('Redistribution', function () {
     describe('qualifying participants', async function () {
       it('should correctly identify if overlay is allowed to participate in current round', async function () {
         await mineNBlocks(1); //because strict equality enforcing time since staking
-
-        expect(await redistribution.currentRound()).to.be.eq(2);
+        await mineToNode(redistribution, 0);
+        expect(await redistribution.currentRound()).to.be.eq(startRndNumBase);
         // 0xa6ee...
-        expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
+        const firstAnchor = await redistribution.currentRoundAnchor();
+        expect(firstAnchor).to.be.eq(roundAnchorBase);
 
-        expect(await redistribution.inProximity(round2Anchor, overlay_0, depth_0)).to.be.true;
-        expect(await redistribution.inProximity(round2Anchor, overlay_1, depth_1)).to.be.true;
-        expect(await redistribution.inProximity(round2Anchor, overlay_2, depth_2)).to.be.true;
+        expect(await redistribution.inProximity(roundAnchorBase, overlay_0, depth_0)).to.be.true;
+        expect(await redistribution.inProximity(roundAnchorBase, overlay_1, depth_1)).to.be.true;
+        expect(await redistribution.inProximity(roundAnchorBase, overlay_2, depth_2)).to.be.true;
 
         // 0xac33...
-        expect(await redistribution.inProximity(round2Anchor, overlay_3, depth_3)).to.be.false;
-        expect(await redistribution.inProximity(round2Anchor, overlay_4, depth_4)).to.be.false;
+        expect(await redistribution.inProximity(roundAnchorBase, overlay_3, depth_3)).to.be.false;
+        expect(await redistribution.inProximity(roundAnchorBase, overlay_4, depth_4)).to.be.false;
 
         // 0x00...
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.true;
@@ -325,26 +356,26 @@ describe('Redistribution', function () {
 
         await mineNBlocks(roundLength);
 
-        expect(await redistribution.currentRound()).to.be.eq(3);
+        const roundNo = Number(await redistribution.currentRound());
+        const nextAnchor = nextAnchorIfNoReveal(ZERO_32_BYTES, roundNo);
+        expect(roundNo).to.be.eq(startRndNumBase + 1);
+        expect(await redistribution.currentRoundAnchor()).to.be.eq(nextAnchor);
 
-        // 0xa6...
-        expect(await redistribution.currentRoundAnchor()).to.be.eq(round3AnchoIfNoReveals);
+        await mineToNode(redistribution, 3);
+        // test out anchor that mined to address satisfy inProximity and isParticipatingInUpcomingRound
+        const nextAnchor2 = redistribution.currentSeed();
 
-        // 0xa6...
-        expect(await redistribution.inProximity(round3AnchoIfNoReveals, overlay_0, depth_0)).to.be.false;
-        expect(await redistribution.inProximity(round3AnchoIfNoReveals, overlay_1, depth_1)).to.be.false;
-        expect(await redistribution.inProximity(round3AnchoIfNoReveals, overlay_2, depth_2)).to.be.false;
+        expect(await redistribution.inProximity(nextAnchor2, overlay_0, depth_0)).to.be.false;
+        expect(await redistribution.inProximity(nextAnchor2, overlay_1, depth_1)).to.be.false;
+        expect(await redistribution.inProximity(nextAnchor2, overlay_2, depth_2)).to.be.false;
 
-        // 0xa6...
-        expect(await redistribution.inProximity(round3AnchoIfNoReveals, overlay_3, depth_3)).to.be.true;
-        expect(await redistribution.inProximity(round3AnchoIfNoReveals, overlay_4, depth_4)).to.be.true;
+        expect(await redistribution.inProximity(nextAnchor2, overlay_3, depth_3)).to.be.true;
+        expect(await redistribution.inProximity(nextAnchor2, overlay_4, depth_4)).to.be.true;
 
-        // 0x00...
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.false;
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_1, depth_1)).to.be.false;
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_2, depth_2)).to.be.false;
 
-        // 0xa6...
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_3, depth_3)).to.be.true;
         expect(await redistribution.isParticipatingInUpcomingRound(overlay_4, depth_4)).to.be.true;
       });
