@@ -2,6 +2,7 @@ import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
 import { arrayify, hexlify } from '@ethersproject/bytes';
 
+export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
 const zeroAddress = '0x0000000000000000000000000000000000000000';
 
 /** returns byte representation of the hex string */
