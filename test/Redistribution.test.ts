@@ -384,7 +384,7 @@ describe('Redistribution', function () {
     describe('commit phase with no reveals', async function () {
       it('should have correct round anchors', async function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
-        expect(await redistribution.currentRound()).to.be.eq(2);
+        expect(await redistribution.currentRound()).to.be.eq(startRoundNumber);
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
         await mineNBlocks(phaseLength);
@@ -392,12 +392,13 @@ describe('Redistribution', function () {
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
         await mineNBlocks(phaseLength);
+        const nextAnchor = nextAnchorIfNoReveal(ZERO_32_BYTES, startRoundNumber + 1);
         expect(await redistribution.currentPhaseClaim()).to.be.true;
-        expect(await redistribution.currentRoundAnchor()).to.be.eq(round3AnchoIfNoReveals);
+        expect(await redistribution.currentRoundAnchor()).to.be.eq(nextAnchor);
 
         await mineNBlocks(phaseLength * 2);
-        expect(await redistribution.currentRound()).to.be.eq(3);
-        expect(await redistribution.currentRoundAnchor()).to.be.eq(round3AnchoIfNoReveals);
+        expect(await redistribution.currentRound()).to.be.eq(startRoundNumber + 1);
+        expect(await redistribution.currentRoundAnchor()).to.be.eq(nextAnchor);
       });
 
       it('should create a commit with failed reveal if the overlay is out of reported depth', async function () {
