@@ -28,35 +28,7 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 contract PostageStamp is AccessControl, Pausable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
-    /**
-     * @dev Emitted when a new batch is created.
-     */
-    event BatchCreated(
-        bytes32 indexed batchId,
-        uint256 totalAmount,
-        uint256 normalisedBalance,
-        address owner,
-        uint8 depth,
-        uint8 bucketDepth,
-        bool immutableFlag
-    );
-
-    event PotWithdrawn(address recipient, uint256 totalAmount);
-
-    /**
-     * @dev Emitted when an existing batch is topped up.
-     */
-    event BatchTopUp(bytes32 indexed batchId, uint256 topupAmount, uint256 normalisedBalance);
-
-    /**
-     * @dev Emitted when the depth of an existing batch increases.
-     */
-    event BatchDepthIncrease(bytes32 indexed batchId, uint8 newDepth, uint256 normalisedBalance);
-
-    /**
-     *@dev Emitted on every price update.
-     */
-    event PriceUpdate(uint256 price);
+    /* Type declarations */
 
     struct Batch {
         // Owner of this batch (0 if not valid).
@@ -72,6 +44,8 @@ contract PostageStamp is AccessControl, Pausable {
         //
         uint256 lastUpdatedBlockNumber;
     }
+
+    /* State variables */
 
     // Role allowed to increase totalOutPayment.
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
@@ -109,6 +83,43 @@ contract PostageStamp is AccessControl, Pausable {
     uint256 public lastUpdatedBlock;
     // Normalised balance at the blockheight expire() was last called.
     uint256 public lastExpiryBalance;
+
+    /* Events */
+
+    /**
+     * @dev Emitted when a new batch is created.
+     */
+    event BatchCreated(
+        bytes32 indexed batchId,
+        uint256 totalAmount,
+        uint256 normalisedBalance,
+        address owner,
+        uint8 depth,
+        uint8 bucketDepth,
+        bool immutableFlag
+    );
+
+    /**
+     * @dev Emitted when an pot is Withdrawn.
+     */
+    event PotWithdrawn(address recipient, uint256 totalAmount);
+
+    /**
+     * @dev Emitted when an existing batch is topped up.
+     */
+    event BatchTopUp(bytes32 indexed batchId, uint256 topupAmount, uint256 normalisedBalance);
+
+    /**
+     * @dev Emitted when the depth of an existing batch increases.
+     */
+    event BatchDepthIncrease(bytes32 indexed batchId, uint8 newDepth, uint256 normalisedBalance);
+
+    /**
+     *@dev Emitted on every price update.
+     */
+    event PriceUpdate(uint256 price);
+
+    /* State Changing Functions */
 
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
@@ -293,19 +304,6 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Return the per chunk balance not yet used up.
-     * @param _batchId The id of an existing batch.
-     */
-    function remainingBalance(bytes32 _batchId) public view returns (uint256) {
-        Batch storage batch = batches[_batchId];
-        require(batch.owner != address(0), "batch does not exist or expired");
-        if (batch.normalisedBalance <= currentTotalOutPayment()) {
-            return 0;
-        }
-        return batch.normalisedBalance - currentTotalOutPayment();
-    }
-
-    /**
      * @notice Set a new price.
      * @dev Can only be called by the price oracle role.
      * @param _price The new price.
@@ -366,23 +364,6 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Return true if no batches exist
-     */
-    function isBatchesTreeEmpty() public view returns (bool) {
-        return tree.count() == 0;
-    }
-
-    /**
-     * @notice Get the first batch id ordered by ascending normalised balance.
-     * @dev If more than one batch id, return index at 0, if no batches, revert.
-     */
-    function firstBatchId() public view returns (bytes32) {
-        uint256 val = tree.first();
-        require(val > 0, "no batches exist");
-        return tree.valueKeyAtIndex(val, 0);
-    }
-
-    /**
      * @notice Reclaims a limited number of expired batches
      * @dev Can be used if reclaiming all expired batches would exceed the block gas limit, causing other
      * contract method calls to fail.
@@ -435,16 +416,6 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Indicates whether expired batches exist.
-     */
-    function expiredBatchesExist() public view returns (bool) {
-        if (isBatchesTreeEmpty()) {
-            return false;
-        }
-        return (remainingBalance(firstBatchId()) <= 0);
-    }
-
-    /**
      * @notice The current pot.
      */
     function totalPot() public returns (uint256) {
@@ -465,6 +436,48 @@ contract PostageStamp is AccessControl, Pausable {
 
         emit PotWithdrawn(beneficiary, totalAmount);
         pot = 0;
+    }
+
+    /** Read Functions */
+
+    /**
+     * @notice Return the per chunk balance not yet used up.
+     * @param _batchId The id of an existing batch.
+     */
+    function remainingBalance(bytes32 _batchId) public view returns (uint256) {
+        Batch storage batch = batches[_batchId];
+        require(batch.owner != address(0), "batch does not exist or expired");
+        if (batch.normalisedBalance <= currentTotalOutPayment()) {
+            return 0;
+        }
+        return batch.normalisedBalance - currentTotalOutPayment();
+    }
+
+    /**
+     * @notice Indicates whether expired batches exist.
+     */
+    function expiredBatchesExist() public view returns (bool) {
+        if (isBatchesTreeEmpty()) {
+            return false;
+        }
+        return (remainingBalance(firstBatchId()) <= 0);
+    }
+
+    /**
+     * @notice Return true if no batches exist
+     */
+    function isBatchesTreeEmpty() public view returns (bool) {
+        return tree.count() == 0;
+    }
+
+    /**
+     * @notice Get the first batch id ordered by ascending normalised balance.
+     * @dev If more than one batch id, return index at 0, if no batches, revert.
+     */
+    function firstBatchId() public view returns (bytes32) {
+        uint256 val = tree.first();
+        require(val > 0, "no batches exist");
+        return tree.valueKeyAtIndex(val, 0);
     }
 
     function batchOwner(bytes32 _batchId) public view returns (address) {
