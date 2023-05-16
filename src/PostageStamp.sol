@@ -159,6 +159,7 @@ contract PostageStamp is AccessControl, Pausable {
         // since the block the contract was deployed, so we must supplement this batch's
         // _initialBalancePerChunk with the currentTotalOutPayment()
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         //update validChunkCount to remove currently expired batches
         expireLimited(type(uint256).max);
@@ -174,8 +175,6 @@ contract PostageStamp is AccessControl, Pausable {
             normalisedBalance: normalisedBalance,
             lastUpdatedBlockNumber: block.number
         });
-
-        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         // insert into the ordered tree
         tree.insert(batchId, normalisedBalance);
@@ -210,6 +209,7 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         validChunkCount += 1 << _depth;
 
@@ -221,8 +221,6 @@ contract PostageStamp is AccessControl, Pausable {
             normalisedBalance: normalisedBalance,
             lastUpdatedBlockNumber: block.number
         });
-
-        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         tree.insert(_batchId, normalisedBalance);
 
