@@ -408,9 +408,9 @@ describe('Redistribution', function () {
 
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
-        const obsfucatedHash = encodeAndHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
+        const obsfucatedHash = encodeAndHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
 
-        expect(await r_node_3.wrapCommit(overlay_3, depth_3, hash_3, reveal_nonce_3)).to.be.eq(obsfucatedHash);
+        expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obsfucatedHash);
 
         const currentRound = await r_node_3.currentRound();
         await r_node_3.commit(obsfucatedHash, overlay_3, currentRound);
@@ -419,7 +419,7 @@ describe('Redistribution', function () {
 
         await mineNBlocks(phaseLength);
 
-        await expect(r_node_3.reveal(overlay_3, depth_3, hash_3, reveal_nonce_3)).to.be.revertedWith(
+        await expect(r_node_3.reveal(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.revertedWith(
           errors.reveal.outOfDepth
         );
       });
