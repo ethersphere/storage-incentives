@@ -425,6 +425,7 @@ describe('Redistribution', function () {
       });
 
       it('should create a commit with successful reveal if the overlay is within the reported depth', async function () {
+        await mineToNode(redistribution, 2);
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
