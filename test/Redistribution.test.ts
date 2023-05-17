@@ -762,7 +762,7 @@ describe('Redistribution', function () {
 
           // anchor fixture
           let currentSeed = await redistribution.currentSeed();
-          while (proximity(currentSeed, overlay_2) < Number(depth_2)) {
+          while (proximity(currentSeed, overlay_1_n_25) < Number(depth_1)) {
             await mineNBlocks(roundLength);
             currentSeed = await redistribution.currentSeed();
           }
@@ -771,11 +771,11 @@ describe('Redistribution', function () {
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
           r_node_1 = await ethers.getContract('Redistribution', node_1);
-          r_node_5 = await ethers.getContract('Redistribution', node_2);
+          r_node_5 = await ethers.getContract('Redistribution', node_5);
 
           currentRound = await r_node_1.currentRound();
 
-          const obsfucatedHash_1 = encodeAndHash(overlay_1_n_25, depth_1, hash_1, reveal_nonce_0);
+          const obsfucatedHash_1 = encodeAndHash(overlay_1_n_25, depth_1, hash_1, reveal_nonce_1);
           await r_node_1.commit(obsfucatedHash_1, overlay_1_n_25, currentRound);
 
           const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
@@ -785,6 +785,7 @@ describe('Redistribution', function () {
         });
 
         it('if only one reveal, should freeze non-revealer and select revealer as winner', async function () {
+          await mineToNode(redistribution, 5);
           const nodesInNeighbourhood = 1;
 
           //do not reveal node_1
@@ -856,13 +857,13 @@ describe('Redistribution', function () {
         it('if both reveal, should select correct winner', async function () {
           const nodesInNeighbourhood = 2;
 
-          await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_5.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_1.reveal(overlay_1_n_25, depth_1, hash_1, reveal_nonce_1);
+          await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
 
           await mineNBlocks(phaseLength);
 
-          expect(await r_node_1.isWinner(overlay_1)).to.be.false;
-          expect(await r_node_5.isWinner(overlay_2)).to.be.true;
+          expect(await r_node_1.isWinner(overlay_1)).to.be.true;
+          expect(await r_node_5.isWinner(overlay_5)).to.be.false;
 
           const tx2 = await r_node_1.claim();
           const receipt2 = await tx2.wait();
@@ -886,7 +887,7 @@ describe('Redistribution', function () {
           const currentBlockNumber = await getBlockNumber();
           const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
 
-          expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
+          expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
 
           expect(CountCommitsEvent.args[0]).to.be.eq(2);
           expect(CountRevealsEvent.args[0]).to.be.eq(2);
@@ -907,10 +908,10 @@ describe('Redistribution', function () {
           const sr = await ethers.getContract('StakeRegistry');
 
           //node_1 stake is preserved and not frozen
-          expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(stakeAmount_1);
+          expect(await sr.usableStakeOfOverlay(overlay_1_n_25)).to.be.eq(stakeAmount_1);
 
           //node_2 stake is preserved and not frozen
-          expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
+          expect(await sr.usableStakeOfOverlay(overlay_5)).to.be.eq(stakeAmount_5);
 
           await expect(r_node_1.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
         });
