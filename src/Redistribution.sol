@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
+import "hardhat/console.sol";
 
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
@@ -466,6 +467,9 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash) {
+                console.logBytes32(currentCommits[i].overlay);
+                console.logBytes32(currentRevealRoundAnchor);
+                console.log(cr);
                 require(
                     inProximity(currentCommits[i].overlay, currentRevealRoundAnchor, _depth),
                     "anchor out of self reported depth"
