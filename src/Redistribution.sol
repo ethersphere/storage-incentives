@@ -469,7 +469,7 @@ contract Redistribution is AccessControl, Pausable {
             if (currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash) {
                 console.logBytes32(currentCommits[i].overlay);
                 console.logBytes32(currentRevealRoundAnchor);
-                console.log(cr);
+                console.log(_depth);
                 require(
                     inProximity(currentCommits[i].overlay, currentRevealRoundAnchor, _depth),
                     "anchor out of self reported depth"
@@ -516,31 +516,31 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        uint256 currentWinnerSelectionSum;
+        uint256 winnerSelectionSum;
         bytes32 winnerIs;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-        uint256 revIndex;
+        uint256 revealIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        uint256 k = 0;
+        uint256 j = 0;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
-            revIndex = currentCommits[i].revealIndex;
+            revealIndex = currentCommits[i].revealIndex;
 
             // Deterministically read winner
             if (
                 currentCommits[i].revealed &&
-                truthRevealedHash == currentReveals[revIndex].hash &&
-                truthRevealedDepth == currentReveals[revIndex].depth
+                truthRevealedHash == currentReveals[revealIndex].hash &&
+                truthRevealedDepth == currentReveals[revealIndex].depth
             ) {
-                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                winnerSelectionSum += currentReveals[revealIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, j));
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
@@ -550,7 +550,7 @@ contract Redistribution is AccessControl, Pausable {
                     winnerIs = currentReveals[revIndex].overlay;
                 }
 
-                k++;
+                j++;
             }
         }
 
