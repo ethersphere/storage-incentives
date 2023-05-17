@@ -544,10 +544,10 @@ contract Redistribution is AccessControl, Pausable {
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
-                    randomNumberTrunc * currentWinnerSelectionSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                    randomNumberTrunc * winnerSelectionSum <
+                    currentReveals[revealIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    winnerIs = currentReveals[revIndex].overlay;
+                    winnerIs = currentReveals[revealIndex].overlay;
                 }
 
                 j++;
@@ -761,20 +761,20 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
-        uint256 currentSum;
+        uint256 currentTruthSum;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-        uint256 revIndex;
+        uint256 revealIndex;
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
+                revealIndex = currentCommits[i].revealIndex;
+                currentTruthSum += currentReveals[revealIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
@@ -785,9 +785,11 @@ contract Redistribution is AccessControl, Pausable {
                 // randomNumber / (MaxH + 1) < stakeDensity / currentSum
                 // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
                 // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
+                if (
+                    randomNumberTrunc * currentTruthSum < currentReveals[revealIndex].stakeDensity * (uint256(MaxH) + 1)
+                ) {
+                    truthRevealedHash = currentReveals[revealIndex].hash;
+                    truthRevealedDepth = currentReveals[revealIndex].depth;
                 }
             }
         }
