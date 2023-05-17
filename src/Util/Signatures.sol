@@ -2,7 +2,7 @@
 pragma solidity ^0.8.1;
 
 library Signatures {
-      /** Hash of the message to sign */
+    /** Hash of the message to sign */
     function getPostageMessageHash(
         bytes32 _chunkAddr,
         bytes32 _batchId,
@@ -21,22 +21,17 @@ library Signatures {
         uint64 _timeStamp
     ) internal pure returns (bool) {
         bytes32 messageHash = getPostageMessageHash(_chunkAddr, _postageId, _index, _timeStamp);
-        bytes32 ethMessageHash = getEthSignedMessageHash(messageHash); 
+        bytes32 ethMessageHash = getEthSignedMessageHash(messageHash);
 
         return recoverSigner(ethMessageHash, _signature) == _signer;
     }
 
-    function getEthSignedMessageHash(
-        bytes32 _messageHash
-    ) internal pure returns (bytes32) {
+    function getEthSignedMessageHash(bytes32 _messageHash) internal pure returns (bytes32) {
         /*
         Signature is produced by signing a keccak256 hash with the following format:
         "\x19Ethereum Signed Message\n" + len(msg) + msg
         */
-        return
-            keccak256(
-                abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash)
-            );
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", _messageHash));
     }
 
     function recoverSigner(
@@ -48,9 +43,7 @@ library Signatures {
         return ecrecover(_ethSignedMessageHash, v, r, s);
     }
 
-    function splitSignature(
-        bytes memory sig
-    ) internal pure returns (bytes32 r_, bytes32 s_, uint8 v_) {
+    function splitSignature(bytes memory sig) internal pure returns (bytes32 r_, bytes32 s_, uint8 v_) {
         require(sig.length == 65, "invalid signature length");
 
         assembly {
@@ -73,10 +66,7 @@ library Signatures {
         // implicitly return (r, s, v)
     }
 
-    function getSocMessageHash(
-        bytes32 _identifier,
-        bytes32 _chunkAddr
-    ) internal pure returns (bytes32) {
+    function getSocMessageHash(bytes32 _identifier, bytes32 _chunkAddr) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(_identifier, _chunkAddr));
     }
 
@@ -87,7 +77,7 @@ library Signatures {
         bytes32 _chunkAddr
     ) internal pure returns (bool) {
         bytes32 messageHash = getSocMessageHash(_identifier, _chunkAddr);
-        bytes32 ethMessageHash = getEthSignedMessageHash(messageHash); 
+        bytes32 ethMessageHash = getEthSignedMessageHash(messageHash);
 
         return recoverSigner(ethMessageHash, _signature) == _signer;
     }
