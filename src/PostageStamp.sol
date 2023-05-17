@@ -114,10 +114,10 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _bzzToken The ERC20 token address to reference in this contract.
      * @param _minimumBucketDepth The minimum bucket depth of batches that can be purchased.
      */
-    constructor(address _bzzToken, uint8 _minimumBucketDepth) {
+    constructor(address _bzzToken, uint8 _minimumBucketDepth, address multisig) {
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
-        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 

@@ -2,18 +2,13 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { deploy, get, log } = deployments;
+  const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
+  const argsStamp = [(await get('TestToken')).address, 16, networkConfig[network.name]?.multisig];
 
-  const args = [
-    (await get('StakeRegistry')).address,
-    (await get('PostageStamp')).address,
-    (await get('PriceOracle')).address,
-  ];
-
-  await deploy('Redistribution', {
+  await deploy('PostageStamp', {
     from: deployer,
-    args: args,
+    args: argsStamp,
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
@@ -22,4 +17,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['main', 'redistribution', 'contracts'];
+func.tags = ['main', 'postageStamp', 'contracts'];

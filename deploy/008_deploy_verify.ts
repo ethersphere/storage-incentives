@@ -6,7 +6,7 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
   const { log, get } = deployments;
 
   if ((network.name == 'mainnet' || network.name == 'testnet') && process.env.MAINNET_ETHERSCAN_KEY) {
-    // contract veryfing vars
+    // contract verifying vars
     const token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
     const networkID = network.config.chainId as number;
 

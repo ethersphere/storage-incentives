@@ -5,8 +5,14 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const args = [(await get('PostageStamp')).address];
-  await deploy('PriceOracle', {
+  const args = [
+    (await get('StakeRegistry')).address,
+    (await get('PostageStamp')).address,
+    (await get('PriceOracle')).address,
+    networkConfig[network.name]?.multisig,
+  ];
+
+  await deploy('Redistribution', {
     from: deployer,
     args: args,
     log: true,
@@ -17,4 +23,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['main', 'oracle', 'contracts'];
+func.tags = ['main', 'redistribution', 'contracts'];
