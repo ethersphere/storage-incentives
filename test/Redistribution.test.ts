@@ -638,6 +638,7 @@ describe('Redistribution', function () {
       });
 
       it('should emit correct events', async function () {
+        await mineToNode(redistribution, 2);
         const initialBlockNumber = await getBlockNumber();
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
