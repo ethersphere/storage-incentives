@@ -863,7 +863,7 @@ describe('Redistribution', function () {
 
           await mineNBlocks(phaseLength);
 
-          expect(await r_node_1.isWinner(overlay_1)).to.be.true;
+          expect(await r_node_1.isWinner(overlay_1_n_25)).to.be.true;
           expect(await r_node_5.isWinner(overlay_5)).to.be.false;
 
           const tx2 = await r_node_1.claim();
@@ -893,9 +893,9 @@ describe('Redistribution', function () {
           expect(CountCommitsEvent.args[0]).to.be.eq(2);
           expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
+          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_1);
+          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_1_n_25);
+          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_1);
           expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000'); //stakedensity?
           expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_2);
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
@@ -918,8 +918,8 @@ describe('Redistribution', function () {
         });
 
         it('if incorrect winner claims, correct winner is paid', async function () {
-          await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_5.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_1.reveal(overlay_1_n_25, depth_1, hash_1, reveal_nonce_1);
+          await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
 
           await mineNBlocks(phaseLength);
 
