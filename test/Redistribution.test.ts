@@ -788,6 +788,8 @@ describe('Redistribution', function () {
         let r_node_1: Contract;
         let r_node_5: Contract;
         let currentRound: number;
+        let copyBatchTx: any;
+        let postageDepth: number;
 
         // no need to mineToNode function call in test cases
         beforeEach(async () => {
@@ -803,11 +805,15 @@ describe('Redistribution', function () {
 
           currentRound = await r_node_1.currentRound();
 
-          const obsfucatedHash_1 = encodeAndHash(overlay_1_n_25, depth_1, hash_1, reveal_nonce_1);
+          const obsfucatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
           await r_node_1.commit(obsfucatedHash_1, overlay_1_n_25, currentRound);
 
           const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
           await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
+
+          const copyBatch = await copyBatchForClaim();
+          copyBatchTx = copyBatch.tx;
+          postageDepth = copyBatch.postageDepth;
 
           await mineToRevealPhase();
         });
@@ -888,15 +894,16 @@ describe('Redistribution', function () {
         it('if both reveal, should select correct winner', async function () {
           const nodesInNeighbourhood = 2;
 
-          await r_node_1.reveal(overlay_1_n_25, depth_1, hash_1, reveal_nonce_1);
+          await r_node_1.reveal(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
           await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
 
           await mineNBlocks(phaseLength);
 
-          expect(await r_node_1.isWinner(overlay_1_n_25)).to.be.true;
-          expect(await r_node_5.isWinner(overlay_5)).to.be.false;
+          expect(await r_node_1.isWinner(overlay_1_n_25)).to.be.false;
+          expect(await r_node_5.isWinner(overlay_5)).to.be.true;
 
-          const tx2 = await r_node_1.claim();
+          const { proof1, proof2, proofLast } = node5_proof1;
+          const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           const receipt2 = await tx2.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -915,26 +922,27 @@ describe('Redistribution', function () {
             }
           }
 
-          const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
+          const expectedPotPayout =
+            (receipt2.blockNumber - copyBatchTx.blockNumber) * price1 * 2 ** postageDepth +
+            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
 
-          expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
+          expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
 
           expect(CountCommitsEvent.args[0]).to.be.eq(2);
           expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_1);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_1_n_25);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_1);
-          expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000'); //stakedensity?
-          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_2);
-          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
+          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
+          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
+          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
+          expect(WinnerSelectedEvent.args[0][3]).to.be.eq(calculateStakeDensity(stakeAmount_5, Number(depth_5)));
+          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_5);
+          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
 
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
           expect(await postage.lastPrice()).to.be.eq(newPrice);
 
-          expect(TruthSelectedEvent.args[0]).to.be.eq(hash_2);
-          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_2));
+          expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
+          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
 
           const sr = await ethers.getContract('StakeRegistry');
 
@@ -944,7 +952,7 @@ describe('Redistribution', function () {
           //node_2 stake is preserved and not frozen
           expect(await sr.usableStakeOfOverlay(overlay_5)).to.be.eq(stakeAmount_5);
 
-          await expect(r_node_1.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
+          await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
         });
 
         it('if incorrect winner claims, correct winner is paid', async function () {
