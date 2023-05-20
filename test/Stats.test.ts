@@ -1,10 +1,8 @@
 import { expect } from './util/chai';
 import { ethers, getNamedAccounts, getUnnamedAccounts, deployments } from 'hardhat';
-import { mineNBlocks, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
+import { mineNBlocks, encodeAndHash, mintAndApprove, createOverlay, ROUND_LENGTH, PHASE_LENGTH } from './util/tools';
 
 const { read, execute } = deployments;
-const phaseLength = 38;
-const roundLength = 152;
 
 // Named accounts used by tests.
 let deployer: string, stamper: string, oracle: string, pauser: string;
@@ -74,7 +72,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     winDist.push({ node: nodes[i], stake: stakes[i], wins: 0 });
   }
 
-  await mineNBlocks(roundLength * 3 - 15 - nodes.length * 3);
+  await mineNBlocks(ROUND_LENGTH * 3 - 15 - nodes.length * 3);
   for (let i = 0; i < trials; i++) {
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
@@ -84,7 +82,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
       await r_node.commit(obsfucatedHash, overlay, currentRound);
     }
 
-    await mineNBlocks(phaseLength - nodes.length);
+    await mineNBlocks(PHASE_LENGTH - nodes.length);
 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
@@ -92,7 +90,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
       await r_node.reveal(overlay, depth, hash, reveal_nonce);
     }
 
-    await mineNBlocks(phaseLength - nodes.length + 1);
+    await mineNBlocks(PHASE_LENGTH - nodes.length + 1);
 
     const r_node = await ethers.getContract('Redistribution', nodes[0]);
 
@@ -113,7 +111,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
       expect(await sr.usableStakeOfOverlay(overlay)).to.be.eq(stakes[i]);
     }
 
-    await mineNBlocks(phaseLength * 2 - nodes.length);
+    await mineNBlocks(PHASE_LENGTH * 2 - nodes.length);
   }
 
   return winDist;

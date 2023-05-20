@@ -1,8 +1,11 @@
 import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
 import { arrayify, hexlify } from '@ethersproject/bytes';
+import { BigNumber } from 'ethers';
 
 export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
+export const PHASE_LENGTH = 38;
+export const ROUND_LENGTH = 152;
 const zeroAddress = '0x0000000000000000000000000000000000000000';
 
 /** returns byte representation of the hex string */
@@ -136,6 +139,80 @@ async function mineOverlaysInDepth(
     console.log(`found in ${i} attempts`, 'o a p', o, w.address, w.privateKey);
     return;
   }
+}
+
+/**
+ * checks whether there is enough blocks for the 1st phase and if not it mines blocks until the next round
+ *
+ * @param txNo how many transactions needs to be executed in the 1st phase (e.g. commits)
+ */
+export async function startRoundFixture(txNo = 0) {
+  const currentBlockNumber = await getBlockNumber();
+  const roundBlocks = currentBlockNumber % ROUND_LENGTH;
+  // 1 is for the last block of the phase is forbidden
+  if (roundBlocks >= PHASE_LENGTH - txNo - 1) {
+    await mineNBlocks(ROUND_LENGTH - roundBlocks); // beginning of the round
+  }
+}
+
+export function calculateStakeDensity(stake: string, depth: number): string {
+  return ethers.BigNumber.from(stake)
+    .mul(ethers.BigNumber.from(2).pow(ethers.BigNumber.from(depth)))
+    .toString();
+}
+
+/**
+ * checks whether there is enough blocks for the 1st phase and if not it mines blocks until the next round
+ */
+export async function mineToRevealPhase() {
+  const currentBlockNumber = await getBlockNumber();
+  const roundBlocks = currentBlockNumber % ROUND_LENGTH;
+  // 1 is for the last block of the phase is forbidden
+  if (roundBlocks >= PHASE_LENGTH - 1) {
+    await mineNBlocks(ROUND_LENGTH - roundBlocks); // beginning of the round
+  } else {
+    await mineNBlocks(PHASE_LENGTH - roundBlocks);
+  }
+}
+
+/**
+ * copies batch used for creating fixtures onto the blockchain
+ *
+ * @returns { tx: copyBatch function's return value, postageDepth: depth of postage batch }
+ */
+export async function copyBatchForClaim(deployer: string): Promise<{ tx: any; postageDepth: number }> {
+  // migrate batch with which the chunk was signed
+  const postageAdmin = await ethers.getContract('PostageStamp', deployer);
+  // set minimum required blocks for postage stamp lifetime to 0 for tests
+
+  await postageAdmin.setMinimumValidityBlocks(0);
+  const initialBalance = 100_000_000;
+  const postageDepth = 27;
+  const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
+  await mintAndApprove(deployer, deployer, postageAdmin.address, bzzFund.toString());
+
+  const tx = await postageAdmin.copyBatch(
+    '0x26234a2ad3ba8b398a762f279b792cfacd536a3f', // owner
+    initialBalance, // initial balance per chunk
+    postageDepth, // depth
+    16, // bucketdepth
+    '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
+    true // immutable
+  );
+
+  return {
+    tx,
+    postageDepth,
+  };
+}
+
+export function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): string {
+  const differenceString = '0x' + (difference - 1).toString(16).padStart(64, '0');
+  const currentAnchor = ethers.utils.keccak256(
+    new Uint8Array([...ethers.utils.arrayify(previousAnchor), ...ethers.utils.arrayify(differenceString)])
+  );
+
+  return currentAnchor;
 }
 
 export {
