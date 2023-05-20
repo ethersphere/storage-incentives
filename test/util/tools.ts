@@ -177,10 +177,10 @@ export async function mineToRevealPhase() {
 
 /**
  * copies batch used for creating fixtures onto the blockchain
- *
- * @returns { tx: copyBatch function's return value, postageDepth: depth of postage batch }
  */
-export async function copyBatchForClaim(deployer: string): Promise<{ tx: any; postageDepth: number }> {
+export async function copyBatchForClaim(
+  deployer: string
+): Promise<{ tx: any; postageDepth: number; initialBalance: number }> {
   // migrate batch with which the chunk was signed
   const postageAdmin = await ethers.getContract('PostageStamp', deployer);
   // set minimum required blocks for postage stamp lifetime to 0 for tests
@@ -203,6 +203,7 @@ export async function copyBatchForClaim(deployer: string): Promise<{ tx: any; po
   return {
     tx,
     postageDepth,
+    initialBalance,
   };
 }
 
