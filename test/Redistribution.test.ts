@@ -95,6 +95,55 @@ async function startRoundFixture(txNo = 0) {
   }
 }
 
+function calculateStakeDensity(stake: string, depth: number): string {
+  return ethers.BigNumber.from(stake)
+    .mul(ethers.BigNumber.from(2).pow(ethers.BigNumber.from(depth)))
+    .toString();
+}
+
+/**
+ * checks whether there is enough blocks for the 1st phase and if not it mines blocks until the next round
+ */
+async function mineToRevealPhase() {
+  const currentBlockNumber = await getBlockNumber();
+  const roundBlocks = currentBlockNumber % roundLength;
+  // 1 is for the last block of the phase is forbidden
+  if (roundBlocks >= phaseLength - 1) {
+    await mineNBlocks(roundLength - roundBlocks); // beginning of the round
+  } else {
+    await mineNBlocks(phaseLength - roundBlocks);
+  }
+}
+
+/**
+ * @returns { tx: copyBatch function's return value, postageDepth: depth of postage batch }
+ */
+async function copyBatchForClaim(): Promise<{ tx: any; postageDepth: number }> {
+  // migrate batch with which the chunk was signed
+  const postageAdmin = await ethers.getContract('PostageStamp', deployer);
+  // set minimum required blocks for postage stamp lifetime to 0 for tests
+
+  await postageAdmin.setMinimumValidityBlocks(0);
+  const initialBalance = 100_000_000;
+  const postageDepth = 27;
+  const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
+  await mintAndApprove(deployer, deployer, postageAdmin.address, bzzFund.toString());
+
+  const tx = await postageAdmin.copyBatch(
+    '0x26234a2ad3ba8b398a762f279b792cfacd536a3f', // owner
+    initialBalance, // initial balance per chunk
+    postageDepth, // depth
+    16, // bucketdepth
+    '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
+    true // immutable
+  );
+
+  return {
+    tx,
+    postageDepth,
+  };
+}
+
 function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): string {
   const differenceString = '0x' + (difference - 1).toString(16).padStart(64, '0');
   const currentAnchor = ethers.utils.keccak256(
@@ -662,11 +711,8 @@ describe('Redistribution', function () {
       describe('single player', async function () {
         it('should claim pot', async function () {
           // anchor fixture
+          await mineToNode(redistribution, 5);
           let currentSeed = await redistribution.currentSeed();
-          while (proximity(currentSeed, overlay_5) < Number(depth_5)) {
-            await mineNBlocks(roundLength);
-            currentSeed = await redistribution.currentSeed();
-          }
           console.log('Anchor', currentSeed);
 
           expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -680,12 +726,14 @@ describe('Redistribution', function () {
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
-          await mineNBlocks(phaseLength);
+          const { tx: copyBatchTx, postageDepth } = await copyBatchForClaim();
+
+          await mineToRevealPhase();
 
           await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_2);
 
-          const currentSeeed = await redistribution.currentSeed();
-          console.log('Anchor2', currentSeeed);
+          currentSeed = await redistribution.currentSeed();
+          console.log('Anchor2', currentSeed);
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
@@ -694,24 +742,7 @@ describe('Redistribution', function () {
           expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
 
           await mineNBlocks(phaseLength);
-          // migrate batch with which the chunk was signed
-          const postageAdmin = await ethers.getContract('PostageStamp', deployer);
-          // set minimum required blocks for postage stamp lifetime to 0 for tests
-          // NOTE: it does not work if copy above (until claim function)
-          await postageAdmin.setMinimumValidityBlocks(0);
-          const initialBalance = 100_000_000;
-          const postageDepth = 27;
-          const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
-          await mintAndApprove(deployer, deployer, postage.address, bzzFund.toString());
-          const copyBatchTx = await postageAdmin.copyBatch(
-            '0x26234a2ad3ba8b398a762f279b792cfacd536a3f', // owner
-            initialBalance, // initial balance per chunk
-            postageDepth, // depth
-            16, // bucketdepth
-            '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
-            true // immutable
-          );
-          console.log(`first batch block number: ${stampCreatedBlock}; \n copybatch: ${copyBatchTx.blockNumber}`);
+
           const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           const receipt2 = await tx2.wait();
 
@@ -758,15 +789,11 @@ describe('Redistribution', function () {
         let r_node_5: Contract;
         let currentRound: number;
 
+        // no need to mineToNode function call in test cases
         beforeEach(async () => {
           await startRoundFixture(3);
-
           // anchor fixture
-          let currentSeed = await redistribution.currentSeed();
-          while (proximity(currentSeed, overlay_1_n_25) < Number(depth_1)) {
-            await mineNBlocks(roundLength);
-            currentSeed = await redistribution.currentSeed();
-          }
+          await mineToNode(redistribution, 5);
 
           priceOracle = await ethers.getContract('PriceOracle', deployer);
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
@@ -782,15 +809,16 @@ describe('Redistribution', function () {
           const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
           await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
 
-          await mineNBlocks(phaseLength);
+          await mineToRevealPhase();
         });
 
         it('if only one reveal, should freeze non-revealer and select revealer as winner', async function () {
-          await mineToNode(redistribution, 5);
           const nodesInNeighbourhood = 1;
 
           //do not reveal node_1
           await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
+
+          const { tx: copyBatchTx, postageDepth } = await copyBatchForClaim();
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(hash_5);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
@@ -800,7 +828,8 @@ describe('Redistribution', function () {
 
           await mineNBlocks(phaseLength);
 
-          const tx2 = await r_node_5.claim();
+          const { proof1, proof2, proofLast } = node5_proof1;
+          const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           const receipt2 = await tx2.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -822,26 +851,27 @@ describe('Redistribution', function () {
           // <sig need something special to get at child events to check stakefrozen event
           // https://github.com/ethers-io/ethers.js/discussions/3057?sort=top
 
-          const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
+          const expectedPotPayout =
+            (receipt2.blockNumber - copyBatchTx.blockNumber) * price1 * 2 ** postageDepth +
+            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
 
-          expect(await token.balanceOf(node_2)).to.be.eq(expectedPotPayout);
+          expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
 
           expect(CountCommitsEvent.args[0]).to.be.eq(2);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_2);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_2);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_2);
+          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
+          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
+          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
 
-          expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000');
-          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_2);
-          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
+          expect(WinnerSelectedEvent.args[0][3]).to.be.eq(calculateStakeDensity(stakeAmount_5, Number(depth_5)));
+          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_5);
+          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
 
-          expect(TruthSelectedEvent.args[0]).to.be.eq(hash_2);
-          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_2));
+          expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
+          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
 
-          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
+          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
 
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
           expect(await postage.lastPrice()).to.be.eq(newPrice);
@@ -852,7 +882,7 @@ describe('Redistribution', function () {
           expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
 
           //node_1 is frozen but not slashed
-          expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(0);
+          expect(await sr.usableStakeOfOverlay(overlay_1_n_25)).to.be.eq(0);
         });
 
         it('if both reveal, should select correct winner', async function () {
