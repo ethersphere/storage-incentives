@@ -123,7 +123,7 @@ contract Redistribution is AccessControl, Pausable {
         address signer; // signer Ethereum address to check against
         bytes signature;
         bytes32 identifier; // 
-        bytes32 chunkAddr; // PAYLOAD?
+        bytes32 chunkAddr; // wrapped chunk address
     }
 
 
@@ -880,16 +880,27 @@ contract Redistribution is AccessControl, Pausable {
         return uint32(signedIndex >> 32);
     }
 
-    function socFunction(ChunkInclusionProof calldata entryProofLast) pure internal {
-        if(entryProofLast.socProofAttached.length == 0) return;
+    function calculateSocAddress(bytes32 identifier, address signer) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(identifier, signer));
+    }
+
+    function socFunction(ChunkInclusionProof calldata entryProof) pure internal {
+        if(entryProof.socProofAttached.length == 0) return;
 
         require(Signatures.socVerify(
-            entryProofLast.socProofAttached[0].signer, // signer Ethereum address to check against
-            entryProofLast.socProofAttached[0].signature,
-            entryProofLast.socProofAttached[0].identifier,
-            entryProofLast.proveSegment
+            entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
+            entryProof.socProofAttached[0].signature,
+            entryProof.socProofAttached[0].identifier,
+            entryProof.proveSegment
         ), "Soc verification failed for element");
-        // TODO check soc address and wrapped addr in postage stamp
+        
+        require(
+            calculateSocAddress(
+                entryProof.socProofAttached[0].identifier, 
+                entryProof.socProofAttached[0].signer
+            ) == entryProof.proveSegment,
+            "Soc address calculation does not match with the witness"
+        );
     }
 
     function stampFunction(ChunkInclusionProof calldata entryProof) view internal {
@@ -927,7 +938,6 @@ contract Redistribution is AccessControl, Pausable {
         );
 
         // FOR LATER USE
-        // bytes32 socAddress = keccak256(abi.encodePacked(entryProofLast.socProofAttached[0].identifier, entryProofLast.socProofAttached[0].signer));
         // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp"); 
     }
 
@@ -946,7 +956,11 @@ contract Redistribution is AccessControl, Pausable {
 
         require(entryProof.proofSegments2[0] == entryProof.proofSegments3[0], "first sister segment in data must match");
 
-        require(entryProof.proveSegment == BMTChunk.chunkAddressFromInclusionProof(
+        bytes32 originalCacAddress = entryProof.socProofAttached.length > 0 ? 
+            entryProof.socProofAttached[0].chunkAddr : // soc attestation in socFunction
+            entryProof.proveSegment;
+
+        require(originalCacAddress == BMTChunk.chunkAddressFromInclusionProof(
             entryProof.proofSegments2, 
             entryProof.proveSegment2, 
             randomChunkSegmentIndex, 
