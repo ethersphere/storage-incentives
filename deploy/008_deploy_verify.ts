@@ -8,7 +8,7 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
   if ((network.name == 'mainnet' || network.name == 'testnet') && process.env.MAINNET_ETHERSCAN_KEY) {
     // contract verifying vars
     const token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
-    const networkID = network.config.chainId as number;
+    const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
 
     // Verify postageStamp
     const postageStamp = await get('PostageStamp');
@@ -28,7 +28,7 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
 
     // Verify staking
     const staking = await get('StakeRegistry');
-    const argStaking = [token.address, networkID, networkConfig[network.name]?.multisig];
+    const argStaking = [token.address, swarmNetworkID, networkConfig[network.name]?.multisig];
 
     log('Verifying...');
     await verify(staking.address, argStaking);
