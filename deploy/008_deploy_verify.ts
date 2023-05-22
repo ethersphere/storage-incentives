@@ -1,5 +1,5 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { deployedBzzData } from '../helper-hardhat-config';
+import { deployedBzzData, networkConfig } from '../helper-hardhat-config';
 import verify from '../utils/verify';
 
 const func: DeployFunction = async function ({ deployments, network, ethers }) {
@@ -12,7 +12,7 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
 
     // Verify postageStamp
     const postageStamp = await get('PostageStamp');
-    const argsStamp = [token.address, 16];
+    const argsStamp = [token.address, 16, networkConfig[network.name]?.multisig];
 
     log('Verifying...');
     await verify(postageStamp.address, argsStamp);
@@ -20,7 +20,7 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
 
     // Verify oracle
     const priceOracle = await get('PriceOracle');
-    const argsOracle = [postageStamp.address];
+    const argsOracle = [postageStamp.address, networkConfig[network.name]?.multisig];
 
     log('Verifying...');
     await verify(priceOracle.address, argsOracle);
@@ -28,7 +28,7 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
 
     // Verify staking
     const staking = await get('StakeRegistry');
-    const argStaking = [token.address, networkID];
+    const argStaking = [token.address, networkID, networkConfig[network.name]?.multisig];
 
     log('Verifying...');
     await verify(staking.address, argStaking);
@@ -36,7 +36,12 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
 
     // Verify redistribution
     const redistribution = await get('Redistribution');
-    const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
+    const argRedistribution = [
+      staking.address,
+      postageStamp.address,
+      priceOracle.address,
+      networkConfig[network.name]?.multisig,
+    ];
 
     log('Verifying...');
     await verify(redistribution.address, argRedistribution);
