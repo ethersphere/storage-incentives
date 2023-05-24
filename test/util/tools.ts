@@ -1,7 +1,9 @@
 import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
+
 import { arrayify, hexlify } from '@ethersproject/bytes';
 import { BigNumber } from 'ethers';
+import { makeChunkedFile } from '@fairdatasociety/bmt-js';
 
 export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
 export const PHASE_LENGTH = 38;
@@ -89,6 +91,19 @@ async function createOverlay(address: string, networkID: string, nonce: string):
   return keccak256(hexlify(encoded));
 }
 
+async function createSOC(identifier: string, owner: string): Promise<string> {
+  const encoded = new Uint8Array(52);
+  encoded.set(arrayify(identifier));
+  encoded.set(arrayify(owner), 32);
+  return keccak256(hexlify(encoded));
+}
+
+function createCAC(nonceBuf: Buffer): string {
+  const chunkedFile = makeChunkedFile(nonceBuf);
+  const address = chunkedFile.address();
+  return '0x' + Buffer.from(address).toString('hex');  
+}
+
 function hexToBinaryArray(h: string): number[] {
   h = h.substring(2);
   const o = [];
@@ -113,14 +128,13 @@ function compareHexAsBinary(_a: string, _b: string, d: number): boolean {
   return true;
 }
 
-// example: mineOverlaysInDepth("0xac33", "0x00", 6, 10000);
-async function mineOverlaysInDepth(
+async function mineOverlayInDepth(
   prefix: string,
   nonce: string,
   networkID: string,
   depth: number,
   maxAttempts: number
-): Promise<undefined> {
+): Promise<any> {
   let found = false;
   let w, o;
   let i = 0;
@@ -128,7 +142,6 @@ async function mineOverlaysInDepth(
     w = ethers.Wallet.createRandom();
     o = await createOverlay(w.address, networkID, nonce);
     found = compareHexAsBinary(o, prefix.padEnd(66, '0'), depth);
-    console.log(i, o.substring(0, 8), prefix.padEnd(66, '0').substring(0, 8));
     if (maxAttempts == i + 1) {
       console.log('failed with max attempts', maxAttempts);
       return;
@@ -136,9 +149,49 @@ async function mineOverlaysInDepth(
     i++;
   }
   if (w !== undefined) {
-    console.log(`found in ${i} attempts`, 'o a p', o, w.address, w.privateKey);
-    return;
+    return { overlay: o, address: w.address, privateKey: w.privateKey };
   }
+}
+
+async function mineSOCinDepth(owner: string, prefix: string, depth: number, maxAttempts: number): Promise<any> {
+  let found = false;
+  let i = 0;
+  let address;
+  let nonceString;
+  const nonceBuf = Buffer.alloc(32);
+  while (found == false) {
+    nonceBuf.writeUint32BE(i);
+    nonceString = '0x' + nonceBuf.toString('hex');
+    address = await createSOC(nonceString, owner);
+    found = compareHexAsBinary(address, prefix, depth);
+    if (maxAttempts == i + 1) {
+      console.log('failed with max attempts', maxAttempts);
+      return;
+    }
+    i += 1;
+  }
+
+  return { identifier: nonceString, owner: owner, address: address };
+}
+
+async function mineCACinDepth(prefix: string, depth: number, maxAttempts: number): Promise<any> {
+  let found = false;
+  let i = 0;
+  let address;
+  let nonceString;
+  const nonceBuf = Buffer.alloc(32);
+  while (found == false) {
+    nonceBuf.writeUint32BE(i);
+    nonceString = '0x' + nonceBuf.toString('hex');
+    address = createCAC(nonceBuf);
+    found = compareHexAsBinary(address, prefix, depth);
+    if (maxAttempts == i + 1) {
+      console.log('failed with max attempts', maxAttempts);
+      return;
+    }
+    i += 1;
+  }
+  return { payload: nonceString, address: address };
 }
 
 /**
@@ -226,5 +279,8 @@ export {
   createOverlay,
   hexToBinaryArray,
   compareHexAsBinary,
-  mineOverlaysInDepth,
+  mineOverlayInDepth,
+  mineCACinDepth,
+  mineSOCinDepth,
+  createSOC,
 };
