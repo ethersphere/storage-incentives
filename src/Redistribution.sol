@@ -149,8 +149,8 @@ contract Redistribution is AccessControl, Pausable {
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
 
-    // alpha=1% k=16 n=1M
-    uint256 public constant SAMPLE_MAX_VALUE = 94730660000000000000000000000000000000000000000000000000000000000000000000;
+    // alpha=0.097612 beta=0.0716570 k=16
+    uint256 public constant SAMPLE_MAX_VALUE = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 currentRevealRoundAnchor;
