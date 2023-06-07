@@ -28,7 +28,7 @@ contract PriceOracle is AccessControl {
     uint256 public currentPrice = minimumPrice;
 
     // Constants used to modulate the price, see below usage
-    uint256[] public increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+    uint256[] public increaseRate = [1036, 1031, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
 
     uint16 targetRedundancy = 4;
     uint16 maxConsideredExtraRedundancy = 4;
@@ -99,14 +99,14 @@ contract PriceOracle is AccessControl {
         if (isPaused == false) {
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-            uint256 multiplier = minimumPrice;
-            uint256 usedRedundancy = redundancy;
+            uint256 multiplier = minimumPrice; //1024
+            uint256 usedRedundancy = redundancy; // 0
 
             // redundancy may not be zero
             require(redundancy > 0, "unexpected zero");
 
             // enforce maximum considered extra redundancy
-            uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
+            uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy; // 8
             if (redundancy > maxConsideredRedundancy) {
                 usedRedundancy = maxConsideredRedundancy;
             }
@@ -115,12 +115,12 @@ contract PriceOracle is AccessControl {
             // the rate at which the price will modulate - if usedRedundancy
             // is the target value 4 there is no change, > 4 causes an increase
             // and < 4 a decrease.
-            uint256 ir = increaseRate[usedRedundancy];
+            uint256 ir = increaseRate[usedRedundancy]; // 1012
 
             // the multiplier is used to ensure whole number
-            currentPrice = (ir * currentPrice) / multiplier;
+            currentPrice = (ir * currentPrice) / multiplier; // 1012*24000 / 1024 = 23700
 
-            //enforce minimum price
+            // enforce minimum price
             if (currentPrice < minimumPrice) {
                 currentPrice = minimumPrice;
             }
