@@ -36,12 +36,19 @@ contract PriceOracle is AccessControl {
     // When the contract is paused, price changes are not effective
     bool public isPaused = true;
 
+    // The length of a round in blocks.
+    uint256 public roundLength = 152;
+
+    // The number of the last round distribution happend
+    uint256 public lastClaimedRound;
+
     // The address of the linked PostageStamp contract
     IPostageStamp public postageStamp;
 
     constructor(address _postageStamp, address multisig) {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
+        lastClaimedRound = currentRound();
     }
 
     /**
@@ -99,26 +106,33 @@ contract PriceOracle is AccessControl {
         if (isPaused == false) {
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-            uint256 multiplier = minimumPrice; //1024
-            uint256 usedRedundancy = redundancy; // 0
+            uint256 multiplier = minimumPrice; 
+            uint256 usedRedundancy = redundancy;
 
             // redundancy may not be zero
             require(redundancy > 0, "unexpected zero");
 
             // enforce maximum considered extra redundancy
-            uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy; // 8
+            uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
             if (redundancy > maxConsideredRedundancy) {
                 usedRedundancy = maxConsideredRedundancy;
+            }
+
+            // If round was skipped, use MAX price increase
+            if (currentRound() - lastClaimedRound > 1) {
+                usedRedundancy = 0;
             }
 
             // use the increaseRate array of constants to determine
             // the rate at which the price will modulate - if usedRedundancy
             // is the target value 4 there is no change, > 4 causes an increase
             // and < 4 a decrease.
-            uint256 ir = increaseRate[usedRedundancy]; // 1012
+            uint256 ir = increaseRate[usedRedundancy]; 
 
             // the multiplier is used to ensure whole number
-            currentPrice = (ir * currentPrice) / multiplier; // 1012*24000 / 1024 = 23700
+            currentPrice = (ir * currentPrice) / multiplier; // 1036*24000 / 1024 = 24264
+
+// 1036*24264 / 1024  = 24500
 
             // enforce minimum price
             if (currentPrice < minimumPrice) {
@@ -126,7 +140,15 @@ contract PriceOracle is AccessControl {
             }
 
             postageStamp.setPrice(currentPrice);
+            lastClaimedRound = currentRound();
             emit PriceUpdate(currentPrice);
         }
+    }
+
+    /**
+     * @notice The number of the current round.
+     */
+    function currentRound() public view returns (uint256) {
+        return (block.number / roundLength);
     }
 }
