@@ -106,7 +106,7 @@ contract PriceOracle is AccessControl {
         if (isPaused == false) {
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-            uint256 multiplier = minimumPrice; 
+            uint256 multiplier = minimumPrice;
             uint256 usedRedundancy = redundancy;
 
             // redundancy may not be zero
@@ -118,23 +118,39 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
-            // If round was skipped, use MAX price increase
-            if (currentRound() - lastClaimedRound > 1) {
-                usedRedundancy = 0;
-            }
+            // Set the number of rounds that were skipped
+            uint256 skippedRounds = currentRound() - lastClaimedRound + 1;
 
-            // use the increaseRate array of constants to determine
+            // Use the increaseRate array of constants to determine
             // the rate at which the price will modulate - if usedRedundancy
             // is the target value 4 there is no change, > 4 causes an increase
             // and < 4 a decrease.
-            uint256 ir = increaseRate[usedRedundancy]; 
-
             // the multiplier is used to ensure whole number
-            currentPrice = (ir * currentPrice) / multiplier; // 1036*24000 / 1024 = 24264
 
-// 1036*24264 / 1024  = 24500
+            if (skippedRounds == 0) {
+                uint256 ir = increaseRate[usedRedundancy];
+                currentPrice = (ir * currentPrice) / multiplier;
+            }
 
-            // enforce minimum price
+            // If round was skipped, use MAX price increase and increase the price for previouse rounds
+            if (skippedRounds > 0) {
+                usedRedundancy = 0;
+                uint256 ir = increaseRate[usedRedundancy];
+
+                for (uint256 i = 0; i < skippedRounds; i++) {
+                    currentPrice = (ir * currentPrice) / multiplier;
+                }
+
+                // 1036*24000 / 1024 = 24264
+                // 1036*24264 / 1024  = 24500
+                // 1036*24500 / 1024  = 24738
+                // 1036*24738 / 1024  = 24978
+                // 1036*24978 / 1024  = 25220
+
+                // 1036/1024 * 5 * 24000 = 24500
+            }
+
+            // Enforce minimum price
             if (currentPrice < minimumPrice) {
                 currentPrice = minimumPrice;
             }
