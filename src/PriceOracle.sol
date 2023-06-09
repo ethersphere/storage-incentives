@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
+import "hardhat/console.sol";
 
 interface IPostageStamp {
     function setPrice(uint256 _price) external;
@@ -118,9 +119,12 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
+            console.log("current", currentRound());
+            console.log("lastClaimedRound", lastClaimedRound);
             // Set the number of rounds that were skipped
-            uint256 skippedRounds = currentRound() - lastClaimedRound + 1;
+            uint256 skippedRounds = currentRound() - lastClaimedRound - 1;
 
+            console.log("skippedRounds", skippedRounds);
             // Use the increaseRate array of constants to determine
             // the rate at which the price will modulate - if usedRedundancy
             // is the target value 4 there is no change, > 4 causes an increase

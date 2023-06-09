@@ -17,6 +17,7 @@ before(async function () {
 });
 
 const increaseRate = [1036, 1031, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+const roundLength = 152;
 
 const errors = {
   manual: {
@@ -211,6 +212,8 @@ describe('PriceOracle', function () {
         minPriceString = minimumPrice.toString();
         await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
         await priceOracle.setPrice(minPriceString);
+
+        await mineNBlocks(roundLength + 1);
       });
 
       it('if redundany factor is 0', async function () {
@@ -226,12 +229,17 @@ describe('PriceOracle', function () {
         expect(await postageStamp.lastPrice()).to.be.eq(minPriceString);
 
         await priceOracleU.adjustPrice(1);
+        //  console.log('currentPrice', (await priceOracle.currentPrice()).toString());
 
         const newPrice1 = (increaseRate[1] * parseInt(currentPrice)) / parseInt(minPriceString);
 
-        expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
-        //expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
+        //console.log('currentPrice', newPrice1);
 
+        expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
+        expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
+
+        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
+        await mineNBlocks(roundLength + 1);
         await priceOracleU.adjustPrice(1);
 
         const newPrice2 = Math.floor((increaseRate[1] * newPrice1) / parseInt(minPriceString));
@@ -272,12 +280,18 @@ describe('PriceOracle', function () {
         const redundancySignal1 = 1;
         const newPrice1 = (increaseRate[redundancySignal1] * parseInt(currentPrice)) / parseInt(minPriceString);
 
+        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
+        await mineNBlocks(roundLength + 1);
+
         await expect(priceOracleU.adjustPrice(redundancySignal1))
           .to.emit(priceOracle, 'PriceUpdate')
           .withArgs(newPrice1);
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
+
+        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
+        await mineNBlocks(roundLength + 1);
 
         const redundancySignal2 = 2;
         const newPrice2 = Math.floor((increaseRate[redundancySignal2] * newPrice1) / parseInt(minPriceString));
@@ -288,6 +302,9 @@ describe('PriceOracle', function () {
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice2);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice2);
 
+        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
+        await mineNBlocks(roundLength + 1);
+
         const redundancySignal3 = 3;
         const newPrice3 = Math.floor((increaseRate[redundancySignal3] * newPrice2) / parseInt(minPriceString));
         await expect(priceOracleU.adjustPrice(redundancySignal3))
@@ -296,6 +313,9 @@ describe('PriceOracle', function () {
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice3);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice3);
+
+        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
+        await mineNBlocks(roundLength + 1);
 
         const redundancySignal4 = 3;
         const newPrice4 = Math.floor((increaseRate[redundancySignal4] * newPrice3) / parseInt(minPriceString));
