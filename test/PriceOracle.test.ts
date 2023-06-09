@@ -212,8 +212,6 @@ describe('PriceOracle', function () {
         minPriceString = minimumPrice.toString();
         await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
         await priceOracle.setPrice(minPriceString);
-
-        await mineNBlocks(roundLength + 1);
       });
 
       it('if redundany factor is 0', async function () {
@@ -227,6 +225,8 @@ describe('PriceOracle', function () {
         const currentPrice = await priceOracle.currentPrice();
         expect(currentPrice).to.be.eq(minPriceString);
         expect(await postageStamp.lastPrice()).to.be.eq(minPriceString);
+
+        await mineNBlocks(roundLength + 1);
 
         await priceOracleU.adjustPrice(1);
         //  console.log('currentPrice', (await priceOracle.currentPrice()).toString());
@@ -254,6 +254,8 @@ describe('PriceOracle', function () {
         const currentPrice = await priceOracle.currentPrice();
         expect(currentPrice).to.be.eq(minPriceString);
         expect(await postageStamp.lastPrice()).to.be.eq(minPriceString);
+
+        await mineNBlocks(roundLength + 1);
 
         await priceOracleU.adjustPrice(1);
 
