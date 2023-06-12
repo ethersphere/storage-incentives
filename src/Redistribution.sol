@@ -2,6 +2,7 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "hardhat/console.sol";
 
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
@@ -360,6 +361,8 @@ contract Redistribution is AccessControl, Pausable {
         if (minimum == 0) {
             return true;
         }
+        uint256 distance = uint256(A ^ B) - uint256(2 ** (256 - minimum));
+        console.log(distance);
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 

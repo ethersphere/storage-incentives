@@ -61,6 +61,10 @@ async function createOverlay(address: string, networkID: string, nonce: string):
   encoded.set(arrayify(address));
   encoded.set(arrayify(networkID).reverse(), 20);
   encoded.set(arrayify(nonce), 28);
+
+  console.log(address);
+  console.log(networkID);
+  console.log(nonce);
   return keccak256(hexlify(encoded));
 }
 
