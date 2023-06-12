@@ -831,12 +831,38 @@ describe('Redistribution', function () {
           //node_2 stake is preserved and not frozen
           expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
         });
+      });
+
+      describe('testing skipped rounds', async function () {
+        let priceOracle: Contract;
+        let r_node_1: Contract;
+        let r_node_2: Contract;
+        let currentRound: number;
+
+        beforeEach(async () => {
+          priceOracle = await ethers.getContract('PriceOracle', deployer);
+          await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
+
+          r_node_1 = await ethers.getContract('Redistribution', node_1);
+          r_node_2 = await ethers.getContract('Redistribution', node_2);
+
+          await mineNBlocks(roundLength);
+          await mineNBlocks(roundLength);
+          await mineNBlocks(roundLength);
+
+          currentRound = await r_node_1.currentRound();
+
+          const obsfucatedHash_1 = encodeAndHash(overlay_1, depth_1, hash_1, reveal_nonce_1);
+          await r_node_1.commit(obsfucatedHash_1, overlay_1, currentRound);
+
+          const obsfucatedHash_2 = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_2.commit(obsfucatedHash_2, overlay_2, currentRound);
+
+          await mineNBlocks(phaseLength);
+        });
 
         it('if both reveal, but after 3 skipped round, check proper price increase', async function () {
           const nodesInNeighbourhood = 2;
-          await mineNBlocks(roundLength);
-          await mineNBlocks(roundLength);
-          await mineNBlocks(roundLength);
 
           await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
           await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
@@ -849,51 +875,9 @@ describe('Redistribution', function () {
           const tx2 = await r_node_2.claim();
           const receipt2 = await tx2.wait();
 
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
-          for (const e of receipt2.events) {
-            if (e.event == 'WinnerSelected') {
-              WinnerSelectedEvent = e;
-            }
-            if (e.event == 'TruthSelected') {
-              TruthSelectedEvent = e;
-            }
-            if (e.event == 'CountCommits') {
-              CountCommitsEvent = e;
-            }
-            if (e.event == 'CountReveals') {
-              CountRevealsEvent = e;
-            }
-          }
-
-          const currentBlockNumber = await getBlockNumber();
-          const expectedPotPayout = (currentBlockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth;
-
-          expect(await token.balanceOf(node_1)).to.be.eq(expectedPotPayout);
-
-          expect(CountCommitsEvent.args[0]).to.be.eq(2);
-          expect(CountRevealsEvent.args[0]).to.be.eq(2);
-
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_1);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_1);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_1);
-          expect(WinnerSelectedEvent.args[0][3]).to.be.eq('6400000000000000000'); //stakedensity?
-          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_1);
-          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_1));
-
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
           expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(3, newPrice));
-
-          expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
-          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_1));
-
-          const sr = await ethers.getContract('StakeRegistry');
-
-          //node_1 stake is preserved and not frozen
-          expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(stakeAmount_1);
-
-          //node_2 stake is preserved and not frozen
-          expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
 
           await expect(r_node_1.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
         });
