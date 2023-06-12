@@ -229,11 +229,8 @@ describe('PriceOracle', function () {
         await mineNBlocks(roundLength);
 
         await priceOracleU.adjustPrice(1);
-        //  console.log('currentPrice', (await priceOracle.currentPrice()).toString());
 
         const newPrice1 = (increaseRate[1] * parseInt(currentPrice)) / parseInt(minPriceString);
-
-        //console.log('currentPrice', newPrice1);
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);

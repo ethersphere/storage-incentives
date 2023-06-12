@@ -105,7 +105,10 @@ contract PriceOracle is AccessControl {
      */
     function adjustPrice(uint256 redundancy) external {
         if (isPaused == false) {
+            uint256 currentRoundNumber = currentRound();
+
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
+            require(currentRoundNumber != lastClaimedRound, "price already adjusted in this round");
 
             uint256 multiplier = minimumPrice;
             uint256 usedRedundancy = redundancy;
@@ -119,10 +122,10 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
-            console.log("current", currentRound());
+            console.log("current", currentRoundNumber);
             console.log("lastClaimedRound", lastClaimedRound);
             // Set the number of rounds that were skipped
-            uint256 skippedRounds = currentRound() - lastClaimedRound - 1;
+            uint256 skippedRounds = currentRoundNumber - lastClaimedRound - 1;
 
             console.log("skippedRounds", skippedRounds);
             // Use the increaseRate array of constants to determine
@@ -160,7 +163,7 @@ contract PriceOracle is AccessControl {
             }
 
             postageStamp.setPrice(currentPrice);
-            lastClaimedRound = currentRound();
+            lastClaimedRound = currentRoundNumber;
             emit PriceUpdate(currentPrice);
         }
     }

@@ -7,7 +7,7 @@ const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
-const increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+const increaseRate = [1036, 1031, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
 
 const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
@@ -736,7 +736,13 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
 
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
+                    console.log('price1', price1);
+                    console.log('inc', increaseRate[nodesInNeighbourhood]);
+                    console.log('newPrice', newPrice);
+                    console.log((await postage.lastPrice()).toString());
           expect(await postage.lastPrice()).to.be.eq(newPrice);
+
+
 
           const sr = await ethers.getContract('StakeRegistry');
 
@@ -793,6 +799,12 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_1));
 
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
+
+          console.log('price1', price1);
+          console.log('inc', increaseRate[nodesInNeighbourhood]);
+          console.log('newPrice', newPrice);
+          console.log((await postage.lastPrice()).toString());
+
           expect(await postage.lastPrice()).to.be.eq(newPrice);
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
