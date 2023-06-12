@@ -22,6 +22,17 @@ async function getBlockNumber(): Promise<number> {
   return parseInt(blockNumber);
 }
 
+async function skippedRoundsIncrease(n: number, price: number): Promise<number> {
+  const maxIncreaseRate = 1036;
+  const multiplier = 1024;
+  let currentPrice = 0;
+
+  for (let index = 0; index < n; index++) {
+    currentPrice = (maxIncreaseRate * price) / multiplier;
+  }
+  return Math.trunc(currentPrice);
+}
+
 async function mintAndApprove(
   deployer: string,
   payee: string,
@@ -110,6 +121,7 @@ export {
   computeBatchId,
   mineNBlocks,
   getBlockNumber,
+  skippedRoundsIncrease,
   mintAndApprove,
   encodeAndHash,
   createOverlay,

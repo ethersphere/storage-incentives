@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove } from './util/tools';
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, skippedRoundsIncrease } from './util/tools';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -735,14 +735,9 @@ describe('Redistribution', function () {
 
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
 
+          // Apply the increase rate but also skipped round increase
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
-                    console.log('price1', price1);
-                    console.log('inc', increaseRate[nodesInNeighbourhood]);
-                    console.log('newPrice', newPrice);
-                    console.log((await postage.lastPrice()).toString());
-          expect(await postage.lastPrice()).to.be.eq(newPrice);
-
-
+          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
 
           const sr = await ethers.getContract('StakeRegistry');
 
@@ -798,14 +793,9 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_1);
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_1));
 
+          // Apply the increase rate but also skipped round increase
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
-
-          console.log('price1', price1);
-          console.log('inc', increaseRate[nodesInNeighbourhood]);
-          console.log('newPrice', newPrice);
-          console.log((await postage.lastPrice()).toString());
-
-          expect(await postage.lastPrice()).to.be.eq(newPrice);
+          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
           expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_1));

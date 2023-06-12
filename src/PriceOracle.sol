@@ -105,14 +105,14 @@ contract PriceOracle is AccessControl {
      */
     function adjustPrice(uint256 redundancy) external {
         if (isPaused == false) {
-            uint256 currentRoundNumber = currentRound();
-
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
-            require(currentRoundNumber != lastClaimedRound, "price already adjusted in this round");
 
             uint256 multiplier = minimumPrice;
             uint256 usedRedundancy = redundancy;
+            uint256 currentRoundNumber = currentRound();
 
+            // price can only be adjusted once per round
+            require(currentRoundNumber != lastClaimedRound, "price already adjusted in this round");
             // redundancy may not be zero
             require(redundancy > 0, "unexpected zero");
 
@@ -134,15 +134,14 @@ contract PriceOracle is AccessControl {
             // and < 4 a decrease.
             // the multiplier is used to ensure whole number
 
-            if (skippedRounds == 0) {
-                uint256 ir = increaseRate[usedRedundancy];
-                currentPrice = (ir * currentPrice) / multiplier;
-            }
+            // We first apply the increase/decrease rate for the current round
+            uint256 ir = increaseRate[usedRedundancy];
+            currentPrice = (ir * currentPrice) / multiplier;
 
-            // If round was skipped, use MAX price increase and increase the price for previouse rounds
+            // If previous rounds were skipped, use MAX price increase for the previouse rounds
             if (skippedRounds > 0) {
                 usedRedundancy = 0;
-                uint256 ir = increaseRate[usedRedundancy];
+                ir = increaseRate[usedRedundancy];
 
                 for (uint256 i = 0; i < skippedRounds; i++) {
                     currentPrice = (ir * currentPrice) / multiplier;

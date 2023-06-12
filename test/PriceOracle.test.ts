@@ -216,6 +216,7 @@ describe('PriceOracle', function () {
 
       it('if redundany factor is 0', async function () {
         const priceOracleU = await ethers.getContract('PriceOracle', updater);
+        await mineNBlocks(roundLength);
         await expect(priceOracleU.adjustPrice(0)).to.be.revertedWith(errors.auto.notZero);
       });
 
@@ -235,7 +236,6 @@ describe('PriceOracle', function () {
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
 
-        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
         await mineNBlocks(roundLength);
         await priceOracleU.adjustPrice(1);
 
@@ -279,7 +279,6 @@ describe('PriceOracle', function () {
         const redundancySignal1 = 1;
         const newPrice1 = (increaseRate[redundancySignal1] * parseInt(currentPrice)) / parseInt(minPriceString);
 
-        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
         await mineNBlocks(roundLength);
 
         await expect(priceOracleU.adjustPrice(redundancySignal1))
@@ -289,7 +288,6 @@ describe('PriceOracle', function () {
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
 
-        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
         await mineNBlocks(roundLength);
 
         const redundancySignal2 = 2;
@@ -301,7 +299,6 @@ describe('PriceOracle', function () {
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice2);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice2);
 
-        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
         await mineNBlocks(roundLength);
 
         const redundancySignal3 = 3;
@@ -313,7 +310,6 @@ describe('PriceOracle', function () {
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice3);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice3);
 
-        // We need to mine block to simulate another round has passed otherwise we adjust in same round which is not possible and errors out
         await mineNBlocks(roundLength);
 
         const redundancySignal4 = 3;
