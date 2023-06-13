@@ -854,9 +854,7 @@ describe('Redistribution', function () {
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-          await mineNBlocks(roundLength);
-          await mineNBlocks(roundLength);
-          await mineNBlocks(roundLength);
+          await mineNBlocks(roundLength * 0);
 
           currentRound = await r_node_1.currentRound();
 
@@ -880,9 +878,9 @@ describe('Redistribution', function () {
 
           console.log(ov1);
 
-          const updaterRole = await priceOracle.PRICE_UPDATER_ROLE();
-          await priceOracle.grantRole(updaterRole, deployer);
-          await priceOracle.adjustPrice(1);
+          // const updaterRole = await priceOracle.PRICE_UPDATER_ROLE();
+          // await priceOracle.grantRole(updaterRole, deployer);
+          // await priceOracle.adjustPrice(1);
 
           await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
           await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);

@@ -402,6 +402,7 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentCommitRound, "round received no commits");
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
+            console.logBytes32(currentRevealRoundAnchor);
             delete currentReveals;
             currentRevealRound = cr;
             emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
