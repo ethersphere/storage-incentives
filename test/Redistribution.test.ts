@@ -1,7 +1,14 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, skippedRoundsIncrease } from './util/tools';
+import {
+  mineNBlocks,
+  getBlockNumber,
+  encodeAndHash,
+  mintAndApprove,
+  skippedRoundsIncrease,
+  createOverlay,
+} from './util/tools';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -863,6 +870,14 @@ describe('Redistribution', function () {
 
         it('if both reveal, but after 3 skipped round, check proper price increase', async function () {
           const nodesInNeighbourhood = 2;
+
+          const ov1 = createOverlay(
+            '0xbFC32C0779b9B17D2e2DCd916493528BF4561142',
+            '0x00',
+            '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33'
+          );
+
+          console.log(ov1);
 
           await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
           await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
