@@ -140,20 +140,14 @@ contract PriceOracle is AccessControl {
 
             // If previous rounds were skipped, use MAX price increase for the previouse rounds
             if (skippedRounds > 0) {
-                usedRedundancy = 0;
-                ir = increaseRate[usedRedundancy];
-
-                for (uint256 i = 0; i < skippedRounds; i++) {
-                    currentPrice = (ir * currentPrice) / multiplier;
-                }
+                uint256 factor = increaseRate[0] / multiplier;
+                currentPrice = currentPrice * (factor ** skippedRounds);
 
                 // 1036*24000 / 1024 = 24264
                 // 1036*24264 / 1024  = 24500
                 // 1036*24500 / 1024  = 24738
                 // 1036*24738 / 1024  = 24978
                 // 1036*24978 / 1024  = 25220
-
-                // 1036/1024 * 5 * 24000 = 24500
             }
 
             // Enforce minimum price
