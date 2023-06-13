@@ -134,15 +134,18 @@ contract PriceOracle is AccessControl {
             // and < 4 a decrease.
             // the multiplier is used to ensure whole number
 
+            console.log("currentPrice0", currentPrice);
             // We first apply the increase/decrease rate for the current round
             uint256 ir = increaseRate[usedRedundancy];
             currentPrice = (ir * currentPrice) / multiplier;
 
+            console.log("currentPrice", currentPrice);
             // If previous rounds were skipped, use MAX price increase for the previouse rounds
             if (skippedRounds > 0) {
-                uint256 factor = increaseRate[0] / multiplier;
-                currentPrice = currentPrice * (factor ** skippedRounds);
-
+                ir = increaseRate[0];
+                for (uint256 i = 0; i < skippedRounds; i++) {
+                    currentPrice = (ir * currentPrice) / multiplier;
+                }
                 // 1036*24000 / 1024 = 24264
                 // 1036*24264 / 1024  = 24500
                 // 1036*24500 / 1024  = 24738
@@ -154,6 +157,8 @@ contract PriceOracle is AccessControl {
             if (currentPrice < minimumPrice) {
                 currentPrice = minimumPrice;
             }
+
+            console.log("currentPrice2", currentPrice);
 
             postageStamp.setPrice(currentPrice);
             lastClaimedRound = currentRoundNumber;

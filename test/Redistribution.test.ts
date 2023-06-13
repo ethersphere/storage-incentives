@@ -848,6 +848,7 @@ describe('Redistribution', function () {
 
         beforeEach(async () => {
           priceOracle = await ethers.getContract('PriceOracle', deployer);
+
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
           r_node_1 = await ethers.getContract('Redistribution', node_1);
@@ -879,6 +880,10 @@ describe('Redistribution', function () {
 
           console.log(ov1);
 
+          const updaterRole = await priceOracle.PRICE_UPDATER_ROLE();
+          await priceOracle.grantRole(updaterRole, deployer);
+          await priceOracle.adjustPrice(1);
+
           await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
           await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
@@ -888,11 +893,10 @@ describe('Redistribution', function () {
           expect(await r_node_2.isWinner(overlay_2)).to.be.false;
 
           const tx2 = await r_node_2.claim();
-          const receipt2 = await tx2.wait();
 
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
-          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(3, newPrice));
+          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
 
           await expect(r_node_1.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
         });

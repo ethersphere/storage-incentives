@@ -361,12 +361,12 @@ contract Redistribution is AccessControl, Pausable {
         if (minimum == 0) {
             return true;
         }
-        uint256 distance = uint256(A ^ B) - uint256(2 ** (256 - minimum));
-        uint256 distance1 = uint256(2 ** (256 - minimum));
-        uint256 distance2 = uint256(A ^ B);
-        console.log(distance);
-        console.log(distance1);
-        console.log(distance2);
+        // uint256 distance = uint256(A ^ B) - uint256(2 ** (256 - minimum));
+        // uint256 distance1 = uint256(2 ** (256 - minimum));
+        // uint256 distance2 = uint256(A ^ B);
+        // console.log(distance);
+        // console.log(distance1);
+        // console.log(distance2);
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 

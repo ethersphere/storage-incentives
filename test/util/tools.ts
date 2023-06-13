@@ -25,8 +25,9 @@ async function getBlockNumber(): Promise<number> {
 async function skippedRoundsIncrease(n: number, price: number): Promise<number> {
   const maxIncreaseRate = 1036;
   const multiplier = 1024;
-  let currentPrice = 0;
+  let currentPrice = price;
 
+  // currentPrice = currentPrice * Math.pow(maxIncreaseRate / multiplier, n);
   for (let index = 0; index < n; index++) {
     currentPrice = (maxIncreaseRate * price) / multiplier;
   }
