@@ -840,7 +840,7 @@ describe('Redistribution', function () {
         });
       });
 
-      describe('testing skipped rounds', async function () {
+      describe('testing skipped rounds and price changes', async function () {
         let priceOracle: Contract;
         let r_node_1: Contract;
         let r_node_2: Contract;
@@ -854,7 +854,8 @@ describe('Redistribution', function () {
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-          await mineNBlocks(roundLength * 0);
+          // We skip N rounds, here we skip 3 rounds
+          await mineNBlocks(roundLength * 3);
 
           currentRound = await r_node_1.currentRound();
 
@@ -865,6 +866,15 @@ describe('Redistribution', function () {
           await r_node_2.commit(obsfucatedHash_2, overlay_2, currentRound);
 
           await mineNBlocks(phaseLength);
+
+          await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
+          await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await mineNBlocks(phaseLength);
+
+          expect(await r_node_1.isWinner(overlay_1)).to.be.true;
+          expect(await r_node_2.isWinner(overlay_2)).to.be.false;
+
+          const tx2 = await r_node_2.claim();
         });
 
         it('if both reveal, but after 3 skipped round, check proper price increase', async function () {
@@ -881,16 +891,6 @@ describe('Redistribution', function () {
           // const updaterRole = await priceOracle.PRICE_UPDATER_ROLE();
           // await priceOracle.grantRole(updaterRole, deployer);
           // await priceOracle.adjustPrice(1);
-
-          await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
-
-          await mineNBlocks(phaseLength);
-
-          expect(await r_node_1.isWinner(overlay_1)).to.be.true;
-          expect(await r_node_2.isWinner(overlay_2)).to.be.false;
-
-          const tx2 = await r_node_2.claim();
 
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;

@@ -396,10 +396,10 @@ contract Redistribution is AccessControl, Pausable {
      */
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
-
         uint256 cr = currentRound();
-
         require(cr == currentCommitRound, "round received no commits");
+
+        // Initialize new reval round, this will be setup on first reveal
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
             console.logBytes32(currentRevealRoundAnchor);
@@ -410,9 +410,9 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
-
         uint256 commitsArrayLength = currentCommits.length;
 
+        // Loop through all commits and check if they are in proximity of anchor
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             if (currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash) {
                 require(
@@ -546,14 +546,18 @@ contract Redistribution is AccessControl, Pausable {
     function currentRoundAnchor() public view returns (bytes32 returnVal) {
         uint256 cr = currentRound();
 
+        // This will be called in reveal phase and set as currentRevealRoundAnchor or in
+        // commit phase when checking eligibility for next round by isParticipatingInUpcomingRound
         if (currentPhaseCommit() || (cr > currentRevealRound && !currentPhaseClaim())) {
             return currentSeed();
         }
 
+        // This will never be called  ¯\_(ツ)_/¯
         if (currentPhaseReveal() && cr == currentRevealRound) {
             require(false, "can't return value after first reveal");
         }
 
+        // This will be called by isParticipatingInUpcomingRound check in claim phase
         if (currentPhaseClaim()) {
             return nextSeed();
         }
