@@ -8,6 +8,7 @@ import {
   mintAndApprove,
   skippedRoundsIncrease,
   createOverlay,
+  mineOverlaysInDepth,
 } from './util/tools';
 
 const { read, execute } = deployments;
@@ -226,6 +227,7 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
       await sr_node_4.depositStake(node_4, nonce_4, stakeAmount_3);
 
+      // We need to mine 2 rounds to make the staking possible as this is the minimum time between staking and committing
       await mineNBlocks(roundLength * 2);
       // await setPrevRandDAO();
     });
@@ -854,7 +856,7 @@ describe('Redistribution', function () {
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-          // We skip N rounds, here we skip 3 rounds
+          // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
           await mineNBlocks(roundLength * 3);
 
           currentRound = await r_node_1.currentRound();
@@ -888,6 +890,13 @@ describe('Redistribution', function () {
 
           console.log(ov1);
 
+          const ov2 = mineOverlaysInDepth(
+            '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49',
+            '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
+            '0x00',
+            6,
+            10000
+          );
           // const updaterRole = await priceOracle.PRICE_UPDATER_ROLE();
           // await priceOracle.grantRole(updaterRole, deployer);
           // await priceOracle.adjustPrice(1);

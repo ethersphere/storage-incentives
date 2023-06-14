@@ -318,7 +318,8 @@ contract Redistribution is AccessControl, Pausable {
     function currentSeed() public view returns (bytes32) {
         uint256 cr = currentRound();
         bytes32 currentSeedValue = seed;
-
+        console.log(cr);
+        console.log(currentRevealRound);
         if (cr > currentRevealRound + 1) {
             uint256 difference = cr - currentRevealRound - 1;
             currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
@@ -401,6 +402,7 @@ contract Redistribution is AccessControl, Pausable {
 
         // Initialize new reval round, this will be setup on first reveal
         if (cr != currentRevealRound) {
+            // Anchor must be set before updating currentRevealRound
             currentRevealRoundAnchor = currentRoundAnchor();
             console.logBytes32(currentRevealRoundAnchor);
             delete currentReveals;
