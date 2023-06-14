@@ -70,6 +70,22 @@ const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb
 const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_4 = '0x06';
 
+let node_5: string;
+const overlay_5 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
+const stakeAmount_5 = '100000000000000000';
+const nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const hash_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const depth_5 = '0x06';
+const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+
+let node_6: string;
+const overlay_6 = '0xaf217eb0d652baf39ec9464a350c7afc812743fd75ccadf4fcceb6d19a1f190c';
+const stakeAmount_6 = '100000000000000000';
+const nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const hash_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const depth_6 = '0x06';
+const reveal_nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+
 // Before the tests, assign accounts
 before(async function () {
   const namedAccounts = await getNamedAccounts();
@@ -81,6 +97,8 @@ before(async function () {
   node_2 = namedAccounts.node_2;
   node_3 = namedAccounts.node_3;
   node_4 = namedAccounts.node_4;
+  node_5 = namedAccounts.node_5;
+  node_6 = namedAccounts.node_6;
 });
 
 const errors = {
@@ -891,7 +909,7 @@ describe('Redistribution', function () {
           console.log(ov1);
 
           const ov2 = mineOverlaysInDepth(
-            '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49',
+            '0xa6ee',
             '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
             '0x00',
             6,
