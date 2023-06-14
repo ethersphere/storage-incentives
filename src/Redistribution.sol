@@ -220,6 +220,7 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during commit phase.
      */
     function currentPhaseCommit() public view returns (bool) {
+        console.log(block.number % roundLength);
         if (block.number % roundLength < roundLength / 4) {
             return true;
         }

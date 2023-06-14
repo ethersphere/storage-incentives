@@ -19,6 +19,7 @@ const increaseRate = [1036, 1031, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
 
 const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
+const round5Anchor = '0x17ef568e3e12ab5b9c7254a8d58478811de00f9e6eb34345acd53bf8fd09d3ec';
 
 const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
 
@@ -71,7 +72,7 @@ const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555
 const depth_4 = '0x06';
 
 let node_5: string;
-const overlay_5 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
+const overlay_5 = '0x141680b0d9c7ab250672fd4603ac13e39e47de6e2c93d71bbdc66459a6c5e39f';
 const stakeAmount_5 = '100000000000000000';
 const nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -79,7 +80,7 @@ const depth_5 = '0x06';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let node_6: string;
-const overlay_6 = '0xaf217eb0d652baf39ec9464a350c7afc812743fd75ccadf4fcceb6d19a1f190c';
+const overlay_6 = '0x152d169abc6e6a0e0a2a7b78dcfea0bebe32942f05e9bb10ee2996203d5361ef';
 const stakeAmount_6 = '100000000000000000';
 const nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -245,7 +246,8 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
       await sr_node_4.depositStake(node_4, nonce_4, stakeAmount_3);
 
-      // We need to mine 2 rounds to make the staking possible as this is the minimum time between staking and committing
+      // We need to mine 2 rounds to make the staking possible
+      // as this is the minimum time between staking and committing
       await mineNBlocks(roundLength * 2);
       // await setPrevRandDAO();
     });
@@ -862,68 +864,72 @@ describe('Redistribution', function () {
 
       describe('testing skipped rounds and price changes', async function () {
         let priceOracle: Contract;
-        let r_node_1: Contract;
-        let r_node_2: Contract;
+        let r_node_5: Contract;
+        let r_node_6: Contract;
         let currentRound: number;
 
         beforeEach(async () => {
-          priceOracle = await ethers.getContract('PriceOracle', deployer);
+          // //  This 2 nodes are used for round 5
+          const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
+          await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
+          await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
 
+          const sr_node_6 = await ethers.getContract('StakeRegistry', node_6);
+          await mintAndApprove(deployer, node_6, sr_node_6.address, stakeAmount_6);
+          await sr_node_6.depositStake(node_6, nonce_6, stakeAmount_6);
+
+          priceOracle = await ethers.getContract('PriceOracle', deployer);
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
-          r_node_1 = await ethers.getContract('Redistribution', node_1);
-          r_node_2 = await ethers.getContract('Redistribution', node_2);
-
           // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
-          await mineNBlocks(roundLength * 3);
+          // Each transaction mines one addtional block, so we get to phase limit after many transactions
+          // So to offset that we need to substract number of blocks mined
+          await mineNBlocks(roundLength * 3 - 10);
 
-          currentRound = await r_node_1.currentRound();
+          r_node_5 = await ethers.getContract('Redistribution', node_5);
+          r_node_6 = await ethers.getContract('Redistribution', node_6);
 
-          const obsfucatedHash_1 = encodeAndHash(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_1.commit(obsfucatedHash_1, overlay_1, currentRound);
+          // const ov2 = mineOverlaysInDepth(
+          //   '0x17ef',
+          //   '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
+          //   '0x00',
+          //   6,
+          //   10000
+          // );
 
-          const obsfucatedHash_2 = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-          await r_node_2.commit(obsfucatedHash_2, overlay_2, currentRound);
+          // 798 % 152 = 94
+          // 152 /4 =
+
+          currentRound = await r_node_5.currentRound();
+          console.log('currentRound', await getBlockNumber());
+
+          const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
+          await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
+
+          const obsfucatedHash_6 = encodeAndHash(overlay_6, depth_6, hash_6, reveal_nonce_6);
+          await r_node_6.commit(obsfucatedHash_6, overlay_6, currentRound);
 
           await mineNBlocks(phaseLength);
 
-          await r_node_1.reveal(overlay_1, depth_1, hash_1, reveal_nonce_1);
-          await r_node_2.reveal(overlay_2, depth_2, hash_2, reveal_nonce_2);
+          await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
+          await r_node_6.reveal(overlay_6, depth_6, hash_6, reveal_nonce_6);
           await mineNBlocks(phaseLength);
 
-          expect(await r_node_1.isWinner(overlay_1)).to.be.true;
-          expect(await r_node_2.isWinner(overlay_2)).to.be.false;
+          expect(await r_node_5.isWinner(overlay_5)).to.be.true;
+          expect(await r_node_6.isWinner(overlay_6)).to.be.false;
 
-          const tx2 = await r_node_2.claim();
+          const tx2 = await r_node_6.claim();
         });
 
         it('if both reveal, but after 3 skipped round, check proper price increase', async function () {
           const nodesInNeighbourhood = 2;
 
-          const ov1 = createOverlay(
-            '0xbFC32C0779b9B17D2e2DCd916493528BF4561142',
-            '0x00',
-            '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33'
-          );
-
-          console.log(ov1);
-
-          const ov2 = mineOverlaysInDepth(
-            '0xa6ee',
-            '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
-            '0x00',
-            6,
-            10000
-          );
-          // const updaterRole = await priceOracle.PRICE_UPDATER_ROLE();
-          // await priceOracle.grantRole(updaterRole, deployer);
-          // await priceOracle.adjustPrice(1);
-
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
-          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
+          console.log(newPrice);
+          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(4, newPrice));
 
-          await expect(r_node_1.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
+          await expect(r_node_5.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
         });
       });
     });

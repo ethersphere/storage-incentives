@@ -48,6 +48,8 @@ const config: HardhatUserConfig = {
     node_2: 8,
     node_3: 9,
     node_4: 10,
+    node_5: 11,
+    node_6: 12,
   },
   defaultNetwork: 'hardhat',
   networks: {
@@ -107,6 +109,16 @@ const config: HardhatUserConfig = {
         // node_4 0xB257DaAc87899038871E3FB280da58191eFB5Ca2
         {
           privateKey: '0xc1a7ca0bc39058d1fb6e331f8a6a3b65e81f171cfeddeec6cd0f32271496f45c',
+          balance: '10000000000000000000000',
+        },
+        // node_5 0x77CbAdb1059dDC7334227e025fC940469f52FEd8
+        {
+          privateKey: '0xb65c0589ad60bc9985f0b6eafe5dd480b7ad63f073a7e9625dd23466a0d1947d',
+          balance: '10000000000000000000000',
+        },
+        // node_6 0x4906632d6693733554EE11eA785EB718d2e2ffdA
+        {
+          privateKey: '0x9d715c14789abdc4c97fd775cf620196bebe991c60c614ba00fedbac943a5e67',
           balance: '10000000000000000000000',
         },
         // other_1 0x626178434A88c3c8809D136d500b9707D749EA9B
