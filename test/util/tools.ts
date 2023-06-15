@@ -30,7 +30,6 @@ async function skippedRoundsIncrease(n: number, price: number): Promise<number> 
   // currentPrice = currentPrice * Math.pow(maxIncreaseRate / multiplier, n);
   for (let index = 0; index < n; index++) {
     currentPrice = Math.floor((maxIncreaseRate * currentPrice) / multiplier);
-    console.log('currentPriceTool', currentPrice);
   }
   return currentPrice;
 }

@@ -122,45 +122,31 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
-            console.log("current", currentRoundNumber);
-            console.log("lastClaimedRound", lastClaimedRound);
             // Set the number of rounds that were skipped
             uint256 skippedRounds = currentRoundNumber - lastClaimedRound - 1;
 
-            console.log("skippedRounds", skippedRounds);
             // Use the increaseRate array of constants to determine
             // the rate at which the price will modulate - if usedRedundancy
             // is the target value 4 there is no change, > 4 causes an increase
             // and < 4 a decrease.
             // the multiplier is used to ensure whole number
 
-            console.log("currentPrice0", currentPrice);
             // We first apply the increase/decrease rate for the current round
             uint256 ir = increaseRate[usedRedundancy];
             currentPrice = (ir * currentPrice) / multiplier;
 
-            console.log("currentPrice", currentPrice);
             // If previous rounds were skipped, use MAX price increase for the previouse rounds
             if (skippedRounds > 0) {
                 ir = increaseRate[0];
                 for (uint256 i = 0; i < skippedRounds; i++) {
                     currentPrice = (ir * currentPrice) / multiplier;
                 }
-
-                // 1027*2048 /  1024 = 2052
-                // 1036*2052 / 1024 = 2076
-                // 1036*2076 / 1024  = 2100
-                // 1036*2100 / 1024  = 2124
-                // 1036*2124 / 1024  = 2148
-                // 1036*2148 / 1024  = 2172
             }
 
             // Enforce minimum price
             if (currentPrice < minimumPrice) {
                 currentPrice = minimumPrice;
             }
-
-            console.log("currentPrice2", currentPrice);
 
             postageStamp.setPrice(currentPrice);
             lastClaimedRound = currentRoundNumber;

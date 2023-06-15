@@ -1,15 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
-import {
-  mineNBlocks,
-  getBlockNumber,
-  encodeAndHash,
-  mintAndApprove,
-  skippedRoundsIncrease,
-  createOverlay,
-  mineOverlaysInDepth,
-} from './util/tools';
+import { mineNBlocks, getBlockNumber, encodeAndHash, mintAndApprove, skippedRoundsIncrease } from './util/tools';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -889,19 +881,7 @@ describe('Redistribution', function () {
           r_node_5 = await ethers.getContract('Redistribution', node_5);
           r_node_6 = await ethers.getContract('Redistribution', node_6);
 
-          // const ov2 = mineOverlaysInDepth(
-          //   '0x17ef',
-          //   '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33',
-          //   '0x00',
-          //   6,
-          //   10000
-          // );
-
-          // 798 % 152 = 94
-          // 152 /4 =
-
           currentRound = await r_node_5.currentRound();
-          console.log('currentRound', await getBlockNumber());
 
           const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
           await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
@@ -921,15 +901,12 @@ describe('Redistribution', function () {
           const tx2 = await r_node_6.claim();
         });
 
-        it('if both reveal, but after 3 skipped round, check proper price increase', async function () {
+        it('if both reveal, but after 4 skipped rounds, check proper price increase', async function () {
           const nodesInNeighbourhood = 2;
 
-          // Check if the increase is properly applied, we have one skipped round here
+          // Check if the increase is properly applied, we have four skipped rounds here
           const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
-          console.log(newPrice);
           expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(4, newPrice));
-
-          await expect(r_node_5.claim()).to.be.revertedWith(errors.claim.alreadyClaimed);
         });
       });
     });

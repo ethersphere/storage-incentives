@@ -220,7 +220,6 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during commit phase.
      */
     function currentPhaseCommit() public view returns (bool) {
-        console.log(block.number % roundLength);
         if (block.number % roundLength < roundLength / 4) {
             return true;
         }
@@ -319,8 +318,6 @@ contract Redistribution is AccessControl, Pausable {
     function currentSeed() public view returns (bytes32) {
         uint256 cr = currentRound();
         bytes32 currentSeedValue = seed;
-        console.log(cr);
-        console.log(currentRevealRound);
         if (cr > currentRevealRound + 1) {
             uint256 difference = cr - currentRevealRound - 1;
             currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
@@ -363,12 +360,6 @@ contract Redistribution is AccessControl, Pausable {
         if (minimum == 0) {
             return true;
         }
-        // uint256 distance = uint256(A ^ B) - uint256(2 ** (256 - minimum));
-        // uint256 distance1 = uint256(2 ** (256 - minimum));
-        // uint256 distance2 = uint256(A ^ B);
-        // console.log(distance);
-        // console.log(distance1);
-        // console.log(distance2);
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 
@@ -405,7 +396,6 @@ contract Redistribution is AccessControl, Pausable {
         if (cr != currentRevealRound) {
             // Anchor must be set before updating currentRevealRound
             currentRevealRoundAnchor = currentRoundAnchor();
-            console.logBytes32(currentRevealRoundAnchor);
             delete currentReveals;
             currentRevealRound = cr;
             emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
