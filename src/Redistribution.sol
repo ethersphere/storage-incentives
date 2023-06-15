@@ -2,7 +2,6 @@
 pragma solidity ^0.8.1;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "hardhat/console.sol";
 
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
@@ -356,7 +355,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param B An overlay address to compare.
      * @param minimum Minimum proximity order.
      */
-    function inProximity(bytes32 A, bytes32 B, uint8 minimum) public view returns (bool) {
+    function inProximity(bytes32 A, bytes32 B, uint8 minimum) public pure returns (bool) {
         if (minimum == 0) {
             return true;
         }
