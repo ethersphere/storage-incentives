@@ -1,11 +1,15 @@
 import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
+
 import { arrayify, hexlify } from '@ethersproject/bytes';
-import { BigNumber } from 'ethers';
+import { BigNumber, Wallet } from 'ethers';
 
 export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
 export const PHASE_LENGTH = 38;
 export const ROUND_LENGTH = 152;
+export const WITNESS_COUNT = 16;
+export const SEGMENT_COUNT_IN_CHUNK = 128;
+export const SEGMENT_BYTE_LENGTH = 32;
 const zeroAddress = '0x0000000000000000000000000000000000000000';
 
 /** returns byte representation of the hex string */
@@ -81,7 +85,7 @@ function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, revea
 }
 
 //dev purposes only
-async function createOverlay(address: string, networkID: string, nonce: string): Promise<string> {
+function createOverlay(address: string, networkID: string, nonce: string): string {
   const encoded = new Uint8Array(60);
   encoded.set(arrayify(address));
   encoded.set(arrayify(networkID).reverse(), 20);
@@ -111,34 +115,6 @@ function compareHexAsBinary(_a: string, _b: string, d: number): boolean {
     }
   }
   return true;
-}
-
-// example: mineOverlaysInDepth("0xac33", "0x00", 6, 10000);
-async function mineOverlaysInDepth(
-  prefix: string,
-  nonce: string,
-  networkID: string,
-  depth: number,
-  maxAttempts: number
-): Promise<undefined> {
-  let found = false;
-  let w, o;
-  let i = 0;
-  while (found == false) {
-    w = ethers.Wallet.createRandom();
-    o = await createOverlay(w.address, networkID, nonce);
-    found = compareHexAsBinary(o, prefix.padEnd(66, '0'), depth);
-    console.log(i, o.substring(0, 8), prefix.padEnd(66, '0').substring(0, 8));
-    if (maxAttempts == i + 1) {
-      console.log('failed with max attempts', maxAttempts);
-      return;
-    }
-    i++;
-  }
-  if (w !== undefined) {
-    console.log(`found in ${i} attempts`, 'o a p', o, w.address, w.privateKey);
-    return;
-  }
 }
 
 /**
@@ -180,7 +156,7 @@ export async function mineToRevealPhase() {
  */
 export async function copyBatchForClaim(
   deployer: string
-): Promise<{ tx: any; postageDepth: number; initialBalance: number }> {
+): Promise<{ tx: any; postageDepth: number; initialBalance: number; batchId: string; batchOwner: Wallet }> {
   // migrate batch with which the chunk was signed
   const postageAdmin = await ethers.getContract('PostageStamp', deployer);
   // set minimum required blocks for postage stamp lifetime to 0 for tests
@@ -190,13 +166,15 @@ export async function copyBatchForClaim(
   const postageDepth = 27;
   const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
   await mintAndApprove(deployer, deployer, postageAdmin.address, bzzFund.toString());
+  const batchId = '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb';
+  const batchOwner = getWalletOfFdpPlayQueen();
 
   const tx = await postageAdmin.copyBatch(
-    '0x26234a2ad3ba8b398a762f279b792cfacd536a3f', // owner
+    batchOwner.address, // batch owner
     initialBalance, // initial balance per chunk
     postageDepth, // depth
     16, // bucketdepth
-    '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb',
+    batchId,
     true // immutable
   );
 
@@ -204,6 +182,8 @@ export async function copyBatchForClaim(
     tx,
     postageDepth,
     initialBalance,
+    batchId,
+    batchOwner,
   };
 }
 
@@ -216,6 +196,14 @@ export function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): st
   return currentAnchor;
 }
 
+/**
+ * Returns the wallet object of FDP Play - queen bee node
+ * Can be used for sign migrated Chunks
+ */
+function getWalletOfFdpPlayQueen(): Wallet {
+  return new Wallet('0x195cf6324303f6941ad119d0a1d2e862d810078e1370b8d205552a543ff40aab');
+}
+
 export {
   zeroAddress,
   computeBatchId,
@@ -226,5 +214,4 @@ export {
   createOverlay,
   hexToBinaryArray,
   compareHexAsBinary,
-  mineOverlaysInDepth,
 };
