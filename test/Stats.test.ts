@@ -9,9 +9,11 @@ import {
   PHASE_LENGTH,
   copyBatchForClaim,
   mineToRevealPhase,
+  WITNESS_COUNT,
 } from './util/tools';
 import { BigNumber } from 'ethers';
-import { node5_proof1 } from './claim-proofs';
+import { arrayify, hexlify } from 'ethers/lib/utils';
+import { getClaimProofs, makeSample, mineWitness } from './util/proofs';
 
 const { read, execute } = deployments;
 
@@ -44,9 +46,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   const postageStampAdmin = await ethers.getContract('PostageStamp', deployer);
   await postageStampAdmin.setMinimumValidityBlocks(0);
 
-  const { proof1, proof2, proofLast, hash: sanityHash } = node5_proof1;
-
-  const { postageDepth, initialBalance } = await copyBatchForClaim(deployer);
+  const { postageDepth, initialBalance, batchId, batchOwner } = await copyBatchForClaim(deployer);
 
   const batchSize = BigNumber.from(2).pow(BigNumber.from(postageDepth));
   const transferAmount = BigNumber.from(2).mul(BigNumber.from(initialBalance)).mul(batchSize);
@@ -73,13 +73,25 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   let r_node = await ethers.getContract('Redistribution', nodes[0]);
 
   await mineNBlocks(ROUND_LENGTH * 2); // anyway reverted with panic code 0x11 (Arithmetic operation underflowed or overflowed outside of an unchecked block
+
+  const anchor1 = arrayify(await r_node.currentSeed());
+  const witnessChunks: ReturnType<typeof mineWitness>[] = [];
+  let startNonce = 0;
+  for (let i = 0; i < WITNESS_COUNT; i++) {
+    const witness = mineWitness(anchor1, Number(depth), startNonce);
+    witnessChunks.push(witness);
+    startNonce = witness.nonce + 1;
+  }
+  const sampleChunk = makeSample(witnessChunks, anchor1);
+  const sampleHashString = hexlify(sampleChunk.address());
+
   // TODO: calculate fixtures for trials.
 
   for (let i = 0; i < trials; i++) {
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      const overlay = await createOverlay(nodes[i], '0x00', nonce);
-      const obsfucatedHash = encodeAndHash(overlay, depth, sanityHash, reveal_nonce);
+      const overlay = createOverlay(nodes[i], '0x00', nonce);
+      const obsfucatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
       const currentRound = await r_node.currentRound();
       await r_node.commit(obsfucatedHash, overlay, currentRound);
     }
@@ -88,14 +100,16 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      const overlay = await createOverlay(nodes[i], '0x00', nonce);
-      await r_node.reveal(overlay, depth, sanityHash, reveal_nonce);
+      const overlay = createOverlay(nodes[i], '0x00', nonce);
+      await r_node.reveal(overlay, depth, sampleHashString, reveal_nonce);
     }
+
+    const anchor2 = await r_node.currentSeed(); // for creating proofs
 
     await mineNBlocks(PHASE_LENGTH - nodes.length + 1);
 
     for (let i = 0; i < winDist.length; i++) {
-      const overlay = await createOverlay(winDist[i].node, '0x00', nonce);
+      const overlay = createOverlay(winDist[i].node, '0x00', nonce);
       if (await r_node.isWinner(overlay)) {
         winDist[i].wins++;
       }
@@ -109,13 +123,15 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     }
     r_node = await ethers.getContract('Redistribution', nodes[winnerIndex]);
 
-    await r_node.claim(proof1, proof2, proofLast);
+    const { proofParams } = await getClaimProofs(witnessChunks, sampleChunk, anchor1, anchor2, batchOwner, batchId);
+
+    await r_node.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
 
     const sr = await ethers.getContract('StakeRegistry');
 
     //stakes are preserved
     for (let i = 0; i < nodes.length; i++) {
-      const overlay = await createOverlay(nodes[i], '0x00', nonce);
+      const overlay = createOverlay(nodes[i], '0x00', nonce);
       expect(await sr.usableStakeOfOverlay(overlay)).to.be.eq(stakes[i]);
     }
 
@@ -134,10 +150,11 @@ describe('Stats', async function () {
     const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
   });
+
   describe('two player game', async function () {
     const trials = 150;
 
-    xit('is fair with 1:3 stake', async function () {
+    it('is fair with 1:3 stake', async function () {
       this.timeout(0);
       const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
@@ -151,10 +168,10 @@ describe('Stats', async function () {
 
       for (let i = 0; i < dist.length; i++) {
         const actual =
-          parseInt((BigInt(dist[i].stake) / BigInt(100000000000000000)).toString()) /
-          parseInt((sumStakes / BigInt(100000000000000000)).toString());
+          parseInt((BigInt(dist[i].stake) / BigInt('100000000000000000')).toString()) /
+          parseInt((sumStakes / BigInt('100000000000000000')).toString());
         const probable = dist[i].wins / trials;
-        await expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
+        expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
       }
     });
   });
