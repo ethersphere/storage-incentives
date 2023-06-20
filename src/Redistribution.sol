@@ -8,9 +8,9 @@ import "./Util/Signatures.sol";
 
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
- * For PostageStmap we currently use "withdraw" to withdraw funds from Pot
+ * For PostageStmap we currently use "withdraw" to withdraw funds from Pot and some read functions
  * For PriceOracle we use "adjustPrice" to change price of PostageStamps
- * For Staking contract we use "lastUpdatedBlockNumberOfOverlay, freezeDeposit, ownerOfOverlay, stakeOfOverlay"
+ * For Staking contract we use freezeDeposit to change state and others are read functions
  */
 
 interface IPostageStamp {
@@ -19,9 +19,9 @@ interface IPostageStamp {
     function validChunkCount() external view returns (uint256);
 
     function batchOwner(bytes32 _batchId) external view returns (address);
-    
+
     function batchDepth(bytes32 _batchId) external view returns (uint8);
-    
+
     function batchBucketDepth(bytes32 _batchId) external view returns (uint8);
 
     function remainingBalance(bytes32 _batchId) external view returns (uint256);
@@ -34,9 +34,9 @@ interface IPriceOracle {
 }
 
 interface IStakeRegistry {
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
-
     function freezeDeposit(bytes32 overlay, uint256 time) external;
+
+    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
 
     function ownerOfOverlay(bytes32 overlay) external view returns (address);
 
@@ -73,6 +73,8 @@ interface IStakeRegistry {
  */
 
 contract Redistribution is AccessControl, Pausable {
+    // ----------------------------- Type declarations ------------------------------
+
     // An eligible user may commit to an _obfuscatedHash_ during the commit phase...
     struct Commit {
         bytes32 overlay;
@@ -93,7 +95,7 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth;
     }
 
-    struct ChunkInclusionProof{
+    struct ChunkInclusionProof {
         bytes32[] proofSegments;
         bytes32 proveSegment;
         // _RCspan is known for RC 32*32
@@ -105,7 +107,7 @@ contract Redistribution is AccessControl, Pausable {
         uint64 chunkSpan;
         //
         bytes32[] proofSegments3;
-        //  _proveSegment3 known, is equal _proveSegment2 
+        //  _proveSegment3 known, is equal _proveSegment2
         // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
         // chunkSpan2 is equal to chunkSpan (as the data is the same)
 
@@ -115,17 +117,17 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 postageId;
         uint64 index;
         uint64 timeStamp;
-
         SOCProof[] socProofAttached;
     }
-    
-    struct SOCProof{
+
+    struct SOCProof {
         address signer; // signer Ethereum address to check against
         bytes signature;
-        bytes32 identifier; // 
+        bytes32 identifier; //
         bytes32 chunkAddr; // wrapped chunk address
     }
 
+    // ----------------------------- State variables ------------------------------
 
     // The address of the linked PostageStamp contract.
     IPostageStamp public PostageContract;
@@ -148,9 +150,9 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
-
     // alpha=0.097612 beta=0.0716570 k=16
-    uint256 public constant SAMPLE_MAX_VALUE = 1284401000000000000000000000000000000000000000000000000000000000000000000;
+    uint256 public constant SAMPLE_MAX_VALUE =
+        1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 currentRevealRoundAnchor;
@@ -183,35 +185,7 @@ contract Redistribution is AccessControl, Pausable {
     // The reveal of the winner of the last round.
     Reveal public winner;
 
-    /**
-    * @dev Pause the contract. The contract is provably stopped by renouncing
-     the pauser role and the admin role after pausing, can only be called by the `PAUSER`
-     */
-    function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
-        _pause();
-    }
-
-    /**
-     * @dev Unpause the contract, can only be called by the pauser when paused
-     */
-    function unPause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
-        _unpause();
-    }
-
-    /**
-     * @param staking the address of the linked Staking contract.
-     * @param postageContract the address of the linked PostageStamp contract.
-     * @param oracleContract the address of the linked PriceOracle contract.
-     */
-    constructor(address staking, address postageContract, address oracleContract, address multisig) {
-        Stakes = IStakeRegistry(staking);
-        PostageContract = IPostageStamp(postageContract);
-        OracleContract = IPriceOracle(oracleContract);
-        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
-        _setupRole(PAUSER_ROLE, msg.sender);
-    }
+    // ----------------------------- Events ------------------------------
 
     /**
      * @dev Emitted when the winner of a round is selected in the claim phase
@@ -260,62 +234,24 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth
     );
 
-    /**
-     * @notice Set freezing parameters
-     */
-    function setFreezingParams(uint256 _penaltyMultiplierDisagreement, uint256 _penaltyMultiplierNonRevealed) external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
-        penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
-        penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
-    }
+    // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
-     * @notice The number of the current round.
+     * @param staking the address of the linked Staking contract.
+     * @param postageContract the address of the linked PostageStamp contract.
+     * @param oracleContract the address of the linked PriceOracle contract.
      */
-    function currentRound() public view returns (uint256) {
-        return (block.number / roundLength);
+    constructor(address staking, address postageContract, address oracleContract, address multisig) {
+        Stakes = IStakeRegistry(staking);
+        PostageContract = IPostageStamp(postageContract);
+        OracleContract = IPriceOracle(oracleContract);
+        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
+        _setupRole(PAUSER_ROLE, msg.sender);
     }
 
-    /**
-     * @notice Returns true if current block is during commit phase.
-     */
-    function currentPhaseCommit() public view returns (bool) {
-        if (block.number % roundLength < roundLength / 4) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * @notice Returns true if current block is during reveal phase.
-     */
-    function currentPhaseReveal() public view returns (bool) {
-        uint256 number = block.number % roundLength;
-        if (number >= roundLength / 4 && number < roundLength / 2) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * @notice Returns true if current block is during claim phase.
-     */
-    function currentPhaseClaim() public view returns (bool) {
-        if (block.number % roundLength >= roundLength / 2) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * @notice Returns true if current block is during reveal phase.
-     */
-    function currentRoundReveals() public view returns (Reveal[] memory) {
-        require(currentPhaseClaim(), "not in claim phase");
-        uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
-        return currentReveals;
-    }
+    ////////////////////////////////////////
+    //              SETTERS               //
+    ////////////////////////////////////////
 
     /**
      * @notice Begin application for a round if eligible. Commit a hashed value for which the pre-image will be
@@ -368,77 +304,6 @@ contract Redistribution is AccessControl, Pausable {
         );
 
         emit Committed(_roundNumber, _overlay);
-    }
-
-    /**
-     * @notice Returns the current random seed which is used to determine later utilised random numbers.
-     * If rounds have elapsed without reveals, hash the seed with an incremented nonce to produce a new
-     * random seed and hence a new round anchor.
-     */
-    function currentSeed() public view returns (bytes32) {
-        uint256 cr = currentRound();
-        bytes32 currentSeedValue = seed;
-
-        if (cr > currentRevealRound + 1) {
-            uint256 difference = cr - currentRevealRound - 1;
-            currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
-        }
-
-        return currentSeedValue;
-    }
-
-    /**
-     * @notice Returns the seed which will become current once the next commit phase begins.
-     * Used to determine what the next round's anchor will be.
-     */
-    function nextSeed() public view returns (bytes32) {
-        uint256 cr = currentRound() + 1;
-        bytes32 currentSeedValue = seed;
-
-        if (cr > currentRevealRound + 1) {
-            uint256 difference = cr - currentRevealRound - 1;
-            currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
-        }
-
-        return currentSeedValue;
-    }
-
-    /**
-     * @notice Updates the source of randomness. Uses block.difficulty in pre-merge chains, this is substituted
-     * to block.prevrandao in post merge chains.
-     */
-    function updateRandomness() private {
-        seed = keccak256(abi.encode(seed, block.difficulty));
-    }
-
-    /**
-     * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
-     * @param A An overlay address to compare.
-     * @param B An overlay address to compare.
-     * @param minimum Minimum proximity order.
-     */
-    function inProximity(bytes32 A, bytes32 B, uint8 minimum) public pure returns (bool) {
-        if (minimum == 0) {
-            return true;
-        }
-        return uint256(A ^ B) < uint256(2 ** (256 - minimum));
-    }
-
-    /**
-     * @notice Hash the pre-image values to the obsfucated hash.
-     * @dev _revealNonce_ must be randomly generated, used once and kept secret until the reveal phase.
-     * @param _overlay The overlay address of the applicant.
-     * @param _depth The reported depth.
-     * @param _hash The reserve commitment hash.
-     * @param revealNonce A random, single use, secret nonce.
-     */
-    function wrapCommit(
-        bytes32 _overlay,
-        uint8 _depth,
-        bytes32 _hash,
-        bytes32 revealNonce
-    ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_overlay, _depth, _hash, revealNonce));
     }
 
     /**
@@ -505,6 +370,253 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
+     * @notice Helper function to get this round truth
+     * @dev
+     */
+    function claim(
+        ChunkInclusionProof calldata entryProof1,
+        ChunkInclusionProof calldata entryProof2,
+        ChunkInclusionProof calldata entryProofLast
+    ) external whenNotPaused {
+        winner = winnerSelection();
+
+        // rand(14)
+        x = uint256(seed) % 15;
+        // rand(13)
+        y = uint256(seed) % 14;
+        if (y >= x) {
+            y++;
+        }
+
+        require(
+            inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth),
+            "witness is not in depth"
+        );
+        inclusionFunction(entryProofLast, 30);
+        stampFunction(entryProofLast);
+        socFunction(entryProofLast);
+
+        require(
+            inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth),
+            "witness is not in depth"
+        );
+        inclusionFunction(entryProof1, x * 2);
+        stampFunction(entryProof1);
+        socFunction(entryProofLast);
+
+        require(
+            inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth),
+            "witness is not in depth"
+        );
+        inclusionFunction(entryProof2, y * 2);
+        stampFunction(entryProof2);
+        socFunction(entryProofLast);
+
+        checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
+
+        emit WinnerSelected(winner);
+
+        PostageContract.withdraw(winner.owner);
+    }
+
+    function winnerSelection() internal returns (Reveal memory winner_) {
+        require(currentPhaseClaim(), "not in claim phase");
+
+        uint256 cr = currentRound();
+
+        require(cr == currentRevealRound, "round received no reveals");
+        require(cr > currentClaimRound, "round already received successful claim");
+
+        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
+
+        currentSum = 0;
+        currentWinnerSelectionSum = 0;
+        bytes32 randomNumber;
+        uint256 randomNumberTrunc;
+
+        bytes32 truthRevealedHash;
+        uint8 truthRevealedDepth;
+
+        emit CountCommits(currentCommits.length);
+        emit CountReveals(currentReveals.length);
+
+        for (uint256 i = 0; i < currentCommits.length; i++) {
+            if (currentCommits[i].revealed) {
+                revIndex = currentCommits[i].revealIndex;
+                currentSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
+
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
+                // question is whether randomNumber / MaxH < probability
+                // where probability is stakeDensity / currentSum
+                // to avoid resorting to floating points all divisions should be
+                // simplified with multiplying both sides (as long as divisor > 0)
+                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
+                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
+                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
+                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
+                    truthRevealedHash = currentReveals[revIndex].hash;
+                    truthRevealedDepth = currentReveals[revIndex].depth;
+                }
+            }
+        }
+
+        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
+
+        k = 0;
+
+        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+
+        for (uint256 i = 0; i < currentCommits.length; i++) {
+            revIndex = currentCommits[i].revealIndex;
+            if (currentCommits[i].revealed) {
+                if (
+                    truthRevealedHash == currentReveals[revIndex].hash &&
+                    truthRevealedDepth == currentReveals[revIndex].depth
+                ) {
+                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+
+                    randomNumberTrunc = uint256(randomNumber & MaxH);
+
+                    if (
+                        randomNumberTrunc * currentWinnerSelectionSum <
+                        currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                    ) {
+                        winner_ = currentReveals[revIndex];
+                    }
+
+                    k++;
+                } else {
+                    Stakes.freezeDeposit(
+                        currentReveals[revIndex].overlay,
+                        penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                    );
+                    // slash ph5
+                }
+            } else {
+                // slash in later phase
+                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
+                Stakes.freezeDeposit(
+                    currentCommits[i].overlay,
+                    penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
+                );
+                continue;
+            }
+        }
+
+        OracleContract.adjustPrice(uint256(k));
+
+        require(winner_.owner == msg.sender, "Only selected winner can do the claim");
+
+        currentClaimRound = cr;
+
+        return winner_;
+    }
+
+    /**
+     * @notice Set freezing parameters
+     */
+    function setFreezingParams(uint256 _penaltyMultiplierDisagreement, uint256 _penaltyMultiplierNonRevealed) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
+        penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
+    }
+
+    /**
+     * @notice Updates the source of randomness. Uses block.difficulty in pre-merge chains, this is substituted
+     * to block.prevrandao in post merge chains.
+     */
+    function updateRandomness() private {
+        seed = keccak256(abi.encode(seed, block.difficulty));
+    }
+
+    /**
+    * @dev Pause the contract. The contract is provably stopped by renouncing
+     the pauser role and the admin role after pausing, can only be called by the `PAUSER`
+     */
+    function pause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        _pause();
+    }
+
+    /**
+     * @dev Unpause the contract, can only be called by the pauser when paused
+     */
+    function unPause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        _unpause();
+    }
+
+    ////////////////////////////////////////
+    //              GETTERS               //
+    ////////////////////////////////////////
+
+    /**
+     * @notice Returns the current random seed which is used to determine later utilised random numbers.
+     * If rounds have elapsed without reveals, hash the seed with an incremented nonce to produce a new
+     * random seed and hence a new round anchor.
+     */
+    function currentSeed() public view returns (bytes32) {
+        uint256 cr = currentRound();
+        bytes32 currentSeedValue = seed;
+
+        if (cr > currentRevealRound + 1) {
+            uint256 difference = cr - currentRevealRound - 1;
+            currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
+        }
+
+        return currentSeedValue;
+    }
+
+    /**
+     * @notice Returns the seed which will become current once the next commit phase begins.
+     * Used to determine what the next round's anchor will be.
+     */
+    function nextSeed() public view returns (bytes32) {
+        uint256 cr = currentRound() + 1;
+        bytes32 currentSeedValue = seed;
+
+        if (cr > currentRevealRound + 1) {
+            uint256 difference = cr - currentRevealRound - 1;
+            currentSeedValue = keccak256(abi.encodePacked(currentSeedValue, difference));
+        }
+
+        return currentSeedValue;
+    }
+
+    /**
+     * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
+     * @param A An overlay address to compare.
+     * @param B An overlay address to compare.
+     * @param minimum Minimum proximity order.
+     */
+    function inProximity(bytes32 A, bytes32 B, uint8 minimum) public pure returns (bool) {
+        if (minimum == 0) {
+            return true;
+        }
+        return uint256(A ^ B) < uint256(2 ** (256 - minimum));
+    }
+
+    /**
+     * @notice Hash the pre-image values to the obsfucated hash.
+     * @dev _revealNonce_ must be randomly generated, used once and kept secret until the reveal phase.
+     * @param _overlay The overlay address of the applicant.
+     * @param _depth The reported depth.
+     * @param _hash The reserve commitment hash.
+     * @param revealNonce A random, single use, secret nonce.
+     */
+    function wrapCommit(
+        bytes32 _overlay,
+        uint8 _depth,
+        bytes32 _hash,
+        bytes32 revealNonce
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_overlay, _depth, _hash, revealNonce));
+    }
+
+    /**
      * @notice Determine if a the owner of a given overlay will be the beneficiary of the claim phase.
      * @param _overlay The overlay address of the applicant.
      */
@@ -553,6 +665,54 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         return (winnerIs == _overlay);
+    }
+
+    /**
+     * @notice The number of the current round.
+     */
+    function currentRound() public view returns (uint256) {
+        return (block.number / roundLength);
+    }
+
+    /**
+     * @notice Returns true if current block is during commit phase.
+     */
+    function currentPhaseCommit() public view returns (bool) {
+        if (block.number % roundLength < roundLength / 4) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @notice Returns true if current block is during reveal phase.
+     */
+    function currentPhaseReveal() public view returns (bool) {
+        uint256 number = block.number % roundLength;
+        if (number >= roundLength / 4 && number < roundLength / 2) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @notice Returns true if current block is during claim phase.
+     */
+    function currentPhaseClaim() public view returns (bool) {
+        if (block.number % roundLength >= roundLength / 2) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @notice Returns true if current block is during reveal phase.
+     */
+    function currentRoundReveals() public view returns (Reveal[] memory) {
+        require(currentPhaseClaim(), "not in claim phase");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+        return currentReveals;
     }
 
     /**
@@ -612,135 +772,6 @@ contract Redistribution is AccessControl, Pausable {
         }
     }
 
-    /**
-     * @notice Helper function to get this round truth
-     * @dev
-     */
-    function claim(
-        ChunkInclusionProof calldata entryProof1,
-        ChunkInclusionProof calldata entryProof2,
-        ChunkInclusionProof calldata entryProofLast
-    ) external whenNotPaused {
-        winner = winnerSelection();
-
-        // rand(14)
-        x = uint256(seed) % 15;
-        // rand(13)
-        y = uint256(seed) % 14;
-        if ( y >= x ) {
-            y++;
-        }
-
-        require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
-        inclusionFunction(entryProofLast, 30);
-        stampFunction(entryProofLast);
-        socFunction(entryProofLast);
-
-        require(inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
-        inclusionFunction(entryProof1, x * 2);
-        stampFunction(entryProof1);
-        socFunction(entryProofLast);
-
-        require(inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
-        inclusionFunction(entryProof2, y * 2);
-        stampFunction(entryProof2);
-        socFunction(entryProofLast);
-        
-        checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
-
-        emit WinnerSelected(winner);
-
-        PostageContract.withdraw(winner.owner);
-    }
-
-
-    function winnerSelection() internal returns (Reveal memory winner_) {
-
-        require(currentPhaseClaim(), "not in claim phase");
-
-        uint256 cr = currentRound();
-
-        require(cr == currentRevealRound, "round received no reveals");
-        require(cr > currentClaimRound, "round already received successful claim");
-
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-
-        currentSum = 0;
-        currentWinnerSelectionSum = 0;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
-
-        bytes32 truthRevealedHash;
-        uint8 truthRevealedDepth;
-
-        emit CountCommits(currentCommits.length);
-        emit CountReveals(currentReveals.length);
-
-        for (uint256 i = 0; i < currentCommits.length; i++) {
-            if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-
-                randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                // question is whether randomNumber / MaxH < probability
-                // where probability is stakeDensity / currentSum
-                // to avoid resorting to floating points all divisions should be
-                // simplified with multiplying both sides (as long as divisor > 0)
-                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
-                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
-                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
-                }
-            }
-        }
-
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-
-        k = 0;
-
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-
-        for (uint256 i = 0; i < currentCommits.length; i++) {
-            revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed ) {
-               if ( truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
-                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-
-                    randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                    if (
-                        randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                    ) {
-                        winner_ = currentReveals[revIndex];
-                    }
-
-                    k++;
-                } else {
-                    Stakes.freezeDeposit(currentReveals[revIndex].overlay, penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth));
-                    // slash ph5
-                }
-            } else {
-                // slash in later phase
-                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(currentCommits[i].overlay, penaltyMultiplierNonRevealed * roundLength * uint256(2**truthRevealedDepth));
-                continue;
-            }
-        }
-
-        OracleContract.adjustPrice(uint256(k));
-
-        require(winner_.owner == msg.sender, "Only selected winner can do the claim");
-
-        currentClaimRound = cr;
-
-        return winner_;
-    }
-
     function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
         uint256 currentSum;
         bytes32 randomNumber;
@@ -781,7 +812,7 @@ contract Redistribution is AccessControl, Pausable {
         return prefix >> (32 - bucketDepth);
     }
 
-    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal  pure returns (uint256) {
+    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal pure returns (uint256) {
         return 1 << (postageDepth - bucketDepth);
     }
 
@@ -797,26 +828,27 @@ contract Redistribution is AccessControl, Pausable {
         return keccak256(abi.encodePacked(identifier, signer));
     }
 
-    function socFunction(ChunkInclusionProof calldata entryProof) pure internal {
-        if(entryProof.socProofAttached.length == 0) return;
+    function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
+        if (entryProof.socProofAttached.length == 0) return;
 
-        require(Signatures.socVerify(
-            entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
-            entryProof.socProofAttached[0].signature,
-            entryProof.socProofAttached[0].identifier,
-            entryProof.proveSegment
-        ), "Soc verification failed for element");
-        
         require(
-            calculateSocAddress(
-                entryProof.socProofAttached[0].identifier, 
-                entryProof.socProofAttached[0].signer
-            ) == entryProof.proveSegment,
+            Signatures.socVerify(
+                entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
+                entryProof.socProofAttached[0].signature,
+                entryProof.socProofAttached[0].identifier,
+                entryProof.proveSegment
+            ),
+            "Soc verification failed for element"
+        );
+
+        require(
+            calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) ==
+                entryProof.proveSegment,
             "Soc address calculation does not match with the witness"
         );
     }
 
-    function stampFunction(ChunkInclusionProof calldata entryProof) view internal {
+    function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
         // authentic
         uint8 batchDepth = PostageContract.batchDepth(entryProof.postageId);
         uint8 bucketDepth = PostageContract.batchBucketDepth(entryProof.postageId);
@@ -827,14 +859,17 @@ contract Redistribution is AccessControl, Pausable {
 
         address batchOwner = PostageContract.batchOwner(entryProof.postageId);
         // authorized
-        require(Signatures.postageVerify(
-            batchOwner,
-            entryProof.signature,
-            entryProof.proveSegment,
-            entryProof.postageId,
-            entryProof.index,
-            entryProof.timeStamp
-        ), "Stamp authorized: signature recovery failed for element");
+        require(
+            Signatures.postageVerify(
+                batchOwner,
+                entryProof.signature,
+                entryProof.proveSegment,
+                entryProof.postageId,
+                entryProof.index,
+                entryProof.timeStamp
+            ),
+            "Stamp authorized: signature recovery failed for element"
+        );
 
         // alive
         require(
@@ -845,55 +880,63 @@ contract Redistribution is AccessControl, Pausable {
         // aligned
         uint64 postageBucket = getPostageBucket(entryProof.index);
         uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
-        require(
-            postageBucket == addressBucket,
-            "Stamp aligned: postage bucket differs from address bucket"
-        );
+        require(postageBucket == addressBucket, "Stamp aligned: postage bucket differs from address bucket");
 
         // FOR LATER USE
-        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp"); 
+        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp");
     }
 
-    function inclusionFunction(
-        ChunkInclusionProof calldata entryProof,
-        uint256 indexInRC
-        ) internal {
-        require(winner.hash == BMTChunk.chunkAddressFromInclusionProof(
-            entryProof.proofSegments, 
-            entryProof.proveSegment, 
-            indexInRC,
-            32 * 32
-        ), "RC inclusion proof failed for element");
+    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
+        require(
+            winner.hash ==
+                BMTChunk.chunkAddressFromInclusionProof(
+                    entryProof.proofSegments,
+                    entryProof.proveSegment,
+                    indexInRC,
+                    32 * 32
+                ),
+            "RC inclusion proof failed for element"
+        );
 
         randomChunkSegmentIndex = uint256(seed) % 128;
 
-        require(entryProof.proofSegments2[0] == entryProof.proofSegments3[0], "first sister segment in data must match");
+        require(
+            entryProof.proofSegments2[0] == entryProof.proofSegments3[0],
+            "first sister segment in data must match"
+        );
 
-        bytes32 originalCacAddress = entryProof.socProofAttached.length > 0 ? 
-            entryProof.socProofAttached[0].chunkAddr : // soc attestation in socFunction
-            entryProof.proveSegment;
+        bytes32 originalCacAddress = entryProof.socProofAttached.length > 0
+            ? entryProof.socProofAttached[0].chunkAddr // soc attestation in socFunction
+            : entryProof.proveSegment;
 
-        require(originalCacAddress == BMTChunk.chunkAddressFromInclusionProof(
-            entryProof.proofSegments2, 
-            entryProof.proveSegment2, 
-            randomChunkSegmentIndex, 
-            entryProof.chunkSpan
-        ), "inclusion proof failed for original address of element");
+        require(
+            originalCacAddress ==
+                BMTChunk.chunkAddressFromInclusionProof(
+                    entryProof.proofSegments2,
+                    entryProof.proveSegment2,
+                    randomChunkSegmentIndex,
+                    entryProof.chunkSpan
+                ),
+            "inclusion proof failed for original address of element"
+        );
 
-        require(entryProof.proofSegments[0] == TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-            entryProof.proofSegments3, 
-            entryProof.proveSegment2, 
-            randomChunkSegmentIndex, 
-            entryProof.chunkSpan, 
-            currentRevealRoundAnchor
-        ), "inclusion proof failed for transformed address of element");
-     
+        require(
+            entryProof.proofSegments[0] ==
+                TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+                    entryProof.proofSegments3,
+                    entryProof.proveSegment2,
+                    randomChunkSegmentIndex,
+                    entryProof.chunkSpan,
+                    currentRevealRoundAnchor
+                ),
+            "inclusion proof failed for transformed address of element"
+        );
     }
 
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
-        if ( a < b ) {
+        if (a < b) {
             require(uint256(trA1) < uint256(trA2), "random element order check failed");
-            require(uint256(trA2) < uint256(trALast), "last element order check failed"); 
+            require(uint256(trA2) < uint256(trALast), "last element order check failed");
         } else {
             require(uint256(trA2) < uint256(trA1), "random element order check failed");
             require(uint256(trA1) < uint256(trALast), "last element order check failed");
