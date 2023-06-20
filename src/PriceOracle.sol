@@ -40,7 +40,7 @@ contract PriceOracle is AccessControl {
     uint256 public roundLength = 152;
 
     // The number of the last round distribution happend
-    uint256 public lastClaimedRound;
+    uint256 public lastAdjustedRound;
 
     // The address of the linked PostageStamp contract
     IPostageStamp public postageStamp;
@@ -48,7 +48,7 @@ contract PriceOracle is AccessControl {
     constructor(address _postageStamp, address multisig) {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
-        lastClaimedRound = currentRound();
+        lastAdjustedRound = currentRound();
     }
 
     /**
@@ -111,7 +111,7 @@ contract PriceOracle is AccessControl {
             uint256 currentRoundNumber = currentRound();
 
             // price can only be adjusted once per round
-            require(currentRoundNumber != lastClaimedRound, "price already adjusted in this round");
+            require(currentRoundNumber > lastAdjustedRound, "price already adjusted in this round");
             // redundancy may not be zero
             require(redundancy > 0, "unexpected zero");
 
@@ -122,7 +122,7 @@ contract PriceOracle is AccessControl {
             }
 
             // Set the number of rounds that were skipped
-            uint256 skippedRounds = currentRoundNumber - lastClaimedRound - 1;
+            uint256 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // Use the increaseRate array of constants to determine
             // the rate at which the price will modulate - if usedRedundancy
@@ -148,7 +148,7 @@ contract PriceOracle is AccessControl {
             }
 
             postageStamp.setPrice(currentPrice);
-            lastClaimedRound = currentRoundNumber;
+            lastAdjustedRound = currentRoundNumber;
             emit PriceUpdate(currentPrice);
         }
     }
