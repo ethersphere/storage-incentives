@@ -39,7 +39,7 @@ contract PriceOracle is AccessControl {
     // The length of a round in blocks.
     uint256 public roundLength = 152;
 
-    // The number of the last round distribution happend
+    // The number of the last round price adjusting happend
     uint256 public lastAdjustedRound;
 
     // The address of the linked PostageStamp contract
