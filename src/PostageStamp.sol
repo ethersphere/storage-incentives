@@ -28,7 +28,7 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 contract PostageStamp is AccessControl, Pausable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
-    /* Type declarations */
+    // ----------------------------- Type declarations ------------------------------
 
     struct Batch {
         // Owner of this batch (0 if not valid).
@@ -45,7 +45,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 lastUpdatedBlockNumber;
     }
 
-    /* State variables */
+    // ----------------------------- State variables ------------------------------
 
     // Role allowed to increase totalOutPayment.
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
@@ -84,7 +84,7 @@ contract PostageStamp is AccessControl, Pausable {
     // Normalised balance at the blockheight expire() was last called.
     uint256 public lastExpiryBalance;
 
-    /* Events */
+    // ----------------------------- Events ------------------------------
 
     /**
      * @dev Emitted when a new batch is created.
@@ -119,7 +119,7 @@ contract PostageStamp is AccessControl, Pausable {
      */
     event PriceUpdate(uint256 price);
 
-    /* State Changing Functions */
+    // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
@@ -131,6 +131,10 @@ contract PostageStamp is AccessControl, Pausable {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
+
+    ////////////////////////////////////////
+    //              SETTERS               //
+    ////////////////////////////////////////
 
     /**
      * @notice Create a new batch.
@@ -330,40 +334,6 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Total per-chunk cost since the contract's deployment.
-     * @dev Returns the total normalised all-time per chunk payout.
-     * Only Batches with a normalised balance greater than this are valid.
-     */
-    function currentTotalOutPayment() public view returns (uint256) {
-        uint256 blocks = block.number - lastUpdatedBlock;
-        uint256 increaseSinceLastUpdate = lastPrice * (blocks);
-        return totalOutPayment + (increaseSinceLastUpdate);
-    }
-
-    function minimumInitialBalancePerChunk() public view returns (uint256) {
-        return minimumValidityBlocks * lastPrice;
-    }
-
-    /**
-     * @notice Pause the contract.
-     * @dev Can only be called by the pauser when not paused.
-     * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
-     */
-    function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
-        _pause();
-    }
-
-    /**
-     * @notice Unpause the contract.
-     * @dev Can only be called by the pauser role while paused.
-     */
-    function unPause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
-        _unpause();
-    }
-
-    /**
      * @notice Reclaims a limited number of expired batches
      * @dev Can be used if reclaiming all expired batches would exceed the block gas limit, causing other
      * contract method calls to fail.
@@ -438,7 +408,43 @@ contract PostageStamp is AccessControl, Pausable {
         pot = 0;
     }
 
-    /** Read Functions */
+    /**
+     * @notice Pause the contract.
+     * @dev Can only be called by the pauser when not paused.
+     * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
+     */
+    function pause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        _pause();
+    }
+
+    /**
+     * @notice Unpause the contract.
+     * @dev Can only be called by the pauser role while paused.
+     */
+    function unPause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        _unpause();
+    }
+
+    ////////////////////////////////////////
+    //              GETTERS               //
+    ////////////////////////////////////////
+
+    /**
+     * @notice Total per-chunk cost since the contract's deployment.
+     * @dev Returns the total normalised all-time per chunk payout.
+     * Only Batches with a normalised balance greater than this are valid.
+     */
+    function currentTotalOutPayment() public view returns (uint256) {
+        uint256 blocks = block.number - lastUpdatedBlock;
+        uint256 increaseSinceLastUpdate = lastPrice * (blocks);
+        return totalOutPayment + (increaseSinceLastUpdate);
+    }
+
+    function minimumInitialBalancePerChunk() public view returns (uint256) {
+        return minimumValidityBlocks * lastPrice;
+    }
 
     /**
      * @notice Return the per chunk balance not yet used up.
