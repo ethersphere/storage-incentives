@@ -553,6 +553,8 @@ contract Redistribution is AccessControl, Pausable {
     //              GETTERS               //
     ////////////////////////////////////////
 
+    // ----------------------------- Anchor calculations ------------------------------
+
     /**
      * @notice Returns the current random seed which is used to determine later utilised random numbers.
      * If rounds have elapsed without reveals, hash the seed with an incremented nonce to produce a new
@@ -587,6 +589,48 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
+     * @notice The random value used to choose the selected truth teller.
+     */
+    function currentTruthSelectionAnchor() private view returns (string memory) {
+        require(currentPhaseClaim(), "not determined for current round yet");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+
+        return string(abi.encodePacked(seed, "0"));
+    }
+
+    /**
+     * @notice The random value used to choose the selected beneficiary.
+     */
+    function currentWinnerSelectionAnchor() private view returns (string memory) {
+        require(currentPhaseClaim(), "not determined for current round yet");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+
+        return string(abi.encodePacked(seed, "1"));
+    }
+
+    /**
+     * @notice The anchor used to determine eligibility for the current round.
+     * @dev A node must be within proximity order of less than or equal to the storage depth they intend to report.
+     */
+    function currentRoundAnchor() public view returns (bytes32 returnVal) {
+        uint256 cr = currentRound();
+
+        if (currentPhaseCommit() || (cr > currentRevealRound && !currentPhaseClaim())) {
+            return currentSeed();
+        }
+
+        if (currentPhaseReveal() && cr == currentRevealRound) {
+            require(false, "can't return value after first reveal");
+        }
+
+        if (currentPhaseClaim()) {
+            return nextSeed();
+        }
+    }
+
+    /**
      * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
      * @param A An overlay address to compare.
      * @param B An overlay address to compare.
@@ -598,6 +642,42 @@ contract Redistribution is AccessControl, Pausable {
         }
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
+
+    // ----------------------------- Commit ------------------------------
+
+    /**
+     * @notice The number of the current round.
+     */
+    function currentRound() public view returns (uint256) {
+        return (block.number / roundLength);
+    }
+
+    /**
+     * @notice Returns true if current block is during commit phase.
+     */
+    function currentPhaseCommit() public view returns (bool) {
+        if (block.number % roundLength < roundLength / 4) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
+     * @param overlay The overlay address of the applicant.
+     * @param depth The storage depth the applicant intends to report.
+     */
+    function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
+        require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
+        require(
+            Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * roundLength,
+            "stake updated recently"
+        );
+        require(Stakes.stakeOfOverlay(overlay) >= minimumStake, "stake amount does not meet minimum");
+        return inProximity(overlay, currentRoundAnchor(), depth);
+    }
+
+    // ----------------------------- Reveal ------------------------------
 
     /**
      * @notice Hash the pre-image values to the obsfucated hash.
@@ -614,6 +694,74 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 revealNonce
     ) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(_overlay, _depth, _hash, revealNonce));
+    }
+
+    /**
+     * @notice Returns true if current block is during reveal phase.
+     */
+    function currentPhaseReveal() public view returns (bool) {
+        uint256 number = block.number % roundLength;
+        if (number >= roundLength / 4 && number < roundLength / 2) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @notice Returns true if current block is during reveal phase.
+     */
+    function currentRoundReveals() public view returns (Reveal[] memory) {
+        require(currentPhaseClaim(), "not in claim phase");
+        uint256 cr = currentRound();
+        require(cr == currentRevealRound, "round received no reveals");
+        return currentReveals;
+    }
+
+    // ----------------------------- Claim  ------------------------------
+
+    /**
+     * @notice Returns true if current block is during claim phase.
+     */
+    function currentPhaseClaim() public view returns (bool) {
+        if (block.number % roundLength >= roundLength / 2) {
+            return true;
+        }
+        return false;
+    }
+
+    function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
+        uint256 currentSum;
+        bytes32 randomNumber;
+        uint256 randomNumberTrunc;
+
+        bytes32 truthRevealedHash;
+        uint8 truthRevealedDepth;
+        uint256 revIndex;
+        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
+        uint256 commitsArrayLength = currentCommits.length;
+
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
+            if (currentCommits[i].revealed) {
+                revIndex = currentCommits[i].revealIndex;
+                currentSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
+                // question is whether randomNumber / MaxH < probability
+                // where probability is stakeDensity / currentSum
+                // to avoid resorting to floating points all divisions should be
+                // simplified with multiplying both sides (as long as divisor > 0)
+                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
+                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
+                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
+                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
+                    truthRevealedHash = currentReveals[revIndex].hash;
+                    truthRevealedDepth = currentReveals[revIndex].depth;
+                }
+            }
+        }
+
+        return (truthRevealedHash, truthRevealedDepth);
     }
 
     /**
@@ -667,166 +815,7 @@ contract Redistribution is AccessControl, Pausable {
         return (winnerIs == _overlay);
     }
 
-    /**
-     * @notice The number of the current round.
-     */
-    function currentRound() public view returns (uint256) {
-        return (block.number / roundLength);
-    }
-
-    /**
-     * @notice Returns true if current block is during commit phase.
-     */
-    function currentPhaseCommit() public view returns (bool) {
-        if (block.number % roundLength < roundLength / 4) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * @notice Returns true if current block is during reveal phase.
-     */
-    function currentPhaseReveal() public view returns (bool) {
-        uint256 number = block.number % roundLength;
-        if (number >= roundLength / 4 && number < roundLength / 2) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * @notice Returns true if current block is during claim phase.
-     */
-    function currentPhaseClaim() public view returns (bool) {
-        if (block.number % roundLength >= roundLength / 2) {
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * @notice Returns true if current block is during reveal phase.
-     */
-    function currentRoundReveals() public view returns (Reveal[] memory) {
-        require(currentPhaseClaim(), "not in claim phase");
-        uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
-        return currentReveals;
-    }
-
-    /**
-     * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
-     * @param overlay The overlay address of the applicant.
-     * @param depth The storage depth the applicant intends to report.
-     */
-    function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
-        require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
-        require(
-            Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * roundLength,
-            "stake updated recently"
-        );
-        require(Stakes.stakeOfOverlay(overlay) >= minimumStake, "stake amount does not meet minimum");
-        return inProximity(overlay, currentRoundAnchor(), depth);
-    }
-
-    /**
-     * @notice The random value used to choose the selected truth teller.
-     */
-    function currentTruthSelectionAnchor() private view returns (string memory) {
-        require(currentPhaseClaim(), "not determined for current round yet");
-        uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
-
-        return string(abi.encodePacked(seed, "0"));
-    }
-
-    /**
-     * @notice The random value used to choose the selected beneficiary.
-     */
-    function currentWinnerSelectionAnchor() private view returns (string memory) {
-        require(currentPhaseClaim(), "not determined for current round yet");
-        uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
-
-        return string(abi.encodePacked(seed, "1"));
-    }
-
-    /**
-     * @notice The anchor used to determine eligibility for the current round.
-     * @dev A node must be within proximity order of less than or equal to the storage depth they intend to report.
-     */
-    function currentRoundAnchor() public view returns (bytes32 returnVal) {
-        uint256 cr = currentRound();
-
-        if (currentPhaseCommit() || (cr > currentRevealRound && !currentPhaseClaim())) {
-            return currentSeed();
-        }
-
-        if (currentPhaseReveal() && cr == currentRevealRound) {
-            require(false, "can't return value after first reveal");
-        }
-
-        if (currentPhaseClaim()) {
-            return nextSeed();
-        }
-    }
-
-    function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
-        uint256 currentSum;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
-
-        bytes32 truthRevealedHash;
-        uint8 truthRevealedDepth;
-        uint256 revIndex;
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-        uint256 commitsArrayLength = currentCommits.length;
-
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
-            if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-                randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                // question is whether randomNumber / MaxH < probability
-                // where probability is stakeDensity / currentSum
-                // to avoid resorting to floating points all divisions should be
-                // simplified with multiplying both sides (as long as divisor > 0)
-                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
-                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
-                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
-                }
-            }
-        }
-
-        return (truthRevealedHash, truthRevealedDepth);
-    }
-
-    function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {
-        uint32 prefix = uint32(uint256(swarmAddress) >> (256 - 32));
-        return prefix >> (32 - bucketDepth);
-    }
-
-    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal pure returns (uint256) {
-        return 1 << (postageDepth - bucketDepth);
-    }
-
-    function getPostageIndex(uint64 signedIndex) internal pure returns (uint32) {
-        return uint32(signedIndex);
-    }
-
-    function getPostageBucket(uint64 signedIndex) internal pure returns (uint64) {
-        return uint32(signedIndex >> 32);
-    }
-
-    function calculateSocAddress(bytes32 identifier, address signer) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(identifier, signer));
-    }
+    // ----------------------------- Claim verifications  ------------------------------
 
     function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
         if (entryProof.socProofAttached.length == 0) return;
@@ -931,6 +920,27 @@ contract Redistribution is AccessControl, Pausable {
                 ),
             "inclusion proof failed for transformed address of element"
         );
+    }
+
+    function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {
+        uint32 prefix = uint32(uint256(swarmAddress) >> (256 - 32));
+        return prefix >> (32 - bucketDepth);
+    }
+
+    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal pure returns (uint256) {
+        return 1 << (postageDepth - bucketDepth);
+    }
+
+    function getPostageIndex(uint64 signedIndex) internal pure returns (uint32) {
+        return uint32(signedIndex);
+    }
+
+    function getPostageBucket(uint64 signedIndex) internal pure returns (uint64) {
+        return uint32(signedIndex >> 32);
+    }
+
+    function calculateSocAddress(bytes32 identifier, address signer) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(identifier, signer));
     }
 
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
