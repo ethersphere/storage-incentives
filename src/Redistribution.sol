@@ -330,7 +330,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
-        uint256 id = findReveal(_overlay, commitHash, currentCommits.length);
+        uint256 id = findCommit(_overlay, commitHash, currentCommits.length);
 
         // Check that the commit exists,
         require(id != type(uint256).max, "no matching commit or hash");
@@ -363,17 +363,6 @@ contract Redistribution is AccessControl, Pausable {
             _hash,
             _depth
         );
-    }
-
-    function findReveal(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256 id) {
-        id = type(uint256).max;
-        for (uint256 i = 0; i < _length; i++) {
-            if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
-                id = i;
-            }
-        }
-        console.log(id);
-        return id;
     }
 
     /**
@@ -685,6 +674,21 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     // ----------------------------- Reveal ------------------------------
+
+    /**
+     * @notice Helper function to get this node reveal in commits
+     * @dev
+     */
+    function findCommit(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256 id) {
+        id = type(uint256).max;
+        for (uint256 i = 0; i < _length; i++) {
+            if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
+                id = i;
+            }
+        }
+        console.log(id);
+        return id;
+    }
 
     /**
      * @notice Hash the pre-image values to the obsfucated hash.
