@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
+import "hardhat/console.sol";
 
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
@@ -313,6 +314,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param _hash The reserve commitment hash.
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
+
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
 
@@ -328,15 +330,16 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
+        uint256 id = findReveal(_overlay, commitHash, currentCommits.length);
 
-        uint256 id = find_reveal(_overlay, commitHash, currentCommits.length);
-        require(id != 0, "no matching commit or hash");
-
+        // Check that the commit exists,
+        require(id != type(uint256).max, "no matching commit or hash");
+        // Check that commit is in proximity of the current anchor
         require(
             inProximity(currentCommits[id].overlay, currentRevealRoundAnchor, _depth),
             "anchor out of self reported depth"
         );
-        //check can only revealed once
+        // Check that the commit has not already been revealed
         require(currentCommits[id].revealed == false, "participant already revealed");
         currentCommits[id].revealed = true;
         currentCommits[id].revealIndex = currentReveals.length;
@@ -362,13 +365,14 @@ contract Redistribution is AccessControl, Pausable {
         );
     }
 
-    function find_reveal(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256 id) {
-        id = 0;
+    function findReveal(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256 id) {
+        id = type(uint256).max;
         for (uint256 i = 0; i < _length; i++) {
             if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
                 id = i;
             }
         }
+        console.log(id);
         return id;
     }
 
