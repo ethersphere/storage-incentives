@@ -1,4 +1,4 @@
-import { Chunk, makeChunk, Utils as BmtUtils } from '@fairdatasociety/bmt-js';
+import { Chunk, getSpanValue, makeChunk, Utils as BmtUtils } from '@fairdatasociety/bmt-js';
 import { BigNumber, Wallet } from 'ethers';
 import { arrayify } from 'ethers/lib/utils';
 import { constructPostageStamp } from './postage';
@@ -76,6 +76,7 @@ export async function getClaimProofs(
   ];
   const proofWitnessChunks = getChunkObjectsForClaim(anchor1, witnessesForProof);
   const randomChunkSegmentIndex = BigNumber.from(anchor2).mod(SEGMENT_COUNT_IN_CHUNK).toNumber();
+  console.log('randomChunkSegmentIndexInJs', randomChunkSegmentIndex);
   const proof1 = await getClaimProof(
     proofWitnessChunks[0],
     witnessIndices[0],
@@ -143,7 +144,7 @@ export async function getClaimProof(
     );
   // inclusion proof in transformed chunk
   const proofSegments3 = proofWitnessChunk.transformedChunk.inclusionProof(randomChunkSegmentIndex);
-  const chunkSpan = proofWitnessChunk.ogChunk.span();
+  const chunkSpan = getSpanValue(proofWitnessChunk.ogChunk.span());
   // TODO generate postage stamp data
   const chunkAddr = Buffer.from(proveSegment);
   const timeStamp = Math.round(new Date('1993-12-09T00:00:00').getTime() / 1000); // milisec to sec
