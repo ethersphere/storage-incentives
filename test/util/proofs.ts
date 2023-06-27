@@ -2,7 +2,7 @@ import { Chunk, makeChunk, Utils as BmtUtils } from '@fairdatasociety/bmt-js';
 import { BigNumber, Wallet } from 'ethers';
 import { arrayify } from 'ethers/lib/utils';
 import { constructPostageStamp } from './postage';
-import { SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK } from './tools';
+import { equalBytes, SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK } from './tools';
 const { keccak256Hash } = BmtUtils;
 
 type Message = BmtUtils.Message;
@@ -122,6 +122,17 @@ export async function getClaimProof(
     witnessIndex * 2 * SEGMENT_BYTE_LENGTH,
     witnessIndex * 2 * SEGMENT_BYTE_LENGTH + SEGMENT_BYTE_LENGTH
   );
+  // sanity checks
+  if (!equalBytes(proofWitnessChunk.ogChunk.address(), proveSegment)) {
+    throw new Error(
+      `Address of the OG witness chunk does not match the one in the sample at witness index ${witnessIndex}`
+    );
+  }
+  if (!equalBytes(proofWitnessChunk.transformedChunk.address(), proofSegments[0])) {
+    throw new Error(
+      `Address of the transformed witness chunk does not match the one in the sample at witness index ${witnessIndex}`
+    );
+  }
   // inclusion proof in OG chunk
   const proofSegments2 = proofWitnessChunk.ogChunk.inclusionProof(randomChunkSegmentIndex);
   const proveSegment2 = proofWitnessChunk.ogChunk
@@ -156,7 +167,7 @@ export async function getClaimProof(
   };
 }
 
-function calculateTransformedAddress(nonceBuf: Buffer, anchor: Uint8Array): Uint8Array {
+function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
   const chunk = makeChunk(nonceBuf, { hashFn: TransformedHashFn(anchor) });
   return chunk.address();
 }
@@ -167,10 +178,9 @@ function TransformedHashFn(anchor: Uint8Array): (...messages: Message[]) => Uint
 
 export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0, maxAttempts = 10000): WitnessData {
   let i = 0;
-  const nonceBuf = Buffer.alloc(32);
   while (true) {
     const nonce = i + startNonce;
-    nonceBuf.writeUint32BE(nonce);
+    const nonceBuf = numberToArray(nonce);
     const transformedAddress = calculateTransformedAddress(nonceBuf, anchor);
     if (inProximity(transformedAddress, anchor, depth)) {
       return { nonce, transformedAddress };
@@ -186,8 +196,8 @@ export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0, m
 export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk {
   const payload = new Uint8Array(SEGMENT_BYTE_LENGTH * witnesses.length * 2);
   for (const [i, witness] of witnesses.entries()) {
-    const originalChunk = makeChunk(new Uint8Array([witness.nonce]));
-    const transformedChunk = makeChunk(new Uint8Array([witness.nonce]), { hashFn: TransformedHashFn(anchor) });
+    const originalChunk = makeChunk(numberToArray(witness.nonce));
+    const transformedChunk = makeChunk(numberToArray(witness.nonce), { hashFn: TransformedHashFn(anchor) });
     const payloadOffset = i * SEGMENT_BYTE_LENGTH * 2;
     payload.set(originalChunk.address(), payloadOffset);
     payload.set(transformedChunk.address(), payloadOffset + SEGMENT_BYTE_LENGTH);
@@ -226,7 +236,7 @@ function inProximity(a: Uint8Array, b: Uint8Array, minimum: number): boolean {
  * Number to byte array conversion mostly for mining chunks
  *
  * @param n number to be serialized (max uint32)
- * @returns serialized number for chunk payload
+ * @returns serialized number in 32 bytes for chunk payload
  */
 export function numberToArray(n: number): Uint8Array {
   const buff = Buffer.alloc(32);

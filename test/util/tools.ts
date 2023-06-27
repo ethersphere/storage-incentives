@@ -3,6 +3,9 @@ import { keccak256 } from '@ethersproject/keccak256';
 
 import { arrayify, hexlify } from '@ethersproject/bytes';
 import { BigNumber, Wallet } from 'ethers';
+import { Utils as BmtUtils } from '@fairdatasociety/bmt-js';
+
+export const equalBytes = BmtUtils.equalBytes;
 
 export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
 export const PHASE_LENGTH = 38;
