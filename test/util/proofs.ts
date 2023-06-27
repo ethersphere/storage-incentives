@@ -17,7 +17,7 @@ type WitnessProof = {
   proofSegments2: Uint8Array[];
   proveSegment2: Uint8Array;
   proofSegments3: Uint8Array[];
-  chunkSpan: Uint8Array;
+  chunkSpan: number;
   signer: Uint8Array; // address of the uploader
   signature: Uint8Array;
   chunkAddr: Uint8Array; //chunk address that must be signed with postage stamp
