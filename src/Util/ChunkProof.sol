@@ -43,7 +43,7 @@ library BMTChunk {
   ) internal pure returns (bytes32 _calculatedHash) {
     _calculatedHash = _proveSegment;
     for (uint256 i = 0; i < _proofSegments.length; i++) {
-      bool mergeFromRight = _proveSegmentIndex % 2 == 0 ? true : false;
+      bool mergeFromRight = _proveSegmentIndex % 2 == 0;
       _calculatedHash = mergeSegment(_calculatedHash, _proofSegments[i], mergeFromRight);
       _proveSegmentIndex >>= 1;
     }
