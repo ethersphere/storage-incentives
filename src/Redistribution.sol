@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
-import "hardhat/console.sol";
 
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
@@ -686,7 +685,6 @@ contract Redistribution is AccessControl, Pausable {
                 id = i;
             }
         }
-        console.log(id);
         return id;
     }
 
