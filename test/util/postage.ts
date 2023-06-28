@@ -15,7 +15,6 @@ export function swarmAddressToBucketIndex(depth: number, address: Buffer): numbe
 }
 
 function bucketAndIndexToBuffer(bucket: number, index: number): Buffer {
-  console.log({ bucket, index });
   const buffer = Buffer.alloc(8);
   buffer.writeUInt32BE(bucket);
   buffer.writeUInt32BE(index, 4);
@@ -29,7 +28,6 @@ export async function createSignature(
   index: Buffer,
   timestamp: number
 ): Promise<Buffer> {
-  console.log('Address', address.toString('hex'));
   if (!Buffer.isBuffer(address)) {
     throw Error('Expected address to be a Buffer');
   }
@@ -49,14 +47,10 @@ export async function createSignature(
     ['bytes32', 'bytes32', 'bytes8', 'bytes8'],
     [address, batchID, index, timestampBuffer]
   );
-  console.log('Index', index.toString('hex'));
-  console.log('Timestamp', timestampBuffer.toString('hex'));
-  console.log('Digest', { packed });
   const packedBuffer = Buffer.from(packed.slice(2), 'hex');
   const keccaked = keccak256(packedBuffer);
   const signable = Buffer.from(keccaked.startsWith('0x') ? keccaked.slice(2) : keccaked, 'hex');
   const signedHexString = await signer.signMessage(signable);
-  console.log({ signedHexString });
   const signed = Buffer.from(signedHexString.slice(2), 'hex');
   if (signed.length !== 65) {
     throw Error('Expected 65 byte signature, got ' + signed.length + ' bytes');
@@ -78,7 +72,6 @@ export async function marshalPostageStamp(
   }
   const bucket = swarmAddressToBucketIndex(16, address);
   const index = bucketAndIndexToBuffer(bucket, 0);
-  console.log({ index });
   const signature = await createSignature(address, signer, batchID, index, timestamp);
   const buffer = Buffer.alloc(32 + 8 + 8 + 65);
   batchID.copy(buffer, 0);
@@ -104,7 +97,6 @@ export async function constructPostageStamp(
 
   const bucket = swarmAddressToBucketIndex(16, address);
   const index = bucketAndIndexToBuffer(bucket, 0);
-  console.log({ index });
   const signature = await createSignature(address, signer, batchID, index, timestamp);
 
   return {
