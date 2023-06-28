@@ -2,9 +2,12 @@ import { Chunk, getSpanValue, makeChunk, Utils as BmtUtils } from '@fairdatasoci
 import { BigNumber, Wallet } from 'ethers';
 import { arrayify } from 'ethers/lib/utils';
 import { constructPostageStamp } from './postage';
-import { equalBytes, SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK } from './tools';
+import { equalBytes, SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK, WITNESS_COUNT } from './tools';
+
 const { keccak256Hash } = BmtUtils;
 
+/** Reserve estimation: max value for witnesses */
+const SAMPLE_MAX_VALUE = BigNumber.from('1284401000000000000000000000000000000000000000000000000000000000000000000');
 type Message = BmtUtils.Message;
 type WitnessData = {
   nonce: number;
@@ -76,7 +79,6 @@ export async function getClaimProofs(
   ];
   const proofWitnessChunks = getChunkObjectsForClaim(anchor1, witnessesForProof);
   const randomChunkSegmentIndex = BigNumber.from(anchor2).mod(SEGMENT_COUNT_IN_CHUNK).toNumber();
-  console.log('randomChunkSegmentIndexInJs', randomChunkSegmentIndex);
   const proof1 = await getClaimProof(
     proofWitnessChunks[0],
     witnessIndices[0],
@@ -177,21 +179,47 @@ function TransformedHashFn(anchor: Uint8Array): (...messages: Message[]) => Uint
   return (...messages: Message[]) => keccak256Hash(anchor, ...messages);
 }
 
-export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0, maxAttempts = 10000): WitnessData {
+export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0): WitnessData {
   let i = 0;
   while (true) {
-    const nonce = i + startNonce;
+    const nonce = i++ + startNonce;
     const nonceBuf = numberToArray(nonce);
     const transformedAddress = calculateTransformedAddress(nonceBuf, anchor);
-    if (inProximity(transformedAddress, anchor, depth)) {
+    if (inProximity(transformedAddress, anchor, depth) && BigNumber.from(transformedAddress).lt(SAMPLE_MAX_VALUE)) {
       return { nonce, transformedAddress };
     }
-
-    if (maxAttempts == i + 1) {
-      throw new Error(`failed with max ${maxAttempts} attempts`);
-    }
-    i += 1;
   }
+}
+
+/**
+ * Used function when new witnesses are required to be generated for tests.
+ *
+ * @param anchor used number around which the witnesses must be generated
+ * @param depth how many leading bits must be equal between the transformed addresses and the anchor
+ */
+export function mineWitnesses(anchor: Uint8Array, depth: number): WitnessData[] {
+  let witnessChunks: ReturnType<typeof mineWitness>[] = [];
+  let startNonce = 0;
+  for (let i = 0; i < WITNESS_COUNT; i++) {
+    console.log('mine witness', i);
+    const witness = mineWitness(anchor, depth, startNonce);
+    witnessChunks.push(witness);
+    startNonce = witness.nonce + 1;
+  }
+  // sort witness chunks to be descendant
+  witnessChunks = witnessChunks.sort((a, b) => {
+    const aBn = BigNumber.from(a.transformedAddress);
+    const bBn = BigNumber.from(b.transformedAddress);
+    if (aBn.lt(bBn)) {
+      return -1;
+    }
+    if (bBn.lt(aBn)) {
+      return 1;
+    }
+    return 0;
+  });
+
+  return witnessChunks;
 }
 
 export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk {
