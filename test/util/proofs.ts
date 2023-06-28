@@ -1,8 +1,9 @@
 import { Chunk, getSpanValue, makeChunk, Utils as BmtUtils } from '@fairdatasociety/bmt-js';
 import { BigNumber, Wallet } from 'ethers';
-import { arrayify } from 'ethers/lib/utils';
+import { arrayify, hexlify } from 'ethers/lib/utils';
 import { constructPostageStamp } from './postage';
 import { equalBytes, SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK, WITNESS_COUNT } from './tools';
+import fs from 'fs';
 
 const { keccak256Hash } = BmtUtils;
 
@@ -51,7 +52,7 @@ function witnessProofRequired(anchor: string | Uint8Array): number[] {
 
 /** Returns required chunk objects of the given witness array for claim */
 function getChunkObjectsForClaim(anchor1: Uint8Array, witnessesForProof: WitnessData[]): WitnessChunks[] {
-  const hashFn = TransformedHashFn(anchor1);
+  const hashFn = transformedHashFn(anchor1);
 
   return witnessesForProof.map((w) => {
     const witnessPayload = numberToArray(w.nonce);
@@ -146,8 +147,8 @@ export async function getClaimProof(
     );
   // inclusion proof in transformed chunk
   const proofSegments3 = proofWitnessChunk.transformedChunk.inclusionProof(randomChunkSegmentIndex);
+  // attached postage stamp data
   const chunkSpan = getSpanValue(proofWitnessChunk.ogChunk.span());
-  // TODO generate postage stamp data
   const chunkAddr = Buffer.from(proveSegment);
   const timeStamp = Math.round(new Date('1993-12-09T00:00:00').getTime() / 1000); // milisec to sec
   // creating postage signature and index
@@ -171,11 +172,11 @@ export async function getClaimProof(
 }
 
 function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
-  const chunk = makeChunk(nonceBuf, { hashFn: TransformedHashFn(anchor) });
+  const chunk = makeChunk(nonceBuf, { hashFn: transformedHashFn(anchor) });
   return chunk.address();
 }
 
-function TransformedHashFn(anchor: Uint8Array): (...messages: Message[]) => Uint8Array {
+function transformedHashFn(anchor: Uint8Array): (...messages: Message[]) => Uint8Array {
   return (...messages: Message[]) => keccak256Hash(anchor, ...messages);
 }
 
@@ -222,11 +223,26 @@ export function mineWitnesses(anchor: Uint8Array, depth: number): WitnessData[] 
   return witnessChunks;
 }
 
+export function loadWitnesses(): WitnessData[] {
+  return JSON.parse(new TextDecoder().decode(fs.readFileSync('test/mined-witnesses.json'))) as WitnessData[];
+}
+
+export function saveWitnesses(witnessChunks: WitnessData[]) {
+  fs.writeFileSync(
+    'test/mined-witnesses.json',
+    JSON.stringify(
+      witnessChunks.map((a) => {
+        return { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
+      })
+    )
+  );
+}
+
 export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk {
   const payload = new Uint8Array(SEGMENT_BYTE_LENGTH * witnesses.length * 2);
   for (const [i, witness] of witnesses.entries()) {
     const originalChunk = makeChunk(numberToArray(witness.nonce));
-    const transformedChunk = makeChunk(numberToArray(witness.nonce), { hashFn: TransformedHashFn(anchor) });
+    const transformedChunk = makeChunk(numberToArray(witness.nonce), { hashFn: transformedHashFn(anchor) });
     const payloadOffset = i * SEGMENT_BYTE_LENGTH * 2;
     payload.set(originalChunk.address(), payloadOffset);
     payload.set(transformedChunk.address(), payloadOffset + SEGMENT_BYTE_LENGTH);

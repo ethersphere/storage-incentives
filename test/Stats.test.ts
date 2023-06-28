@@ -9,11 +9,10 @@ import {
   PHASE_LENGTH,
   copyBatchForClaim,
   mineToRevealPhase,
-  WITNESS_COUNT,
 } from './util/tools';
 import { BigNumber } from 'ethers';
 import { arrayify, hexlify } from 'ethers/lib/utils';
-import { getClaimProofs, makeSample, mineWitness } from './util/proofs';
+import { getClaimProofs, loadWitnesses, makeSample } from './util/proofs';
 
 const { read, execute } = deployments;
 
@@ -74,20 +73,13 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
   await mineNBlocks(ROUND_LENGTH * 2); // anyway reverted with panic code 0x11 (Arithmetic operation underflowed or overflowed outside of an unchecked block
 
-  const anchor1 = arrayify(await r_node.currentSeed());
-  const witnessChunks: ReturnType<typeof mineWitness>[] = [];
-  let startNonce = 0;
-  for (let i = 0; i < WITNESS_COUNT; i++) {
-    const witness = mineWitness(anchor1, Number(depth), startNonce);
-    witnessChunks.push(witness);
-    startNonce = witness.nonce + 1;
-  }
-  const sampleChunk = makeSample(witnessChunks, anchor1);
-  const sampleHashString = hexlify(sampleChunk.address());
-
-  // TODO: calculate fixtures for trials.
+  const witnessChunks = loadWitnesses();
 
   for (let i = 0; i < trials; i++) {
+    const anchor1 = arrayify(await r_node.currentSeed());
+    const sampleChunk = makeSample(witnessChunks, anchor1);
+    const sampleHashString = hexlify(sampleChunk.address());
+
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
       const overlay = createOverlay(nodes[i], '0x00', nonce);
