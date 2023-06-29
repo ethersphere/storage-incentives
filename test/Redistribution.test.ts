@@ -753,24 +753,13 @@ describe('Redistribution', function () {
 
           const anchor2 = await redistribution.currentSeed();
 
-          const { proofParams, witnessIndices } = await getClaimProofs(
+          const { proofParams } = await getClaimProofs(
             witnessChunks,
             sampleChunk,
             anchor1,
             anchor2,
             copyBatch.batchOwner,
             copyBatch.batchId
-          );
-
-          const prooof = fileAddressFromInclusionProof(
-            [
-              {
-                sisterSegments: proofParams.proof2.proofSegments,
-                span: makeSpan(32 * 32),
-              },
-            ],
-            proofParams.proof1.proveSegment,
-            witnessIndices[1] * 2
           );
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sampleHashString);
