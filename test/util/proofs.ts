@@ -4,6 +4,8 @@ import { arrayify, hexlify } from 'ethers/lib/utils';
 import { constructPostageStamp } from './postage';
 import { equalBytes, SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK, WITNESS_COUNT } from './tools';
 import fs from 'fs';
+import { ethers } from 'hardhat';
+import { randomBytes } from 'crypto';
 
 const { keccak256Hash } = BmtUtils;
 
@@ -28,7 +30,13 @@ type WitnessProof = {
   postageId: Uint8Array;
   index: Uint8Array;
   timeStamp: number;
-  socProofAttached: [];
+  socProofAttached: SocProofAttachment[];
+};
+type SocProofAttachment = {
+  signer: string; // signer Ethereum address to check against
+  signature: string;
+  identifier: Uint8Array;
+  chunkAddr: Uint8Array; // wrapped chunk address
 };
 
 /**
@@ -42,9 +50,9 @@ function witnessProofRequired(anchor: string | Uint8Array): number[] {
   // rand(14)
   const x = randomness.mod(15);
   // rand(13)
-  const y = randomness.mod(14);
+  let y = randomness.mod(14);
   if (y >= x) {
-    y.add(1);
+    y = y.add(1);
   }
 
   return [x.toNumber(), y.toNumber()];
@@ -171,6 +179,25 @@ export async function getClaimProof(
   };
 }
 
+export async function addSocProofAttachment(witnessProof: WitnessProof) {
+  const identifier = randomBytes(32);
+  const chunkAddr = witnessProof.proveSegment; // provesegment is always the OG chunk address
+  const digest = keccak256Hash(identifier, chunkAddr);
+
+  const randomWallet = ethers.Wallet.createRandom();
+  const signature = await randomWallet.signMessage(digest);
+  const signer = randomWallet.address;
+
+  witnessProof.socProofAttached = [
+    {
+      chunkAddr,
+      identifier,
+      signature,
+      signer,
+    },
+  ];
+}
+
 function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
   const chunk = makeChunk(nonceBuf, { hashFn: transformedHashFn(anchor) });
   return chunk.address();
@@ -186,7 +213,10 @@ export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0): 
     const nonce = i++ + startNonce;
     const nonceBuf = numberToArray(nonce);
     const transformedAddress = calculateTransformedAddress(nonceBuf, anchor);
-    if (inProximity(transformedAddress, anchor, depth) && BigNumber.from(transformedAddress).lt(SAMPLE_MAX_VALUE)) {
+    if (
+      BigNumber.from(transformedAddress).lt(SAMPLE_MAX_VALUE) &&
+      inProximity(makeChunk(nonceBuf).address(), anchor, depth)
+    ) {
       return { nonce, transformedAddress };
     }
   }
@@ -223,13 +253,13 @@ export function mineWitnesses(anchor: Uint8Array, depth: number): WitnessData[] 
   return witnessChunks;
 }
 
-export function loadWitnesses(): WitnessData[] {
-  return JSON.parse(new TextDecoder().decode(fs.readFileSync('test/mined-witnesses.json'))) as WitnessData[];
+export function loadWitnesses(suffix = ''): WitnessData[] {
+  return JSON.parse(new TextDecoder().decode(fs.readFileSync(`test/mined-witnesses-${suffix}.json`))) as WitnessData[];
 }
 
-export function saveWitnesses(witnessChunks: WitnessData[]) {
+export function saveWitnesses(witnessChunks: WitnessData[], suffix: string) {
   fs.writeFileSync(
-    'test/mined-witnesses.json',
+    `test/mined-witnesses-${suffix}.json`,
     JSON.stringify(
       witnessChunks.map((a) => {
         return { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
