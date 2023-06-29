@@ -639,12 +639,12 @@ contract Redistribution is AccessControl, Pausable {
         require(inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof1, x * 2);
         stampFunction(entryProof1);
-        socFunction(entryProofLast);
+        socFunction(entryProof1);
 
         require(inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof2, y * 2);
         stampFunction(entryProof2);
-        socFunction(entryProofLast);
+        socFunction(entryProof2);
         
         checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
 
