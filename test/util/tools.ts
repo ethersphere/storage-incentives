@@ -180,6 +180,7 @@ export async function copyBatchForClaim(
     batchId,
     true // immutable
   );
+  await tx.wait();
 
   return {
     tx,
