@@ -164,9 +164,6 @@ contract Redistribution is AccessControl, Pausable {
     uint256 currentSum;
     uint256 currentWinnerSelectionSum;
 
-    uint256 x;
-    uint256 y;
-
     // The miniumum stake allowed to be staked using the Staking contract.
     uint256 public minimumStake = 100000000000000000;
 
@@ -380,12 +377,15 @@ contract Redistribution is AccessControl, Pausable {
     ) external whenNotPaused {
         winner = winnerSelection();
 
+        uint256 indexInRC1;
+        uint256 indexInRC2;
+
         // rand(14)
-        x = uint256(seed) % 15;
+        indexInRC1 = uint256(seed) % 15;
         // rand(13)
-        y = uint256(seed) % 14;
-        if (y >= x) {
-            y++;
+        indexInRC2 = uint256(seed) % 14;
+        if (indexInRC2 >= indexInRC1) {
+            indexInRC2++;
         }
 
         require(
@@ -400,7 +400,7 @@ contract Redistribution is AccessControl, Pausable {
             inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth),
             "witness is not in depth"
         );
-        inclusionFunction(entryProof1, x * 2);
+        inclusionFunction(entryProof1, indexInRC1 * 2);
         stampFunction(entryProof1);
         socFunction(entryProofLast);
 
@@ -408,11 +408,17 @@ contract Redistribution is AccessControl, Pausable {
             inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth),
             "witness is not in depth"
         );
-        inclusionFunction(entryProof2, y * 2);
+        inclusionFunction(entryProof2, indexInRC2 * 2);
         stampFunction(entryProof2);
         socFunction(entryProofLast);
 
-        checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
+        checkOrder(
+            indexInRC1,
+            indexInRC2,
+            entryProof1.proofSegments[0],
+            entryProof2.proofSegments[0],
+            entryProofLast.proofSegments[0]
+        );
 
         emit WinnerSelected(winner);
 
