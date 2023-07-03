@@ -175,7 +175,6 @@ contract Redistribution is AccessControl, Pausable {
     // The length of a round in blocks.
     uint256 public roundLength = 152;
 
-    uint256 k;
     uint256 revIndex;
 
     // The reveal of the winner of the last round.
@@ -436,6 +435,7 @@ contract Redistribution is AccessControl, Pausable {
 
         currentSum = 0;
         currentWinnerSelectionSum = 0;
+        uint256 k = 0;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
@@ -468,8 +468,6 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-
-        k = 0;
 
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
