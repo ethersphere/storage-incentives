@@ -424,19 +424,40 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        uint256 currentWinnerSelectionSum;
-        bytes32 randomNumber;
         uint256 randomNumberTrunc;
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-        uint256 revIndex;
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        uint256 k = 0;
+        uint256 redundancy;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
+
+        (winner_, redundancy) = digestRevealers(truthRevealedHash, truthRevealedDepth);
+
+        // Apply Important state changes
+        OracleContract.adjustPrice(uint256(redundancy));
+        currentClaimRound = cr;
+
+        // Emit function Events
+        emit WinnerSelected(winner_);
+        emit ChunkCount(PostageContract.validChunkCount());
+
+        return winner_;
+    }
+
+    function digestRevealers(
+        bytes32 truthRevealedHash,
+        uint8 truthRevealedDepth
+    ) internal returns (Reveal memory winner_, uint256 redundancy) {
         uint256 commitsArrayLength = currentCommits.length;
         uint256 revealsArrayLength = currentReveals.length;
+
+        uint256 currentWinnerSelectionSum;
+        bytes32 randomNumber;
+        uint256 randomNumberTrunc;
+        uint256 revIndex;
+        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        uint256 k = 0;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
@@ -484,19 +505,12 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        // Apply Important state changes
-        //   PostageContract.withdraw(winner_.owner);
-        OracleContract.adjustPrice(uint256(k));
-        currentClaimRound = cr;
-
         // Emit function Events
+        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-        emit WinnerSelected(winner_);
-        emit ChunkCount(PostageContract.validChunkCount());
 
-        return winner_;
+        return (winner_, k);
     }
 
     /**
