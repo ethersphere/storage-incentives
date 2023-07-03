@@ -424,7 +424,6 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        uint256 randomNumberTrunc;
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 redundancy;
@@ -448,7 +447,15 @@ contract Redistribution is AccessControl, Pausable {
     function digestRevealers(
         bytes32 truthRevealedHash,
         uint8 truthRevealedDepth
-    ) internal returns (Reveal memory winner_, uint256 redundancy) {
+    )
+        internal
+        returns (
+            Reveal memory winner_,
+            uint256 redundancy,
+            bytes32[] memory frozenOverlays,
+            bytes32[] memory slashedOverlays
+        )
+    {
         uint256 commitsArrayLength = currentCommits.length;
         uint256 revealsArrayLength = currentReveals.length;
 
@@ -458,6 +465,10 @@ contract Redistribution is AccessControl, Pausable {
         uint256 revIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
         uint256 k = 0;
+        bytes32[] memory frozenOverlays;
+        uint8 frozenCounter = 0;
+        bytes32[] memory slashedOverlays;
+        uint8 slashedCounter = 0;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
@@ -488,20 +499,27 @@ contract Redistribution is AccessControl, Pausable {
                 (truthRevealedHash != currentReveals[revIndex].hash ||
                     truthRevealedDepth != currentReveals[revIndex].depth)
             ) {
-                Stakes.freezeDeposit(
-                    currentReveals[revIndex].overlay,
-                    penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
-                );
+                // Add to freez array instrad of state change
+                frozenOverlays[frozenCounter] = (currentReveals[revIndex].overlay);
+                frozenCounter++;
+                // Stakes.freezeDeposit(
+                //     currentReveals[revIndex].overlay,
+                //     penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                // );
             }
 
             // Slash deposits if revealed is false
             if (!currentCommits[i].revealed) {
                 // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(
-                    currentCommits[i].overlay,
-                    penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
-                );
+
+                slashedOverlays[slashedCounter] = (currentReveals[i].overlay);
+                slashedCounter++;
+                // Add to freez array instrad of state change, prepare for slash
+                // Stakes.freezeDeposit(
+                //     currentCommits[i].overlay,
+                //     penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
+                // );
             }
         }
 
@@ -510,7 +528,7 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
 
-        return (winner_, k);
+        return (winner_, k, frozenOverlays, slashedOverlays);
     }
 
     /**
