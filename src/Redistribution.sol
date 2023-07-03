@@ -804,7 +804,7 @@ contract Redistribution is AccessControl, Pausable {
             entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
             entryProof.socProofAttached[0].signature,
             entryProof.socProofAttached[0].identifier,
-            entryProof.proveSegment
+            entryProof.socProofAttached[0].chunkAddr
         ), "Soc verification failed for element");
         
         require(
