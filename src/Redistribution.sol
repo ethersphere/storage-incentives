@@ -426,9 +426,6 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-
-        uint256 currentSum = 0;
         uint256 currentWinnerSelectionSum = 0;
         uint256 k = 0;
         uint256 revIndex;
@@ -441,27 +438,7 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(currentCommits.length);
         emit CountReveals(currentReveals.length);
 
-        for (uint256 i = 0; i < currentCommits.length; i++) {
-            if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-
-                randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                // question is whether randomNumber / MaxH < probability
-                // where probability is stakeDensity / currentSum
-                // to avoid resorting to floating points all divisions should be
-                // simplified with multiplying both sides (as long as divisor > 0)
-                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
-                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
-                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
-                }
-            }
-        }
+        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
 
