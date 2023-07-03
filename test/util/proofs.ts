@@ -15,8 +15,9 @@ type Message = BmtUtils.Message;
 type WitnessData = {
   nonce: number;
   transformedAddress: Uint8Array;
+  socProofAttached?: SocProofAttachment;
 };
-type WitnessChunks = { ogChunk: Chunk; transformedChunk: Chunk };
+type WitnessChunks = { ogChunk: Chunk; transformedChunk: Chunk; socProofAttached?: SocProofAttachment };
 type WitnessProof = {
   proofSegments: Uint8Array[];
   proveSegment: Uint8Array;
@@ -67,6 +68,7 @@ function getChunkObjectsForClaim(anchor1: Uint8Array, witnessesForProof: Witness
     return {
       ogChunk: makeChunk(witnessPayload),
       transformedChunk: makeChunk(witnessPayload, { hashFn }),
+      socProofAttached: w.socProofAttached,
     };
   });
 }
@@ -134,8 +136,14 @@ export async function getClaimProof(
     witnessIndex * 2 * SEGMENT_BYTE_LENGTH,
     witnessIndex * 2 * SEGMENT_BYTE_LENGTH + SEGMENT_BYTE_LENGTH
   );
+  const ogAddress = proofWitnessChunk.socProofAttached
+    ? calculateSocAddress(
+        proofWitnessChunk.socProofAttached.identifier,
+        arrayify(proofWitnessChunk.socProofAttached.signer)
+      )
+    : proofWitnessChunk.ogChunk.address();
   // sanity checks
-  if (!equalBytes(proofWitnessChunk.ogChunk.address(), proveSegment)) {
+  if (!equalBytes(ogAddress, proveSegment)) {
     throw new Error(
       `Address of the OG witness chunk does not match the one in the sample at witness index ${witnessIndex}`
     );
@@ -175,27 +183,38 @@ export async function getClaimProof(
     postageId,
     index,
     timeStamp,
-    socProofAttached: [],
+    socProofAttached: proofWitnessChunk.socProofAttached ? [proofWitnessChunk.socProofAttached] : [],
   };
 }
 
-export async function addSocProofAttachment(witnessProof: WitnessProof) {
-  const identifier = randomBytes(32);
-  const chunkAddr = witnessProof.proveSegment; // provesegment is always the OG chunk address
-  const digest = keccak256Hash(identifier, chunkAddr);
-
+export async function getSocProofAttachment(
+  chunkAddr: Uint8Array,
+  anchor: Uint8Array,
+  depth: number
+): Promise<SocProofAttachment> {
+  let identifier: Uint8Array;
   const randomWallet = ethers.Wallet.createRandom();
+  const owner = arrayify(randomWallet.address);
+
+  // mine SOC address until neighbourhood
+  while (true) {
+    identifier = Uint8Array.from(randomBytes(32));
+    const socAddress = calculateSocAddress(identifier, owner);
+    if (inProximity(socAddress, anchor, depth)) {
+      break;
+    }
+  }
+
+  const digest = keccak256Hash(identifier, chunkAddr);
   const signature = await randomWallet.signMessage(digest);
   const signer = randomWallet.address;
 
-  witnessProof.socProofAttached = [
-    {
-      chunkAddr,
-      identifier,
-      signature,
-      signer,
-    },
-  ];
+  return {
+    chunkAddr,
+    identifier,
+    signature,
+    signer,
+  };
 }
 
 function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
@@ -274,7 +293,11 @@ export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk 
     const originalChunk = makeChunk(numberToArray(witness.nonce));
     const transformedChunk = makeChunk(numberToArray(witness.nonce), { hashFn: transformedHashFn(anchor) });
     const payloadOffset = i * SEGMENT_BYTE_LENGTH * 2;
-    payload.set(originalChunk.address(), payloadOffset);
+    const originalAddress = witness.socProofAttached
+      ? calculateSocAddress(witness.socProofAttached.identifier, arrayify(witness.socProofAttached.signer))
+      : originalChunk.address();
+    console.log('orginal address and else', hexlify(originalAddress), hexlify(originalChunk.address()))
+    payload.set(originalAddress, payloadOffset);
     payload.set(transformedChunk.address(), payloadOffset + SEGMENT_BYTE_LENGTH);
   }
 
@@ -318,4 +341,15 @@ export function numberToArray(n: number): Uint8Array {
   buff.writeUint32BE(n);
 
   return Uint8Array.from(buff);
+}
+
+/**
+ * Calculate Single Owner Chunks from its elements
+ *
+ * @param identifier 32 bytes of arbitrary identifier
+ * @param owner 20 bytes of ethereum address
+ * @returns 32 bytes of Single Owner Chunk Address
+ */
+function calculateSocAddress(identifier: Uint8Array, owner: Uint8Array): Uint8Array {
+  return keccak256Hash(identifier, owner);
 }

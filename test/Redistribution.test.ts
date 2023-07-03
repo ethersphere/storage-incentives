@@ -15,9 +15,9 @@ import {
 } from './util/tools';
 import { proximity } from './util/tools';
 import { node5_proof1 } from './claim-proofs';
-import { getClaimProofs, loadWitnesses, makeSample, mineWitnesses, saveWitnesses } from './util/proofs';
+import { getClaimProofs, getSocProofAttachment, loadWitnesses, makeSample, numberToArray } from './util/proofs';
 import { arrayify, hexlify } from 'ethers/lib/utils';
-import { fileAddressFromInclusionProof, makeSpan } from '@fairdatasociety/bmt-js';
+import { makeChunk } from '@fairdatasociety/bmt-js';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -737,6 +737,14 @@ describe('Redistribution', function () {
           const depth = 1;
 
           const witnessChunks = loadWitnesses('claim-pot');
+          //add soc chunks to cacs
+          for (const w of witnessChunks) {
+            w.socProofAttached = await getSocProofAttachment(
+              makeChunk(numberToArray(w.nonce)).address(),
+              anchor1,
+              depth
+            );
+          }
           const sampleChunk = makeSample(witnessChunks, anchor1);
           const sampleHashString = hexlify(sampleChunk.address());
 
