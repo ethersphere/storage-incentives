@@ -161,9 +161,6 @@ contract Redistribution is AccessControl, Pausable {
     // inputs for selection of the truth teller and beneficiary.
     bytes32 seed;
 
-    uint256 currentSum;
-    uint256 currentWinnerSelectionSum;
-
     // The miniumum stake allowed to be staked using the Staking contract.
     uint256 public minimumStake = 100000000000000000;
 
@@ -174,8 +171,6 @@ contract Redistribution is AccessControl, Pausable {
 
     // The length of a round in blocks.
     uint256 public roundLength = 152;
-
-    uint256 revIndex;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -433,9 +428,10 @@ contract Redistribution is AccessControl, Pausable {
 
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
 
-        currentSum = 0;
-        currentWinnerSelectionSum = 0;
+        uint256 currentSum = 0;
+        uint256 currentWinnerSelectionSum = 0;
         uint256 k = 0;
+        uint256 revIndex;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
