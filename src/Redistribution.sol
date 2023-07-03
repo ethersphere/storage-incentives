@@ -177,7 +177,6 @@ contract Redistribution is AccessControl, Pausable {
 
     uint256 k;
     uint256 revIndex;
-    uint256 randomChunkSegmentIndex;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -881,7 +880,7 @@ contract Redistribution is AccessControl, Pausable {
         // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp");
     }
 
-    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
+    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {
         require(
             winner.hash ==
                 BMTChunk.chunkAddressFromInclusionProof(
@@ -893,7 +892,7 @@ contract Redistribution is AccessControl, Pausable {
             "RC inclusion proof failed for element"
         );
 
-        randomChunkSegmentIndex = uint256(seed) % 128;
+        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
 
         require(
             entryProof.proofSegments2[0] == entryProof.proofSegments3[0],
