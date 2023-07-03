@@ -420,73 +420,81 @@ contract Redistribution is AccessControl, Pausable {
 
     function winnerSelection() internal returns (Reveal memory winner_) {
         require(currentPhaseClaim(), "not in claim phase");
-
         uint256 cr = currentRound();
-
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        uint256 currentWinnerSelectionSum = 0;
-        uint256 k = 0;
-        uint256 revIndex;
+        uint256 currentWinnerSelectionSum;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
-
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-
-        emit CountCommits(currentCommits.length);
-        emit CountReveals(currentReveals.length);
-
-        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
-
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-
+        uint256 revIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        uint256 k = 0;
 
-        for (uint256 i = 0; i < currentCommits.length; i++) {
+        // Get current truth
+        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
+        uint256 commitsArrayLength = currentCommits.length;
+        uint256 revealsArrayLength = currentReveals.length;
+
+        for (uint256 i = 0; i < commitsArrayLength; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed) {
+
+            // Select winner with valid truth
+            if (
+                currentCommits[i].revealed &&
+                truthRevealedHash == currentReveals[revIndex].hash &&
+                truthRevealedDepth == currentReveals[revIndex].depth
+            ) {
+                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
                 if (
-                    truthRevealedHash == currentReveals[revIndex].hash &&
-                    truthRevealedDepth == currentReveals[revIndex].depth
+                    randomNumberTrunc * currentWinnerSelectionSum <
+                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-
-                    randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                    if (
-                        randomNumberTrunc * currentWinnerSelectionSum <
-                        currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                    ) {
-                        winner_ = currentReveals[revIndex];
-                    }
-
-                    k++;
-                } else {
-                    Stakes.freezeDeposit(
-                        currentReveals[revIndex].overlay,
-                        penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
-                    );
-                    // slash ph5
+                    winner_ = currentReveals[revIndex];
                 }
-            } else {
-                // slash in later phase
+
+                k++;
+            }
+
+            // Freeze deposit if any truth is false
+            if (
+                currentCommits[i].revealed &&
+                (truthRevealedHash != currentReveals[revIndex].hash ||
+                    truthRevealedDepth != currentReveals[revIndex].depth)
+            ) {
+                Stakes.freezeDeposit(
+                    currentReveals[revIndex].overlay,
+                    penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                );
+            }
+
+            // Slash deposits if revealed is false
+            if (!currentCommits[i].revealed) {
+                // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
                     currentCommits[i].overlay,
                     penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
                 );
-                continue;
             }
         }
 
+        // Apply Important state changes
+        //   PostageContract.withdraw(winner_.owner);
         OracleContract.adjustPrice(uint256(k));
-
-        require(winner_.owner == msg.sender, "Only selected winner can do the claim");
-
         currentClaimRound = cr;
+
+        // Emit function Events
+        emit CountCommits(commitsArrayLength);
+        emit CountReveals(revealsArrayLength);
+        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
+        emit WinnerSelected(winner_);
+        emit ChunkCount(PostageContract.validChunkCount());
 
         return winner_;
     }
