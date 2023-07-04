@@ -428,10 +428,32 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth;
         uint256 redundancy;
 
+        bytes32[] memory _frozenOverlays;
+        bytes32[] memory _slashedOverlays;
+
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
-        (winner_, redundancy) = digestRevealers(truthRevealedHash, truthRevealedDepth);
+        (winner_, redundancy, _frozenOverlays, _slashedOverlays) = digestRevealers(
+            truthRevealedHash,
+            truthRevealedDepth
+        );
+
+        // Freeze those bastards
+        for (uint256 i = 0; i < _frozenOverlays.length; i++) {
+            Stakes.freezeDeposit(
+                _frozenOverlays[i],
+                penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+            );
+        }
+
+        // Slash  those other bastards
+        for (uint256 i = 0; i < _slashedOverlays.length; i++) {
+            Stakes.freezeDeposit(
+                _slashedOverlays[i],
+                penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
+            );
+        }
 
         // Apply Important state changes
         OracleContract.adjustPrice(uint256(redundancy));
@@ -464,10 +486,10 @@ contract Redistribution is AccessControl, Pausable {
         uint256 randomNumberTrunc;
         uint256 revIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        uint256 k = 0;
-        bytes32[] memory frozenOverlays;
+        uint256 _redundancy = 0;
+        bytes32[] memory _frozenOverlays;
         uint8 frozenCounter = 0;
-        bytes32[] memory slashedOverlays;
+        bytes32[] memory _slashedOverlays;
         uint8 slashedCounter = 0;
 
         for (uint256 i = 0; i < commitsArrayLength; i++) {
@@ -480,7 +502,7 @@ contract Redistribution is AccessControl, Pausable {
                 truthRevealedDepth == currentReveals[revIndex].depth
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, _redundancy));
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
@@ -490,7 +512,7 @@ contract Redistribution is AccessControl, Pausable {
                     winner_ = currentReveals[revIndex];
                 }
 
-                k++;
+                _redundancy++;
             }
 
             // Freeze deposit if any truth is false
@@ -500,26 +522,14 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedDepth != currentReveals[revIndex].depth)
             ) {
                 // Add to freez array instrad of state change
-                frozenOverlays[frozenCounter] = (currentReveals[revIndex].overlay);
+                _frozenOverlays[frozenCounter] = (currentReveals[revIndex].overlay);
                 frozenCounter++;
-                // Stakes.freezeDeposit(
-                //     currentReveals[revIndex].overlay,
-                //     penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
-                // );
             }
 
             // Slash deposits if revealed is false
             if (!currentCommits[i].revealed) {
-                // slash in later phase (ph5)
-                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-
-                slashedOverlays[slashedCounter] = (currentReveals[i].overlay);
+                _slashedOverlays[slashedCounter] = (currentReveals[i].overlay);
                 slashedCounter++;
-                // Add to freez array instrad of state change, prepare for slash
-                // Stakes.freezeDeposit(
-                //     currentCommits[i].overlay,
-                //     penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
-                // );
             }
         }
 
@@ -528,7 +538,7 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(commitsArrayLength);
         emit CountReveals(revealsArrayLength);
 
-        return (winner_, k, frozenOverlays, slashedOverlays);
+        return (winner_, _redundancy, _frozenOverlays, _slashedOverlays);
     }
 
     /**
