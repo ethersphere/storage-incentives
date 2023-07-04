@@ -297,19 +297,41 @@ export function mineWitnesses(anchor: Uint8Array, depth: number): WitnessData[] 
   return witnessChunks;
 }
 
-export function loadWitnesses(suffix = ''): WitnessData[] {
-  return JSON.parse(new TextDecoder().decode(fs.readFileSync(`test/mined-witnesses-${suffix}.json`))) as WitnessData[];
+export function loadWitnesses(filename: string): WitnessData[] {
+  return JSON.parse(
+    new TextDecoder().decode(fs.readFileSync(`test/mined-witnesses/${filename}.json`))
+  ) as WitnessData[];
 }
 
-export function saveWitnesses(witnessChunks: WitnessData[], suffix: string) {
+export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
+  console.log('save witnesses');
   fs.writeFileSync(
-    `test/mined-witnesses-${suffix}.json`,
+    `test/mined-witnesses/${filename}.json`,
     JSON.stringify(
       witnessChunks.map((a) => {
         return { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
       })
     )
   );
+}
+
+/**
+ * Loads or mine witnesses in the given depth of anchor
+ *
+ * @param suffix filename suffix for the mined chunk data
+ * @param anchor random number in the Redistribution
+ * @param depth storage depth
+ * @returns loaded or mined witnesses
+ */
+export function setWitnesses(suffix: string, anchor: Uint8Array, depth: number): WitnessData[] {
+  try {
+    return loadWitnesses(suffix);
+  } catch (e) {
+    const witnessChunks = mineWitnesses(anchor, Number(depth));
+    saveWitnesses(witnessChunks, suffix);
+
+    return witnessChunks;
+  }
 }
 
 export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk {
@@ -321,7 +343,6 @@ export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk 
     const originalAddress = witness.socProofAttached
       ? calculateSocAddress(witness.socProofAttached.identifier, arrayify(witness.socProofAttached.signer))
       : originalChunk.address();
-    console.log('orginal address and else', hexlify(originalAddress), hexlify(originalChunk.address()))
     payload.set(originalAddress, payloadOffset);
     payload.set(transformedChunk.address(), payloadOffset + SEGMENT_BYTE_LENGTH);
   }

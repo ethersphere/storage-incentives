@@ -12,7 +12,7 @@ import {
 } from './util/tools';
 import { BigNumber } from 'ethers';
 import { arrayify, hexlify } from 'ethers/lib/utils';
-import { addSocProofAttachments, getClaimProofs, loadWitnesses, makeSample } from './util/proofs';
+import { getClaimProofs, makeSample, setWitnesses } from './util/proofs';
 
 const { read, execute } = deployments;
 
@@ -73,13 +73,11 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
   await mineNBlocks(ROUND_LENGTH * 2); // anyway reverted with panic code 0x11 (Arithmetic operation underflowed or overflowed outside of an unchecked block
 
-  const witnessChunks = loadWitnesses('stats');
-
   for (let i = 0; i < trials; i++) {
     const anchor1 = arrayify(await r_node.currentSeed());
-    // add soc chunks to cacs
-    // TODO: mine new witness chunks because of new anchor and reserve estimation
-    await addSocProofAttachments(witnessChunks, anchor1, Number(depth));
+
+    // mine new witness chunks because of new anchor and reserve estimation
+    const witnessChunks = setWitnesses(`stats-${i}`, anchor1, Number(depth));
     const sampleChunk = makeSample(witnessChunks, anchor1);
     const sampleHashString = hexlify(sampleChunk.address());
 
