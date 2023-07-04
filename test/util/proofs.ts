@@ -52,7 +52,7 @@ function witnessProofRequired(anchor: string | Uint8Array): number[] {
   const x = randomness.mod(15);
   // rand(13)
   let y = randomness.mod(14);
-  if (y >= x) {
+  if (y.gte(x)) {
     y = y.add(1);
   }
 
