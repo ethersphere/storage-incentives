@@ -217,6 +217,12 @@ export async function getSocProofAttachment(
   };
 }
 
+export async function addSocProofAttachments(witnesses: WitnessData[], anchor1: Uint8Array, depth: number) {
+  for (const w of witnesses) {
+    w.socProofAttached = await getSocProofAttachment(makeChunk(numberToArray(w.nonce)).address(), anchor1, depth);
+  }
+}
+
 function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
   const chunk = makeChunk(nonceBuf, { hashFn: transformedHashFn(anchor) });
   return chunk.address();
@@ -232,13 +238,32 @@ export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0): 
     const nonce = i++ + startNonce;
     const nonceBuf = numberToArray(nonce);
     const transformedAddress = calculateTransformedAddress(nonceBuf, anchor);
-    if (
-      BigNumber.from(transformedAddress).lt(SAMPLE_MAX_VALUE) &&
-      inProximity(makeChunk(nonceBuf).address(), anchor, depth)
-    ) {
+    if (tAddressAcceptance(makeChunk(nonceBuf).address(), transformedAddress, anchor, depth)) {
       return { nonce, transformedAddress };
     }
   }
+}
+
+/**
+ * Checks whether the mined address satisfies the condition of the Redistribution contract
+ *
+ * @param ogChunkAddress original chunk address for witness
+ * @param transformedAddress transformed chunk address for witness
+ * @param anchor1 random number in the Redistribution contract
+ * @param depth storageDepth to satisfy
+ * @returns address is accepted by the Redistribution contract at claim
+ */
+function tAddressAcceptance(
+  ogChunkAddress: Uint8Array,
+  transformedAddress: Uint8Array,
+  anchor1: Uint8Array,
+  depth: number
+): boolean {
+  return reserveSizeEstimationAcceptance(transformedAddress) && inProximity(ogChunkAddress, anchor1, depth);
+}
+
+function reserveSizeEstimationAcceptance(transformedAddress: Uint8Array) {
+  return BigNumber.from(transformedAddress).lt(SAMPLE_MAX_VALUE);
 }
 
 /**
