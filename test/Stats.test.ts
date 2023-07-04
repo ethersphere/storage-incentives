@@ -12,7 +12,7 @@ import {
 } from './util/tools';
 import { BigNumber } from 'ethers';
 import { arrayify, hexlify } from 'ethers/lib/utils';
-import { getClaimProofs, loadWitnesses, makeSample } from './util/proofs';
+import { addSocProofAttachments, getClaimProofs, loadWitnesses, makeSample } from './util/proofs';
 
 const { read, execute } = deployments;
 
@@ -73,16 +73,19 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
   await mineNBlocks(ROUND_LENGTH * 2); // anyway reverted with panic code 0x11 (Arithmetic operation underflowed or overflowed outside of an unchecked block
 
-  const witnessChunks = loadWitnesses();
+  const witnessChunks = loadWitnesses('stats');
 
   for (let i = 0; i < trials; i++) {
     const anchor1 = arrayify(await r_node.currentSeed());
+    // add soc chunks to cacs
+    // TODO: mine new witness chunks because of new anchor and reserve estimation
+    await addSocProofAttachments(witnessChunks, anchor1, Number(depth));
     const sampleChunk = makeSample(witnessChunks, anchor1);
     const sampleHashString = hexlify(sampleChunk.address());
 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      const overlay = createOverlay(nodes[i], '0x00', nonce);
+      const overlay = createOverlay(nodes[i], depth, nonce);
       const obsfucatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
       const currentRound = await r_node.currentRound();
       await r_node.commit(obsfucatedHash, overlay, currentRound);
@@ -92,7 +95,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      const overlay = createOverlay(nodes[i], '0x00', nonce);
+      const overlay = createOverlay(nodes[i], depth, nonce);
       await r_node.reveal(overlay, depth, sampleHashString, reveal_nonce);
     }
 
@@ -101,7 +104,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     await mineNBlocks(PHASE_LENGTH - nodes.length + 1);
 
     for (let i = 0; i < winDist.length; i++) {
-      const overlay = createOverlay(winDist[i].node, '0x00', nonce);
+      const overlay = createOverlay(winDist[i].node, depth, nonce);
       if (await r_node.isWinner(overlay)) {
         winDist[i].wins++;
       }
