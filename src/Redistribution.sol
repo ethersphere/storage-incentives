@@ -447,7 +447,7 @@ contract Redistribution is AccessControl, Pausable {
             );
         }
 
-        // Slash  those other bastards
+        // Slash those other bastards
         for (uint256 i = 0; i < _slashedOverlays.length; i++) {
             Stakes.freezeDeposit(
                 _slashedOverlays[i],
@@ -478,21 +478,14 @@ contract Redistribution is AccessControl, Pausable {
             bytes32[] memory slashedOverlays
         )
     {
-        uint256 commitsArrayLength = currentCommits.length;
-        uint256 revealsArrayLength = currentReveals.length;
-
         uint256 currentWinnerSelectionSum;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
         uint256 revIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        uint256 _redundancy = 0;
-        bytes32[] memory _frozenOverlays;
+        redundancy = 0;
         uint8 frozenCounter = 0;
-        bytes32[] memory _slashedOverlays;
         uint8 slashedCounter = 0;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
 
             // Select winner with valid truth
@@ -502,8 +495,9 @@ contract Redistribution is AccessControl, Pausable {
                 truthRevealedDepth == currentReveals[revIndex].depth
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, _redundancy));
-                randomNumberTrunc = uint256(randomNumber & MaxH);
+                // Declare and initialize randomNumber and randomNumberTrunc here, inside the if statement
+                bytes32 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancy));
+                uint256 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
                     randomNumberTrunc * currentWinnerSelectionSum <
@@ -512,7 +506,7 @@ contract Redistribution is AccessControl, Pausable {
                     winner_ = currentReveals[revIndex];
                 }
 
-                _redundancy++;
+                redundancy++;
             }
 
             // Freeze deposit if any truth is false
@@ -522,23 +516,23 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedDepth != currentReveals[revIndex].depth)
             ) {
                 // Add to freez array instrad of state change
-                _frozenOverlays[frozenCounter] = (currentReveals[revIndex].overlay);
+                frozenOverlays[frozenCounter] = (currentReveals[revIndex].overlay);
                 frozenCounter++;
             }
 
             // Slash deposits if revealed is false
             if (!currentCommits[i].revealed) {
-                _slashedOverlays[slashedCounter] = (currentReveals[i].overlay);
+                slashedOverlays[slashedCounter] = (currentReveals[i].overlay);
                 slashedCounter++;
             }
         }
 
         // Emit function Events
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-        emit CountCommits(commitsArrayLength);
-        emit CountReveals(revealsArrayLength);
+        emit CountCommits(currentCommits.length);
+        emit CountReveals(currentReveals.length);
 
-        return (winner_, _redundancy, _frozenOverlays, _slashedOverlays);
+        return (winner_, redundancy, frozenOverlays, slashedOverlays);
     }
 
     /**
