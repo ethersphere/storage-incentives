@@ -6,8 +6,6 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 
-import "hardhat/console.sol";
-
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
  * For PostageStmap we currently use "withdraw" to withdraw funds from Pot and some read functions
@@ -438,6 +436,7 @@ contract Redistribution is AccessControl, Pausable {
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
+        // Evaluate revealers, get Winners and Losers
         (_winner, redundancy, _frozenOverlays, _slashedOverlays) = evaluateRevealers(
             truthRevealedHash,
             truthRevealedDepth
@@ -463,7 +462,10 @@ contract Redistribution is AccessControl, Pausable {
         OracleContract.adjustPrice(uint256(redundancy));
         currentClaimRound = cr;
 
-        // Emit function Events
+        // Emit events after evaluating revealers
+        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
+        emit CountCommits(currentCommits.length);
+        emit CountReveals(currentReveals.length);
         emit WinnerSelected(_winner);
         emit ChunkCount(PostageContract.validChunkCount());
 
@@ -475,6 +477,7 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth
     )
         internal
+        view
         returns (
             Reveal memory _winner,
             uint256 redundancyCount,
@@ -519,22 +522,16 @@ contract Redistribution is AccessControl, Pausable {
                 (truthRevealedHash != currentReveals[revIndex].hash ||
                     truthRevealedDepth != currentReveals[revIndex].depth)
             ) {
-                // Add to freez array instrad of state change
                 frozenOverlays[frozenCounter] = currentReveals[revIndex].overlay;
                 frozenCounter++;
             }
 
-            // Slash deposits if revealed is false
+            // Slash deposits if node didnt reveal
             if (!currentCommits[i].revealed) {
                 slashedOverlays[slashedCounter] = currentCommits[i].overlay;
                 slashedCounter++;
             }
         }
-
-        // Emit function Events
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-        emit CountCommits(currentCommits.length);
-        emit CountReveals(currentReveals.length);
 
         return (_winner, redundancyCount, frozenOverlays, slashedOverlays);
     }
