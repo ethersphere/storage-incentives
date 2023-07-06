@@ -472,70 +472,6 @@ contract Redistribution is AccessControl, Pausable {
         return _winner;
     }
 
-    function evaluateRevealers(
-        bytes32 truthRevealedHash,
-        uint8 truthRevealedDepth
-    )
-        internal
-        view
-        returns (
-            Reveal memory _winner,
-            uint256 redundancyCount,
-            bytes32[revealersDepth] memory frozenOverlays,
-            bytes32[revealersDepth] memory slashedOverlays
-        )
-    {
-        uint256 currentWinnerSelectionSum;
-        uint256 revIndex;
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        redundancyCount = 0;
-        uint8 frozenCounter = 0;
-        uint8 slashedCounter = 0;
-
-        for (uint256 i = 0; i < currentCommits.length; i++) {
-            revIndex = currentCommits[i].revealIndex;
-
-            // Select winner with valid truth
-            if (
-                currentCommits[i].revealed &&
-                truthRevealedHash == currentReveals[revIndex].hash &&
-                truthRevealedDepth == currentReveals[revIndex].depth
-            ) {
-                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                // Declare and initialize randomNumber and randomNumberTrunc here, inside the if statement
-                bytes32 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-                uint256 randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                if (
-                    randomNumberTrunc * currentWinnerSelectionSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                ) {
-                    _winner = currentReveals[revIndex];
-                }
-
-                redundancyCount++;
-            }
-
-            // Freeze deposit if any truth is false
-            if (
-                currentCommits[i].revealed &&
-                (truthRevealedHash != currentReveals[revIndex].hash ||
-                    truthRevealedDepth != currentReveals[revIndex].depth)
-            ) {
-                frozenOverlays[frozenCounter] = currentReveals[revIndex].overlay;
-                frozenCounter++;
-            }
-
-            // Slash deposits if node didnt reveal
-            if (!currentCommits[i].revealed) {
-                slashedOverlays[slashedCounter] = currentCommits[i].overlay;
-                slashedCounter++;
-            }
-        }
-
-        return (_winner, redundancyCount, frozenOverlays, slashedOverlays);
-    }
-
     /**
      * @notice Set freezing parameters
      */
@@ -795,45 +731,81 @@ contract Redistribution is AccessControl, Pausable {
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        uint256 currentWinnerSelectionSum;
-        bytes32 winnerIs;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-        uint256 revIndex;
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        uint256 k = 0;
+        Reveal memory _winner;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
-        uint256 commitsArrayLength = currentCommits.length;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        // Evaluate revealers, get Winners and Losers
+        (_winner, , , ) = evaluateRevealers(truthRevealedHash, truthRevealedDepth);
+
+        return (_winner.overlay == _overlay);
+    }
+
+    function evaluateRevealers(
+        bytes32 truthRevealedHash,
+        uint8 truthRevealedDepth
+    )
+        internal
+        view
+        returns (
+            Reveal memory _winner,
+            uint256 redundancyCount,
+            bytes32[revealersDepth] memory frozenOverlays,
+            bytes32[revealersDepth] memory slashedOverlays
+        )
+    {
+        uint256 currentWinnerSelectionSum;
+        uint256 revIndex;
+        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        redundancyCount = 0;
+        uint8 frozenCounter = 0;
+        uint8 slashedCounter = 0;
+
+        for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
 
-            // Deterministically read winner
+            // Select winner with valid truth
             if (
                 currentCommits[i].revealed &&
                 truthRevealedHash == currentReveals[revIndex].hash &&
                 truthRevealedDepth == currentReveals[revIndex].depth
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-                randomNumberTrunc = uint256(randomNumber & MaxH);
+                // Declare and initialize randomNumber and randomNumberTrunc here, inside the if statement
+                bytes32 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
+                uint256 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
                     randomNumberTrunc * currentWinnerSelectionSum <
                     currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    winnerIs = currentReveals[revIndex].overlay;
+                    _winner = currentReveals[revIndex];
                 }
 
-                k++;
+                redundancyCount++;
+            }
+
+            // Freeze deposit if any truth is false
+            if (
+                currentCommits[i].revealed &&
+                (truthRevealedHash != currentReveals[revIndex].hash ||
+                    truthRevealedDepth != currentReveals[revIndex].depth)
+            ) {
+                frozenOverlays[frozenCounter] = currentReveals[revIndex].overlay;
+                frozenCounter++;
+            }
+
+            // Slash deposits if node didnt reveal
+            if (!currentCommits[i].revealed) {
+                slashedOverlays[slashedCounter] = currentCommits[i].overlay;
+                slashedCounter++;
             }
         }
 
-        return (winnerIs == _overlay);
+        return (_winner, redundancyCount, frozenOverlays, slashedOverlays);
     }
 
     // ----------------------------- Claim verifications  ------------------------------
