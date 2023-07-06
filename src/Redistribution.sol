@@ -6,6 +6,8 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 
+import "hardhat/console.sol";
+
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
  * For PostageStmap we currently use "withdraw" to withdraw funds from Pot and some read functions
@@ -174,6 +176,9 @@ contract Redistribution is AccessControl, Pausable {
 
     // The reveal of the winner of the last round.
     Reveal public winner;
+
+    // MAX number of reveals processed in the claim phase, should be increased if its higher
+    uint8 public constant revealersDepth = 32;
 
     // ----------------------------- Events ------------------------------
 
@@ -414,11 +419,10 @@ contract Redistribution is AccessControl, Pausable {
         );
 
         emit WinnerSelected(winner);
-
         PostageContract.withdraw(winner.owner);
     }
 
-    function winnerSelection() internal returns (Reveal memory winner_) {
+    function winnerSelection() internal returns (Reveal memory _winner) {
         require(currentPhaseClaim(), "not in claim phase");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
@@ -428,13 +432,13 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth;
         uint256 redundancy;
 
-        bytes32[] memory _frozenOverlays;
-        bytes32[] memory _slashedOverlays;
+        bytes32[revealersDepth] memory _frozenOverlays;
+        bytes32[revealersDepth] memory _slashedOverlays;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
-        (winner_, redundancy, _frozenOverlays, _slashedOverlays) = digestRevealers(
+        (_winner, redundancy, _frozenOverlays, _slashedOverlays) = evaluateRevealers(
             truthRevealedHash,
             truthRevealedDepth
         );
@@ -460,28 +464,28 @@ contract Redistribution is AccessControl, Pausable {
         currentClaimRound = cr;
 
         // Emit function Events
-        emit WinnerSelected(winner_);
+        emit WinnerSelected(_winner);
         emit ChunkCount(PostageContract.validChunkCount());
 
-        return winner_;
+        return _winner;
     }
 
-    function digestRevealers(
+    function evaluateRevealers(
         bytes32 truthRevealedHash,
         uint8 truthRevealedDepth
     )
         internal
         returns (
-            Reveal memory winner_,
-            uint256 redundancy,
-            bytes32[] memory frozenOverlays,
-            bytes32[] memory slashedOverlays
+            Reveal memory _winner,
+            uint256 redundancyCount,
+            bytes32[revealersDepth] memory frozenOverlays,
+            bytes32[revealersDepth] memory slashedOverlays
         )
     {
         uint256 currentWinnerSelectionSum;
         uint256 revIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        redundancy = 0;
+        redundancyCount = 0;
         uint8 frozenCounter = 0;
         uint8 slashedCounter = 0;
 
@@ -496,17 +500,17 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 // Declare and initialize randomNumber and randomNumberTrunc here, inside the if statement
-                bytes32 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancy));
+                bytes32 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
                 uint256 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
                     randomNumberTrunc * currentWinnerSelectionSum <
                     currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    winner_ = currentReveals[revIndex];
+                    _winner = currentReveals[revIndex];
                 }
 
-                redundancy++;
+                redundancyCount++;
             }
 
             // Freeze deposit if any truth is false
@@ -516,13 +520,13 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedDepth != currentReveals[revIndex].depth)
             ) {
                 // Add to freez array instrad of state change
-                frozenOverlays[frozenCounter] = (currentReveals[revIndex].overlay);
+                frozenOverlays[frozenCounter] = currentReveals[revIndex].overlay;
                 frozenCounter++;
             }
 
             // Slash deposits if revealed is false
             if (!currentCommits[i].revealed) {
-                slashedOverlays[slashedCounter] = (currentReveals[i].overlay);
+                slashedOverlays[slashedCounter] = currentCommits[i].overlay;
                 slashedCounter++;
             }
         }
@@ -532,7 +536,7 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(currentCommits.length);
         emit CountReveals(currentReveals.length);
 
-        return (winner_, redundancy, frozenOverlays, slashedOverlays);
+        return (_winner, redundancyCount, frozenOverlays, slashedOverlays);
     }
 
     /**
