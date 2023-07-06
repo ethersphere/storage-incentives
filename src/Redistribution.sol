@@ -430,7 +430,7 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 currentSum = 0;
         uint256 currentWinnerSelectionSum = 0;
-        uint256 k = 0;
+        uint256 redundancyCount = 0;
         uint256 revIndex;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
@@ -475,7 +475,7 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedDepth == currentReveals[revIndex].depth
                 ) {
                     currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
 
                     randomNumberTrunc = uint256(randomNumber & MaxH);
 
@@ -486,7 +486,7 @@ contract Redistribution is AccessControl, Pausable {
                         winner_ = currentReveals[revIndex];
                     }
 
-                    k++;
+                    redundancyCount++;
                 } else {
                     Stakes.freezeDeposit(
                         currentReveals[revIndex].overlay,
@@ -505,7 +505,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        OracleContract.adjustPrice(uint256(k));
+        OracleContract.adjustPrice(uint256(redundancyCount));
 
         require(winner_.owner == msg.sender, "Only selected winner can do the claim");
 
