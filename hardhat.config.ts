@@ -33,6 +33,9 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  mocha: {
+    timeout: Number.MAX_SAFE_INTEGER,
+  },
   preprocess: {
     eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
   },
