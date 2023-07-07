@@ -101,17 +101,12 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
     await mineNBlocks(PHASE_LENGTH - nodes.length + 1);
 
+    let winnerIndex = 0;
     for (let i = 0; i < winDist.length; i++) {
       const overlay = createOverlay(winDist[i].node, depth, nonce);
       if (await r_node.isWinner(overlay)) {
         winDist[i].wins++;
-      }
-    }
-    let winnerIndex = 0;
-    for (const [index, outcome] of winDist.entries()) {
-      if (outcome.wins > 0) {
-        winnerIndex = index;
-        break;
+        winnerIndex = i;
       }
     }
     r_node = await ethers.getContract('Redistribution', nodes[winnerIndex]);
