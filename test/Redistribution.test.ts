@@ -787,8 +787,6 @@ describe('Redistribution', function () {
           let r_node_1: Contract;
           let r_node_5: Contract;
           let currentRound: number;
-          let copyBatchTx: any;
-          let postageDepth: number;
           let proof1: unknown, proof2: unknown, proofLast: unknown;
 
           // no need to mineToNode function call in test cases
@@ -855,7 +853,7 @@ describe('Redistribution', function () {
             // https://github.com/ethers-io/ethers.js/discussions/3057?sort=top
 
             const expectedPotPayout =
-              (receipt2.blockNumber - copyBatchTx.blockNumber) * price1 * 2 ** postageDepth +
+              (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
               (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
 
             expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
@@ -919,7 +917,7 @@ describe('Redistribution', function () {
             }
 
             const expectedPotPayout =
-              (receipt2.blockNumber - copyBatchTx.blockNumber) * price1 * 2 ** postageDepth +
+              (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
               (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
 
             expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
@@ -961,9 +959,8 @@ describe('Redistribution', function () {
             const receipt2 = await tx2.wait();
 
             const expectedPotPayout =
-              (receipt2.blockNumber - copyBatchTx.blockNumber) * price1 * 2 ** postageDepth +
+              (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
               (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
-
             expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
 
             const sr = await ethers.getContract('StakeRegistry');
