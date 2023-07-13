@@ -205,7 +205,7 @@ export function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): st
  * Can be used for sign migrated Chunks
  */
 function getWalletOfFdpPlayQueen(): Wallet {
-  return new Wallet('0x195cf6324303f6941ad119d0a1d2e862d810078e1370b8d205552a543ff40aab');
+  return new Wallet('0x566058308ad5fa3888173c741a1fb902c9f1f19559b11fc2738dfc53637ce4e9');
 }
 
 export {
