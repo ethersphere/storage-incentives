@@ -1,6 +1,6 @@
 import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
-
+import { ContractTransaction } from 'ethers';
 import { arrayify, hexlify } from '@ethersproject/bytes';
 import { BigNumber, Wallet } from 'ethers';
 import { Utils as BmtUtils } from '@fairdatasociety/bmt-js';
@@ -14,6 +14,10 @@ export const WITNESS_COUNT = 16;
 export const SEGMENT_COUNT_IN_CHUNK = 128;
 export const SEGMENT_BYTE_LENGTH = 32;
 const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+type AwaitedTransaction = ContractTransaction & {
+  blockNumber: number;
+};
 
 /** returns byte representation of the hex string */
 export function hexToBytes(hex: string): Uint8Array {
@@ -157,9 +161,13 @@ export async function mineToRevealPhase() {
 /**
  * copies batch used for creating fixtures onto the blockchain
  */
-export async function copyBatchForClaim(
-  deployer: string
-): Promise<{ tx: any; postageDepth: number; initialBalance: number; batchId: string; batchOwner: Wallet }> {
+export async function copyBatchForClaim(deployer: string): Promise<{
+  tx: AwaitedTransaction;
+  postageDepth: number;
+  initialBalance: number;
+  batchId: string;
+  batchOwner: Wallet;
+}> {
   // migrate batch with which the chunk was signed
   const postageAdmin = await ethers.getContract('PostageStamp', deployer);
   // set minimum required blocks for postage stamp lifetime to 0 for tests
