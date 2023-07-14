@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
-import { BigNumber, Contract } from 'ethers';
+import { BigNumber, Contract, ContractTransaction } from 'ethers';
 import {
   mineNBlocks,
   getBlockNumber,
@@ -57,7 +57,6 @@ const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc9
 const stakeAmount_1 = '100000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
-const hash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_1 = '0x06';
 const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -662,10 +661,13 @@ describe('Redistribution', function () {
           r_node_5 = await ethers.getContract('Redistribution', node_5);
         });
 
-        const claimEventChecks = async (claimTx: any, sanityHash: string, sanityDepth: string) => {
+        const claimEventChecks = async (claimTx: ContractTransaction, sanityHash: string, sanityDepth: string) => {
           const receipt2 = await claimTx.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+          if (!receipt2.events) {
+            throw new Error('The transaction does not produced any events');
+          }
           for (const e of receipt2.events) {
             if (e.event == 'WinnerSelected') {
               WinnerSelectedEvent = e;
@@ -679,6 +681,18 @@ describe('Redistribution', function () {
             if (e.event == 'CountReveals') {
               CountRevealsEvent = e;
             }
+          }
+          if (!CountCommitsEvent || !CountCommitsEvent.args) {
+            throw new Error('CountCommitsEvent has not triggered');
+          }
+          if (!WinnerSelectedEvent || !WinnerSelectedEvent.args) {
+            throw new Error('CountCommitsEvent has not triggered');
+          }
+          if (!CountRevealsEvent || !CountRevealsEvent.args) {
+            throw new Error('CountCommitsEvent has not triggered');
+          }
+          if (!TruthSelectedEvent || !TruthSelectedEvent.args) {
+            throw new Error('CountCommitsEvent has not triggered');
           }
 
           const expectedPotPayout =
