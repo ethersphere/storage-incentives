@@ -4,6 +4,7 @@ import { arrayify, hexlify } from 'ethers/lib/utils';
 import { constructPostageStamp } from './postage';
 import { equalBytes, SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK, WITNESS_COUNT } from './tools';
 import fs from 'fs';
+import path from 'path';
 import { ethers } from 'hardhat';
 import { randomBytes } from 'crypto';
 
@@ -299,14 +300,14 @@ export function mineWitnesses(anchor: Uint8Array, depth: number): WitnessData[] 
 
 export function loadWitnesses(filename: string): WitnessData[] {
   return JSON.parse(
-    new TextDecoder().decode(fs.readFileSync(`test/mined-witnesses/${filename}.json`))
+    new TextDecoder().decode(fs.readFileSync(path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`)))
   ) as WitnessData[];
 }
 
 export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
   console.log('save witnesses');
   fs.writeFileSync(
-    `test/mined-witnesses/${filename}.json`,
+    path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`),
     JSON.stringify(
       witnessChunks.map((a) => {
         return { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
