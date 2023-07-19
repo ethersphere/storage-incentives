@@ -86,7 +86,7 @@ export async function constructPostageStamp(
   address: Buffer,
   signer: Wallet,
   timestamp?: number
-): Promise<{ signature: Uint8Array; index: Uint8Array }> {
+): Promise<{ signature: Uint8Array; index: Uint8Array; timeStamp: number }> {
   if (!Buffer.isBuffer(address)) {
     throw Error('Expected address to be a Buffer');
   }
@@ -102,5 +102,6 @@ export async function constructPostageStamp(
   return {
     signature,
     index,
+    timeStamp: timestamp!,
   };
 }
