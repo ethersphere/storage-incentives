@@ -224,7 +224,7 @@ export async function addSocProofAttachments(witnesses: WitnessData[], anchor1: 
   }
 }
 
-function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
+export function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
   const chunk = makeChunk(nonceBuf, { hashFn: transformedHashFn(anchor) });
   return chunk.address();
 }
@@ -357,7 +357,7 @@ export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk 
  * @param b 32 bytes.
  * @param minimum Minimum proximity order.
  */
-function inProximity(a: Uint8Array, b: Uint8Array, minimum: number): boolean {
+export function inProximity(a: Uint8Array, b: Uint8Array, minimum: number): boolean {
   if (a.length !== b.length || a.length !== 32) throw new Error('Lengths are incorrect at proximity check');
 
   let byteIndex = 0;

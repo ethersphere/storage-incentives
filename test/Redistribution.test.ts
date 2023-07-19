@@ -12,12 +12,25 @@ import {
   copyBatchForClaim,
   mineToRevealPhase,
   calculateStakeDensity,
+  getWalletOfFdpPlayQueen,
+  WITNESS_COUNT,
 } from './util/tools';
 import { proximity } from './util/tools';
 import { node5_proof1 } from './claim-proofs';
-import { getClaimProofs, getSocProofAttachment, loadWitnesses, makeSample, numberToArray } from './util/proofs';
+import {
+  getClaimProofs,
+  getSocProofAttachment,
+  loadWitnesses,
+  makeSample,
+  numberToArray,
+  calculateTransformedAddress,
+  inProximity,
+  mineWitness,
+} from './util/proofs';
 import { arrayify, hexlify } from 'ethers/lib/utils';
 import { makeChunk } from '@fairdatasociety/bmt-js';
+import { randomBytes } from 'crypto';
+import { constructPostageStamp } from './util/postage';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -651,6 +664,8 @@ describe('Redistribution', function () {
     describe('claim phase', async function () {
       describe('single player', async function () {
         let copyBatch: Awaited<ReturnType<typeof copyBatchForClaim>>, currentSeed: string, r_node_5: Contract;
+        const depth = 1;
+
         beforeEach(async () => {
           //copying batch for claim
           copyBatch = await copyBatchForClaim(deployer);
@@ -716,8 +731,6 @@ describe('Redistribution', function () {
         };
 
         it('should claim pot by bee sampling', async function () {
-          console.log('Anchor', currentSeed);
-
           const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
 
           const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
@@ -732,7 +745,6 @@ describe('Redistribution', function () {
           await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
           currentSeed = await redistribution.currentSeed();
-          console.log('Anchor2', currentSeed);
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
@@ -746,18 +758,19 @@ describe('Redistribution', function () {
           await claimEventChecks(tx2, sanityHash, sanityDepth);
         });
 
-        it('should claim pot by generated sampling', async function () {
+        const generatedSampling = async (socAttachment = false) => {
           const anchor1 = arrayify(currentSeed);
-          const depth = 1;
 
           const witnessChunks = loadWitnesses('claim-pot');
-          //add soc chunks to cacs
-          for (const w of witnessChunks) {
-            w.socProofAttached = await getSocProofAttachment(
-              makeChunk(numberToArray(w.nonce)).address(),
-              anchor1,
-              depth
-            );
+          if (socAttachment) {
+            //add soc chunks to cacs
+            for (const w of witnessChunks) {
+              w.socProofAttached = await getSocProofAttachment(
+                makeChunk(numberToArray(w.nonce)).address(),
+                anchor1,
+                depth
+              );
+            }
           }
           const sampleChunk = makeSample(witnessChunks, anchor1);
           const sampleHashString = hexlify(sampleChunk.address());
@@ -792,8 +805,328 @@ describe('Redistribution', function () {
 
           await mineNBlocks(phaseLength);
 
+          return { proofParams, sampleHashString };
+        };
+
+        it('should claim pot by generated CAC sampling', async function () {
+          const { sampleHashString, proofParams } = await generatedSampling();
+
+          expect(proofParams.proof1.socProofAttached).to.have.length(0);
+          expect(proofParams.proof2.socProofAttached).to.have.length(0);
+          expect(proofParams.proofLast.socProofAttached).to.have.length(0);
           const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
           await claimEventChecks(tx2, sampleHashString, hexlify(depth));
+        });
+
+        it('should claim pot by generated SOC sampling', async function () {
+          const { sampleHashString, proofParams } = await generatedSampling(true);
+
+          expect(proofParams.proof1.socProofAttached).to.have.length(1);
+          expect(proofParams.proof2.socProofAttached).to.have.length(1);
+          expect(proofParams.proofLast.socProofAttached).to.have.length(1);
+          const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
+          await claimEventChecks(tx2, sampleHashString, hexlify(depth));
+        });
+
+        it('should not claim pot because of wrong witness order', async () => {
+          const anchor1 = arrayify(currentSeed);
+
+          let witnessChunks = loadWitnesses('claim-pot');
+          witnessChunks = witnessChunks.reverse();
+
+          const sampleChunk = makeSample(witnessChunks, anchor1);
+          const sampleHashString = hexlify(sampleChunk.address());
+
+          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const currentRound = await r_node_5.currentRound();
+          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+
+          await mineToRevealPhase();
+
+          await r_node_5.reveal(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const anchor2 = await redistribution.currentSeed();
+
+          await mineNBlocks(phaseLength);
+
+          const { proofParams } = await getClaimProofs(
+            witnessChunks,
+            sampleChunk,
+            anchor1,
+            anchor2,
+            copyBatch.batchOwner,
+            copyBatch.batchId
+          );
+
+          await expect(
+            r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+          ).to.be.revertedWith('random element order check failed');
+        });
+
+        it('should not claim pot because of a witness is not in depth', async () => {
+          const anchor1 = arrayify(currentSeed);
+
+          // create witnesses
+          let witnessChunks: ReturnType<typeof mineWitness>[] = [];
+          for (let i = 0; i < WITNESS_COUNT; i++) {
+            // NOTE do not do estimation mining because that takes long
+            const nonce = i;
+            const nonceBuf = numberToArray(nonce);
+            const transformedAddress = calculateTransformedAddress(nonceBuf, anchor1);
+            witnessChunks.push({ nonce, transformedAddress });
+          }
+          // sort witness chunks to be descendant because of the
+          witnessChunks = witnessChunks.sort((a, b) => {
+            const aBn = BigNumber.from(a.transformedAddress);
+            const bBn = BigNumber.from(b.transformedAddress);
+            if (aBn.lt(bBn)) {
+              return -1;
+            }
+            if (bBn.lt(aBn)) {
+              return 1;
+            }
+            return 0;
+          });
+
+          const sampleChunk = makeSample(witnessChunks, anchor1);
+          const sampleHashString = hexlify(sampleChunk.address());
+
+          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const currentRound = await r_node_5.currentRound();
+          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+
+          await mineToRevealPhase();
+
+          await r_node_5.reveal(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const anchor2 = await redistribution.currentSeed();
+
+          await mineNBlocks(phaseLength);
+
+          const { proofParams } = await getClaimProofs(
+            witnessChunks,
+            sampleChunk,
+            anchor1,
+            anchor2,
+            copyBatch.batchOwner,
+            copyBatch.batchId
+          );
+
+          await expect(
+            r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+          ).to.be.revertedWith('witness is not in depth');
+        });
+
+        it('should not claim pot because of estimation check', async () => {
+          const anchor1 = arrayify(currentSeed);
+
+          // create witnesses
+          let witnessChunks: ReturnType<typeof mineWitness>[] = [];
+          let j = 0;
+          for (let i = 0; i < WITNESS_COUNT; i++) {
+            // mine nonce until transformed address is in depth
+            while (true) {
+              const nonce = j++;
+              const nonceBuf = numberToArray(nonce);
+              const transformedAddress = calculateTransformedAddress(nonceBuf, anchor1);
+              if (inProximity(makeChunk(nonceBuf).address(), anchor1, depth)) {
+                witnessChunks.push({ nonce, transformedAddress });
+                j++;
+                break;
+              }
+            }
+          }
+          // sort witness chunks to be descendant because of the order check
+          witnessChunks = witnessChunks.sort((a, b) => {
+            const aBn = BigNumber.from(a.transformedAddress);
+            const bBn = BigNumber.from(b.transformedAddress);
+            if (aBn.lt(bBn)) {
+              return -1;
+            }
+            if (bBn.lt(aBn)) {
+              return 1;
+            }
+            return 0;
+          });
+
+          const sampleChunk = makeSample(witnessChunks, anchor1);
+          const sampleHashString = hexlify(sampleChunk.address());
+
+          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const currentRound = await r_node_5.currentRound();
+          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+
+          await mineToRevealPhase();
+
+          await r_node_5.reveal(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const anchor2 = await redistribution.currentSeed();
+
+          await mineNBlocks(phaseLength);
+
+          const { proofParams } = await getClaimProofs(
+            witnessChunks,
+            sampleChunk,
+            anchor1,
+            anchor2,
+            copyBatch.batchOwner,
+            copyBatch.batchId
+          );
+
+          await expect(
+            r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+          ).to.be.revertedWith('reserve size estimation check failed');
+        });
+
+        describe('should not claim pot because of SOC checks', async () => {
+          it('wrong SOC signature', async function () {
+            const { proofParams } = await generatedSampling(true);
+
+            // alter the identifier into random one
+            proofParams.proof1.socProofAttached![0].identifier = randomBytes(32);
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('Soc verification failed for element');
+          });
+
+          it('SOC attachment does not match with witness', async function () {
+            const { proofParams } = await generatedSampling(true);
+
+            proofParams.proof1.socProofAttached![0] = await getSocProofAttachment(
+              proofParams.proof1.socProofAttached![0].chunkAddr,
+              randomBytes(32),
+              depth
+            );
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('Soc address calculation does not match with the witness');
+          });
+        });
+
+        describe('should not claim pot because of postage stamp checks', async () => {
+          it('stamp index is out of range', async function () {
+            const { proofParams } = await generatedSampling();
+
+            const index = Buffer.from(proofParams.proof1.index);
+            index.writeUInt32BE(2 ** 30, 4);
+            proofParams.proof1.index = index;
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('Stamp available: index resides outside of the valid index set');
+          });
+
+          it('stamp is not valid anymore', async function () {
+            const { proofParams } = await generatedSampling();
+
+            const wallet = getWalletOfFdpPlayQueen();
+            const postage = await ethers.getContract('PostageStamp', deployer);
+            const validityBlockTx = await postage.setMinimumValidityBlocks(1);
+            await validityBlockTx.wait();
+            const initialPaymentPerChunk = price1 * 2 - 1; // it works without substracting 1, the one block is the "createBatch"
+            const batchSize = 2 ** batch.depth;
+            const transferAmount = initialPaymentPerChunk * batchSize;
+            await mintAndApprove(deployer, deployer, postage.address, transferAmount.toString());
+            const batchTx = await postage.createBatch(
+              wallet.address,
+              initialPaymentPerChunk,
+              batch.depth,
+              batch.bucketDepth,
+              '0x00000000000000000000000000000000000000000000000000000000b0bafe77',
+              batch.immutable
+            );
+            const batchReceipt = await batchTx.wait();
+            const batchCreatedEvent = batchReceipt.events.filter((e: { event: string }) => e.event === 'BatchCreated');
+            const batchId = Buffer.from(arrayify(batchCreatedEvent[0].args[0]));
+            const chunkAddr = Buffer.from(proofParams.proof1.proveSegment);
+            const { index, signature, timeStamp } = await constructPostageStamp(batchId, chunkAddr, wallet);
+
+            proofParams.proof1.postageId = batchId;
+            proofParams.proof1.signature = signature;
+            proofParams.proof1.index = index;
+            proofParams.proof1.timeStamp = timeStamp;
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('Stamp alive: batch remaining balance validation failed for attached stamp');
+          });
+
+          it('postage bucket and address bucket do not match', async function () {
+            const { proofParams } = await generatedSampling();
+
+            const index = Buffer.from(proofParams.proof1.index);
+            index.writeUInt32BE(0, 0);
+            proofParams.proof1.index = index;
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('Stamp aligned: postage bucket differs from address bucket');
+          });
+
+          it('wrong postage stamp signature', async function () {
+            const { proofParams } = await generatedSampling();
+
+            const index = Buffer.from(proofParams.proof1.index);
+            index.writeUInt32BE(1, 4);
+            proofParams.proof1.index = index;
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('Stamp authorized: signature recovery failed for element');
+          });
+        });
+
+        describe('should not claim pot because of inclusion proof checks', async () => {
+          it('wrong proof segments for the reserve commitment', async function () {
+            const { proofParams } = await generatedSampling();
+
+            proofParams.proof1.proofSegments[0] = randomBytes(32);
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('RC inclusion proof failed for element');
+          });
+
+          it('wrong proof segments for the original chunk', async function () {
+            const { proofParams } = await generatedSampling();
+
+            proofParams.proof1.proofSegments2[1] = randomBytes(32);
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('inclusion proof failed for original address of element');
+          });
+
+          it('wrong proof segments for the transformed chunk', async function () {
+            const { proofParams } = await generatedSampling();
+
+            proofParams.proof1.proofSegments3[1] = randomBytes(32);
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('inclusion proof failed for transformed address of element');
+          });
+
+          it('first inclusion proof segment of transformed and original do not match', async function () {
+            const { proofParams } = await generatedSampling();
+
+            proofParams.proof1.proofSegments2[0] = randomBytes(32);
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith('first sister segment in data must match');
+          });
         });
 
         describe('two commits with equal stakes', async function () {
