@@ -7,7 +7,7 @@ const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
-const increaseRate = [1036, 1031, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+const increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
 
 const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
@@ -680,6 +680,7 @@ describe('Redistribution', function () {
         let r_node_1: Contract;
         let r_node_2: Contract;
         let currentRound: number;
+        let priceBaseString: string;
 
         beforeEach(async () => {
           priceOracle = await ethers.getContract('PriceOracle', deployer);
@@ -687,6 +688,10 @@ describe('Redistribution', function () {
 
           r_node_1 = await ethers.getContract('Redistribution', node_1);
           r_node_2 = await ethers.getContract('Redistribution', node_2);
+
+          // Set price base
+          const priceBase = await priceOracle.priceBase();
+          priceBaseString = priceBase.toString();
 
           currentRound = await r_node_1.currentRound();
 
@@ -757,7 +762,7 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
 
           // Check if the increase is properly applied, we have one skipped round here
-          const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
+          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
           expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
 
           const sr = await ethers.getContract('StakeRegistry');
@@ -815,7 +820,7 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_1));
 
           // Check if the increase is properly applied, we have one skipped round here
-          const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
+          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
           expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
@@ -859,6 +864,7 @@ describe('Redistribution', function () {
         let r_node_5: Contract;
         let r_node_6: Contract;
         let currentRound: number;
+        let priceBaseString: string;
 
         beforeEach(async () => {
           // //  This 2 nodes are used for round 5
@@ -872,6 +878,10 @@ describe('Redistribution', function () {
 
           priceOracle = await ethers.getContract('PriceOracle', deployer);
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
+
+          // Set price base
+          const priceBase = await priceOracle.priceBase();
+          priceBaseString = priceBase.toString();
 
           // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
           // Each transaction mines one addtional block, so we get to phase limit after many transactions
@@ -905,7 +915,7 @@ describe('Redistribution', function () {
           const nodesInNeighbourhood = 2;
 
           // Check if the increase is properly applied, we have four skipped rounds here
-          const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
+          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
           expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(4, newPrice));
         });
       });
