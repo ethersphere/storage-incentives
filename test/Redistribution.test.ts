@@ -763,7 +763,9 @@ describe('Redistribution', function () {
 
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
-          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
+          expect(await postage.lastPrice()).to.be.eq(
+            await skippedRoundsIncrease(1, newPrice, parseInt(priceBaseString), increaseRate[0])
+          );
 
           const sr = await ethers.getContract('StakeRegistry');
 
@@ -821,7 +823,9 @@ describe('Redistribution', function () {
 
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
-          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(1, newPrice));
+          expect(await postage.lastPrice()).to.be.eq(
+            await skippedRoundsIncrease(1, newPrice, parseInt(priceBaseString), increaseRate[0])
+          );
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
           expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_1));
@@ -916,7 +920,9 @@ describe('Redistribution', function () {
 
           // Check if the increase is properly applied, we have four skipped rounds here
           const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
-          expect(await postage.lastPrice()).to.be.eq(await skippedRoundsIncrease(4, newPrice));
+          expect(await postage.lastPrice()).to.be.eq(
+            await skippedRoundsIncrease(4, newPrice, parseInt(priceBaseString), increaseRate[0])
+          );
         });
       });
     });
