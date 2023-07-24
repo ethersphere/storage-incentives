@@ -24,11 +24,14 @@ contract PriceOracle is AccessControl {
     // The minimum price allowed
     uint256 public constant minimumPrice = 1024;
 
+    // The denominator
+    uint256 public constant priceBase = 514155;
+
     // The current price is the atomic unit.
     uint256 public currentPrice = minimumPrice;
 
     // Constants used to modulate the price, see below usage
-    uint256[] public increaseRate = [1036, 1031, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+    uint256[] public increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
 
     uint16 targetRedundancy = 4;
     uint16 maxConsideredExtraRedundancy = 4;
@@ -106,7 +109,7 @@ contract PriceOracle is AccessControl {
         if (isPaused == false) {
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-            uint256 multiplier = minimumPrice;
+            uint256 multiplier = priceBase;
             uint256 usedRedundancy = redundancy;
             uint256 currentRoundNumber = currentRound();
 
