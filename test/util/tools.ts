@@ -28,12 +28,12 @@ async function skippedRoundsIncrease(
   priceBaseString: number,
   maxIncreaseRate: number
 ): Promise<number> {
-  const multiplier = priceBaseString;
+  const base = priceBaseString;
   let currentPrice = price;
 
-  // currentPrice = currentPrice * Math.pow(maxIncreaseRate / multiplier, n);
+  // currentPrice = currentPrice * Math.pow(maxIncreaseRate / base, n);
   for (let index = 0; index < n; index++) {
-    currentPrice = Math.floor((maxIncreaseRate * currentPrice) / multiplier);
+    currentPrice = Math.floor((maxIncreaseRate * currentPrice) / base);
   }
   return currentPrice;
 }

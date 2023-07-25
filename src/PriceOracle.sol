@@ -24,7 +24,7 @@ contract PriceOracle is AccessControl {
     // The minimum price allowed
     uint256 public constant minimumPrice = 1024;
 
-    // The denominator
+    // The priceBase to modulate the price
     uint256 public constant priceBase = 514155;
 
     // The current price is the atomic unit.
@@ -109,7 +109,6 @@ contract PriceOracle is AccessControl {
         if (isPaused == false) {
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-            uint256 multiplier = priceBase;
             uint256 usedRedundancy = redundancy;
             uint256 currentRoundNumber = currentRound();
 
@@ -131,17 +130,17 @@ contract PriceOracle is AccessControl {
             // the rate at which the price will modulate - if usedRedundancy
             // is the target value 4 there is no change, > 4 causes an increase
             // and < 4 a decrease.
-            // the multiplier is used to ensure whole number
+            // the priceBase is used to ensure whole number
 
             // We first apply the increase/decrease rate for the current round
             uint256 ir = increaseRate[usedRedundancy];
-            currentPrice = (ir * currentPrice) / multiplier;
+            currentPrice = (ir * currentPrice) / priceBase;
 
             // If previous rounds were skipped, use MAX price increase for the previouse rounds
             if (skippedRounds > 0) {
                 ir = increaseRate[0];
                 for (uint256 i = 0; i < skippedRounds; i++) {
-                    currentPrice = (ir * currentPrice) / multiplier;
+                    currentPrice = (ir * currentPrice) / priceBase;
                 }
             }
 
