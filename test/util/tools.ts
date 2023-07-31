@@ -25,13 +25,13 @@ async function getBlockNumber(): Promise<number> {
 async function skippedRoundsIncrease(
   skippedRounds: number,
   newPrice: number,
-  basePrice: number,
+  priceBase: number,
   maxIncreaseRate: number
 ): Promise<number> {
   let currentPrice = newPrice;
 
   for (let index = 0; index < skippedRounds; index++) {
-    currentPrice = Math.floor((maxIncreaseRate * currentPrice) / basePrice);
+    currentPrice = Math.floor((maxIncreaseRate * currentPrice) / priceBase);
   }
   return currentPrice;
 }

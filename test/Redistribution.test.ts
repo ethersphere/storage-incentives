@@ -681,7 +681,7 @@ describe('Redistribution', function () {
         let r_node_1: Contract;
         let r_node_2: Contract;
         let currentRound: number;
-        let priceBaseString: string;
+        let priceBaseNumber: number;
 
         beforeEach(async () => {
           priceOracle = await ethers.getContract('PriceOracle', deployer);
@@ -691,8 +691,8 @@ describe('Redistribution', function () {
           r_node_2 = await ethers.getContract('Redistribution', node_2);
 
           // Set price base
-          const priceBase = await priceOracle.priceBase();
-          priceBaseString = priceBase.toString();
+          const basePrice = await priceOracle.priceBase();
+          priceBaseNumber = Number.parseInt(basePrice);
 
           currentRound = await r_node_1.currentRound();
 
@@ -763,10 +763,10 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_2));
 
           // Check if the increase is properly applied, we have one skipped round here
-          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
+          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
           skippedRounds = 1;
           expect(await postage.lastPrice()).to.be.eq(
-            await skippedRoundsIncrease(skippedRounds, newPrice, parseInt(priceBaseString), increaseRate[0])
+            await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
           );
 
           const sr = await ethers.getContract('StakeRegistry');
@@ -824,10 +824,10 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_1));
 
           // Check if the increase is properly applied, we have one skipped round here
-          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
+          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
           skippedRounds = 1;
           expect(await postage.lastPrice()).to.be.eq(
-            await skippedRoundsIncrease(skippedRounds, newPrice, parseInt(priceBaseString), increaseRate[0])
+            await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
           );
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
@@ -871,7 +871,7 @@ describe('Redistribution', function () {
         let r_node_5: Contract;
         let r_node_6: Contract;
         let currentRound: number;
-        let priceBaseString: string;
+        let priceBaseNumber: number;
 
         beforeEach(async () => {
           // //  This 2 nodes are used for round 5
@@ -887,8 +887,8 @@ describe('Redistribution', function () {
           await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
           // Set price base
-          const priceBase = await priceOracle.priceBase();
-          priceBaseString = priceBase.toString();
+          const basePrice = await priceOracle.priceBase();
+          priceBaseNumber = Number.parseInt(basePrice);
 
           // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
           // Each transaction mines one addtional block, so we get to phase limit after many transactions
@@ -922,10 +922,10 @@ describe('Redistribution', function () {
           const nodesInNeighbourhood = 2;
 
           // Check if the increase is properly applied, we have four skipped rounds here
-          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
+          const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
           skippedRounds = 4;
           expect(await postage.lastPrice()).to.be.eq(
-            await skippedRoundsIncrease(skippedRounds, newPrice, parseInt(priceBaseString), increaseRate[0])
+            await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
           );
         });
       });
