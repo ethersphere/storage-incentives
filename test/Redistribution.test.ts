@@ -610,6 +610,7 @@ describe('Redistribution', function () {
     });
 
     describe('claim phase', async function () {
+      let skippedRounds: number;
       describe('single player', async function () {
         it('should claim pot', async function () {
           expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -763,8 +764,9 @@ describe('Redistribution', function () {
 
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
+          skippedRounds = 1;
           expect(await postage.lastPrice()).to.be.eq(
-            await skippedRoundsIncrease(1, newPrice, parseInt(priceBaseString), increaseRate[0])
+            await skippedRoundsIncrease(skippedRounds, newPrice, parseInt(priceBaseString), increaseRate[0])
           );
 
           const sr = await ethers.getContract('StakeRegistry');
@@ -823,8 +825,9 @@ describe('Redistribution', function () {
 
           // Check if the increase is properly applied, we have one skipped round here
           const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
+          skippedRounds = 1;
           expect(await postage.lastPrice()).to.be.eq(
-            await skippedRoundsIncrease(1, newPrice, parseInt(priceBaseString), increaseRate[0])
+            await skippedRoundsIncrease(skippedRounds, newPrice, parseInt(priceBaseString), increaseRate[0])
           );
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(hash_1);
@@ -920,8 +923,9 @@ describe('Redistribution', function () {
 
           // Check if the increase is properly applied, we have four skipped rounds here
           const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / parseInt(priceBaseString));
+          skippedRounds = 4;
           expect(await postage.lastPrice()).to.be.eq(
-            await skippedRoundsIncrease(4, newPrice, parseInt(priceBaseString), increaseRate[0])
+            await skippedRoundsIncrease(skippedRounds, newPrice, parseInt(priceBaseString), increaseRate[0])
           );
         });
       });
