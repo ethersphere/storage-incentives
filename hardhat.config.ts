@@ -121,7 +121,12 @@ const config: HardhatUserConfig = {
         },
       ],
       hardfork: 'merge',
+      // forking: {
+      //   enabled: true,
+      //   url: 'https://rpc.gnosischain.com',
+      // },
     },
+
     localhost: {
       url: 'http://localhost:8545',
       chainId: 31337,
