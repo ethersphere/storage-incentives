@@ -681,7 +681,7 @@ contract Redistribution is AccessControl, Pausable {
                 return i;
             }
         }
-        revert("No matching commit or hash.");
+        revert("no matching commit or hash");
     }
 
     /**
