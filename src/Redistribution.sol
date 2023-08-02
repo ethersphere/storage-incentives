@@ -774,7 +774,6 @@ contract Redistribution is AccessControl, Pausable {
                 truthRevealedDepth == currentReveals[revIndex].depth
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                // Declare and initialize randomNumber and randomNumberTrunc here, inside the if statement
                 bytes32 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
                 uint256 randomNumberTrunc = uint256(randomNumber & MaxH);
 
