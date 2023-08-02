@@ -430,30 +430,30 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth;
         uint256 redundancy;
 
-        bytes32[revealersDepth] memory _frozenOverlays;
-        bytes32[revealersDepth] memory _slashedOverlays;
+        bytes32[revealersDepth] memory frozenOverlays;
+        bytes32[revealersDepth] memory slashedOverlays;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
         // Evaluate revealers, get Winners and Losers
-        (_winner, redundancy, _frozenOverlays, _slashedOverlays) = evaluateRevealers(
+        (_winner, redundancy, frozenOverlays, slashedOverlays) = evaluateRevealers(
             truthRevealedHash,
             truthRevealedDepth
         );
 
         // Freeze those bastards
-        for (uint256 i = 0; i < _frozenOverlays.length; i++) {
+        for (uint256 i = 0; i < frozenOverlays.length; i++) {
             Stakes.freezeDeposit(
-                _frozenOverlays[i],
+                frozenOverlays[i],
                 penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
             );
         }
 
         // Slash those other bastards
-        for (uint256 i = 0; i < _slashedOverlays.length; i++) {
+        for (uint256 i = 0; i < slashedOverlays.length; i++) {
             Stakes.freezeDeposit(
-                _slashedOverlays[i],
+                slashedOverlays[i],
                 penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
             );
         }
