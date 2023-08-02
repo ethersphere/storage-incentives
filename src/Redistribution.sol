@@ -793,14 +793,12 @@ contract Redistribution is AccessControl, Pausable {
                 (truthRevealedHash != currentReveals[revIndex].hash ||
                     truthRevealedDepth != currentReveals[revIndex].depth)
             ) {
-                frozenOverlays[frozenCounter] = currentReveals[revIndex].overlay;
-                frozenCounter++;
+                frozenOverlays[frozenCounter++] = currentReveals[revIndex].overlay;
             }
 
             // Slash deposits if node didnt reveal
             if (!currentCommits[i].revealed) {
                 slashedOverlays[slashedCounter] = currentCommits[i].overlay;
-                slashedCounter++;
             }
         }
 
