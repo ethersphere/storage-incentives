@@ -900,7 +900,7 @@ describe('Redistribution', function () {
           await r_node_6.claim();
         });
 
-        it('if both reveal, but after 4 skipped rounds, check proper price increase', async function () {
+        it('if both reveal, after 4 skipped rounds, check proper price increase', async function () {
           const nodesInNeighbourhood = 2;
 
           // Check if the increase is properly applied, we have four skipped rounds here

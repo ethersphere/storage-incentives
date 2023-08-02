@@ -89,7 +89,12 @@ function compareHexAsBinary(_a: string, _b: string, d: number): boolean {
   return true;
 }
 
-// example: mineOverlaysInDepth("0xac33", "0x00", 6, 10000);
+// Prefix is first 3 bytes of anchor hash in hexadecimal that we want to match with overlay (matching on depth which is number of digits we want to match)
+// Nonce is the nonce of the overlay that we want to match
+// NetworkID is the networkID of the overlay that we want to match
+// Depth is the number of bits that we want to match
+// MaxAttempts is the maximum number of attempts to find a match
+// example: mineOverlaysInDepth("0xa92b32", "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33" "0x00", 6, 10000);
 async function mineOverlaysInDepth(
   prefix: string,
   nonce: string,
