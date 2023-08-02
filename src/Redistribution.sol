@@ -313,7 +313,6 @@ contract Redistribution is AccessControl, Pausable {
      * @param _hash The reserve commitment hash.
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
-
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
 
@@ -331,8 +330,6 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
         uint256 id = findCommit(_overlay, commitHash, currentCommits.length);
 
-        // Check that the commit exists,
-        require(id != type(uint256).max, "no matching commit or hash");
         // Check that commit is in proximity of the current anchor
         require(
             inProximity(currentCommits[id].overlay, currentRevealRoundAnchor, _depth),
@@ -678,14 +675,13 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Helper function to get this node reveal in commits
      * @dev
      */
-    function findCommit(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256 id) {
-        id = type(uint256).max;
+    function findCommit(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256) {
         for (uint256 i = 0; i < _length; i++) {
             if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
-                id = i;
+                return i;
             }
         }
-        return id;
+        revert("No matching commit or hash.");
     }
 
     /**
