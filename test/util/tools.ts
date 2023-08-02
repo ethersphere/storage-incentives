@@ -89,7 +89,7 @@ function compareHexAsBinary(_a: string, _b: string, d: number): boolean {
   return true;
 }
 
-// Prefix is first 3 bytes of anchor hash in hexadecimal that we want to match with overlay (matching on depth which is number of digits we want to match)
+// Prefix is first N bytes of anchor hash that we want to match with overlay hash, (in this example 6 hex digits, which is depth is equal to 3 Bytes)
 // Nonce is the nonce of the overlay that we want to match
 // NetworkID is the networkID of the overlay that we want to match
 // Depth is the number of bits that we want to match
