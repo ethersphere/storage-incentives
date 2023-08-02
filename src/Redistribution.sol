@@ -420,7 +420,7 @@ contract Redistribution is AccessControl, Pausable {
         PostageContract.withdraw(winner.owner);
     }
 
-    function winnerSelection() internal returns (Reveal memory _winner) {
+    function winnerSelection() internal returns (Reveal memory winnerSelected) {
         require(currentPhaseClaim(), "not in claim phase");
         uint256 cr = currentRound();
         require(cr == currentRevealRound, "round received no reveals");
@@ -437,7 +437,7 @@ contract Redistribution is AccessControl, Pausable {
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
         // Evaluate revealers, get Winners and Losers
-        (_winner, redundancy, frozenOverlays, slashedOverlays) = evaluateRevealers(
+        (winnerSelected, redundancy, frozenOverlays, slashedOverlays) = evaluateRevealers(
             truthRevealedHash,
             truthRevealedDepth
         );
@@ -466,10 +466,10 @@ contract Redistribution is AccessControl, Pausable {
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         emit CountCommits(currentCommits.length);
         emit CountReveals(currentReveals.length);
-        emit WinnerSelected(_winner);
+        emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
 
-        return _winner;
+        return winnerSelected;
     }
 
     /**
@@ -733,15 +733,15 @@ contract Redistribution is AccessControl, Pausable {
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
-        Reveal memory _winner;
+        Reveal memory winnerSelected;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
 
         // Evaluate revealers, get Winners and Losers
-        (_winner, , , ) = evaluateRevealers(truthRevealedHash, truthRevealedDepth);
+        (winnerSelected, , , ) = evaluateRevealers(truthRevealedHash, truthRevealedDepth);
 
-        return (_winner.overlay == _overlay);
+        return (winnerSelected.overlay == _overlay);
     }
 
     function evaluateRevealers(
@@ -751,7 +751,7 @@ contract Redistribution is AccessControl, Pausable {
         internal
         view
         returns (
-            Reveal memory _winner,
+            Reveal memory winnerSelected,
             uint256 redundancyCount,
             bytes32[revealersDepth] memory frozenOverlays,
             bytes32[revealersDepth] memory slashedOverlays
@@ -782,7 +782,7 @@ contract Redistribution is AccessControl, Pausable {
                     randomNumberTrunc * currentWinnerSelectionSum <
                     currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    _winner = currentReveals[revIndex];
+                    winnerSelected = currentReveals[revIndex];
                 }
 
                 redundancyCount++;
@@ -805,7 +805,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        return (_winner, redundancyCount, frozenOverlays, slashedOverlays);
+        return (winnerSelected, redundancyCount, frozenOverlays, slashedOverlays);
     }
 
     // ----------------------------- Claim verifications  ------------------------------
