@@ -68,8 +68,8 @@ async function mintAndApprove(payee: string, beneficiary: string, transferAmount
 describe('Staking', function () {
   describe('when deploying contract', function () {
     beforeEach(async function () {
-      stakeRegistry = await ethers.getContract('StakeRegistry');
       await deployments.fixture();
+      stakeRegistry = await ethers.getContract('StakeRegistry');
       const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
       await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
     });
@@ -170,9 +170,9 @@ describe('Staking', function () {
 
   describe('slashing stake', function () {
     beforeEach(async function () {
+      await deployments.fixture();
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry');
-      await deployments.fixture();
 
       const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
@@ -283,9 +283,9 @@ describe('Staking', function () {
     let sr_staker_0: Contract;
 
     beforeEach(async function () {
+      await deployments.fixture();
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry');
-      await deployments.fixture();
 
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
@@ -355,9 +355,9 @@ describe('Staking', function () {
     let updatedBlockNumber: number;
 
     beforeEach(async function () {
+      await deployments.fixture();
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry');
-      await deployments.fixture();
 
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
