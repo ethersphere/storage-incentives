@@ -121,10 +121,11 @@ const config: HardhatUserConfig = {
         },
       ],
       hardfork: 'merge',
-      // forking: {
-      //   enabled: true,
-      //   url: 'https://rpc.gnosischain.com',
-      // },
+      forking: {
+        enabled: true,
+        url: 'https://rpc.gnosischain.com',
+        blockNumber: 29279000,
+      },
     },
 
     localhost: {

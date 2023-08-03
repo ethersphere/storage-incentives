@@ -1,5 +1,5 @@
 import { expect } from './util/chai';
-import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
+import { ethers, deployments, getNamedAccounts, getUnnamedAccounts, network } from 'hardhat';
 import { Contract } from 'ethers';
 import { mineNBlocks, getBlockNumber } from './util/tools';
 
@@ -36,6 +36,13 @@ describe('PriceOracle', function () {
     it('should deploy PriceOracle', async function () {
       const priceOracle = await ethers.getContract('PriceOracle');
       expect(priceOracle.address).to.be.properAddress;
+    });
+
+    it('should show block number', async function () {
+      console.log(await getBlockNumber());
+      console.log(network.config.forking.enabled);
+      await mineNBlocks(50);
+      console.log(await getBlockNumber());
     });
 
     it('should set the default admin role', async function () {
