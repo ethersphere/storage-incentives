@@ -173,9 +173,10 @@ const config: HardhatUserConfig = {
     currency: 'USD',
     gasPriceApi: 'https://api.etherscan.io/api?module=proxy&action=eth_gasPrice',
     token: 'ETH',
-    //      gasPrice: 8,
-    //      outputFile: "gas-report.txt",
-    //      noColors: true,
+    onlyCalledMethods: true,
+    //outputFile: 'gas-report.txt',
+    //noColors: true,
+    //gasPrice: 8,
     coinmarketcap: process.env.CMC_KEY,
   },
 };
