@@ -6,6 +6,7 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 import 'hardhat-contract-sizer';
+import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
@@ -166,6 +167,16 @@ const config: HardhatUserConfig = {
   },
   contractSizer: {
     runOnCompile: true,
+  },
+  gasReporter: {
+    enabled: true,
+    currency: 'USD',
+    gasPriceApi: 'https://api.etherscan.io/api?module=proxy&action=eth_gasPrice',
+    token: 'ETH',
+    //      gasPrice: 8,
+    //      outputFile: "gas-report.txt",
+    //      noColors: true,
+    coinmarketcap: process.env.CMC_KEY,
   },
 };
 
