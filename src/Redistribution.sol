@@ -318,45 +318,37 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
+        uint256 id = findCommit(_overlay, commitHash, currentCommits.length);
 
-        uint256 commitsArrayLength = currentCommits.length;
+        // Check that commit is in proximity of the current anchor
+        require(
+            inProximity(currentCommits[id].overlay, currentRevealRoundAnchor, _depth),
+            "anchor out of self reported depth"
+        );
+        // Check that the commit has not already been revealed
+        require(currentCommits[id].revealed == false, "participant already revealed");
+        currentCommits[id].revealed = true;
+        currentCommits[id].revealIndex = currentReveals.length;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
-            if (currentCommits[i].overlay == _overlay && commitHash == currentCommits[i].obfuscatedHash) {
-                require(
-                    inProximity(currentCommits[i].overlay, currentRevealRoundAnchor, _depth),
-                    "anchor out of self reported depth"
-                );
-                //check can only revealed once
-                require(currentCommits[i].revealed == false, "participant already revealed");
-                currentCommits[i].revealed = true;
-                currentCommits[i].revealIndex = currentReveals.length;
+        currentReveals.push(
+            Reveal({
+                owner: currentCommits[id].owner,
+                overlay: currentCommits[id].overlay,
+                stake: currentCommits[id].stake,
+                stakeDensity: currentCommits[id].stake * uint256(2 ** _depth),
+                hash: _hash,
+                depth: _depth
+            })
+        );
 
-                currentReveals.push(
-                    Reveal({
-                        owner: currentCommits[i].owner,
-                        overlay: currentCommits[i].overlay,
-                        stake: currentCommits[i].stake,
-                        stakeDensity: currentCommits[i].stake * uint256(2 ** _depth),
-                        hash: _hash,
-                        depth: _depth
-                    })
-                );
-
-                emit Revealed(
-                    cr,
-                    currentCommits[i].overlay,
-                    currentCommits[i].stake,
-                    currentCommits[i].stake * uint256(2 ** _depth),
-                    _hash,
-                    _depth
-                );
-
-                return;
-            }
-        }
-
-        require(false, "no matching commit or hash");
+        emit Revealed(
+            cr,
+            currentCommits[id].overlay,
+            currentCommits[id].stake,
+            currentCommits[id].stake * uint256(2 ** _depth),
+            _hash,
+            _depth
+        );
     }
 
     /**
@@ -677,6 +669,19 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     // ----------------------------- Reveal ------------------------------
+
+    /**
+     * @notice Helper function to get this node reveal in commits
+     * @dev
+     */
+    function findCommit(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256) {
+        for (uint256 i = 0; i < _length; i++) {
+            if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
+                return i;
+            }
+        }
+        revert("no matching commit or hash");
+    }
 
     /**
      * @notice Hash the pre-image values to the obsfucated hash.
