@@ -31,3 +31,6 @@ deployments/localhost
 # Misc
 contractsInfo.json
 .DS_Store
+
+# Gas reports
+gas-report.txt

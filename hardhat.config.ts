@@ -6,6 +6,7 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 import 'hardhat-contract-sizer';
+import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
@@ -154,7 +155,7 @@ const config: HardhatUserConfig = {
         chainId: 11155111,
         urls: {
           apiURL: 'https://api-sepolia.etherscan.io/api',
-          browserURL: 'https://sepolia.etherscan.io/',
+          browserURL: 'https://sepolia.etherscan.io/address/',
         },
       },
       {
@@ -172,6 +173,17 @@ const config: HardhatUserConfig = {
   },
   contractSizer: {
     runOnCompile: true,
+  },
+  gasReporter: {
+    enabled: true,
+    currency: 'USD',
+    gasPriceApi: 'https://api.etherscan.io/api?module=proxy&action=eth_gasPrice',
+    token: 'ETH',
+    onlyCalledMethods: true,
+    //outputFile: 'gas-report.txt',
+    //noColors: true,
+    //gasPrice: 8,
+    coinmarketcap: process.env.CMC_KEY,
   },
 };
 
