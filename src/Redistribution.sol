@@ -161,12 +161,6 @@ contract Redistribution is AccessControl, Pausable {
     // inputs for selection of the truth teller and beneficiary.
     bytes32 seed;
 
-    uint256 currentSum;
-    uint256 currentWinnerSelectionSum;
-
-    uint256 x;
-    uint256 y;
-
     // The miniumum stake allowed to be staked using the Staking contract.
     uint256 public minimumStake = 100000000000000000;
 
@@ -177,10 +171,6 @@ contract Redistribution is AccessControl, Pausable {
 
     // The length of a round in blocks.
     uint256 public roundLength = 152;
-
-    uint256 k;
-    uint256 revIndex;
-    uint256 randomChunkSegmentIndex;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -380,12 +370,15 @@ contract Redistribution is AccessControl, Pausable {
     ) external whenNotPaused {
         winner = winnerSelection();
 
+        uint256 indexInRC1;
+        uint256 indexInRC2;
+
         // rand(14)
-        x = uint256(seed) % 15;
+        indexInRC1 = uint256(seed) % 15;
         // rand(13)
-        y = uint256(seed) % 14;
-        if (y >= x) {
-            y++;
+        indexInRC2 = uint256(seed) % 14;
+        if (indexInRC2 >= indexInRC1) {
+            indexInRC2++;
         }
 
         require(
@@ -400,7 +393,7 @@ contract Redistribution is AccessControl, Pausable {
             inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth),
             "witness is not in depth"
         );
-        inclusionFunction(entryProof1, x * 2);
+        inclusionFunction(entryProof1, indexInRC1 * 2);
         stampFunction(entryProof1);
         socFunction(entryProofLast);
 
@@ -408,11 +401,17 @@ contract Redistribution is AccessControl, Pausable {
             inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth),
             "witness is not in depth"
         );
-        inclusionFunction(entryProof2, y * 2);
+        inclusionFunction(entryProof2, indexInRC2 * 2);
         stampFunction(entryProof2);
         socFunction(entryProofLast);
 
-        checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
+        checkOrder(
+            indexInRC1,
+            indexInRC2,
+            entryProof1.proofSegments[0],
+            entryProof2.proofSegments[0],
+            entryProofLast.proofSegments[0]
+        );
 
         emit WinnerSelected(winner);
 
@@ -429,8 +428,10 @@ contract Redistribution is AccessControl, Pausable {
 
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
 
-        currentSum = 0;
-        currentWinnerSelectionSum = 0;
+        uint256 currentSum = 0;
+        uint256 currentWinnerSelectionSum = 0;
+        uint256 redundancyCount = 0;
+        uint256 revIndex;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
@@ -464,8 +465,6 @@ contract Redistribution is AccessControl, Pausable {
 
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
 
-        k = 0;
-
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
         for (uint256 i = 0; i < currentCommits.length; i++) {
@@ -476,7 +475,7 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedDepth == currentReveals[revIndex].depth
                 ) {
                     currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
 
                     randomNumberTrunc = uint256(randomNumber & MaxH);
 
@@ -487,7 +486,7 @@ contract Redistribution is AccessControl, Pausable {
                         winner_ = currentReveals[revIndex];
                     }
 
-                    k++;
+                    redundancyCount++;
                 } else {
                     Stakes.freezeDeposit(
                         currentReveals[revIndex].overlay,
@@ -506,7 +505,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        OracleContract.adjustPrice(uint256(k));
+        OracleContract.adjustPrice(uint256(redundancyCount));
 
         require(winner_.owner == msg.sender, "Only selected winner can do the claim");
 
@@ -875,7 +874,7 @@ contract Redistribution is AccessControl, Pausable {
         // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp");
     }
 
-    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
+    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {
         require(
             winner.hash ==
                 BMTChunk.chunkAddressFromInclusionProof(
@@ -887,7 +886,7 @@ contract Redistribution is AccessControl, Pausable {
             "RC inclusion proof failed for element"
         );
 
-        randomChunkSegmentIndex = uint256(seed) % 128;
+        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
 
         require(
             entryProof.proofSegments2[0] == entryProof.proofSegments3[0],
