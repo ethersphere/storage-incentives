@@ -40,9 +40,13 @@ describe('PriceOracle', function () {
 
     it('should show block number', async function () {
       console.log(await getBlockNumber());
-      console.log(network.config.forking.enabled);
-      await mineNBlocks(50);
-      console.log(await getBlockNumber());
+      //    console.log(network.config.forking.enabled);
+      let redistribution = await ethers.getContract('Redistribution');
+
+      console.log((await redistribution.currentRound()).toString());
+
+      await mineNBlocks(150);
+      console.log((await redistribution.currentRound()).toString());
     });
 
     it('should set the default admin role', async function () {
