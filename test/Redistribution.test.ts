@@ -652,7 +652,6 @@ describe('Redistribution', function () {
           // anchor fixture
           await mineToNode(redistribution, 5);
           let currentSeed = await redistribution.currentSeed();
-          console.log('Anchor', currentSeed);
 
           expect(await redistribution.currentPhaseCommit()).to.be.true;
           const r_node_5 = await ethers.getContract('Redistribution', node_5);
@@ -672,7 +671,6 @@ describe('Redistribution', function () {
           await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_2);
 
           currentSeed = await redistribution.currentSeed();
-          console.log('Anchor2', currentSeed);
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
