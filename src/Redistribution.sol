@@ -144,9 +144,6 @@ contract Redistribution is AccessControl, Pausable {
     // Role allowed to pause.
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
-    uint256 public penaltyMultiplierDisagreement = 1;
-    uint256 public penaltyMultiplierNonRevealed = 2;
-
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
@@ -161,16 +158,20 @@ contract Redistribution is AccessControl, Pausable {
     // inputs for selection of the truth teller and beneficiary.
     bytes32 seed;
 
-    // The miniumum stake allowed to be staked using the Staking contract.
-    uint256 public minimumStake = 100000000000000000;
-
     // The number of the currently active round phases.
-    uint256 public currentCommitRound;
-    uint256 public currentRevealRound;
-    uint256 public currentClaimRound;
+    uint32 public currentCommitRound;
+    uint32 public currentRevealRound;
+    uint32 public currentClaimRound;
+
+    // Settings for slashing and freezing
+    uint8 public penaltyMultiplierDisagreement = 1;
+    uint8 public penaltyMultiplierNonRevealed = 2;
 
     // The length of a round in blocks.
-    uint256 public roundLength = 152;
+    uint8 public constant ROUND_LENGTH = 152;
+
+    // The miniumum stake allowed to be staked using the Staking contract.
+    uint64 public MIN_STAKE = 100000000000000000;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -255,17 +256,17 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint256 _roundNumber) external whenNotPaused {
         require(currentPhaseCommit(), "not in commit phase");
-        require(block.number % roundLength != (roundLength / 4) - 1, "can not commit in last block of phase");
+        require(block.number % ROUND_LENGTH != (ROUND_LENGTH / 4) - 1, "can not commit in last block of phase");
         uint256 cr = currentRound();
         require(cr <= _roundNumber, "commit round over");
         require(cr >= _roundNumber, "commit round not started yet");
 
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
-        require(nstake >= minimumStake, "stake must exceed minimum");
+        require(nstake >= MIN_STAKE, "stake must exceed minimum");
         require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner must match sender");
 
         require(
-            Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2 * roundLength,
+            Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2 * ROUND_LENGTH,
             "must have staked 2 rounds prior"
         );
 
@@ -468,7 +469,7 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 Stakes.freezeDeposit(
                     currentReveals[revIndex].overlay,
-                    penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                    penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
 
@@ -478,7 +479,7 @@ contract Redistribution is AccessControl, Pausable {
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
                     currentCommits[i].overlay,
-                    penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
+                    penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
             unchecked {
@@ -628,14 +629,14 @@ contract Redistribution is AccessControl, Pausable {
      * @notice The number of the current round.
      */
     function currentRound() public view returns (uint256) {
-        return (block.number / roundLength);
+        return (block.number / ROUND_LENGTH);
     }
 
     /**
      * @notice Returns true if current block is during commit phase.
      */
     function currentPhaseCommit() public view returns (bool) {
-        if (block.number % roundLength < roundLength / 4) {
+        if (block.number % ROUND_LENGTH < ROUND_LENGTH / 4) {
             return true;
         }
         return false;
@@ -649,10 +650,10 @@ contract Redistribution is AccessControl, Pausable {
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
         require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
         require(
-            Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * roundLength,
+            Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * ROUND_LENGTH,
             "stake updated recently"
         );
-        require(Stakes.stakeOfOverlay(overlay) >= minimumStake, "stake amount does not meet minimum");
+        require(Stakes.stakeOfOverlay(overlay) >= MIN_STAKE, "stake amount does not meet minimum");
         return inProximity(overlay, currentRoundAnchor(), depth);
     }
 
@@ -695,8 +696,8 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during reveal phase.
      */
     function currentPhaseReveal() public view returns (bool) {
-        uint256 number = block.number % roundLength;
-        if (number >= roundLength / 4 && number < roundLength / 2) {
+        uint256 number = block.number % ROUND_LENGTH;
+        if (number >= ROUND_LENGTH / 4 && number < ROUND_LENGTH / 2) {
             return true;
         }
         return false;
@@ -718,7 +719,7 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during claim phase.
      */
     function currentPhaseClaim() public view returns (bool) {
-        if (block.number % roundLength >= roundLength / 2) {
+        if (block.number % ROUND_LENGTH >= ROUND_LENGTH / 2) {
             return true;
         }
         return false;
@@ -873,7 +874,7 @@ contract Redistribution is AccessControl, Pausable {
         require(postageBucket == addressBucket, "Stamp aligned: postage bucket differs from address bucket");
 
         // FOR LATER USE
-        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp");
+        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * ROUND_LENGTH, "batch past balance validation failed for attached stamp");
     }
 
     function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {
