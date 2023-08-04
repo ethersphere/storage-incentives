@@ -168,7 +168,7 @@ contract Redistribution is AccessControl, Pausable {
     uint8 public penaltyMultiplierNonRevealed = 2;
 
     // The length of a round in blocks.
-    uint8 public constant ROUND_LENGTH = 152;
+    uint256 public constant ROUND_LENGTH = 152;
 
     // The miniumum stake allowed to be staked using the Staking contract.
     uint64 public MIN_STAKE = 100000000000000000;
@@ -254,10 +254,11 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
      * and be derived from the same key pair as the message sender.
      */
-    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint256 _roundNumber) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint32 _roundNumber) external whenNotPaused {
         require(currentPhaseCommit(), "not in commit phase");
         require(block.number % ROUND_LENGTH != (ROUND_LENGTH / 4) - 1, "can not commit in last block of phase");
-        uint256 cr = currentRound();
+        uint32 cr = uint32(currentRound());
+
         require(cr <= _roundNumber, "commit round over");
         require(cr >= _roundNumber, "commit round not started yet");
 
@@ -310,7 +311,7 @@ contract Redistribution is AccessControl, Pausable {
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
 
-        uint256 cr = currentRound();
+        uint32 cr = uint32(currentRound());
 
         require(cr == currentCommitRound, "round received no commits");
         if (cr != currentRevealRound) {
@@ -416,7 +417,7 @@ contract Redistribution is AccessControl, Pausable {
 
     // 515038
     function winnerSelection() internal returns (Reveal memory winnerSelected) {
-        uint256 cr = currentRound();
+        uint32 cr = uint32(currentRound());
 
         require(currentPhaseClaim(), "not in claim phase");
         require(cr == currentRevealRound, "round received no reveals");
@@ -498,7 +499,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @notice Set freezing parameters
      */
-    function setFreezingParams(uint256 _penaltyMultiplierDisagreement, uint256 _penaltyMultiplierNonRevealed) external {
+    function setFreezingParams(uint8 _penaltyMultiplierDisagreement, uint8 _penaltyMultiplierNonRevealed) external {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
         penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
         penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
