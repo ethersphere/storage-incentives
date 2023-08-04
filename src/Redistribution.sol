@@ -324,23 +324,24 @@ contract Redistribution is AccessControl, Pausable {
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
         uint256 id = findCommit(_overlay, commitHash, currentCommits.length);
+        Commit memory currentCommit = currentCommits[id];
 
         // Check that commit is in proximity of the current anchor
         require(
-            inProximity(currentCommits[id].overlay, currentRevealRoundAnchor, _depth),
+            inProximity(currentCommit.overlay, currentRevealRoundAnchor, _depth),
             "anchor out of self reported depth"
         );
         // Check that the commit has not already been revealed
-        require(currentCommits[id].revealed == false, "participant already revealed");
-        currentCommits[id].revealed = true;
-        currentCommits[id].revealIndex = currentReveals.length;
+        require(currentCommit.revealed == false, "participant already revealed");
+        currentCommit.revealed = true;
+        currentCommit.revealIndex = currentReveals.length;
 
         currentReveals.push(
             Reveal({
-                owner: currentCommits[id].owner,
-                overlay: currentCommits[id].overlay,
-                stake: currentCommits[id].stake,
-                stakeDensity: currentCommits[id].stake * uint256(2 ** _depth),
+                owner: currentCommit.owner,
+                overlay: currentCommit.overlay,
+                stake: currentCommit.stake,
+                stakeDensity: currentCommit.stake * uint256(2 ** _depth),
                 hash: _hash,
                 depth: _depth
             })
@@ -348,9 +349,9 @@ contract Redistribution is AccessControl, Pausable {
 
         emit Revealed(
             cr,
-            currentCommits[id].overlay,
-            currentCommits[id].stake,
-            currentCommits[id].stake * uint256(2 ** _depth),
+            currentCommit.overlay,
+            currentCommit.stake,
+            currentCommit.stake * uint256(2 ** _depth),
             _hash,
             _depth
         );
@@ -371,30 +372,37 @@ contract Redistribution is AccessControl, Pausable {
         Reveal memory winnerSelected = winner;
         uint256 indexInRC1;
         uint256 indexInRC2;
-        bytes32 currentAnchor = currentRevealRoundAnchor;
+        bytes32 _currentRevealRoundAnchor = currentRevealRoundAnchor;
+        bytes32 _seed = seed;
 
         // rand(14)
-        indexInRC1 = uint256(seed) % 15;
+        indexInRC1 = uint256(_seed) % 15;
         // rand(13)
-        indexInRC2 = uint256(seed) % 14;
+        indexInRC2 = uint256(_seed) % 14;
         if (indexInRC2 >= indexInRC1) {
             indexInRC2++;
         }
 
         require(
-            inProximity(entryProofLast.proveSegment, currentAnchor, winnerSelected.depth),
+            inProximity(entryProofLast.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth),
             "witness is not in depth"
         );
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
         socFunction(entryProofLast);
 
-        require(inProximity(entryProof1.proveSegment, currentAnchor, winnerSelected.depth), "witness is not in depth");
+        require(
+            inProximity(entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth),
+            "witness is not in depth"
+        );
         inclusionFunction(entryProof1, indexInRC1 * 2);
         stampFunction(entryProof1);
         socFunction(entryProofLast);
 
-        require(inProximity(entryProof2.proveSegment, currentAnchor, winnerSelected.depth), "witness is not in depth");
+        require(
+            inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth),
+            "witness is not in depth"
+        );
         inclusionFunction(entryProof2, indexInRC2 * 2);
         stampFunction(entryProof2);
         socFunction(entryProofLast);
@@ -428,6 +436,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 currentCommitsLength = currentCommits.length;
+        bytes32 _MaxH = MaxH;
 
         emit CountCommits(currentCommitsLength);
         emit CountReveals(currentReveals.length);
@@ -449,9 +458,9 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveal.stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-                randomNumberTrunc = uint256(randomNumber & MaxH);
+                randomNumberTrunc = uint256(randomNumber & _MaxH);
 
-                if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(MaxH) + 1)) {
+                if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(_MaxH) + 1)) {
                     winner = currentReveal;
                 }
 
