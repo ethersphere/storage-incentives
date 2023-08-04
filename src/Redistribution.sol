@@ -278,8 +278,11 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 commitsArrayLength = currentCommits.length;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < commitsArrayLength; ) {
             require(currentCommits[i].overlay != _overlay, "only one commit each per round");
+            unchecked {
+                ++i;
+            }
         }
 
         currentCommits.push(
@@ -434,7 +437,7 @@ contract Redistribution is AccessControl, Pausable {
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
-        for (uint256 i = 0; i < currentCommits.length; i++) {
+        for (uint256 i = 0; i < currentCommits.length; ) {
             revIndex = currentCommits[i].revealIndex;
 
             // Select winner with valid truth
@@ -477,6 +480,9 @@ contract Redistribution is AccessControl, Pausable {
                     currentCommits[i].overlay,
                     penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
                 );
+            }
+            unchecked {
+                ++i;
             }
         }
 
@@ -657,9 +663,12 @@ contract Redistribution is AccessControl, Pausable {
      * @dev
      */
     function findCommit(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256) {
-        for (uint256 i = 0; i < _length; i++) {
+        for (uint256 i = 0; i < _length; ) {
             if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
                 return i;
+            }
+            unchecked {
+                ++i;
             }
         }
         revert("no matching commit or hash");
@@ -726,7 +735,7 @@ contract Redistribution is AccessControl, Pausable {
         string memory truthSelectionAnchor = currentTruthSelectionAnchor();
         uint256 commitsArrayLength = currentCommits.length;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < commitsArrayLength; ) {
             if (currentCommits[i].revealed) {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
@@ -744,6 +753,9 @@ contract Redistribution is AccessControl, Pausable {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
+            }
+            unchecked {
+                ++i;
             }
         }
 
@@ -774,7 +786,7 @@ contract Redistribution is AccessControl, Pausable {
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
         uint256 commitsArrayLength = currentCommits.length;
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
+        for (uint256 i = 0; i < commitsArrayLength; ) {
             revIndex = currentCommits[i].revealIndex;
 
             // Deterministically read winner
@@ -795,6 +807,9 @@ contract Redistribution is AccessControl, Pausable {
                 }
 
                 redundancyCount++;
+            }
+            unchecked {
+                ++i;
             }
         }
 
