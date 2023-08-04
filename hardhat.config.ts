@@ -26,32 +26,13 @@ const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 // Config for hardhat.
 const config: HardhatUserConfig = {
   solidity: {
-    compilers: [
-      {
-        version: '0.8.17',
-        settings: {
-          //viaIR: true,
-          optimizer: {
-            enabled: true,
-            runs: 200,
-            // details: {
-            //   yulDetails: {
-            //     optimizerSteps: 'u',
-            //   },
-            // },
-          },
-        },
+    version: '0.8.1',
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200,
       },
-      {
-        version: '0.8.1',
-        settings: {
-          optimizer: {
-            enabled: true,
-            runs: 200,
-          },
-        },
-      },
-    ],
+    },
   },
   preprocess: {
     eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
@@ -194,7 +175,7 @@ const config: HardhatUserConfig = {
     runOnCompile: false,
   },
   gasReporter: {
-    enabled: true,
+    enabled: false,
     currency: 'USD',
     gasPriceApi: 'https://api.etherscan.io/api?module=proxy&action=eth_gasPrice',
     token: 'ETH',
