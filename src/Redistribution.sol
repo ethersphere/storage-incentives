@@ -365,8 +365,10 @@ contract Redistribution is AccessControl, Pausable {
         ChunkInclusionProof calldata entryProof2,
         ChunkInclusionProof calldata entryProofLast
     ) external whenNotPaused {
-        winner = winnerSelection();
+        winnerSelection();
+        require(winner.owner == msg.sender, "Only selected winner can do the claim");
 
+        Reveal memory winnerSelected = winner;
         uint256 indexInRC1;
         uint256 indexInRC2;
         bytes32 currentAnchor = currentRevealRoundAnchor;
@@ -379,17 +381,20 @@ contract Redistribution is AccessControl, Pausable {
             indexInRC2++;
         }
 
-        require(inProximity(entryProofLast.proveSegment, currentAnchor, winner.depth), "witness is not in depth");
+        require(
+            inProximity(entryProofLast.proveSegment, currentAnchor, winnerSelected.depth),
+            "witness is not in depth"
+        );
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
         socFunction(entryProofLast);
 
-        require(inProximity(entryProof1.proveSegment, currentAnchor, winner.depth), "witness is not in depth");
+        require(inProximity(entryProof1.proveSegment, currentAnchor, winnerSelected.depth), "witness is not in depth");
         inclusionFunction(entryProof1, indexInRC1 * 2);
         stampFunction(entryProof1);
         socFunction(entryProofLast);
 
-        require(inProximity(entryProof2.proveSegment, currentAnchor, winner.depth), "witness is not in depth");
+        require(inProximity(entryProof2.proveSegment, currentAnchor, winnerSelected.depth), "witness is not in depth");
         inclusionFunction(entryProof2, indexInRC2 * 2);
         stampFunction(entryProof2);
         socFunction(entryProofLast);
@@ -402,13 +407,13 @@ contract Redistribution is AccessControl, Pausable {
             entryProofLast.proofSegments[0]
         );
 
-        emit WinnerSelected(winner);
+        emit WinnerSelected(winnerSelected);
 
-        PostageContract.withdraw(winner.owner);
+        PostageContract.withdraw(winnerSelected.owner);
     }
 
     // 515038
-    function winnerSelection() internal returns (Reveal memory winnerSelected) {
+    function winnerSelection() internal {
         uint32 cr = uint32(currentRound());
 
         require(currentPhaseClaim(), "not in claim phase");
@@ -447,7 +452,7 @@ contract Redistribution is AccessControl, Pausable {
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(MaxH) + 1)) {
-                    winnerSelected = currentReveal;
+                    winner = currentReveal;
                 }
 
                 redundancyCount++;
@@ -478,12 +483,8 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        require(winnerSelected.owner == msg.sender, "Only selected winner can do the claim");
-
         OracleContract.adjustPrice(uint256(redundancyCount));
         currentClaimRound = cr;
-
-        return winnerSelected;
     }
 
     /**
