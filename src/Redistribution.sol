@@ -369,6 +369,7 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 indexInRC1;
         uint256 indexInRC2;
+        bytes32 currentAnchor = currentRevealRoundAnchor;
 
         // rand(14)
         indexInRC1 = uint256(seed) % 15;
@@ -378,26 +379,17 @@ contract Redistribution is AccessControl, Pausable {
             indexInRC2++;
         }
 
-        require(
-            inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth),
-            "witness is not in depth"
-        );
+        require(inProximity(entryProofLast.proveSegment, currentAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
         socFunction(entryProofLast);
 
-        require(
-            inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth),
-            "witness is not in depth"
-        );
+        require(inProximity(entryProof1.proveSegment, currentAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof1, indexInRC1 * 2);
         stampFunction(entryProof1);
         socFunction(entryProofLast);
 
-        require(
-            inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth),
-            "witness is not in depth"
-        );
+        require(inProximity(entryProof2.proveSegment, currentAnchor, winner.depth), "witness is not in depth");
         inclusionFunction(entryProof2, indexInRC2 * 2);
         stampFunction(entryProof2);
         socFunction(entryProofLast);
@@ -425,38 +417,37 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 currentWinnerSelectionSum = 0;
         uint256 redundancyCount = 0;
-        uint256 revIndex;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
+        uint256 currentCommitsLength = currentCommits.length;
 
-        emit CountCommits(currentCommits.length);
+        emit CountCommits(currentCommitsLength);
         emit CountReveals(currentReveals.length);
 
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
-        for (uint256 i = 0; i < currentCommits.length; ) {
-            revIndex = currentCommits[i].revealIndex;
+        for (uint256 i = 0; i < currentCommitsLength; ) {
+            Commit memory currentCommit = currentCommits[i];
+            uint256 revIndex = currentCommit.revealIndex;
+            Reveal memory currentReveal = currentReveals[revIndex];
 
             // Select winner with valid truth
             if (
-                currentCommits[i].revealed &&
-                truthRevealedHash == currentReveals[revIndex].hash &&
-                truthRevealedDepth == currentReveals[revIndex].depth
+                currentCommit.revealed &&
+                truthRevealedHash == currentReveal.hash &&
+                truthRevealedDepth == currentReveal.depth
             ) {
-                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                currentWinnerSelectionSum += currentReveal.stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
-                if (
-                    randomNumberTrunc * currentWinnerSelectionSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                ) {
-                    winnerSelected = currentReveals[revIndex];
+                if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(MaxH) + 1)) {
+                    winnerSelected = currentReveal;
                 }
 
                 redundancyCount++;
@@ -464,22 +455,21 @@ contract Redistribution is AccessControl, Pausable {
 
             // Freeze deposit if any truth is false
             if (
-                currentCommits[i].revealed &&
-                (truthRevealedHash != currentReveals[revIndex].hash ||
-                    truthRevealedDepth != currentReveals[revIndex].depth)
+                currentCommit.revealed &&
+                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth)
             ) {
                 Stakes.freezeDeposit(
-                    currentReveals[revIndex].overlay,
+                    currentReveal.overlay,
                     penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
 
             // Slash deposits if revealed is false
-            if (!currentCommits[i].revealed) {
+            if (!currentCommit.revealed) {
                 // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
-                    currentCommits[i].overlay,
+                    currentCommit.overlay,
                     penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
