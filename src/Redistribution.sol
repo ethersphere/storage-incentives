@@ -815,16 +815,13 @@ contract Redistribution is AccessControl, Pausable {
     function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
         if (entryProof.socProofAttached.length == 0) return;
 
-        require(
-            Signatures.socVerify(
-                entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
-                entryProof.socProofAttached[0].signature,
-                entryProof.socProofAttached[0].identifier,
-                entryProof.proveSegment
-            ),
-            "Soc verification failed for element"
-        );
-
+        require(Signatures.socVerify(
+            entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
+            entryProof.socProofAttached[0].signature,
+            entryProof.socProofAttached[0].identifier,
+            entryProof.socProofAttached[0].chunkAddr
+        ), "Soc verification failed for element");
+        
         require(
             calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) ==
                 entryProof.proveSegment,
