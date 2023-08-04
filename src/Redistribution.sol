@@ -333,8 +333,8 @@ contract Redistribution is AccessControl, Pausable {
         );
         // Check that the commit has not already been revealed
         require(currentCommit.revealed == false, "participant already revealed");
-        currentCommit.revealed = true;
-        currentCommit.revealIndex = currentReveals.length;
+        currentCommits[id].revealed = true;
+        currentCommits[id].revealIndex = currentReveals.length;
 
         currentReveals.push(
             Reveal({
@@ -432,11 +432,11 @@ contract Redistribution is AccessControl, Pausable {
         uint256 redundancyCount = 0;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
+        bytes32 _MaxH = MaxH;
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 currentCommitsLength = currentCommits.length;
-        bytes32 _MaxH = MaxH;
 
         emit CountCommits(currentCommitsLength);
         emit CountReveals(currentReveals.length);
