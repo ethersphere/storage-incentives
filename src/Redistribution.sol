@@ -410,17 +410,14 @@ contract Redistribution is AccessControl, Pausable {
         PostageContract.withdraw(winner.owner);
     }
 
-    function winnerSelection() internal returns (Reveal memory winner_) {
-        require(currentPhaseClaim(), "not in claim phase");
-
+    // 515038
+    function winnerSelection() internal returns (Reveal memory winnerSelected) {
         uint256 cr = currentRound();
 
+        require(currentPhaseClaim(), "not in claim phase");
         require(cr == currentRevealRound, "round received no reveals");
         require(cr > currentClaimRound, "round already received successful claim");
 
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
-
-        uint256 currentSum = 0;
         uint256 currentWinnerSelectionSum = 0;
         uint256 redundancyCount = 0;
         uint256 revIndex;
@@ -433,77 +430,62 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(currentCommits.length);
         emit CountReveals(currentReveals.length);
 
-        for (uint256 i = 0; i < currentCommits.length; i++) {
-            if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-
-                randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                // question is whether randomNumber / MaxH < probability
-                // where probability is stakeDensity / currentSum
-                // to avoid resorting to floating points all divisions should be
-                // simplified with multiplying both sides (as long as divisor > 0)
-                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
-                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
-                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
-                }
-            }
-        }
-
+        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
         emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
 
         for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed) {
+
+            // Select winner with valid truth
+            if (
+                currentCommits[i].revealed &&
+                truthRevealedHash == currentReveals[revIndex].hash &&
+                truthRevealedDepth == currentReveals[revIndex].depth
+            ) {
+                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
                 if (
-                    truthRevealedHash == currentReveals[revIndex].hash &&
-                    truthRevealedDepth == currentReveals[revIndex].depth
+                    randomNumberTrunc * currentWinnerSelectionSum <
+                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                 ) {
-                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-
-                    randomNumberTrunc = uint256(randomNumber & MaxH);
-
-                    if (
-                        randomNumberTrunc * currentWinnerSelectionSum <
-                        currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                    ) {
-                        winner_ = currentReveals[revIndex];
-                    }
-
-                    redundancyCount++;
-                } else {
-                    Stakes.freezeDeposit(
-                        currentReveals[revIndex].overlay,
-                        penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
-                    );
-                    // slash ph5
+                    winnerSelected = currentReveals[revIndex];
                 }
-            } else {
-                // slash in later phase
+
+                redundancyCount++;
+            }
+
+            // Freeze deposit if any truth is false
+            if (
+                currentCommits[i].revealed &&
+                (truthRevealedHash != currentReveals[revIndex].hash ||
+                    truthRevealedDepth != currentReveals[revIndex].depth)
+            ) {
+                Stakes.freezeDeposit(
+                    currentReveals[revIndex].overlay,
+                    penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                );
+            }
+
+            // Slash deposits if revealed is false
+            if (!currentCommits[i].revealed) {
+                // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
                     currentCommits[i].overlay,
                     penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
                 );
-                continue;
             }
         }
 
+        require(winnerSelected.owner == msg.sender, "Only selected winner can do the claim");
+
         OracleContract.adjustPrice(uint256(redundancyCount));
-
-        require(winner_.owner == msg.sender, "Only selected winner can do the claim");
-
         currentClaimRound = cr;
 
-        return winner_;
+        return winnerSelected;
     }
 
     /**
@@ -635,7 +617,6 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     // ----------------------------- Commit ------------------------------
-
 
     /**
      * @notice The number of the current round.
@@ -787,7 +768,7 @@ contract Redistribution is AccessControl, Pausable {
         uint8 truthRevealedDepth;
         uint256 revIndex;
         string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        uint256 k = 0;
+        uint256 redundancyCount = 0;
 
         // Get current truth
         (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
@@ -803,7 +784,7 @@ contract Redistribution is AccessControl, Pausable {
                 truthRevealedDepth == currentReveals[revIndex].depth
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
                 randomNumberTrunc = uint256(randomNumber & MaxH);
 
                 if (
@@ -813,7 +794,7 @@ contract Redistribution is AccessControl, Pausable {
                     winnerIs = currentReveals[revIndex].overlay;
                 }
 
-                k++;
+                redundancyCount++;
             }
         }
 
@@ -825,14 +806,16 @@ contract Redistribution is AccessControl, Pausable {
     function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
         if (entryProof.socProofAttached.length == 0) return;
 
+        require(
+            Signatures.socVerify(
+                entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
+                entryProof.socProofAttached[0].signature,
+                entryProof.socProofAttached[0].identifier,
+                entryProof.socProofAttached[0].chunkAddr
+            ),
+            "Soc verification failed for element"
+        );
 
-        require(Signatures.socVerify(
-            entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
-            entryProof.socProofAttached[0].signature,
-            entryProof.socProofAttached[0].identifier,
-            entryProof.socProofAttached[0].chunkAddr
-        ), "Soc verification failed for element");
-        
         require(
             calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) ==
                 entryProof.proveSegment,
