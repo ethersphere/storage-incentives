@@ -185,17 +185,6 @@ const config: HardhatUserConfig = {
     //gasPrice: 8,
     coinmarketcap: process.env.CMC_KEY,
   },
-  gasReporter: {
-    enabled: true,
-    currency: 'USD',
-    gasPriceApi: 'https://api.etherscan.io/api?module=proxy&action=eth_gasPrice',
-    token: 'ETH',
-    onlyCalledMethods: true,
-    //outputFile: 'gas-report.txt',
-    //noColors: true,
-    //gasPrice: 8,
-    coinmarketcap: process.env.CMC_KEY,
-  },
 };
 
 export default config;
