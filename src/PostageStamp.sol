@@ -345,7 +345,7 @@ contract PostageStamp is AccessControl, Pausable {
         // the lower bound of the normalised balance for which we will check if batches have expired
         uint256 leb = lastExpiryBalance;
         uint256 i;
-        for (i = 0; i < limit; i++) {
+        for (i = 0; i < limit; ) {
             if (isBatchesTreeEmpty()) {
                 lastExpiryBalance = currentTotalOutPayment();
                 break;
@@ -363,7 +363,7 @@ contract PostageStamp is AccessControl, Pausable {
             }
             // otherwise, the batch with the smallest balance has expired,
             // so we must remove the chunks this batch contributes to the global validChunkCount
-            Batch storage batch = batches[fbi];
+            Batch memory batch = batches[fbi];
             uint256 batchSize = 1 << batch.depth;
             require(validChunkCount >= batchSize, "insufficient valid chunk count");
             validChunkCount -= batchSize;
@@ -372,6 +372,10 @@ contract PostageStamp is AccessControl, Pausable {
             pot += batchSize * (batch.normalisedBalance - leb);
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
+
+            unchecked {
+                ++i;
+            }
         }
         // then, for all batches that have _not_ expired during the period
         // add the total normalised payout of all batches
