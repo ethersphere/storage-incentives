@@ -249,7 +249,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _topupAmountPerChunk The amount of additional tokens to add per chunk.
      */
     function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external whenNotPaused {
-        Batch storage batch = batches[_batchId];
+        Batch memory batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist or has expired");
         require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
         require(batch.depth > minimumBucketDepth, "batch too small to renew");
@@ -263,7 +263,7 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
-        batch.normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
+        batches[_batchId].normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
         tree.insert(_batchId, batch.normalisedBalance);
 
         emit BatchTopUp(_batchId, totalAmount, batch.normalisedBalance);
