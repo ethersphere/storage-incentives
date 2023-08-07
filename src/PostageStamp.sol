@@ -59,11 +59,11 @@ contract PostageStamp is AccessControl, Pausable {
     // Store every batch id ordered by normalisedBalance.
     HitchensOrderStatisticsTreeLib.Tree tree;
 
-    // Address of the ERC20 token this contract references.
-    address public bzzToken;
-
     // Total out payment per chunk, at the blockheight of the last price change.
     uint256 private totalOutPayment;
+
+    // Address of the ERC20 token this contract references.
+    address public bzzToken;
 
     // Minimum allowed depth of bucket.
     uint8 public minimumBucketDepth;
