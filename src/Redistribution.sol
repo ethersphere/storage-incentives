@@ -147,10 +147,6 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
-    // alpha=0.097612 beta=0.0716570 k=16
-    uint256 public constant SAMPLE_MAX_VALUE =
-        1284401000000000000000000000000000000000000000000000000000000000000000000;
-
     // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 currentRevealRoundAnchor;
 
@@ -167,14 +163,18 @@ contract Redistribution is AccessControl, Pausable {
     uint8 public penaltyMultiplierDisagreement = 1;
     uint8 public penaltyMultiplierNonRevealed = 2;
 
+    // The reveal of the winner of the last round.
+    Reveal public winner;
+
     // The length of a round in blocks.
     uint256 public constant ROUND_LENGTH = 152;
 
     // The miniumum stake allowed to be staked using the Staking contract.
-    uint64 public MIN_STAKE = 100000000000000000;
+    uint64 public constant MIN_STAKE = 100000000000000000;
 
-    // The reveal of the winner of the last round.
-    Reveal public winner;
+    // alpha=0.097612 beta=0.0716570 k=16
+    uint256 public constant SAMPLE_MAX_VALUE =
+        1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // ----------------------------- Events ------------------------------
 
