@@ -629,18 +629,14 @@ describe('Redistribution', function () {
           expect(await redistribution.currentPhaseCommit()).to.be.true;
           const r_node_5 = await ethers.getContract('Redistribution', node_5);
           const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
-
           const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
           await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
-
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
           const { tx: copyBatchTx, postageDepth } = await copyBatchForClaim(deployer);
-
           await mineToRevealPhase();
-
           await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_2);
 
           currentSeed = await redistribution.currentSeed();
