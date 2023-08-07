@@ -38,14 +38,15 @@ describe('PriceOracle', function () {
       expect(priceOracle.address).to.be.properAddress;
     });
 
-    it('should show block number', async function () {
+    it('should check forking', async function () {
       console.log(await getBlockNumber());
       //    console.log(network.config.forking.enabled);
       let redistribution = await ethers.getContract('Redistribution');
+      let postageStamp = await ethers.getContract('PostageStamp');
 
-      console.log((await redistribution.currentRound()).toString());
+      console.log((await postageStamp.lastExpiryBalance()).toString());
 
-      await mineNBlocks(150);
+      //await mineNBlocks(150);
       console.log((await redistribution.currentRound()).toString());
     });
 

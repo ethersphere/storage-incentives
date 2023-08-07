@@ -124,7 +124,7 @@ const config: HardhatUserConfig = {
       forking: {
         enabled: true,
         url: 'https://rpc.gnosischain.com',
-        blockNumber: 29279000,
+        blockNumber: 29339643,
       },
     },
 
@@ -171,7 +171,7 @@ const config: HardhatUserConfig = {
     sources: 'src',
   },
   contractSizer: {
-    runOnCompile: true,
+    runOnCompile: false,
   },
 };
 
