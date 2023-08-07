@@ -263,9 +263,10 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
-        batches[_batchId].normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
+        batch.normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
         tree.insert(_batchId, batch.normalisedBalance);
 
+        batches[_batchId].normalisedBalance = batch.normalisedBalance;
         emit BatchTopUp(_batchId, totalAmount, batch.normalisedBalance);
     }
 
