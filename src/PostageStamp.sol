@@ -457,7 +457,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _batchId The id of an existing batch.
      */
     function remainingBalance(bytes32 _batchId) public view returns (uint256) {
-        Batch storage batch = batches[_batchId];
+        Batch memory batch = batches[_batchId];
         require(batch.owner != address(0), "batch does not exist or expired");
         if (batch.normalisedBalance <= currentTotalOutPayment()) {
             return 0;
