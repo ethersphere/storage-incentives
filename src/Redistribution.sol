@@ -79,20 +79,20 @@ contract Redistribution is AccessControl, Pausable {
     struct Commit {
         bytes32 overlay;
         address owner;
+        bool revealed;
         uint256 stake;
         bytes32 obfuscatedHash;
-        bool revealed;
         uint256 revealIndex;
     }
     // ...then provide the actual values that are the constituents of the pre-image of the _obfuscatedHash_
     // during the reveal phase.
     struct Reveal {
         address owner;
+        uint8 depth;
         bytes32 overlay;
         uint256 stake;
         uint256 stakeDensity;
         bytes32 hash;
-        uint8 depth;
     }
 
     struct ChunkInclusionProof {
@@ -291,9 +291,9 @@ contract Redistribution is AccessControl, Pausable {
             Commit({
                 owner: msg.sender,
                 overlay: _overlay,
+                revealed: false,
                 stake: nstake,
                 obfuscatedHash: _obfuscatedHash,
-                revealed: false,
                 revealIndex: 0
             })
         );
@@ -339,11 +339,11 @@ contract Redistribution is AccessControl, Pausable {
         currentReveals.push(
             Reveal({
                 owner: currentCommit.owner,
+                depth: _depth,
                 overlay: currentCommit.overlay,
                 stake: currentCommit.stake,
                 stakeDensity: currentCommit.stake * uint256(2 ** _depth),
-                hash: _hash,
-                depth: _depth
+                hash: _hash
             })
         );
 
