@@ -104,8 +104,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32[] proofSegments2;
         bytes32 proveSegment2;
         // proveSegmentIndex2 known from deterministic random selection;
-        uint64 chunkSpan;
-        //
+
         bytes32[] proofSegments3;
         //  _proveSegment3 known, is equal _proveSegment2
         // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
@@ -115,6 +114,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes signature;
         bytes32 chunkAddr;
         bytes32 postageId;
+        uint64 chunkSpan;
         uint64 index;
         uint64 timeStamp;
         SOCProof[] socProofAttached;
