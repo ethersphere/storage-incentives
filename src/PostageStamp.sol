@@ -277,7 +277,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _newDepth the new (larger than the previous one) depth for this batch.
      */
     function increaseDepth(bytes32 _batchId, uint8 _newDepth) external whenNotPaused {
-        Batch storage batch = batches[_batchId];
+        Batch memory batch = batches[_batchId];
 
         require(batch.owner == msg.sender, "not batch owner");
         require(minimumBucketDepth < _newDepth && batch.depth < _newDepth, "depth not increasing");
@@ -299,10 +299,11 @@ contract PostageStamp is AccessControl, Pausable {
 
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
-        batch.depth = _newDepth;
-        batch.lastUpdatedBlockNumber = block.number;
+        batches[_batchId].depth = _newDepth;
+        batches[_batchId].lastUpdatedBlockNumber = block.number;
 
         batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);
+        batches[_batchId].normalisedBalance = batch.normalisedBalance;
         tree.insert(_batchId, batch.normalisedBalance);
 
         emit BatchDepthIncrease(_batchId, _newDepth, batch.normalisedBalance);
