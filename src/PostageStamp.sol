@@ -78,7 +78,7 @@ contract PostageStamp is AccessControl, Pausable {
     uint256 public lastExpiryBalance;
 
     // Price from the last update.
-    uint64 public lastPrice = 0;
+    uint64 public lastPrice;
 
     // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
     uint64 public minimumValidityBlocks = 17280;
@@ -347,7 +347,7 @@ contract PostageStamp is AccessControl, Pausable {
         // the lower bound of the normalised balance for which we will check if batches have expired
         uint256 leb = lastExpiryBalance;
         uint256 i;
-        for (i = 0; i < limit; ) {
+        for (i; i < limit; ) {
             if (isBatchesTreeEmpty()) {
                 lastExpiryBalance = currentTotalOutPayment();
                 break;
