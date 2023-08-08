@@ -74,15 +74,17 @@ contract PostageStamp is AccessControl, Pausable {
     // Lottery pot at last update.
     uint256 public pot;
 
-    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
-    uint256 public minimumValidityBlocks = 17280;
-
-    // Price from the last update.
-    uint256 public lastPrice = 0;
-    // Block at which the last update occured.
-    uint256 public lastUpdatedBlock;
     // Normalised balance at the blockheight expire() was last called.
     uint256 public lastExpiryBalance;
+
+    // Price from the last update.
+    uint64 public lastPrice = 0;
+
+    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
+    uint64 public minimumValidityBlocks = 17280;
+
+    // Block at which the last update occured.
+    uint64 public lastUpdatedBlock;
 
     // ----------------------------- Events ------------------------------
 
@@ -324,15 +326,15 @@ contract PostageStamp is AccessControl, Pausable {
             totalOutPayment = currentTotalOutPayment();
         }
 
-        lastPrice = _price;
-        lastUpdatedBlock = block.number;
+        lastPrice = uint64(_price);
+        lastUpdatedBlock = uint64(block.number);
 
         emit PriceUpdate(_price);
     }
 
     function setMinimumValidityBlocks(uint256 _value) external {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only administrator can set minimum validity blocks");
-        minimumValidityBlocks = _value;
+        minimumValidityBlocks = uint64(_value);
     }
 
     /**
