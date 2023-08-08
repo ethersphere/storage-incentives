@@ -28,24 +28,13 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 contract PostageStamp is AccessControl, Pausable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
-    // ----------------------------- Type declarations ------------------------------
-
-    struct Batch {
-        // Owner of this batch (0 if not valid).
-        address owner;
-        // Current depth of this batch.
-        uint8 depth;
-        //
-        uint8 bucketDepth;
-        // Whether this batch is immutable.
-        bool immutableFlag;
-        // Normalised balance per chunk.
-        uint256 normalisedBalance;
-        //
-        uint256 lastUpdatedBlockNumber;
-    }
-
     // ----------------------------- State variables ------------------------------
+
+    // Address of the ERC20 token this contract references.
+    address public bzzToken;
+
+    // Minimum allowed depth of bucket.
+    uint8 public minimumBucketDepth;
 
     // Role allowed to increase totalOutPayment.
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
@@ -61,12 +50,6 @@ contract PostageStamp is AccessControl, Pausable {
 
     // Total out payment per chunk, at the blockheight of the last price change.
     uint256 private totalOutPayment;
-
-    // Address of the ERC20 token this contract references.
-    address public bzzToken;
-
-    // Minimum allowed depth of bucket.
-    uint8 public minimumBucketDepth;
 
     // Combined global chunk capacity of valid batches remaining at the blockheight expire() was last called.
     uint256 public validChunkCount;
@@ -85,6 +68,23 @@ contract PostageStamp is AccessControl, Pausable {
 
     // Block at which the last update occured.
     uint64 public lastUpdatedBlock;
+
+    // ----------------------------- Type declarations ------------------------------
+
+    struct Batch {
+        // Owner of this batch (0 if not valid).
+        address owner;
+        // Current depth of this batch.
+        uint8 depth;
+        //
+        uint8 bucketDepth;
+        // Whether this batch is immutable.
+        bool immutableFlag;
+        // Normalised balance per chunk.
+        uint256 normalisedBalance;
+        //
+        uint256 lastUpdatedBlockNumber;
+    }
 
     // ----------------------------- Events ------------------------------
 
