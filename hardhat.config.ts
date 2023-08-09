@@ -7,6 +7,8 @@ import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
+import 'hardhat-storage-layout';
+import 'hardhat-gas-trackooor';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
