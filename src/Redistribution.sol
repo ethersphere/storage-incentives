@@ -141,18 +141,15 @@ contract Redistribution is AccessControl, Pausable {
     // Reveals for the current round.
     Reveal[] public currentReveals;
 
-    // Role allowed to pause.
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-
     // Maximum value of the keccack256 hash.
-    bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
+    bytes32 private MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
     // The current anchor that being processed for the reveal and claim phases of the round.
-    bytes32 currentRevealRoundAnchor;
+    bytes32 private currentRevealRoundAnchor;
 
     // The current random value from which we will random.
     // inputs for selection of the truth teller and beneficiary.
-    bytes32 seed;
+    bytes32 private seed;
 
     // The number of the currently active round phases.
     uint32 public currentCommitRound;
@@ -160,21 +157,24 @@ contract Redistribution is AccessControl, Pausable {
     uint32 public currentClaimRound;
 
     // Settings for slashing and freezing
-    uint8 public penaltyMultiplierDisagreement = 1;
-    uint8 public penaltyMultiplierNonRevealed = 2;
+    uint8 private penaltyMultiplierDisagreement = 1;
+    uint8 private penaltyMultiplierNonRevealed = 2;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
 
     // The length of a round in blocks.
-    uint256 public constant ROUND_LENGTH = 152;
+    uint256 private constant ROUND_LENGTH = 152;
 
     // The miniumum stake allowed to be staked using the Staking contract.
-    uint64 public constant MIN_STAKE = 100000000000000000;
+    uint64 private constant MIN_STAKE = 100000000000000000;
 
     // alpha=0.097612 beta=0.0716570 k=16
-    uint256 public constant SAMPLE_MAX_VALUE =
+    uint256 private constant SAMPLE_MAX_VALUE =
         1284401000000000000000000000000000000000000000000000000000000000000000000;
+
+    // Role allowed to pause.
+    bytes32 private constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
 
     // ----------------------------- Events ------------------------------
 
