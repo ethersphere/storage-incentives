@@ -543,7 +543,7 @@ contract Redistribution is AccessControl, Pausable {
      * to block.prevrandao in post merge chains.
      */
     function updateRandomness() private {
-        seed = keccak256(abi.encode(seed, block.difficulty));
+        seed = keccak256(abi.encode(seed, block.prevrandao));
     }
 
     /**
