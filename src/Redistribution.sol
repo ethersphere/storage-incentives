@@ -141,9 +141,6 @@ contract Redistribution is AccessControl, Pausable {
     // Reveals for the current round.
     Reveal[] public currentReveals;
 
-    // Maximum value of the keccack256 hash.
-    bytes32 private MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
-
     // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 private currentRevealRoundAnchor;
 
@@ -172,6 +169,9 @@ contract Redistribution is AccessControl, Pausable {
     // alpha=0.097612 beta=0.0716570 k=16
     uint256 private constant SAMPLE_MAX_VALUE =
         1284401000000000000000000000000000000000000000000000000000000000000000000;
+
+    // Maximum value of the keccack256 hash.
+    bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
 
     // Role allowed to pause.
     bytes32 private immutable PAUSER_ROLE;
@@ -465,7 +465,6 @@ contract Redistribution is AccessControl, Pausable {
         uint256 redundancyCount = 0;
         bytes32 randomNumber;
         uint256 randomNumberTrunc;
-        bytes32 _MaxH = MaxH;
 
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
@@ -491,9 +490,9 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveal.stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-                randomNumberTrunc = uint256(randomNumber & _MaxH);
+                randomNumberTrunc = uint256(randomNumber & MAX_H);
 
-                if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(_MaxH) + 1)) {
+                if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(MAX_H) + 1)) {
                     winner = currentReveal;
                 }
 
@@ -781,16 +780,16 @@ contract Redistribution is AccessControl, Pausable {
                 revIndex = currentCommits[i].revealIndex;
                 currentSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-                randomNumberTrunc = uint256(randomNumber & MaxH);
+                randomNumberTrunc = uint256(randomNumber & MAX_H);
 
-                // question is whether randomNumber / MaxH < probability
+                // question is whether randomNumber / MAX_H < probability
                 // where probability is stakeDensity / currentSum
                 // to avoid resorting to floating points all divisions should be
                 // simplified with multiplying both sides (as long as divisor > 0)
-                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
-                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
-                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
-                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
+                // randomNumber / (MAX_H + 1) < stakeDensity / currentSum
+                // ( randomNumber / (MAX_H + 1) ) * currentSum < stakeDensity
+                // randomNumber * currentSum < stakeDensity * (MAX_H + 1)
+                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MAX_H) + 1)) {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
                 }
@@ -838,11 +837,11 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-                randomNumberTrunc = uint256(randomNumber & MaxH);
+                randomNumberTrunc = uint256(randomNumber & MAX_H);
 
                 if (
                     randomNumberTrunc * currentWinnerSelectionSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                    currentReveals[revIndex].stakeDensity * (uint256(MAX_H) + 1)
                 ) {
                     winnerIs = currentReveals[revIndex].overlay;
                 }
