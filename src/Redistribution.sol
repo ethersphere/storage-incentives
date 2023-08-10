@@ -680,7 +680,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
-        if (!currentPhaseClaim() && !currentPhaseCommit()) {
+        if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
