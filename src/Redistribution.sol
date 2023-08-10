@@ -225,6 +225,20 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth
     );
 
+    // ----------------------------- Errors ------------------------------
+
+    error NotCommitPhase();
+    error NoCommitsReceived();
+    error PhaseLastBlock();
+    error BelowMinimumStake();
+    error CommitRoundOver();
+    error CommitRoundNotStarted();
+    error NotMatchingOwner();
+    error MustStake2Rounds();
+    error WrongPhase();
+    error StakesUpdated();
+    error CommitsExceded();
+
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
@@ -256,21 +270,35 @@ contract Redistribution is AccessControl, Pausable {
      * and be derived from the same key pair as the message sender.
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint32 _roundNumber) external whenNotPaused {
-        require(currentPhaseCommit(), "not in commit phase");
-        require(block.number % ROUND_LENGTH != (ROUND_LENGTH / 4) - 1, "can not commit in last block of phase");
         uint32 cr = uint32(currentRound());
-
-        require(cr <= _roundNumber, "commit round over");
-        require(cr >= _roundNumber, "commit round not started yet");
-
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
-        require(nstake >= MIN_STAKE, "stake must exceed minimum");
-        require(Stakes.ownerOfOverlay(_overlay) == msg.sender, "owner must match sender");
 
-        require(
-            Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) < block.number - 2 * ROUND_LENGTH,
-            "must have staked 2 rounds prior"
-        );
+        if (!currentPhaseCommit()) {
+            revert NotCommitPhase();
+        }
+        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) {
+            revert PhaseLastBlock();
+        }
+
+        if (cr > _roundNumber) {
+            revert CommitRoundOver();
+        }
+
+        if (cr < _roundNumber) {
+            revert CommitRoundNotStarted();
+        }
+
+        if (nstake < MIN_STAKE) {
+            revert BelowMinimumStake();
+        }
+
+        if (Stakes.ownerOfOverlay(_overlay) != msg.sender) {
+            revert NotMatchingOwner();
+        }
+
+        if (Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) >= block.number - 2 * ROUND_LENGTH) {
+            revert MustStake2Rounds();
+        }
 
         // if we are in a new commit phase, reset the array of commits and
         // set the currentCommitRound to be the current one
@@ -282,7 +310,10 @@ contract Redistribution is AccessControl, Pausable {
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
-            require(currentCommits[i].overlay != _overlay, "only one commit each per round");
+            if (currentCommits[i].overlay == _overlay) {
+                revert CommitsExceded();
+            }
+
             unchecked {
                 ++i;
             }
@@ -311,10 +342,11 @@ contract Redistribution is AccessControl, Pausable {
      */
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         require(currentPhaseReveal(), "not in reveal phase");
-
         uint32 cr = uint32(currentRound());
 
-        require(cr == currentCommitRound, "round received no commits");
+        if (cr != currentCommitRound) {
+            revert NoCommitsReceived();
+        }
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
@@ -650,12 +682,18 @@ contract Redistribution is AccessControl, Pausable {
      * @param depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
-        require(currentPhaseClaim() || currentPhaseCommit(), "not determined for upcoming round yet");
-        require(
-            Stakes.lastUpdatedBlockNumberOfOverlay(overlay) < block.number - 2 * ROUND_LENGTH,
-            "stake updated recently"
-        );
-        require(Stakes.stakeOfOverlay(overlay) >= MIN_STAKE, "stake amount does not meet minimum");
+        if (!currentPhaseClaim() && !currentPhaseCommit()) {
+            revert WrongPhase();
+        }
+
+        if (Stakes.lastUpdatedBlockNumberOfOverlay(overlay) >= block.number - 2 * ROUND_LENGTH) {
+            revert MustStake2Rounds();
+        }
+
+        if (Stakes.stakeOfOverlay(overlay) < MIN_STAKE) {
+            revert BelowMinimumStake();
+        }
+
         return inProximity(overlay, currentRoundAnchor(), depth);
     }
 

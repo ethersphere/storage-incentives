@@ -121,13 +121,13 @@ before(async function () {
 
 const errors = {
   commit: {
-    notOwner: 'owner must match sender',
-    notStaked: 'stake must exceed minimum',
-    stakedRecently: 'stake updated recently',
-    alreadyCommited: 'only one commit each per round',
+    notOwner: 'NotMatchingOwner()',
+    notStaked: 'BelowMinimumStake()',
+    stakedRecently: 'MustStake2Rounds()',
+    alreadyCommited: 'CommitsExceded()',
   },
   reveal: {
-    noCommits: 'round received no commits',
+    noCommits: 'NoCommitsReceived()',
     doNotMatch: 'no matching commit or hash',
     outOfDepth: 'anchor out of self reported depth',
     notInReveal: 'not in reveal phase',
