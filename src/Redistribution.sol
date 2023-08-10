@@ -174,7 +174,7 @@ contract Redistribution is AccessControl, Pausable {
         1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // Role allowed to pause.
-    bytes32 private constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 private immutable PAUSER_ROLE;
 
     // ----------------------------- Events ------------------------------
 
@@ -236,6 +236,7 @@ contract Redistribution is AccessControl, Pausable {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
+        PAUSER_ROLE = keccak256("PAUSER_ROLE");
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
