@@ -124,7 +124,7 @@ const errors = {
     notOwner: 'NotMatchingOwner()',
     notStaked: 'BelowMinimumStake()',
     stakedRecently: 'MustStake2Rounds()',
-    alreadyCommited: 'CommitsExceded()',
+    alreadyCommited: 'AlreadyCommited()',
   },
   reveal: {
     noCommits: 'NoCommitsReceived()',

@@ -227,17 +227,16 @@ contract Redistribution is AccessControl, Pausable {
 
     // ----------------------------- Errors ------------------------------
 
-    error NotCommitPhase();
-    error NoCommitsReceived();
-    error PhaseLastBlock();
-    error BelowMinimumStake();
-    error CommitRoundOver();
-    error CommitRoundNotStarted();
-    error NotMatchingOwner();
-    error MustStake2Rounds();
-    error WrongPhase();
-    error StakesUpdated();
-    error CommitsExceded();
+    error NotCommitPhase(); // Game is not in commit phase
+    error NoCommitsReceived(); // Round did receive any commits
+    error PhaseLastBlock(); // We don't permit commits in last block oh phase
+    error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
+    error CommitRoundOver(); // Commit phase in this round is over
+    error CommitRoundNotStarted(); // Commit phase in this round has not started yet
+    error NotMatchingOwner(); // Sender of commit is not matching the overlay address
+    error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
+    error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
+    error AlreadyCommited(); // Node already commited in this round
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -311,7 +310,7 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
             if (currentCommits[i].overlay == _overlay) {
-                revert CommitsExceded();
+                revert AlreadyCommited();
             }
 
             unchecked {
