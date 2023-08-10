@@ -237,6 +237,10 @@ contract Redistribution is AccessControl, Pausable {
     error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommited(); // Node already commited in this round
+    error NotRevealPhase(); // Game is not in reveal phase
+    error OutOfDepth(); // Anchor is out of reported depth
+    error AlreadyRevealed(); // Node already revealed
+    error NoMatchingCommit(); // No matching commit and hash
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -340,8 +344,11 @@ contract Redistribution is AccessControl, Pausable {
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
-        require(currentPhaseReveal(), "not in reveal phase");
         uint32 cr = uint32(currentRound());
+
+        if (!currentPhaseReveal()) {
+            revert NotRevealPhase();
+        }
 
         if (cr != currentCommitRound) {
             revert NoCommitsReceived();
@@ -359,12 +366,15 @@ contract Redistribution is AccessControl, Pausable {
         Commit memory currentCommit = currentCommits[id];
 
         // Check that commit is in proximity of the current anchor
-        require(
-            inProximity(currentCommit.overlay, currentRevealRoundAnchor, _depth),
-            "anchor out of self reported depth"
-        );
+
+        if (!inProximity(currentCommit.overlay, currentRevealRoundAnchor, _depth)) {
+            revert OutOfDepth();
+        }
         // Check that the commit has not already been revealed
-        require(currentCommit.revealed == false, "participant already revealed");
+        if (currentCommit.revealed == true) {
+            revert AlreadyRevealed();
+        }
+
         currentCommits[id].revealed = true;
         currentCommits[id].revealIndex = currentReveals.length;
 
@@ -710,7 +720,7 @@ contract Redistribution is AccessControl, Pausable {
                 ++i;
             }
         }
-        revert("no matching commit or hash");
+        revert NoMatchingCommit();
     }
 
     /**

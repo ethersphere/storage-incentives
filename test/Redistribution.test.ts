@@ -128,9 +128,9 @@ const errors = {
   },
   reveal: {
     noCommits: 'NoCommitsReceived()',
-    doNotMatch: 'no matching commit or hash',
-    outOfDepth: 'anchor out of self reported depth',
-    notInReveal: 'not in reveal phase',
+    doNotMatch: 'NoMatchingCommit()',
+    outOfDepth: 'OutOfDepth()',
+    notInReveal: 'NotRevealPhase()',
   },
   claim: {
     noReveals: 'round received no reveals',
