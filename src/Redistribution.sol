@@ -356,6 +356,7 @@ contract Redistribution is AccessControl, Pausable {
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
+            // Must be set to equal after anchor assigment
             currentRevealRound = cr;
             emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
             updateRandomness();
@@ -641,10 +642,6 @@ contract Redistribution is AccessControl, Pausable {
 
         if (currentPhaseCommit() || (cr > currentRevealRound && !currentPhaseClaim())) {
             return currentSeed();
-        }
-
-        if (currentPhaseReveal() && cr == currentRevealRound) {
-            require(false, "can't return value after first reveal");
         }
 
         if (currentPhaseClaim()) {
