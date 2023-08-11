@@ -253,6 +253,10 @@ contract Redistribution is AccessControl, Pausable {
     error SigRecoveryFailed(); // Stamp authorized: signature recovery failed for element
     error BalanceValidationFailed(); // Stamp alive: batch remaining balance validation failed for attached stamp
     error BucketDiffers(); // Stamp aligned: postage bucket differs from address bucket
+    error InclusionProofFailed1(); // RC inclusion proof failed for element
+    error InclusionProofFailed2(); // First sister segment in data must match
+    error InclusionProofFailed3(); // Inclusion proof failed for original address of element
+    error InclusionProofFailed4(); // Inclusion proof failed for transformed address of element
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -981,50 +985,52 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {
-        require(
-            winner.hash ==
-                BMTChunk.chunkAddressFromInclusionProof(
-                    entryProof.proofSegments,
-                    entryProof.proveSegment,
-                    indexInRC,
-                    32 * 32
-                ),
-            "RC inclusion proof failed for element"
-        );
+        if (
+            winner.hash !=
+            BMTChunk.chunkAddressFromInclusionProof(
+                entryProof.proofSegments,
+                entryProof.proveSegment,
+                indexInRC,
+                32 * 32
+            )
+        ) {
+            revert InclusionProofFailed1();
+        }
 
         uint256 randomChunkSegmentIndex = uint256(seed) % 128;
 
-        require(
-            entryProof.proofSegments2[0] == entryProof.proofSegments3[0],
-            "first sister segment in data must match"
-        );
+        if (entryProof.proofSegments2[0] != entryProof.proofSegments3[0]) {
+            revert InclusionProofFailed2();
+        }
 
         bytes32 originalCacAddress = entryProof.socProofAttached.length > 0
             ? entryProof.socProofAttached[0].chunkAddr // soc attestation in socFunction
             : entryProof.proveSegment;
 
-        require(
-            originalCacAddress ==
-                BMTChunk.chunkAddressFromInclusionProof(
-                    entryProof.proofSegments2,
-                    entryProof.proveSegment2,
-                    randomChunkSegmentIndex,
-                    entryProof.chunkSpan
-                ),
-            "inclusion proof failed for original address of element"
-        );
+        if (
+            originalCacAddress !=
+            BMTChunk.chunkAddressFromInclusionProof(
+                entryProof.proofSegments2,
+                entryProof.proveSegment2,
+                randomChunkSegmentIndex,
+                entryProof.chunkSpan
+            )
+        ) {
+            revert InclusionProofFailed3();
+        }
 
-        require(
-            entryProof.proofSegments[0] ==
-                TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-                    entryProof.proofSegments3,
-                    entryProof.proveSegment2,
-                    randomChunkSegmentIndex,
-                    entryProof.chunkSpan,
-                    currentRevealRoundAnchor
-                ),
-            "inclusion proof failed for transformed address of element"
-        );
+        if (
+            entryProof.proofSegments[0] !=
+            TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+                entryProof.proofSegments3,
+                entryProof.proveSegment2,
+                randomChunkSegmentIndex,
+                entryProof.chunkSpan,
+                currentRevealRoundAnchor
+            )
+        ) {
+            revert InclusionProofFailed4();
+        }
     }
 
     function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {
@@ -1050,17 +1056,27 @@ contract Redistribution is AccessControl, Pausable {
 
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
         if (a < b) {
-            require(uint256(trA1) < uint256(trA2), "random element order check failed");
-            require(uint256(trA2) < uint256(trALast), "last element order check failed");
+            if (uint256(trA1) >= uint256(trA2)) {
+                revert RandomElementOrderCheckFailed();
+            }
+            if (uint256(trA2) >= uint256(trALast)) {
+                revert LastElementOrderCheckFailed();
+            }
         } else {
-            require(uint256(trA2) < uint256(trA1), "random element order check failed");
-            require(uint256(trA1) < uint256(trALast), "last element order check failed");
+            if (uint256(trA2) >= uint256(trA1)) {
+                revert RandomElementOrderCheckFailed();
+            }
+            if (uint256(trA1) >= uint256(trALast)) {
+                revert LastElementOrderCheckFailed();
+            }
         }
 
         estimateSize(trALast);
     }
 
     function estimateSize(bytes32 trALast) internal pure {
-        require(uint256(trALast) < SAMPLE_MAX_VALUE, "reserve size estimation check failed");
+        if (uint256(trALast) >= SAMPLE_MAX_VALUE) {
+            revert ReserveSizeEstimationCheckFailed();
+        }
     }
 }
