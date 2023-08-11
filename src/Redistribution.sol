@@ -244,7 +244,9 @@ contract Redistribution is AccessControl, Pausable {
     error NotClaimPhase(); // Game is not in claim phase
     error NoReveals(); // Round did not receive any reveals
     error AlreadyClaimed(); // This round was already claimed
-    error SenderNotWinner(); // Sender of trx is not winner
+    error SenderNotWinner(); // Caller of trx is not winner
+    error NotAdmin(); // Caller of trx is not admin
+    error OnlyPauser(); // Only account with pauser role can call pause/unpause
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -471,7 +473,6 @@ contract Redistribution is AccessControl, Pausable {
         PostageContract.withdraw(winnerSelected.owner);
     }
 
-    // 515038
     function winnerSelection() internal {
         uint32 cr = uint32(currentRound());
 
@@ -558,7 +559,10 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Set freezing parameters
      */
     function setFreezingParams(uint8 _penaltyMultiplierDisagreement, uint8 _penaltyMultiplierNonRevealed) external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert NotAdmin();
+        }
+
         penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
         penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
     }
@@ -576,7 +580,10 @@ contract Redistribution is AccessControl, Pausable {
      the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        if (!hasRole(PAUSER_ROLE, msg.sender)) {
+            revert OnlyPauser();
+        }
+
         _pause();
     }
 
@@ -584,7 +591,9 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        if (!hasRole(PAUSER_ROLE, msg.sender)) {
+            revert OnlyPauser();
+        }
         _unpause();
     }
 
