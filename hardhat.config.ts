@@ -26,11 +26,11 @@ const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 // Config for hardhat.
 const config: HardhatUserConfig = {
   solidity: {
-    version: '0.8.1',
+    version: '0.8.19',
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 1000,
       },
     },
   },
@@ -177,12 +177,12 @@ const config: HardhatUserConfig = {
   gasReporter: {
     enabled: true,
     currency: 'USD',
-    gasPriceApi: 'https://api.etherscan.io/api?module=proxy&action=eth_gasPrice',
-    token: 'ETH',
+    gasPriceApi: 'https://api.gnosisscan.io/api?module=proxy&action=eth_gasPrice', // https://docs.gnosischain.com/tools/oracles/gas-price
+    token: 'GNO',
     onlyCalledMethods: true,
-    //outputFile: 'gas-report.txt',
-    //noColors: true,
-    //gasPrice: 8,
+    // outputFile: 'gas-report.txt',
+    // noColors: true,
+    // gasPrice: 40,
     coinmarketcap: process.env.CMC_KEY,
   },
 };
