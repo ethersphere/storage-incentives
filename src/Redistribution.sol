@@ -257,6 +257,9 @@ contract Redistribution is AccessControl, Pausable {
     error InclusionProofFailed2(); // First sister segment in data must match
     error InclusionProofFailed3(); // Inclusion proof failed for original address of element
     error InclusionProofFailed4(); // Inclusion proof failed for transformed address of element
+    error RandomCheckFailed(); // Random element order check failed
+    error LastCheckFailed(); // Last element order check failed
+    error ReserveCheckFailed(); // Reserve size estimation check failed
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -1057,17 +1060,17 @@ contract Redistribution is AccessControl, Pausable {
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
         if (a < b) {
             if (uint256(trA1) >= uint256(trA2)) {
-                revert RandomElementOrderCheckFailed();
+                revert RandomCheckFailed();
             }
             if (uint256(trA2) >= uint256(trALast)) {
-                revert LastElementOrderCheckFailed();
+                revert LastCheckFailed();
             }
         } else {
             if (uint256(trA2) >= uint256(trA1)) {
-                revert RandomElementOrderCheckFailed();
+                revert RandomCheckFailed();
             }
             if (uint256(trA1) >= uint256(trALast)) {
-                revert LastElementOrderCheckFailed();
+                revert LastCheckFailed();
             }
         }
 
@@ -1076,7 +1079,7 @@ contract Redistribution is AccessControl, Pausable {
 
     function estimateSize(bytes32 trALast) internal pure {
         if (uint256(trALast) >= SAMPLE_MAX_VALUE) {
-            revert ReserveSizeEstimationCheckFailed();
+            revert ReserveCheckFailed();
         }
     }
 }
