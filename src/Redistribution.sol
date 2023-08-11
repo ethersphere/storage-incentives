@@ -247,6 +247,12 @@ contract Redistribution is AccessControl, Pausable {
     error SenderNotWinner(); // Caller of trx is not winner
     error NotAdmin(); // Caller of trx is not admin
     error OnlyPauser(); // Only account with pauser role can call pause/unpause
+    error SocVerificationFailed(); // Soc verification failed for this element
+    error SocCalcNotMatching(); // Soc address calculation does not match with the witness
+    error IndexOutsideSet(); // Stamp available: index resides outside of the valid index set
+    error SigRecoveryFailed(); // Stamp authorized: signature recovery failed for element
+    error BalanceValidationFailed(); // Stamp alive: batch remaining balance validation failed for attached stamp
+    error BucketDiffers(); // Stamp aligned: postage bucket differs from address bucket
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -640,9 +646,14 @@ contract Redistribution is AccessControl, Pausable {
      * @notice The random value used to choose the selected truth teller.
      */
     function currentTruthSelectionAnchor() private view returns (string memory) {
-        require(currentPhaseClaim(), "not determined for current round yet");
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
+
         uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
+        if (cr != currentRevealRound) {
+            revert NoReveals();
+        }
 
         return string(abi.encodePacked(seed, "0"));
     }
@@ -651,9 +662,13 @@ contract Redistribution is AccessControl, Pausable {
      * @notice The random value used to choose the selected beneficiary.
      */
     function currentWinnerSelectionAnchor() private view returns (string memory) {
-        require(currentPhaseClaim(), "not determined for current round yet");
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
         uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
+        if (cr != currentRevealRound) {
+            revert NoReveals();
+        }
 
         return string(abi.encodePacked(seed, "1"));
     }
@@ -905,21 +920,23 @@ contract Redistribution is AccessControl, Pausable {
     function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
         if (entryProof.socProofAttached.length == 0) return;
 
-        require(
-            Signatures.socVerify(
+        if (
+            !Signatures.socVerify(
                 entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
                 entryProof.socProofAttached[0].signature,
                 entryProof.socProofAttached[0].identifier,
                 entryProof.socProofAttached[0].chunkAddr
-            ),
-            "Soc verification failed for element"
-        );
+            )
+        ) {
+            revert SocVerificationFailed();
+        }
 
-        require(
-            calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) ==
-                entryProof.proveSegment,
-            "Soc address calculation does not match with the witness"
-        );
+        if (
+            calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) !=
+            entryProof.proveSegment
+        ) {
+            revert SocCalcNotMatching();
+        }
     }
 
     function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
@@ -929,35 +946,38 @@ contract Redistribution is AccessControl, Pausable {
         uint32 postageIndex = getPostageIndex(entryProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
-        require(postageIndex < maxPostageIndex, "Stamp available: index resides outside of the valid index set");
+        if (postageIndex >= maxPostageIndex) {
+            revert IndexOutsideSet();
+        }
 
         address batchOwner = PostageContract.batchOwner(entryProof.postageId);
-        // authorized
-        require(
-            Signatures.postageVerify(
+
+        if (
+            !Signatures.postageVerify(
                 batchOwner,
                 entryProof.signature,
                 entryProof.proveSegment,
                 entryProof.postageId,
                 entryProof.index,
                 entryProof.timeStamp
-            ),
-            "Stamp authorized: signature recovery failed for element"
-        );
+            )
+        ) {
+            revert SigRecoveryFailed();
+        }
 
-        // alive
-        require(
-            PostageContract.remainingBalance(entryProof.postageId) >= PostageContract.minimumInitialBalancePerChunk(),
-            "Stamp alive: batch remaining balance validation failed for attached stamp"
-        );
+        if (PostageContract.remainingBalance(entryProof.postageId) < PostageContract.minimumInitialBalancePerChunk()) {
+            revert BalanceValidationFailed();
+        }
 
-        // aligned
         uint64 postageBucket = getPostageBucket(entryProof.index);
         uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
-        require(postageBucket == addressBucket, "Stamp aligned: postage bucket differs from address bucket");
+        if (postageBucket != addressBucket) {
+            revert BucketDiffers();
+        }
 
         // FOR LATER USE
-        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * ROUND_LENGTH, "batch past balance validation failed for attached stamp");
+        // if (PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) >= block.number - 2 * ROUND_LENGTH) {
+        //     revert BatchPastBalanceValidation();}
     }
 
     function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {

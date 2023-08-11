@@ -573,7 +573,7 @@ describe('Redistribution', function () {
       describe('when pausing', function () {
         it('should not allow anybody but the pauser to pause', async function () {
           const redistributionContract = await ethers.getContract('Redistribution', stamper);
-          await expect(redistributionContract.pause()).to.be.revertedWith('only pauser can pause');
+          await expect(redistributionContract.pause()).to.be.revertedWith('OnlyPauser()');
         });
       });
 
@@ -589,7 +589,7 @@ describe('Redistribution', function () {
           const redistributionContract = await ethers.getContract('Redistribution', deployer);
           await redistributionContract.pause();
           const redistributionContract2 = await ethers.getContract('Redistribution', stamper);
-          await expect(redistributionContract2.unPause()).to.be.revertedWith('only pauser can unpause');
+          await expect(redistributionContract2.unPause()).to.be.revertedWith('OnlyPauser()');
         });
 
         it('should not allow unpausing when not paused', async function () {
