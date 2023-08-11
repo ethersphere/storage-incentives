@@ -241,6 +241,10 @@ contract Redistribution is AccessControl, Pausable {
     error OutOfDepth(); // Anchor is out of reported depth
     error AlreadyRevealed(); // Node already revealed
     error NoMatchingCommit(); // No matching commit and hash
+    error NotClaimPhase(); // Game is not in claim phase
+    error NoReveals(); // Round did not receive any reveals
+    error AlreadyClaimed(); // This round was already claimed
+    error SenderNotWinner(); // Sender of trx is not winner
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -353,6 +357,7 @@ contract Redistribution is AccessControl, Pausable {
         if (cr != currentCommitRound) {
             revert NoCommitsReceived();
         }
+
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
@@ -410,7 +415,10 @@ contract Redistribution is AccessControl, Pausable {
         ChunkInclusionProof calldata entryProofLast
     ) external whenNotPaused {
         winnerSelection();
-        require(winner.owner == msg.sender, "Only selected winner can do the claim");
+
+        if (winner.owner != msg.sender) {
+            revert SenderNotWinner();
+        }
 
         Reveal memory winnerSelected = winner;
         uint256 indexInRC1;
@@ -426,26 +434,26 @@ contract Redistribution is AccessControl, Pausable {
             indexInRC2++;
         }
 
-        require(
-            inProximity(entryProofLast.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth),
-            "witness is not in depth"
-        );
+        if (!inProximity(entryProofLast.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
+            revert OutOfDepth();
+        }
+
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
         socFunction(entryProofLast);
 
-        require(
-            inProximity(entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth),
-            "witness is not in depth"
-        );
+        if (!inProximity(entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
+            revert OutOfDepth();
+        }
+
         inclusionFunction(entryProof1, indexInRC1 * 2);
         stampFunction(entryProof1);
         socFunction(entryProofLast);
 
-        require(
-            inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth),
-            "witness is not in depth"
-        );
+        if (!inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
+            revert OutOfDepth();
+        }
+
         inclusionFunction(entryProof2, indexInRC2 * 2);
         stampFunction(entryProof2);
         socFunction(entryProofLast);
@@ -467,9 +475,17 @@ contract Redistribution is AccessControl, Pausable {
     function winnerSelection() internal {
         uint32 cr = uint32(currentRound());
 
-        require(currentPhaseClaim(), "not in claim phase");
-        require(cr == currentRevealRound, "round received no reveals");
-        require(cr > currentClaimRound, "round already received successful claim");
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
+
+        if (cr != currentRevealRound) {
+            revert NoReveals();
+        }
+
+        if (cr < currentRevealRound) {
+            revert AlreadyClaimed();
+        }
 
         uint256 currentWinnerSelectionSum = 0;
         uint256 redundancyCount = 0;
@@ -752,9 +768,14 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during reveal phase.
      */
     function currentRoundReveals() public view returns (Reveal[] memory) {
-        require(currentPhaseClaim(), "not in claim phase");
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
         uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
+        if (cr != currentRevealRound) {
+            revert NoReveals();
+        }
+
         return currentReveals;
     }
 
@@ -813,10 +834,18 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay address of the applicant.
      */
     function isWinner(bytes32 _overlay) public view returns (bool) {
-        require(currentPhaseClaim(), "winner not determined yet");
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
+
         uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
-        require(cr > currentClaimRound, "round already received successful claim");
+        if (cr != currentRevealRound) {
+            revert NoReveals();
+        }
+
+        if (cr < currentRevealRound) {
+            revert AlreadyClaimed();
+        }
 
         uint256 currentWinnerSelectionSum;
         bytes32 winnerIs;

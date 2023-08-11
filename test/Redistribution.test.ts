@@ -133,8 +133,8 @@ const errors = {
     notInReveal: 'NotRevealPhase()',
   },
   claim: {
-    noReveals: 'round received no reveals',
-    alreadyClaimed: 'round already received successful claim',
+    noReveals: 'NoReveals()',
+    alreadyClaimed: 'AlreadyClaimed()',
   },
 };
 
