@@ -483,7 +483,7 @@ contract Redistribution is AccessControl, Pausable {
             revert NoReveals();
         }
 
-        if (cr < currentRevealRound) {
+        if (cr <= currentClaimRound) {
             revert AlreadyClaimed();
         }
 
@@ -843,7 +843,7 @@ contract Redistribution is AccessControl, Pausable {
             revert NoReveals();
         }
 
-        if (cr < currentRevealRound) {
+        if (cr <= currentClaimRound) {
             revert AlreadyClaimed();
         }
 
