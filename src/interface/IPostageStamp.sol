@@ -17,4 +17,6 @@ interface IPostageStamp {
     function minimumInitialBalancePerChunk() external view returns (uint256);
 
     function setPrice(uint256 _price) external;
+
+    function bzzToken() external view returns (address);
 }
