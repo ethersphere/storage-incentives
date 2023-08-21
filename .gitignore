@@ -33,3 +33,6 @@ contractsInfo.json
 
 # Gas reports
 gas-report.txt
+
+# Fuzzer and Echidna
+crytic-export/
