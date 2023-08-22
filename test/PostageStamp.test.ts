@@ -45,7 +45,7 @@ const errors = {
     paused: 'Pausable: paused',
   },
   firstBatchId: {
-    noneExist: 'no batches exist',
+    noneExist: 'NoBatchesExist()',
   },
 };
 
@@ -1006,7 +1006,7 @@ describe('PostageStamp', function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await expect(
           postageStamp.remainingBalance('0x000000000000000000000000000000000000000000000000000000000000abcd')
-        ).to.be.revertedWith('batch does not exist');
+        ).to.be.revertedWith('BatchDoesNotExist()');
       });
     });
 
@@ -1273,7 +1273,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('owner cannot be the zero address');
+        ).to.be.revertedWith('ZeroAddress()');
       });
 
       it('should not allow zero as bucket depth', async function () {
