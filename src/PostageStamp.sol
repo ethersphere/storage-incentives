@@ -129,10 +129,10 @@ contract PostageStamp is AccessControl, Pausable {
     error InsufficientBalance(); // Insufficient initial balance for 24h minimum validity
     error TransferFailed(); // Failed transfer of BZZ tokens
     error ZeroBalance(); // NormalisedBalance cannot be zero
-    error AdministratorOnly(); // Only administrator can use copy method"
-    error BatchDoesNotExist(); // Batch does not exist or has expired"
+    error AdministratorOnly(); // Only administrator can use copy method
+    error BatchDoesNotExist(); // Batch does not exist or has expired
     error BatchExpired(); // Batch already expired
-    error BatchTooSmall(); // Batch too small to renew"
+    error BatchTooSmall(); // Batch too small to renew
     error NotBatchOwner(); // Not batch owner
     error DepthNotIncreasing(); // Depth not increasing
     error BatchIsImmutable(); // Batch is immutable
