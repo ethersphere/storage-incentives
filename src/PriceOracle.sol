@@ -72,7 +72,7 @@ contract PriceOracle is AccessControl {
      * @notice Unpause the contract.
      * @dev Can only be called by the admin role.
      */
-    function unPause() public {
+    function unPause() external {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
         isPaused = false;
     }

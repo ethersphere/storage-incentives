@@ -15,3 +15,9 @@ Run following commands, more info on link below
 ECHIDNA_RPC_URL=http://127.0.0.1:8545/ echidna . --contract TestPriceOracle --test-limit 500
 
 https://github.com/crytic/building-secure-contracts/blob/master/program-analysis/echidna/advanced/state-network-forking.md
+
+Options that can be used with Echidna https://github.com/crytic/echidna/blob/master/tests/solidity/basic/default.yaml
+
+Example to run only assertions
+
+ECHIDNA_RPC_URL=http://127.0.0.1:8545/ echidna . --contract TestPriceOracle --test-limit 5000 --test-mode assertion

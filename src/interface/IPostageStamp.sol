@@ -19,4 +19,6 @@ interface IPostageStamp {
     function setPrice(uint256 _price) external;
 
     function bzzToken() external view returns (address);
+
+    function minimumBucketDepth() external view returns (uint8);
 }
