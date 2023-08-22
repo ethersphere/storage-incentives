@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.1;
+pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "./interface/IPostageStamp.sol";
 
 /**
  * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
@@ -9,12 +10,6 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * For PriceOracle we use "adjustPrice" to change price of PostageStamps
  * For Staking contract we use "lastUpdatedBlockNumberOfOverlay, freezeDeposit, ownerOfOverlay, stakeOfOverlay"
  */
-
-interface IPostageStamp {
-    function withdraw(address beneficiary) external;
-
-    function validChunkCount() external view returns (uint256);
-}
 
 interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
