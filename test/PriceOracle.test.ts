@@ -85,7 +85,6 @@ describe('PriceOracle', function () {
 
         // Set price base
         const priceBase = await priceOracle.priceBase();
-        priceBaseString = priceBase.toString();
 
         //since postage contract was deployed in block 0
         initialPriceSetBlock = await getBlockNumber();
