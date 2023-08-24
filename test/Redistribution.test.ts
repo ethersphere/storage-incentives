@@ -11,7 +11,6 @@ const increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 51
 
 const round2Anchor = '0xa6eef7e35abe7026729641147f7915573c7e97b47efa546f5f6e3230263bcb49';
 const round3AnchoIfNoReveals = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
-const round5Anchor = '0x17ef568e3e12ab5b9c7254a8d58478811de00f9e6eb34345acd53bf8fd09d3ec';
 
 const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
 
@@ -915,7 +914,7 @@ describe('Redistribution', function () {
           expect(await r_node_5.isWinner(overlay_5)).to.be.true;
           expect(await r_node_6.isWinner(overlay_6)).to.be.false;
 
-          const tx2 = await r_node_6.claim();
+          await r_node_6.claim();
         });
 
         it('if both reveal, but after 4 skipped rounds, check proper price increase', async function () {

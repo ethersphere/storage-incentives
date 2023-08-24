@@ -66,7 +66,6 @@ describe('PriceOracle', function () {
 
     describe('manual update', function () {
       let minPriceString: string;
-      let priceBaseString: string;
       let priceOracle: Contract, postageStamp: Contract;
       let initialPriceSetBlock: number;
       let price0SetBlock: number;
