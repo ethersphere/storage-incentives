@@ -99,8 +99,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     // Lottery pot at last update.
     uint256 public pot;
-    
-    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280 
+
+    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
     uint256 public minimumValidityBlocks = 17280;
 
     // Price from the last update.

@@ -12,6 +12,7 @@ import {
   copyBatchForClaim,
   mineToRevealPhase,
   calculateStakeDensity,
+  TransactionReceipt,
 } from './util/tools';
 import { proximity } from './util/tools';
 import { node5_proof1 } from './claim-proofs';
@@ -54,7 +55,6 @@ const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc9
 const stakeAmount_1 = '100000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
-const hash_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_1 = '0x06';
 const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -727,7 +727,7 @@ describe('Redistribution', function () {
         let r_node_1: Contract;
         let r_node_5: Contract;
         let currentRound: number;
-        let copyBatchTx: any;
+        let copyBatchTx: TransactionReceipt;
         let postageDepth: number;
         let proof1: unknown, proof2: unknown, proofLast: unknown;
 
