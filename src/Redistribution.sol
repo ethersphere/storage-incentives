@@ -239,6 +239,7 @@ contract Redistribution is AccessControl, Pausable {
     error LastCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(); // Reserve size estimation check failed
     error FirstRevealPassed(); // We dont allow checking for participation in next round after first reveal
+
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
@@ -663,9 +664,7 @@ contract Redistribution is AccessControl, Pausable {
      * @dev A node must be within proximity order of less than or equal to the storage depth they intend to report.
      */
     function currentRoundAnchor() public view returns (bytes32 returnVal) {
-        uint256 cr = currentRound();
-
-        if (currentPhaseCommit() || (cr > currentRevealRound && !currentPhaseClaim())) {
+        if (currentPhaseCommit() || (currentRound() > currentRevealRound && !currentPhaseClaim())) {
             return currentSeed();
         }
 
@@ -724,7 +723,7 @@ contract Redistribution is AccessControl, Pausable {
             revert BelowMinimumStake();
         }
 
-        if (currentPhaseReveal() && cr == currentRevealRound) {
+        if (currentPhaseReveal() && currentRound() == currentRevealRound) {
             revert FirstRevealPassed();
         }
 
