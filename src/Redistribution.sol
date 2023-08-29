@@ -206,8 +206,8 @@ contract Redistribution is AccessControl, Pausable {
     // ----------------------------- Errors ------------------------------
 
     error NotCommitPhase(); // Game is not in commit phase
-    error NoCommitsReceived(); // Round did receive any commits
-    error PhaseLastBlock(); // We don't permit commits in last block oh phase
+    error NoCommitsReceived(); // Round didn't receive any commits
+    error PhaseLastBlock(); // We don't permit commits in last block of the phase
     error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
     error CommitRoundOver(); // Commit phase in this round is over
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
@@ -219,7 +219,7 @@ contract Redistribution is AccessControl, Pausable {
     error OutOfDepth(); // Anchor is out of reported depth
     error AlreadyRevealed(); // Node already revealed
     error NoMatchingCommit(); // No matching commit and hash
-    error NotClaimPhase(); // Game is not in claim phase
+    error NotClaimPhase(); // Game is not in the claim phase
     error NoReveals(); // Round did not receive any reveals
     error AlreadyClaimed(); // This round was already claimed
     error SenderNotWinner(); // Caller of trx is not winner
