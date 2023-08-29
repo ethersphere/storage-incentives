@@ -238,7 +238,7 @@ contract Redistribution is AccessControl, Pausable {
     error RandomCheckFailed(); // Random element order check failed
     error LastCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(); // Reserve size estimation check failed
-
+    error FirstRevealPassed(); // We dont allow checking for participation in next round after first reveal
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
@@ -722,6 +722,10 @@ contract Redistribution is AccessControl, Pausable {
 
         if (Stakes.stakeOfOverlay(overlay) < MIN_STAKE) {
             revert BelowMinimumStake();
+        }
+
+        if (currentPhaseReveal() && cr == currentRevealRound) {
+            revert FirstRevealPassed();
         }
 
         return inProximity(overlay, currentRoundAnchor(), depth);
