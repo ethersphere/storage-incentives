@@ -354,7 +354,7 @@ contract Redistribution is AccessControl, Pausable {
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
             delete currentReveals;
-            // Must be set to equal after anchor assigment
+            // We set currentRevealRound ONLY after we set current anchor
             currentRevealRound = cr;
             emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
             updateRandomness();
@@ -370,7 +370,7 @@ contract Redistribution is AccessControl, Pausable {
             revert OutOfDepth();
         }
         // Check that the commit has not already been revealed
-        if (currentCommit.revealed == true) {
+        if (currentCommit.revealed) {
             revert AlreadyRevealed();
         }
 
