@@ -198,7 +198,7 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Manually create a new batch when faciliatating migration, can only be called by the Admin role.
+     * @notice Manually create a new batch when facilitating migration, can only be called by the Admin role.
      * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20 token contract.
      * @param _owner Owner of the new batch.
      * @param _initialBalancePerChunk Initial balance per chunk of the batch.
