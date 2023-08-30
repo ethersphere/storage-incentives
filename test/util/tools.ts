@@ -1,12 +1,14 @@
 import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
 import { arrayify, hexlify } from '@ethersproject/bytes';
-import { BigNumber } from 'ethers';
+import { BigNumber, Transaction } from 'ethers';
 
 export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
 export const PHASE_LENGTH = 38;
 export const ROUND_LENGTH = 152;
 const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+export type TransactionReceipt = Transaction & { blockNumber: number };
 
 /** returns byte representation of the hex string */
 export function hexToBytes(hex: string): Uint8Array {
@@ -180,7 +182,7 @@ export async function mineToRevealPhase() {
  */
 export async function copyBatchForClaim(
   deployer: string
-): Promise<{ tx: any; postageDepth: number; initialBalance: number }> {
+): Promise<{ tx: TransactionReceipt; postageDepth: number; initialBalance: number }> {
   // migrate batch with which the chunk was signed
   const postageAdmin = await ethers.getContract('PostageStamp', deployer);
   // set minimum required blocks for postage stamp lifetime to 0 for tests
