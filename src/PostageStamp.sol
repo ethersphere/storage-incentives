@@ -28,35 +28,7 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 contract PostageStamp is AccessControl, Pausable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
-    /**
-     * @dev Emitted when a new batch is created.
-     */
-    event BatchCreated(
-        bytes32 indexed batchId,
-        uint256 totalAmount,
-        uint256 normalisedBalance,
-        address owner,
-        uint8 depth,
-        uint8 bucketDepth,
-        bool immutableFlag
-    );
-
-    event PotWithdrawn(address recipient, uint256 totalAmount);
-
-    /**
-     * @dev Emitted when an existing batch is topped up.
-     */
-    event BatchTopUp(bytes32 indexed batchId, uint256 topupAmount, uint256 normalisedBalance);
-
-    /**
-     * @dev Emitted when the depth of an existing batch increases.
-     */
-    event BatchDepthIncrease(bytes32 indexed batchId, uint8 newDepth, uint256 normalisedBalance);
-
-    /**
-     *@dev Emitted on every price update.
-     */
-    event PriceUpdate(uint256 price);
+    // ----------------------------- Type declarations ------------------------------
 
     struct Batch {
         // Owner of this batch (0 if not valid).
@@ -72,6 +44,8 @@ contract PostageStamp is AccessControl, Pausable {
         //
         uint256 lastUpdatedBlockNumber;
     }
+
+    // ----------------------------- State variables ------------------------------
 
     // Role allowed to increase totalOutPayment.
     bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
@@ -110,6 +84,43 @@ contract PostageStamp is AccessControl, Pausable {
     // Normalised balance at the blockheight expire() was last called.
     uint256 public lastExpiryBalance;
 
+    // ----------------------------- Events ------------------------------
+
+    /**
+     * @dev Emitted when a new batch is created.
+     */
+    event BatchCreated(
+        bytes32 indexed batchId,
+        uint256 totalAmount,
+        uint256 normalisedBalance,
+        address owner,
+        uint8 depth,
+        uint8 bucketDepth,
+        bool immutableFlag
+    );
+
+    /**
+     * @dev Emitted when an pot is Withdrawn.
+     */
+    event PotWithdrawn(address recipient, uint256 totalAmount);
+
+    /**
+     * @dev Emitted when an existing batch is topped up.
+     */
+    event BatchTopUp(bytes32 indexed batchId, uint256 topupAmount, uint256 normalisedBalance);
+
+    /**
+     * @dev Emitted when the depth of an existing batch increases.
+     */
+    event BatchDepthIncrease(bytes32 indexed batchId, uint8 newDepth, uint256 normalisedBalance);
+
+    /**
+     *@dev Emitted on every price update.
+     */
+    event PriceUpdate(uint256 price);
+
+    // ----------------------------- CONSTRUCTOR ------------------------------
+
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
      * @param _minimumBucketDepth The minimum bucket depth of batches that can be purchased.
@@ -120,6 +131,10 @@ contract PostageStamp is AccessControl, Pausable {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
+
+    ////////////////////////////////////////
+    //              SETTERS               //
+    ////////////////////////////////////////
 
     /**
      * @notice Create a new batch.
@@ -159,6 +174,7 @@ contract PostageStamp is AccessControl, Pausable {
         // since the block the contract was deployed, so we must supplement this batch's
         // _initialBalancePerChunk with the currentTotalOutPayment()
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         //update validChunkCount to remove currently expired batches
         expireLimited(type(uint256).max);
@@ -174,8 +190,6 @@ contract PostageStamp is AccessControl, Pausable {
             normalisedBalance: normalisedBalance,
             lastUpdatedBlockNumber: block.number
         });
-
-        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         // insert into the ordered tree
         tree.insert(batchId, normalisedBalance);
@@ -210,6 +224,7 @@ contract PostageStamp is AccessControl, Pausable {
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         validChunkCount += 1 << _depth;
 
@@ -221,8 +236,6 @@ contract PostageStamp is AccessControl, Pausable {
             normalisedBalance: normalisedBalance,
             lastUpdatedBlockNumber: block.number
         });
-
-        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
 
         tree.insert(_batchId, normalisedBalance);
 
@@ -295,19 +308,6 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Return the per chunk balance not yet used up.
-     * @param _batchId The id of an existing batch.
-     */
-    function remainingBalance(bytes32 _batchId) public view returns (uint256) {
-        Batch storage batch = batches[_batchId];
-        require(batch.owner != address(0), "batch does not exist or expired");
-        if (batch.normalisedBalance <= currentTotalOutPayment()) {
-            return 0;
-        }
-        return batch.normalisedBalance - currentTotalOutPayment();
-    }
-
-    /**
      * @notice Set a new price.
      * @dev Can only be called by the price oracle role.
      * @param _price The new price.
@@ -331,57 +331,6 @@ contract PostageStamp is AccessControl, Pausable {
     function setMinimumValidityBlocks(uint256 _value) external {
         require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only administrator can set minimum validity blocks");
         minimumValidityBlocks = _value;
-    }
-
-    /**
-     * @notice Total per-chunk cost since the contract's deployment.
-     * @dev Returns the total normalised all-time per chunk payout.
-     * Only Batches with a normalised balance greater than this are valid.
-     */
-    function currentTotalOutPayment() public view returns (uint256) {
-        uint256 blocks = block.number - lastUpdatedBlock;
-        uint256 increaseSinceLastUpdate = lastPrice * (blocks);
-        return totalOutPayment + (increaseSinceLastUpdate);
-    }
-
-    function minimumInitialBalancePerChunk() public view returns (uint256) {
-        return minimumValidityBlocks * lastPrice;
-    }
-
-    /**
-     * @notice Pause the contract.
-     * @dev Can only be called by the pauser when not paused.
-     * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
-     */
-    function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
-        _pause();
-    }
-
-    /**
-     * @notice Unpause the contract.
-     * @dev Can only be called by the pauser role while paused.
-     */
-    function unPause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
-        _unpause();
-    }
-
-    /**
-     * @notice Return true if no batches exist
-     */
-    function isBatchesTreeEmpty() public view returns (bool) {
-        return tree.count() == 0;
-    }
-
-    /**
-     * @notice Get the first batch id ordered by ascending normalised balance.
-     * @dev If more than one batch id, return index at 0, if no batches, revert.
-     */
-    function firstBatchId() public view returns (bytes32) {
-        uint256 val = tree.first();
-        require(val > 0, "no batches exist");
-        return tree.valueKeyAtIndex(val, 0);
     }
 
     /**
@@ -437,16 +386,6 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Indicates whether expired batches exist.
-     */
-    function expiredBatchesExist() public view returns (bool) {
-        if (isBatchesTreeEmpty()) {
-            return false;
-        }
-        return (remainingBalance(firstBatchId()) <= 0);
-    }
-
-    /**
      * @notice The current pot.
      */
     function totalPot() public returns (uint256) {
@@ -467,6 +406,84 @@ contract PostageStamp is AccessControl, Pausable {
 
         emit PotWithdrawn(beneficiary, totalAmount);
         pot = 0;
+    }
+
+    /**
+     * @notice Pause the contract.
+     * @dev Can only be called by the pauser when not paused.
+     * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
+     */
+    function pause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        _pause();
+    }
+
+    /**
+     * @notice Unpause the contract.
+     * @dev Can only be called by the pauser role while paused.
+     */
+    function unPause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        _unpause();
+    }
+
+    ////////////////////////////////////////
+    //              GETTERS               //
+    ////////////////////////////////////////
+
+    /**
+     * @notice Total per-chunk cost since the contract's deployment.
+     * @dev Returns the total normalised all-time per chunk payout.
+     * Only Batches with a normalised balance greater than this are valid.
+     */
+    function currentTotalOutPayment() public view returns (uint256) {
+        uint256 blocks = block.number - lastUpdatedBlock;
+        uint256 increaseSinceLastUpdate = lastPrice * (blocks);
+        return totalOutPayment + (increaseSinceLastUpdate);
+    }
+
+    function minimumInitialBalancePerChunk() public view returns (uint256) {
+        return minimumValidityBlocks * lastPrice;
+    }
+
+    /**
+     * @notice Return the per chunk balance not yet used up.
+     * @param _batchId The id of an existing batch.
+     */
+    function remainingBalance(bytes32 _batchId) public view returns (uint256) {
+        Batch storage batch = batches[_batchId];
+        require(batch.owner != address(0), "batch does not exist or expired");
+        if (batch.normalisedBalance <= currentTotalOutPayment()) {
+            return 0;
+        }
+        return batch.normalisedBalance - currentTotalOutPayment();
+    }
+
+    /**
+     * @notice Indicates whether expired batches exist.
+     */
+    function expiredBatchesExist() public view returns (bool) {
+        if (isBatchesTreeEmpty()) {
+            return false;
+        }
+        return (remainingBalance(firstBatchId()) <= 0);
+    }
+
+    /**
+     * @notice Return true if no batches exist
+     */
+    function isBatchesTreeEmpty() public view returns (bool) {
+        return tree.count() == 0;
+    }
+
+    /**
+     * @notice Get the first batch id ordered by ascending normalised balance.
+     * @dev If more than one batch id, return index at 0, if no batches, revert.
+     */
+    function firstBatchId() public view returns (bytes32) {
+        uint256 val = tree.first();
+        require(val > 0, "no batches exist");
+        return tree.valueKeyAtIndex(val, 0);
     }
 
     function batchOwner(bytes32 _batchId) public view returns (address) {
