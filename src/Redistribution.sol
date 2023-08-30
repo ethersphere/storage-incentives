@@ -126,7 +126,7 @@ contract Redistribution is AccessControl, Pausable {
     // inputs for selection of the truth teller and beneficiary.
     bytes32 private seed;
 
-    // The number of the currently active round phases.
+    // Last recorded round number when this phase has been played
     uint32 public currentCommitRound;
     uint32 public currentRevealRound;
     uint32 public currentClaimRound;
@@ -137,6 +137,8 @@ contract Redistribution is AccessControl, Pausable {
 
     // The reveal of the winner of the last round.
     Reveal public winner;
+
+    // ----------------------------- Constants ------------------------------
 
     // The length of a round in blocks.
     uint256 private constant ROUND_LENGTH = 152;
@@ -349,6 +351,10 @@ contract Redistribution is AccessControl, Pausable {
 
         if (cr != currentCommitRound) {
             revert NoCommitsReceived();
+        }
+
+        if (_depth < currentMinimumDepth()) {
+            revert OutOfDepth();
         }
 
         if (cr != currentRevealRound) {
@@ -784,6 +790,23 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         return currentReveals;
+    }
+
+    /**
+     * @notice Returns minimum depth reveal has to have to participate in this round
+     */
+    function currentMinimumDepth() public view returns (uint8) {
+        // We are checking this in  reveal phase, in this phase have new commit round but
+        // for claim round it should be still the last time pot was claimed, which essentialy gives
+        // us how many rounds have been skipped. Because of the difference by default we substract
+        // 1 from the last winner depth
+        uint32 skippedRounds = currentClaimRound - currentCommitRound;
+        uint8 lastWinnerDepth = winner.depth;
+        if (uint8(skippedRounds) >= lastWinnerDepth) {
+            return 1;
+        } else {
+            return lastWinnerDepth - uint8(skippedRounds);
+        }
     }
 
     // ----------------------------- Claim  ------------------------------
