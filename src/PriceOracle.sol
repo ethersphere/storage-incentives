@@ -144,6 +144,7 @@ contract PriceOracle is AccessControl {
         }
     }
 
+    /**
      * @notice Pause the contract.
      * @dev Can only be called by the admin role.
      */
@@ -164,8 +165,9 @@ contract PriceOracle is AccessControl {
     ////////////////////////////////////////
     //              GETTERS               //
     ////////////////////////////////////////
-    
-     * @notice The number of the current round.
+
+    /**
+     * @notice Return the number of the current round.
      */
     function currentRound() public view returns (uint256) {
         return (block.number / roundLength);
