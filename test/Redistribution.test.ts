@@ -624,7 +624,7 @@ describe('Redistribution', function () {
         it('should claim pot', async function () {
           // anchor fixture
           await mineToNode(redistribution, 5);
-          let currentSeed = await redistribution.currentSeed();
+          const currentSeed = await redistribution.currentSeed();
 
           expect(await redistribution.currentPhaseCommit()).to.be.true;
           const r_node_5 = await ethers.getContract('Redistribution', node_5);
