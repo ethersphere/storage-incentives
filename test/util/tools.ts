@@ -91,12 +91,20 @@ function compareHexAsBinary(_a: string, _b: string, d: number): boolean {
   return true;
 }
 
-// Prefix is first N bytes of anchor hash that we want to match with overlay hash, (in this example 6 hex digits, which is depth is equal to 3 Bytes)
-// Nonce is the nonce of the overlay that we want to match
-// NetworkID is the networkID of the overlay that we want to match
-// Depth is the number of bits that we want to match
-// MaxAttempts is the maximum number of attempts to find a match
-// example: mineOverlaysInDepth("0xa92b32", "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33" "0x00", 6, 10000);
+/**
+ * Attempts to mine overlays to match the given prefix up to a certain depth.
+ *
+ * @async
+ * @function
+ * @param {string} prefix - First N bytes of anchor hash to match with overlay hash. E.g., "0xa92b32" for a depth of 3 bytes.
+ * @param {string} nonce - The nonce of the overlay to match.
+ * @param {string} networkID - The networkID of the overlay to match.
+ * @param {number} depth - Number of bits to match.
+ * @param {number} maxAttempts - Maximum number of attempts to find a match.
+ * @returns {Promise<undefined>} Resolves when a match is found or maximum attempts are reached.
+ * @example
+ * mineOverlaysInDepth("0xa92b32", "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33", "0x00", 6, 10000);
+ */
 async function mineOverlaysInDepth(
   prefix: string,
   nonce: string,
