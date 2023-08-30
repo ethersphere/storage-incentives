@@ -14,20 +14,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  */
 
 contract StakeRegistry is AccessControl, Pausable {
-    /**
-     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `stakeamount`, during `lastUpdatedBlock`.
-     */
-    event StakeUpdated(bytes32 indexed overlay, uint256 stakeAmount, address owner, uint256 lastUpdatedBlock);
-
-    /**
-     * @dev Emitted when a stake for overlay `slashed` is slashed by `amount`.
-     */
-    event StakeSlashed(bytes32 slashed, uint256 amount);
-
-    /**
-     * @dev Emitted when a stake for overlay `frozen` for `time` blocks.
-     */
-    event StakeFrozen(bytes32 slashed, uint256 time);
+    // ----------------------------- Type declarations ------------------------------
 
     struct Stake {
         // Overlay of the node that is being staked
@@ -41,6 +28,8 @@ contract StakeRegistry is AccessControl, Pausable {
         // Used to indicate presents in stakes struct
         bool isValue;
     }
+
+    // ----------------------------- State variables ------------------------------
 
     // Associate every stake id with overlay data.
     mapping(bytes32 => Stake) public stakes;
@@ -56,6 +45,25 @@ contract StakeRegistry is AccessControl, Pausable {
     // Address of the staked ERC20 token
     address public bzzToken;
 
+    // ----------------------------- Events ------------------------------
+
+    /**
+     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `stakeamount`, during `lastUpdatedBlock`.
+     */
+    event StakeUpdated(bytes32 indexed overlay, uint256 stakeAmount, address owner, uint256 lastUpdatedBlock);
+
+    /**
+     * @dev Emitted when a stake for overlay `slashed` is slashed by `amount`.
+     */
+    event StakeSlashed(bytes32 slashed, uint256 amount);
+
+    /**
+     * @dev Emitted when a stake for overlay `frozen` for `time` blocks.
+     */
+    event StakeFrozen(bytes32 slashed, uint256 time);
+
+    // ----------------------------- CONSTRUCTOR ------------------------------
+
     /**
      * @param _bzzToken Address of the staked ERC20 token
      * @param _NetworkId Swarm network ID
@@ -67,64 +75,9 @@ contract StakeRegistry is AccessControl, Pausable {
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 
-    /**
-     * @dev Checks to see if `overlay` is frozen.
-     * @param overlay Overlay of staked overlay
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     */
-    function overlayNotFrozen(bytes32 overlay) internal view returns (bool) {
-        return stakes[overlay].lastUpdatedBlockNumber < block.number;
-    }
-
-    /**
-     * @dev Returns the current `stakeAmount` of `overlay`.
-     * @param overlay Overlay of node
-     */
-    function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return stakes[overlay].stakeAmount;
-    }
-
-    /**
-     * @dev Returns the current usable `stakeAmount` of `overlay`.
-     * Checks whether the stake is currently frozen.
-     * @param overlay Overlay of node
-     */
-    function usableStakeOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
-    }
-
-    /**
-     * @dev Returns the `lastUpdatedBlockNumber` of `overlay`.
-     */
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return stakes[overlay].lastUpdatedBlockNumber;
-    }
-
-    /**
-     * @dev Returns the eth address of the owner of `overlay`.
-     * @param overlay Overlay of node
-     */
-    function ownerOfOverlay(bytes32 overlay) public view returns (address) {
-        return stakes[overlay].owner;
-    }
-
-    /**
-     * @dev Please both Endians 🥚.
-     * @param input Eth address used for overlay calculation.
-     */
-    function reverse(uint64 input) internal pure returns (uint64 v) {
-        v = input;
-
-        // swap bytes
-        v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
-
-        // swap 2-byte long pairs
-        v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
-
-        // swap 4-byte long pairs
-        v = (v >> 32) | (v << 32);
-    }
+    ////////////////////////////////////////
+    //              SETTERS               //
+    ////////////////////////////////////////
 
     /**
      * @notice Create a new stake or update an existing one.
@@ -190,8 +143,8 @@ contract StakeRegistry is AccessControl, Pausable {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can freeze stake");
 
         if (stakes[overlay].isValue) {
-            emit StakeFrozen(overlay, time);
             stakes[overlay].lastUpdatedBlockNumber = block.number + time;
+            emit StakeFrozen(overlay, time);
         }
     }
 
@@ -202,7 +155,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function slashDeposit(bytes32 overlay, uint256 amount) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can slash stake");
-        emit StakeSlashed(overlay, amount);
+
         if (stakes[overlay].isValue) {
             if (stakes[overlay].stakeAmount > amount) {
                 stakes[overlay].stakeAmount -= amount;
@@ -210,6 +163,7 @@ contract StakeRegistry is AccessControl, Pausable {
             } else {
                 delete stakes[overlay];
             }
+            emit StakeSlashed(overlay, amount);
         }
     }
 
@@ -228,5 +182,68 @@ contract StakeRegistry is AccessControl, Pausable {
     function unPause() public {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
         _unpause();
+    }
+
+    ////////////////////////////////////////
+    //              GETTERS               //
+    ////////////////////////////////////////
+
+    /**
+     * @dev Checks to see if `overlay` is frozen.
+     * @param overlay Overlay of staked overlay
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     */
+    function overlayNotFrozen(bytes32 overlay) internal view returns (bool) {
+        return stakes[overlay].lastUpdatedBlockNumber < block.number;
+    }
+
+    /**
+     * @dev Returns the current `stakeAmount` of `overlay`.
+     * @param overlay Overlay of node
+     */
+    function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
+        return stakes[overlay].stakeAmount;
+    }
+
+    /**
+     * @dev Returns the current usable `stakeAmount` of `overlay`.
+     * Checks whether the stake is currently frozen.
+     * @param overlay Overlay of node
+     */
+    function usableStakeOfOverlay(bytes32 overlay) public view returns (uint256) {
+        return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
+    }
+
+    /**
+     * @dev Returns the `lastUpdatedBlockNumber` of `overlay`.
+     */
+    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns (uint256) {
+        return stakes[overlay].lastUpdatedBlockNumber;
+    }
+
+    /**
+     * @dev Returns the eth address of the owner of `overlay`.
+     * @param overlay Overlay of node
+     */
+    function ownerOfOverlay(bytes32 overlay) public view returns (address) {
+        return stakes[overlay].owner;
+    }
+
+    /**
+     * @dev Please both Endians 🥚.
+     * @param input Eth address used for overlay calculation.
+     */
+    function reverse(uint64 input) internal pure returns (uint64 v) {
+        v = input;
+
+        // swap bytes
+        v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
+
+        // swap 2-byte long pairs
+        v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
+
+        // swap 4-byte long pairs
+        v = (v >> 32) | (v << 32);
     }
 }
