@@ -353,7 +353,7 @@ contract Redistribution is AccessControl, Pausable {
             revert NoCommitsReceived();
         }
 
-        if (_depth < currentMinimumDepth()) {
+        if (_depth <= currentMinimumDepth()) {
             revert OutOfDepth();
         }
 
