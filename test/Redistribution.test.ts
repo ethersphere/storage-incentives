@@ -639,7 +639,7 @@ describe('Redistribution', function () {
           await mineToRevealPhase();
           await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_2);
 
-          currentSeed = await redistribution.currentSeed();
+          await redistribution.currentSeed();
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
