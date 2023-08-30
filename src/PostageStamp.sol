@@ -260,7 +260,7 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
-        if (normalisedBalance <= 0) {
+        if (normalisedBalance == 0) {
             revert ZeroBalance();
         }
 
