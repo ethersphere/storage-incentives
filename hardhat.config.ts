@@ -6,6 +6,7 @@ import 'hardhat-deploy-ethers';
 import 'hardhat-tracer';
 import '@nomiclabs/hardhat-etherscan';
 import 'hardhat-contract-sizer';
+import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
@@ -25,11 +26,11 @@ const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 // Config for hardhat.
 const config: HardhatUserConfig = {
   solidity: {
-    version: '0.8.1',
+    version: '0.8.19',
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 1000,
       },
     },
   },
@@ -178,6 +179,17 @@ const config: HardhatUserConfig = {
   },
   contractSizer: {
     runOnCompile: false,
+  },
+  gasReporter: {
+    enabled: true,
+    currency: 'USD',
+    gasPriceApi: 'https://api.gnosisscan.io/api?module=proxy&action=eth_gasPrice', // https://docs.gnosischain.com/tools/oracles/gas-price
+    token: 'GNO',
+    onlyCalledMethods: true,
+    // outputFile: 'gas-report.txt',
+    // noColors: true,
+    // gasPrice: 40,
+    coinmarketcap: process.env.CMC_KEY,
   },
 };
 
