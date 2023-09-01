@@ -356,7 +356,7 @@ contract Redistribution is AccessControl, Pausable {
 
         console.log("currentMinimumDepth", currentMinimumDepth());
         console.log("_depth", _depth);
-        if (_depth <= currentMinimumDepth()) {
+        if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
         }
 
