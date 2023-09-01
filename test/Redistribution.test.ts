@@ -885,6 +885,94 @@ describe('Redistribution', function () {
           //node_2 stake is preserved and not frozen
           expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(stakeAmount_1);
         });
+        // Test Claim in subsequent rounds
+        describe('subsequent claim phases', async function () {
+          beforeEach(async () => {
+            const nodesInNeighbourhood = 2;
+
+            await r_node_1.reveal(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
+            await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
+
+            await mineNBlocks(phaseLength);
+
+            expect(await r_node_1.isWinner(overlay_1_n_25)).to.be.false;
+            expect(await r_node_5.isWinner(overlay_5)).to.be.true;
+
+            await r_node_5.claim(proof1, proof2, proofLast);
+            await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
+          });
+
+          // it('distant phase depth should be correct', async function () {
+          //   // anchor fixture
+          //   console.log(await getBlockNumber());
+          //   await mineToRevealPhase();
+          //   console.log(await getBlockNumber());
+          //   await mineToNode(redistribution, 5);
+          //   console.log(await getBlockNumber());
+          //   const currentSeed = await redistribution.currentSeed();
+
+          //   expect(await redistribution.currentPhaseCommit()).to.be.true;
+          //   const r_node_5 = await ethers.getContract('Redistribution', node_5);
+          //   const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
+          //   const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
+
+          //   const currentRound = await r_node_5.currentRound();
+          //   await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+          //   expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+
+          //   const { tx: copyBatchTx, postageDepth } = await copyBatchForClaim(deployer);
+          //   await mineToRevealPhase();
+          //   await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_2);
+
+          //   await redistribution.currentSeed();
+
+          //   expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
+          //   expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
+          //   expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
+          //   expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          //   expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
+
+          //   await mineNBlocks(phaseLength);
+
+          //   const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
+          //   const receipt2 = await tx2.wait();
+
+          //   let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+          //   for (const e of receipt2.events) {
+          //     if (e.event == 'WinnerSelected') {
+          //       WinnerSelectedEvent = e;
+          //     }
+          //     if (e.event == 'TruthSelected') {
+          //       TruthSelectedEvent = e;
+          //     }
+          //     if (e.event == 'CountCommits') {
+          //       CountCommitsEvent = e;
+          //     }
+          //     if (e.event == 'CountReveals') {
+          //       CountRevealsEvent = e;
+          //     }
+          //   }
+
+          //   const expectedPotPayout =
+          //     (receipt2.blockNumber - copyBatchTx.blockNumber) * price1 * 2 ** postageDepth +
+          //     (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
+          //   expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
+          //   expect(CountCommitsEvent.args[0]).to.be.eq(1);
+          //   expect(CountRevealsEvent.args[0]).to.be.eq(1);
+
+          //   expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
+          //   expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
+          //   expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+          //   expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
+          //     BigNumber.from(stakeAmount_0).mul(BigNumber.from(2).pow(sanityDepth))
+          //   );
+          //   expect(WinnerSelectedEvent.args[0].hash).to.be.eq(sanityHash);
+          //   expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(sanityDepth));
+
+          //   expect(TruthSelectedEvent.args[0]).to.be.eq(sanityHash);
+          //   expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(sanityDepth));
+          // });
+        });
       });
     });
   });
