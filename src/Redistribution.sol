@@ -6,7 +6,6 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
-import "hardhat/console.sol";
 
 interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
@@ -354,8 +353,6 @@ contract Redistribution is AccessControl, Pausable {
             revert NoCommitsReceived();
         }
 
-        console.log("currentMinimumDepth", currentMinimumDepth());
-        console.log("_depth", _depth);
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
         }
