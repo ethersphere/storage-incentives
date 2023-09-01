@@ -6,6 +6,7 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
+import "hardhat/console.sol";
 
 interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
@@ -353,6 +354,8 @@ contract Redistribution is AccessControl, Pausable {
             revert NoCommitsReceived();
         }
 
+        console.log("currentMinimumDepth", currentMinimumDepth());
+        console.log("_depth", _depth);
         if (_depth <= currentMinimumDepth()) {
             revert OutOfDepth();
         }
@@ -800,13 +803,12 @@ contract Redistribution is AccessControl, Pausable {
         // for claim round it should be still the last time pot was claimed, which essentialy gives
         // us how many rounds have been skipped. Because of the difference by default we substract
         // 1 from the last winner depth
-        uint32 skippedRounds = currentClaimRound - currentCommitRound;
+
+        uint32 skippedRounds = currentCommitRound - currentClaimRound;
         uint8 lastWinnerDepth = winner.depth;
-        if (uint8(skippedRounds) >= lastWinnerDepth) {
-            return 1;
-        } else {
-            return lastWinnerDepth - uint8(skippedRounds);
-        }
+
+        // Minimum depth returned is 1, otherwise return the difference
+        return uint8(skippedRounds) >= lastWinnerDepth ? 1 : lastWinnerDepth - uint8(skippedRounds);
     }
 
     // ----------------------------- Claim  ------------------------------
