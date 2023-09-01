@@ -867,25 +867,35 @@ contract Redistribution is AccessControl, Pausable {
 
         require(entryProof.proofSegments2[0] == entryProof.proofSegments3[0], "first sister segment in data must match");
 
-        bytes32 originalCacAddress = entryProof.socProofAttached.length > 0 ? 
+        bytes32 originalAddress = entryProof.socProofAttached.length > 0 ? 
             entryProof.socProofAttached[0].chunkAddr : // soc attestation in socFunction
             entryProof.proveSegment;
 
-        require(originalCacAddress == BMTChunk.chunkAddressFromInclusionProof(
+        require(originalAddress == BMTChunk.chunkAddressFromInclusionProof(
             entryProof.proofSegments2, 
             entryProof.proveSegment2, 
             randomChunkSegmentIndex, 
             entryProof.chunkSpan
         ), "inclusion proof failed for original address of element");
 
-        require(entryProof.proofSegments[0] == TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
             entryProof.proofSegments3, 
             entryProof.proveSegment2, 
             randomChunkSegmentIndex, 
             entryProof.chunkSpan, 
             currentRevealRoundAnchor
-        ), "inclusion proof failed for transformed address of element");
-     
+        );
+        // in case of SOC, the transformed address is hashed together with its address in the sample
+        if(entryProof.socProofAttached.length > 0) {
+            calculatedTransformedAddr = keccak256(
+                abi.encode(
+                    entryProof.proveSegment, // SOC address
+                    calculatedTransformedAddr
+                )
+            );
+        }
+
+        require(entryProof.proofSegments[0] == calculatedTransformedAddr, "inclusion proof failed for transformed address of element");
     }
 
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
