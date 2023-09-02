@@ -18,6 +18,11 @@ type WitnessData = {
   transformedAddress: Uint8Array;
   socProofAttached?: SocProofAttachment;
 };
+type WitnessDataStore = {
+  nonce: number;
+  transformedAddress: string;
+  socProofAttached?: SocProofAttachmentStore;
+};
 type WitnessChunks = { ogChunk: Chunk; transformedChunk: Chunk; socProofAttached?: SocProofAttachment };
 type WitnessProof = {
   proofSegments: Uint8Array[];
@@ -39,6 +44,12 @@ type SocProofAttachment = {
   signature: string;
   identifier: Uint8Array;
   chunkAddr: Uint8Array; // wrapped chunk address
+};
+type SocProofAttachmentStore = {
+  signer: string;
+  signature: string;
+  identifier: string;
+  chunkAddr: string;
 };
 
 /**
@@ -336,9 +347,26 @@ export async function mineWitnesses(anchor: Uint8Array, depth: number, socType =
 }
 
 export function loadWitnesses(filename: string): WitnessData[] {
-  return JSON.parse(
+  const witnessDataStore: WitnessDataStore[] = JSON.parse(
     new TextDecoder().decode(fs.readFileSync(path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`)))
-  ) as WitnessData[];
+  ) as WitnessDataStore[];
+
+  return witnessDataStore.map((e) => {
+    const witnessData: WitnessData = {
+      transformedAddress: arrayify(e.transformedAddress),
+      nonce: e.nonce,
+    };
+    if (e.socProofAttached) {
+      witnessData.socProofAttached = {
+        chunkAddr: arrayify(e.socProofAttached.chunkAddr),
+        identifier: arrayify(e.socProofAttached.identifier),
+        signature: e.socProofAttached.signature,
+        signer: e.socProofAttached.signer,
+      };
+    }
+
+    return witnessData;
+  });
 }
 
 export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
@@ -347,7 +375,15 @@ export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
     path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`),
     JSON.stringify(
       witnessChunks.map((a) => {
-        return { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
+        const witnessData: WitnessDataStore = { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
+        if (a.socProofAttached) {
+          witnessData.socProofAttached = {
+            chunkAddr: hexlify(a.socProofAttached.chunkAddr),
+            identifier: hexlify(a.socProofAttached.identifier),
+            signature: a.socProofAttached.signature,
+            signer: a.socProofAttached.signer,
+          };
+        }
       })
     )
   );
