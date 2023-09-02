@@ -374,7 +374,7 @@ export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
   fs.writeFileSync(
     path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`),
     JSON.stringify(
-      witnessChunks.map((a) => {
+      witnessChunks.map<WitnessDataStore>((a) => {
         const witnessData: WitnessDataStore = { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
         if (a.socProofAttached) {
           witnessData.socProofAttached = {
@@ -384,6 +384,8 @@ export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
             signer: a.socProofAttached.signer,
           };
         }
+
+        return witnessData;
       })
     )
   );
