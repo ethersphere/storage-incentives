@@ -218,12 +218,6 @@ export async function getSocProofAttachment(
   };
 }
 
-export async function addSocProofAttachments(witnesses: WitnessData[], anchor1: Uint8Array, depth: number) {
-  for (const w of witnesses) {
-    w.socProofAttached = await getSocProofAttachment(makeChunk(numberToArray(w.nonce)).address(), anchor1, depth);
-  }
-}
-
 export function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8Array): Uint8Array {
   const chunk = makeChunk(nonceBuf, { hashFn: transformedHashFn(anchor) });
   return chunk.address();
@@ -233,7 +227,7 @@ function transformedHashFn(anchor: Uint8Array): (...messages: Message[]) => Uint
   return (...messages: Message[]) => keccak256Hash(anchor, ...messages);
 }
 
-export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0): WitnessData {
+export function mineCacWitness(anchor: Uint8Array, depth: number, startNonce = 0): WitnessData {
   let i = 0;
   while (true) {
     const nonce = i++ + startNonce;
@@ -241,6 +235,46 @@ export function mineWitness(anchor: Uint8Array, depth: number, startNonce = 0): 
     const transformedAddress = calculateTransformedAddress(nonceBuf, anchor);
     if (tAddressAcceptance(makeChunk(nonceBuf).address(), transformedAddress, anchor, depth)) {
       return { nonce, transformedAddress };
+    }
+  }
+}
+
+export async function mineSocWitness(anchor: Uint8Array, depth: number, startNonce = 0): Promise<WitnessData> {
+  const randomWallet = ethers.Wallet.createRandom();
+  const owner = arrayify(randomWallet.address);
+  let j = startNonce;
+  let socAddress, identifier: Uint8Array;
+  // mine SOC address until neighbourhood
+  while (true) {
+    identifier = numberToArray(j++);
+    socAddress = calculateSocAddress(identifier, owner);
+    if (inProximity(socAddress, anchor, depth)) {
+      break;
+    }
+  }
+
+  // mine SOC payload to transformed address
+  let i = 0;
+  while (true) {
+    const nonce = i++;
+    const nonceBuf = numberToArray(nonce);
+    const transformedAddress = keccak256Hash(socAddress, calculateTransformedAddress(nonceBuf, anchor));
+    if (reserveSizeEstimationAcceptance(transformedAddress)) {
+      const chunkAddr = makeChunk(nonceBuf).address();
+      const digest = keccak256Hash(identifier, chunkAddr);
+      const signature = await randomWallet.signMessage(digest);
+      const signer = randomWallet.address;
+
+      return {
+        nonce,
+        transformedAddress,
+        socProofAttached: {
+          chunkAddr,
+          identifier,
+          signature,
+          signer,
+        },
+      };
     }
   }
 }
@@ -272,13 +306,16 @@ function reserveSizeEstimationAcceptance(transformedAddress: Uint8Array) {
  *
  * @param anchor used number around which the witnesses must be generated
  * @param depth how many leading bits must be equal between the transformed addresses and the anchor
+ * @param socType if true then the witnesses will be single owner chunks. Default: false
  */
-export function mineWitnesses(anchor: Uint8Array, depth: number): WitnessData[] {
-  let witnessChunks: ReturnType<typeof mineWitness>[] = [];
+export async function mineWitnesses(anchor: Uint8Array, depth: number, socType = false): Promise<WitnessData[]> {
+  let witnessChunks: WitnessData[] = [];
   let startNonce = 0;
   for (let i = 0; i < WITNESS_COUNT; i++) {
     console.log('mine witness', i);
-    const witness = mineWitness(anchor, depth, startNonce);
+    const witness = socType
+      ? await mineSocWitness(anchor, depth, startNonce)
+      : mineCacWitness(anchor, depth, startNonce);
     witnessChunks.push(witness);
     startNonce = witness.nonce + 1;
   }
@@ -322,13 +359,19 @@ export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
  * @param suffix filename suffix for the mined chunk data
  * @param anchor random number in the Redistribution
  * @param depth storage depth
+ * @param socType if true then the witnesses will be single owner chunks. Default: false
  * @returns loaded or mined witnesses
  */
-export function setWitnesses(suffix: string, anchor: Uint8Array, depth: number): WitnessData[] {
+export async function setWitnesses(
+  suffix: string,
+  anchor: Uint8Array,
+  depth: number,
+  socType = false
+): Promise<WitnessData[]> {
   try {
     return loadWitnesses(suffix);
   } catch (e) {
-    const witnessChunks = mineWitnesses(anchor, Number(depth));
+    const witnessChunks = await mineWitnesses(anchor, Number(depth), socType);
     saveWitnesses(witnessChunks, suffix);
 
     return witnessChunks;
