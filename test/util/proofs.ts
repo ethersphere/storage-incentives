@@ -313,25 +313,12 @@ function reserveSizeEstimationAcceptance(transformedAddress: Uint8Array) {
 }
 
 /**
- * Used function when new witnesses are required to be generated for tests.
- *
- * @param anchor used number around which the witnesses must be generated
- * @param depth how many leading bits must be equal between the transformed addresses and the anchor
- * @param socType if true then the witnesses will be single owner chunks. Default: false
+ * Sort the expected ascending order in the witnesses transformed address values
+ * @param witnesses unordered witness array for sampling
+ * @returns sorted witnesses
  */
-export async function mineWitnesses(anchor: Uint8Array, depth: number, socType = false): Promise<WitnessData[]> {
-  let witnessChunks: WitnessData[] = [];
-  let startNonce = 0;
-  for (let i = 0; i < WITNESS_COUNT; i++) {
-    console.log('mine witness', i);
-    const witness = socType
-      ? await mineSocWitness(anchor, depth, startNonce)
-      : mineCacWitness(anchor, depth, startNonce);
-    witnessChunks.push(witness);
-    startNonce = witness.nonce + 1;
-  }
-  // sort witness chunks to be descendant
-  witnessChunks = witnessChunks.sort((a, b) => {
+function sortWitnesses(witnesses: WitnessData[]): WitnessData[] {
+  witnesses = witnesses.sort((a, b) => {
     const aBn = BigNumber.from(a.transformedAddress);
     const bBn = BigNumber.from(b.transformedAddress);
     if (aBn.lt(bBn)) {
@@ -343,7 +330,29 @@ export async function mineWitnesses(anchor: Uint8Array, depth: number, socType =
     return 0;
   });
 
-  return witnessChunks;
+  return witnesses;
+}
+
+/**
+ * Used function when new witnesses are required to be generated for tests.
+ *
+ * @param anchor used number around which the witnesses must be generated
+ * @param depth how many leading bits must be equal between the transformed addresses and the anchor
+ * @param socType if true then the witnesses will be single owner chunks. Default: false
+ */
+export async function mineWitnesses(anchor: Uint8Array, depth: number, socType = false): Promise<WitnessData[]> {
+  const witnessChunks: WitnessData[] = [];
+  let startNonce = 0;
+  for (let i = 0; i < WITNESS_COUNT; i++) {
+    console.log('mine witness', i);
+    const witness = socType
+      ? await mineSocWitness(anchor, depth, startNonce)
+      : mineCacWitness(anchor, depth, startNonce);
+    witnessChunks.push(witness);
+    startNonce = witness.nonce + 1;
+  }
+
+  return sortWitnesses(witnessChunks);
 }
 
 export function loadWitnesses(filename: string): WitnessData[] {
@@ -351,7 +360,7 @@ export function loadWitnesses(filename: string): WitnessData[] {
     new TextDecoder().decode(fs.readFileSync(path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`)))
   ) as WitnessDataStore[];
 
-  return witnessDataStore.map((e) => {
+  const witnessData: WitnessData[] = witnessDataStore.map((e) => {
     const witnessData: WitnessData = {
       transformedAddress: arrayify(e.transformedAddress),
       nonce: e.nonce,
@@ -367,6 +376,8 @@ export function loadWitnesses(filename: string): WitnessData[] {
 
     return witnessData;
   });
+
+  return sortWitnesses(witnessData);
 }
 
 export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
