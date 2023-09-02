@@ -766,7 +766,7 @@ describe('Redistribution', function () {
             ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
             : await setWitnesses('claim-pot', anchor1, depth);
 
-          const sampleChunk = makeSample(witnessChunks, anchor1);
+          const sampleChunk = makeSample(witnessChunks);
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
@@ -815,6 +815,7 @@ describe('Redistribution', function () {
         it('should claim pot by generated SOC sampling', async function () {
           const { sampleHashString, proofParams } = await generatedSampling(true);
 
+          // console.log('socproofattached', proofParams.proof1.proofSegments[0], proofParams.proof2.proofSegments[0], proofParams.proofLast.proofSegments[0]);
           expect(proofParams.proof1.socProofAttached).to.have.length(1);
           expect(proofParams.proof2.socProofAttached).to.have.length(1);
           expect(proofParams.proofLast.socProofAttached).to.have.length(1);
@@ -828,7 +829,7 @@ describe('Redistribution', function () {
           let witnessChunks = loadWitnesses('claim-pot');
           witnessChunks = witnessChunks.reverse();
 
-          const sampleChunk = makeSample(witnessChunks, anchor1);
+          const sampleChunk = makeSample(witnessChunks);
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
@@ -885,7 +886,7 @@ describe('Redistribution', function () {
             return 0;
           });
 
-          const sampleChunk = makeSample(witnessChunks, anchor1);
+          const sampleChunk = makeSample(witnessChunks);
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
@@ -949,7 +950,7 @@ describe('Redistribution', function () {
             return 0;
           });
 
-          const sampleChunk = makeSample(witnessChunks, anchor1);
+          const sampleChunk = makeSample(witnessChunks);
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);

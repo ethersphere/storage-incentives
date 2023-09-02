@@ -160,7 +160,12 @@ export async function getClaimProof(
       `Address of the OG witness chunk does not match the one in the sample at witness index ${witnessIndex}`
     );
   }
-  if (!equalBytes(proofWitnessChunk.transformedChunk.address(), proofSegments[0])) {
+  const transformedChunkAddress = proofWitnessChunk.transformedChunk.address();
+  if (
+    (proofWitnessChunk.socProofAttached &&
+      !equalBytes(keccak256Hash(ogAddress, transformedChunkAddress), proofSegments[0])) ||
+    (!proofWitnessChunk.socProofAttached && !equalBytes(transformedChunkAddress, proofSegments[0]))
+  ) {
     throw new Error(
       `Address of the transformed witness chunk does not match the one in the sample at witness index ${witnessIndex}`
     );
@@ -427,17 +432,16 @@ export async function setWitnesses(
   }
 }
 
-export function makeSample(witnesses: WitnessData[], anchor: Uint8Array): Chunk {
+export function makeSample(witnesses: WitnessData[]): Chunk {
   const payload = new Uint8Array(SEGMENT_BYTE_LENGTH * witnesses.length * 2);
   for (const [i, witness] of witnesses.entries()) {
     const originalChunk = makeChunk(numberToArray(witness.nonce));
-    const transformedChunk = makeChunk(numberToArray(witness.nonce), { hashFn: transformedHashFn(anchor) });
     const payloadOffset = i * SEGMENT_BYTE_LENGTH * 2;
     const originalAddress = witness.socProofAttached
       ? calculateSocAddress(witness.socProofAttached.identifier, arrayify(witness.socProofAttached.signer))
       : originalChunk.address();
     payload.set(originalAddress, payloadOffset);
-    payload.set(transformedChunk.address(), payloadOffset + SEGMENT_BYTE_LENGTH);
+    payload.set(witness.transformedAddress, payloadOffset + SEGMENT_BYTE_LENGTH);
   }
 
   return makeChunk(payload);
