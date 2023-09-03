@@ -96,7 +96,7 @@ function compareHexAsBinary(_a: string, _b: string, d: number): boolean {
  *
  * @async
  * @function
- * @param {string} prefix - First N bytes of anchor hash to match with overlay hash. E.g., "0xa92b32" for a depth of 3 bytes.
+ * @param {string} prefix -First N bytes of anchor hash to match with overlay hash per depth. E.g. depth 6 is first 6 bits of Anchor which is 0xfc
  * @param {string} nonce - The nonce of the overlay to match.
  * @param {string} networkID - The networkID of the overlay to match.
  * @param {number} depth - Number of bits to match.
