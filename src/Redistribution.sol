@@ -6,6 +6,7 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
+import "hardhat/console.sol";
 
 interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
@@ -508,9 +509,14 @@ contract Redistribution is AccessControl, Pausable {
             ) {
                 currentWinnerSelectionSum += currentReveal.stakeDensity;
                 randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
+                //console.logBytes32(randomNumber);
                 randomNumberTrunc = uint256(randomNumber & MAX_H);
+                //console.log("RNDTrunc", randomNumberTrunc);
 
+                console.log(randomNumberTrunc * currentWinnerSelectionSum);
+                console.log(currentReveal.stakeDensity * (uint256(MAX_H) + 1));
                 if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(MAX_H) + 1)) {
+                    console.log(currentReveal.owner);
                     winner = currentReveal;
                 }
 
@@ -828,6 +834,8 @@ contract Redistribution is AccessControl, Pausable {
                 if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MAX_H) + 1)) {
                     truthRevealedHash = currentReveals[revIndex].hash;
                     truthRevealedDepth = currentReveals[revIndex].depth;
+
+                    //console.log("Revelers ", currentReveals[revIndex].owner);
                 }
             }
             unchecked {
