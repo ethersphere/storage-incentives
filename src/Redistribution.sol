@@ -800,19 +800,9 @@ contract Redistribution is AccessControl, Pausable {
         uint8 bucketDepth = PostageContract.batchBucketDepth(entryProof.postageId);
         uint32 postageIndex = getPostageIndex(entryProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
+        
         // available
         require(postageIndex < maxPostageIndex, "Stamp available: index resides outside of the valid index set");
-
-        address batchOwner = PostageContract.batchOwner(entryProof.postageId);
-        // authorized
-        require(Signatures.postageVerify(
-            batchOwner,
-            entryProof.signature,
-            entryProof.proveSegment,
-            entryProof.postageId,
-            entryProof.index,
-            entryProof.timeStamp
-        ), "Stamp authorized: signature recovery failed for element");
 
         // alive
         require(
@@ -828,8 +818,16 @@ contract Redistribution is AccessControl, Pausable {
             "Stamp aligned: postage bucket differs from address bucket"
         );
 
-        // FOR LATER USE
-        // require(PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) < block.number - 2 * roundLength, "batch past balance validation failed for attached stamp"); 
+        // authorized
+        address batchOwner = PostageContract.batchOwner(entryProof.postageId);
+        require(Signatures.postageVerify(
+            batchOwner,
+            entryProof.signature,
+            entryProof.proveSegment,
+            entryProof.postageId,
+            entryProof.index,
+            entryProof.timeStamp
+        ), "Stamp authorized: signature recovery failed for element");
     }
 
     function inclusionFunction(
