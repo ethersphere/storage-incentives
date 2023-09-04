@@ -143,6 +143,43 @@ contract PostageStamp is AccessControl, Pausable {
     error OnlyPauser(); // Only Pauser role can pause or unpause contracts
     error OnlyRedistributor(); // Only redistributor role can withdraw from the contract
 
+  
+
+    // ----------------------------- Events ------------------------------
+
+    /**
+     * @dev Emitted when a new batch is created.
+     */
+    event BatchCreated(
+        bytes32 indexed batchId,
+        uint256 totalAmount,
+        uint256 normalisedBalance,
+        address owner,
+        uint8 depth,
+        uint8 bucketDepth,
+        bool immutableFlag
+    );
+
+    /**
+     * @dev Emitted when an pot is Withdrawn.
+     */
+    event PotWithdrawn(address recipient, uint256 totalAmount);
+
+    /**
+     * @dev Emitted when an existing batch is topped up.
+     */
+    event BatchTopUp(bytes32 indexed batchId, uint256 topupAmount, uint256 normalisedBalance);
+
+    /**
+     * @dev Emitted when the depth of an existing batch increases.
+     */
+    event BatchDepthIncrease(bytes32 indexed batchId, uint8 newDepth, uint256 normalisedBalance);
+
+    /**
+     *@dev Emitted on every price update.
+     */
+    event PriceUpdate(uint256 price);
+
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
@@ -222,7 +259,7 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Manually create a new batch when faciliatating migration, can only be called by the Admin role.
+     * @notice Manually create a new batch when facilitating migration, can only be called by the Admin role.
      * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20 token contract.
      * @param _owner Owner of the new batch.
      * @param _initialBalancePerChunk Initial balance per chunk of the batch.
@@ -263,6 +300,7 @@ contract PostageStamp is AccessControl, Pausable {
         if (normalisedBalance == 0) {
             revert ZeroBalance();
         }
+
 
         validChunkCount += 1 << _depth;
 
@@ -391,6 +429,7 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         minimumValidityBlocks = uint64(_value);
+
     }
 
     /**
@@ -488,6 +527,7 @@ contract PostageStamp is AccessControl, Pausable {
      * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
      */
     function pause() public {
+
         if (!hasRole(PAUSER_ROLE, msg.sender)) {
             revert OnlyPauser();
         }
@@ -502,6 +542,7 @@ contract PostageStamp is AccessControl, Pausable {
         if (!hasRole(PAUSER_ROLE, msg.sender)) {
             revert OnlyPauser();
         }
+
         _unpause();
     }
 
