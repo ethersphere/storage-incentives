@@ -169,7 +169,6 @@ export async function copyBatchForClaim(deployer: string): Promise<{
   batchId: string;
   batchOwner: Wallet;
 }> {
-
   // migrate batch with which the chunk was signed
   const postageAdmin = await ethers.getContract('PostageStamp', deployer);
   // set minimum required blocks for postage stamp lifetime to 0 for tests

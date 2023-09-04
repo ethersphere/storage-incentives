@@ -78,8 +78,9 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
 
     // mine new witness chunks because of new anchor and reserve estimation
     const numbering = String(i).padStart(3, '0');
-    const witnessChunks = setWitnesses(`stats-${numbering}`, anchor1, Number(depth));
-    const sampleChunk = makeSample(witnessChunks, anchor1);
+    const witnessChunks = await setWitnesses(`stats-${numbering}`, anchor1, Number(depth));
+    const sampleChunk = makeSample(witnessChunks);
+
     const sampleHashString = hexlify(sampleChunk.address());
 
     for (let i = 0; i < nodes.length; i++) {
