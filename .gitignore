@@ -34,3 +34,6 @@ contractsInfo.json
 
 # Gas reports
 gas-report.txt
+
+# Slither
+crytic-export/

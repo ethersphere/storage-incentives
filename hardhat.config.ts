@@ -172,7 +172,7 @@ const config: HardhatUserConfig = {
     sources: 'src',
   },
   contractSizer: {
-    runOnCompile: true,
+    runOnCompile: false,
   },
   gasReporter: {
     enabled: true,
@@ -182,7 +182,7 @@ const config: HardhatUserConfig = {
     onlyCalledMethods: true,
     // outputFile: 'gas-report.txt',
     // noColors: true,
-    //gasPrice: 8,
+    // gasPrice: 40,
     coinmarketcap: process.env.CMC_KEY,
   },
 };
