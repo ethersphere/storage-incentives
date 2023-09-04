@@ -26,7 +26,7 @@ readonly DEPLOYED_ARTIFACTS="${NETWORK}_deployed.json"
 readonly CHAIN_ID="$(jq '.chainId | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
 [[ -z "${CHAIN_ID}" ]] && printf "chain id number is empty\n" && exit 1
 
-readonly NETWORK_ID="$(jq '.networkId | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
+readonly NETWORK_ID="$(jq '.swarmNetworkId | select( . != null )' "${DEPLOYED_ARTIFACTS}")"
 [[ -z "${NETWORK_ID}" ]] && printf "network id number is empty\n" && exit 1
 
 readonly BZZ_TOKEN_BLOCK_NUMBER="$(jq '.contracts.bzzToken.block | select( . != null )' "${DEPLOYED_ARTIFACTS}")"

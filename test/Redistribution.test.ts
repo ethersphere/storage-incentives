@@ -761,12 +761,12 @@ describe('Redistribution', function () {
 
         const generatedSampling = async (socAttachment = false) => {
           const anchor1 = arrayify(currentSeed);
-
           const witnessChunks = socAttachment
             ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
             : await setWitnesses('claim-pot', anchor1, depth);
 
           const sampleChunk = makeSample(witnessChunks);
+
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
@@ -816,6 +816,7 @@ describe('Redistribution', function () {
           const { sampleHashString, proofParams } = await generatedSampling(true);
 
           // console.log('socproofattached', proofParams.proof1.proofSegments[0], proofParams.proof2.proofSegments[0], proofParams.proofLast.proofSegments[0]);
+
           expect(proofParams.proof1.socProofAttached).to.have.length(1);
           expect(proofParams.proof2.socProofAttached).to.have.length(1);
           expect(proofParams.proofLast.socProofAttached).to.have.length(1);
@@ -830,6 +831,7 @@ describe('Redistribution', function () {
           witnessChunks = witnessChunks.reverse();
 
           const sampleChunk = makeSample(witnessChunks);
+
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
@@ -866,6 +868,7 @@ describe('Redistribution', function () {
 
           // create witnesses
           let witnessChunks: ReturnType<typeof mineCacWitness>[] = [];
+
           for (let i = 0; i < WITNESS_COUNT; i++) {
             // NOTE do not do estimation mining because that takes long
             const nonce = i;
@@ -887,6 +890,7 @@ describe('Redistribution', function () {
           });
 
           const sampleChunk = makeSample(witnessChunks);
+
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
@@ -923,6 +927,7 @@ describe('Redistribution', function () {
 
           // create witnesses
           let witnessChunks: ReturnType<typeof mineCacWitness>[] = [];
+
           let j = 0;
           for (let i = 0; i < WITNESS_COUNT; i++) {
             // mine nonce until transformed address is in depth
@@ -951,6 +956,7 @@ describe('Redistribution', function () {
           });
 
           const sampleChunk = makeSample(witnessChunks);
+
           const sampleHashString = hexlify(sampleChunk.address());
 
           const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);

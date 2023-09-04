@@ -80,6 +80,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     const numbering = String(i).padStart(3, '0');
     const witnessChunks = await setWitnesses(`stats-${numbering}`, anchor1, Number(depth));
     const sampleChunk = makeSample(witnessChunks);
+
     const sampleHashString = hexlify(sampleChunk.address());
 
     for (let i = 0; i < nodes.length; i++) {

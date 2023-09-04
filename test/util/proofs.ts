@@ -18,11 +18,13 @@ type WitnessData = {
   transformedAddress: Uint8Array;
   socProofAttached?: SocProofAttachment;
 };
+
 type WitnessDataStore = {
   nonce: number;
   transformedAddress: string;
   socProofAttached?: SocProofAttachmentStore;
 };
+
 type WitnessChunks = { ogChunk: Chunk; transformedChunk: Chunk; socProofAttached?: SocProofAttachment };
 type WitnessProof = {
   proofSegments: Uint8Array[];
@@ -45,12 +47,14 @@ type SocProofAttachment = {
   identifier: Uint8Array;
   chunkAddr: Uint8Array; // wrapped chunk address
 };
+
 type SocProofAttachmentStore = {
   signer: string;
   signature: string;
   identifier: string;
   chunkAddr: string;
 };
+
 
 /**
  * Gives back the witness incides that must be proved at claim
@@ -160,12 +164,14 @@ export async function getClaimProof(
       `Address of the OG witness chunk does not match the one in the sample at witness index ${witnessIndex}`
     );
   }
+
   const transformedChunkAddress = proofWitnessChunk.transformedChunk.address();
   if (
     (proofWitnessChunk.socProofAttached &&
       !equalBytes(keccak256Hash(ogAddress, transformedChunkAddress), proofSegments[0])) ||
     (!proofWitnessChunk.socProofAttached && !equalBytes(transformedChunkAddress, proofSegments[0]))
   ) {
+
     throw new Error(
       `Address of the transformed witness chunk does not match the one in the sample at witness index ${witnessIndex}`
     );
@@ -242,6 +248,7 @@ export function calculateTransformedAddress(nonceBuf: Uint8Array, anchor: Uint8A
 function transformedHashFn(anchor: Uint8Array): (...messages: Message[]) => Uint8Array {
   return (...messages: Message[]) => keccak256Hash(anchor, ...messages);
 }
+
 
 export function mineCacWitness(anchor: Uint8Array, depth: number, startNonce = 0): WitnessData {
   let i = 0;

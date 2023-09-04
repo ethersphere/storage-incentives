@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: BSD-3-Clause
-pragma solidity ^0.8.1;
+pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -99,8 +99,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     // Lottery pot at last update.
     uint256 public pot;
-    
-    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280 
+
+    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
     uint256 public minimumValidityBlocks = 17280;
 
     // Price from the last update.
