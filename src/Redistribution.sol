@@ -71,7 +71,7 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth;
     }
 
-    struct ChunkInclusionProof{
+    struct ChunkInclusionProof {
         bytes32[] proofSegments;
         bytes32 proveSegment;
         // _RCspan is known for RC 32*32
@@ -83,7 +83,7 @@ contract Redistribution is AccessControl, Pausable {
         uint64 chunkSpan;
         //
         bytes32[] proofSegments3;
-        //  _proveSegment3 known, is equal _proveSegment2 
+        //  _proveSegment3 known, is equal _proveSegment2
         // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
         // chunkSpan2 is equal to chunkSpan (as the data is the same)
 
@@ -93,17 +93,15 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 postageId;
         uint64 index;
         uint64 timeStamp;
-
         SOCProof[] socProofAttached;
     }
-    
-    struct SOCProof{
+
+    struct SOCProof {
         address signer; // signer Ethereum address to check against
         bytes signature;
-        bytes32 identifier; // 
+        bytes32 identifier; //
         bytes32 chunkAddr; // wrapped chunk address
     }
-
 
     // The address of the linked PostageStamp contract.
     IPostageStamp public PostageContract;
@@ -126,9 +124,9 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
-
     // alpha=0.097612 beta=0.0716570 k=16
-    uint256 public constant SAMPLE_MAX_VALUE = 1284401000000000000000000000000000000000000000000000000000000000000000000;
+    uint256 public constant SAMPLE_MAX_VALUE =
+        1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 currentRevealRoundAnchor;
@@ -160,6 +158,8 @@ contract Redistribution is AccessControl, Pausable {
 
     // The reveal of the winner of the last round.
     Reveal public winner;
+
+    error OutOfDepth(); // Anchor is out of reported depth
 
     /**
     * @dev Pause the contract. The contract is provably stopped by renouncing
@@ -431,6 +431,10 @@ contract Redistribution is AccessControl, Pausable {
 
         uint256 cr = currentRound();
 
+        if (_depth < currentMinimumDepth()) {
+            revert OutOfDepth();
+        }
+
         require(cr == currentCommitRound, "round received no commits");
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
@@ -480,6 +484,21 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         require(false, "no matching commit or hash");
+    }
+
+    /**
+     * @notice Returns minimum depth reveal has to have to participate in this round
+     */
+    function currentMinimumDepth() public view returns (uint8) {
+        // We are checking value in reveal phase, as the currentCommitRound is set to the current round
+        // but the currentClaimRound is still set to the last time claim was made
+        // We add 1 to ensure that for the next round the minimum depth is the same as last winner depth
+
+        uint8 skippedRounds = uint8(currentCommitRound - currentClaimRound) + 1;
+        uint8 lastWinnerDepth = winner.depth;
+
+        // We ensure that skippedRounds is not bigger than lastWinnerDepth, because of overflow
+        return skippedRounds >= lastWinnerDepth ? 0 : lastWinnerDepth - skippedRounds;
     }
 
     /**
@@ -605,25 +624,34 @@ contract Redistribution is AccessControl, Pausable {
         x = uint256(seed) % 15;
         // rand(13)
         y = uint256(seed) % 14;
-        if ( y >= x ) {
+        if (y >= x) {
             y++;
         }
 
-        require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
+        require(
+            inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth),
+            "witness is not in depth"
+        );
         inclusionFunction(entryProofLast, 30);
         stampFunction(entryProofLast);
         socFunction(entryProofLast);
 
-        require(inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
+        require(
+            inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth),
+            "witness is not in depth"
+        );
         inclusionFunction(entryProof1, x * 2);
         stampFunction(entryProof1);
         socFunction(entryProof1);
 
-        require(inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
+        require(
+            inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth),
+            "witness is not in depth"
+        );
         inclusionFunction(entryProof2, y * 2);
         stampFunction(entryProof2);
         socFunction(entryProof2);
-        
+
         checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
 
         emit WinnerSelected(winner);
@@ -631,9 +659,7 @@ contract Redistribution is AccessControl, Pausable {
         PostageContract.withdraw(winner.owner);
     }
 
-
     function winnerSelection() internal returns (Reveal memory winner_) {
-
         require(currentPhaseClaim(), "not in claim phase");
 
         uint256 cr = currentRound();
@@ -684,28 +710,38 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < currentCommits.length; i++) {
             revIndex = currentCommits[i].revealIndex;
-            if (currentCommits[i].revealed ) {
-               if ( truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
+            if (currentCommits[i].revealed) {
+                if (
+                    truthRevealedHash == currentReveals[revIndex].hash &&
+                    truthRevealedDepth == currentReveals[revIndex].depth
+                ) {
                     currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
                     randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
 
                     randomNumberTrunc = uint256(randomNumber & MaxH);
 
                     if (
-                        randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                        randomNumberTrunc * currentWinnerSelectionSum <
+                        currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
                     ) {
                         winner_ = currentReveals[revIndex];
                     }
 
                     k++;
                 } else {
-                    Stakes.freezeDeposit(currentReveals[revIndex].overlay, penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth));
+                    Stakes.freezeDeposit(
+                        currentReveals[revIndex].overlay,
+                        penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
+                    );
                     // slash ph5
                 }
             } else {
                 // slash in later phase
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(currentCommits[i].overlay, penaltyMultiplierNonRevealed * roundLength * uint256(2**truthRevealedDepth));
+                Stakes.freezeDeposit(
+                    currentCommits[i].overlay,
+                    penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
+                );
                 continue;
             }
         }
@@ -759,7 +795,7 @@ contract Redistribution is AccessControl, Pausable {
         return prefix >> (32 - bucketDepth);
     }
 
-    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal  pure returns (uint256) {
+    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal pure returns (uint256) {
         return 1 << (postageDepth - bucketDepth);
     }
 
@@ -775,32 +811,33 @@ contract Redistribution is AccessControl, Pausable {
         return keccak256(abi.encodePacked(identifier, signer));
     }
 
-    function socFunction(ChunkInclusionProof calldata entryProof) pure internal {
-        if(entryProof.socProofAttached.length == 0) return;
+    function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
+        if (entryProof.socProofAttached.length == 0) return;
 
-        require(Signatures.socVerify(
-            entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
-            entryProof.socProofAttached[0].signature,
-            entryProof.socProofAttached[0].identifier,
-            entryProof.socProofAttached[0].chunkAddr
-        ), "Soc verification failed for element");
-        
         require(
-            calculateSocAddress(
-                entryProof.socProofAttached[0].identifier, 
-                entryProof.socProofAttached[0].signer
-            ) == entryProof.proveSegment,
+            Signatures.socVerify(
+                entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
+                entryProof.socProofAttached[0].signature,
+                entryProof.socProofAttached[0].identifier,
+                entryProof.socProofAttached[0].chunkAddr
+            ),
+            "Soc verification failed for element"
+        );
+
+        require(
+            calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) ==
+                entryProof.proveSegment,
             "Soc address calculation does not match with the witness"
         );
     }
 
-    function stampFunction(ChunkInclusionProof calldata entryProof) view internal {
+    function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
         // authentic
         uint8 batchDepth = PostageContract.batchDepth(entryProof.postageId);
         uint8 bucketDepth = PostageContract.batchBucketDepth(entryProof.postageId);
         uint32 postageIndex = getPostageIndex(entryProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
-        
+
         // available
         require(postageIndex < maxPostageIndex, "Stamp available: index resides outside of the valid index set");
 
@@ -813,58 +850,66 @@ contract Redistribution is AccessControl, Pausable {
         // aligned
         uint64 postageBucket = getPostageBucket(entryProof.index);
         uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
-        require(
-            postageBucket == addressBucket,
-            "Stamp aligned: postage bucket differs from address bucket"
-        );
+        require(postageBucket == addressBucket, "Stamp aligned: postage bucket differs from address bucket");
 
         // authorized
         address batchOwner = PostageContract.batchOwner(entryProof.postageId);
-        require(Signatures.postageVerify(
-            batchOwner,
-            entryProof.signature,
-            entryProof.proveSegment,
-            entryProof.postageId,
-            entryProof.index,
-            entryProof.timeStamp
-        ), "Stamp authorized: signature recovery failed for element");
+        require(
+            Signatures.postageVerify(
+                batchOwner,
+                entryProof.signature,
+                entryProof.proveSegment,
+                entryProof.postageId,
+                entryProof.index,
+                entryProof.timeStamp
+            ),
+            "Stamp authorized: signature recovery failed for element"
+        );
     }
 
-    function inclusionFunction(
-        ChunkInclusionProof calldata entryProof,
-        uint256 indexInRC
-        ) internal {
-        require(winner.hash == BMTChunk.chunkAddressFromInclusionProof(
-            entryProof.proofSegments, 
-            entryProof.proveSegment, 
-            indexInRC,
-            32 * 32
-        ), "RC inclusion proof failed for element");
+    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
+        require(
+            winner.hash ==
+                BMTChunk.chunkAddressFromInclusionProof(
+                    entryProof.proofSegments,
+                    entryProof.proveSegment,
+                    indexInRC,
+                    32 * 32
+                ),
+            "RC inclusion proof failed for element"
+        );
 
         randomChunkSegmentIndex = uint256(seed) % 128;
 
-        require(entryProof.proofSegments2[0] == entryProof.proofSegments3[0], "first sister segment in data must match");
+        require(
+            entryProof.proofSegments2[0] == entryProof.proofSegments3[0],
+            "first sister segment in data must match"
+        );
 
-        bytes32 originalAddress = entryProof.socProofAttached.length > 0 ? 
-            entryProof.socProofAttached[0].chunkAddr : // soc attestation in socFunction
-            entryProof.proveSegment;
+        bytes32 originalAddress = entryProof.socProofAttached.length > 0
+            ? entryProof.socProofAttached[0].chunkAddr // soc attestation in socFunction
+            : entryProof.proveSegment;
 
-        require(originalAddress == BMTChunk.chunkAddressFromInclusionProof(
-            entryProof.proofSegments2, 
-            entryProof.proveSegment2, 
-            randomChunkSegmentIndex, 
-            entryProof.chunkSpan
-        ), "inclusion proof failed for original address of element");
+        require(
+            originalAddress ==
+                BMTChunk.chunkAddressFromInclusionProof(
+                    entryProof.proofSegments2,
+                    entryProof.proveSegment2,
+                    randomChunkSegmentIndex,
+                    entryProof.chunkSpan
+                ),
+            "inclusion proof failed for original address of element"
+        );
 
         bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-            entryProof.proofSegments3, 
-            entryProof.proveSegment2, 
-            randomChunkSegmentIndex, 
-            entryProof.chunkSpan, 
+            entryProof.proofSegments3,
+            entryProof.proveSegment2,
+            randomChunkSegmentIndex,
+            entryProof.chunkSpan,
             currentRevealRoundAnchor
         );
         // in case of SOC, the transformed address is hashed together with its address in the sample
-        if(entryProof.socProofAttached.length > 0) {
+        if (entryProof.socProofAttached.length > 0) {
             calculatedTransformedAddr = keccak256(
                 abi.encode(
                     entryProof.proveSegment, // SOC address
@@ -873,13 +918,16 @@ contract Redistribution is AccessControl, Pausable {
             );
         }
 
-        require(entryProof.proofSegments[0] == calculatedTransformedAddr, "inclusion proof failed for transformed address of element");
+        require(
+            entryProof.proofSegments[0] == calculatedTransformedAddr,
+            "inclusion proof failed for transformed address of element"
+        );
     }
 
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
-        if ( a < b ) {
+        if (a < b) {
             require(uint256(trA1) < uint256(trA2), "random element order check failed");
-            require(uint256(trA2) < uint256(trALast), "last element order check failed"); 
+            require(uint256(trA2) < uint256(trALast), "last element order check failed");
         } else {
             require(uint256(trA2) < uint256(trA1), "random element order check failed");
             require(uint256(trA1) < uint256(trALast), "last element order check failed");
