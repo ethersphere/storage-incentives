@@ -19,7 +19,6 @@ type AwaitedTransaction = ContractTransaction & {
   blockNumber: number;
 };
 
-
 /** returns byte representation of the hex string */
 export function hexToBytes(hex: string): Uint8Array {
   if (hex.startsWith('0x')) {

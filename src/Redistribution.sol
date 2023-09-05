@@ -982,12 +982,12 @@ contract Redistribution is AccessControl, Pausable {
             revert InclusionProofFailed2();
         }
 
-        bytes32 originalCacAddress = entryProof.socProofAttached.length > 0
+        bytes32 originalAddress = entryProof.socProofAttached.length > 0
             ? entryProof.socProofAttached[0].chunkAddr // soc attestation in socFunction
             : entryProof.proveSegment;
 
         if (
-            originalCacAddress !=
+            originalAddress !=
             BMTChunk.chunkAddressFromInclusionProof(
                 entryProof.proofSegments2,
                 entryProof.proveSegment2,
