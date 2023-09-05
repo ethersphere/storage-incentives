@@ -519,6 +519,11 @@
     "@ethersproject/properties" "^5.7.0"
     "@ethersproject/strings" "^5.7.0"
 
+"@fairdatasociety/bmt-js@^2.1.0":
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/@fairdatasociety/bmt-js/-/bmt-js-2.1.0.tgz#21526d5578f99c060677dbcace780694f08fac57"
+  integrity sha512-Qm8jCQMijS1rwQIiDRJ4C7CdLXrUl0UVZet/McZ2fhNOk5J+Lhc0vqdF9i+7ZGwhGmTwILhNzcbNFJW1ejBhWw==
+
 "@ganache/ethereum-address@0.1.4":
   version "0.1.4"
   resolved "https://registry.npmjs.org/@ganache/ethereum-address/-/ethereum-address-0.1.4.tgz"

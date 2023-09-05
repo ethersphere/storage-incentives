@@ -38,18 +38,17 @@ library BMTChunk {
      * @param _proveSegmentIndex Prove segment index
      * @return _calculatedHash chunk hash
      */
-    function rootHashFromInclusionProof(
-        bytes32[] memory _proofSegments,
-        bytes32 _proveSegment,
-        uint256 _proveSegmentIndex
-    ) internal pure returns (bytes32 _calculatedHash) {
-        _calculatedHash = _proveSegment;
-        for (uint256 i = 0; i < _proofSegments.length; i++) {
-            bool mergeFromRight = _proveSegmentIndex % 2 == 0 ? true : false;
-            _calculatedHash = mergeSegment(_calculatedHash, _proofSegments[i], mergeFromRight);
-            _proveSegmentIndex >>= 1;
-        }
-
+  function rootHashFromInclusionProof(
+    bytes32[] memory _proofSegments,
+    bytes32  _proveSegment,
+    uint256 _proveSegmentIndex
+  ) internal pure returns (bytes32 _calculatedHash) {
+    _calculatedHash = _proveSegment;
+    for (uint256 i = 0; i < _proofSegments.length; i++) {
+      bool mergeFromRight = _proveSegmentIndex % 2 == 0;
+      _calculatedHash = mergeSegment(_calculatedHash, _proofSegments[i], mergeFromRight);
+      _proveSegmentIndex >>= 1;
+    }
         return _calculatedHash;
     }
 

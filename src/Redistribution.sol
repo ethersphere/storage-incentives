@@ -933,8 +933,22 @@ contract Redistribution is AccessControl, Pausable {
             revert IndexOutsideSet();
         }
 
+        // available
         address batchOwner = PostageContract.batchOwner(entryProof.postageId);
 
+        // alive
+        if (PostageContract.remainingBalance(entryProof.postageId) < PostageContract.minimumInitialBalancePerChunk()) {
+            revert BalanceValidationFailed();
+        }
+
+        // aligned
+        uint64 postageBucket = getPostageBucket(entryProof.index);
+        uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
+        if (postageBucket != addressBucket) {
+            revert BucketDiffers();
+        }
+
+        // authorized
         if (
             !Signatures.postageVerify(
                 batchOwner,
@@ -947,20 +961,6 @@ contract Redistribution is AccessControl, Pausable {
         ) {
             revert SigRecoveryFailed();
         }
-
-        if (PostageContract.remainingBalance(entryProof.postageId) < PostageContract.minimumInitialBalancePerChunk()) {
-            revert BalanceValidationFailed();
-        }
-
-        uint64 postageBucket = getPostageBucket(entryProof.index);
-        uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
-        if (postageBucket != addressBucket) {
-            revert BucketDiffers();
-        }
-
-        // FOR LATER USE
-        // if (PostageContract.lastUpdateBlockOfBatch(entryProofLast.postageId) >= block.number - 2 * ROUND_LENGTH) {
-        //     revert BatchPastBalanceValidation();}
     }
 
     function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {
@@ -998,16 +998,25 @@ contract Redistribution is AccessControl, Pausable {
             revert InclusionProofFailed3();
         }
 
-        if (
-            entryProof.proofSegments[0] !=
-            TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-                entryProof.proofSegments3,
-                entryProof.proveSegment2,
-                randomChunkSegmentIndex,
-                entryProof.chunkSpan,
-                currentRevealRoundAnchor
-            )
-        ) {
+        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+            entryProof.proofSegments3,
+            entryProof.proveSegment2,
+            randomChunkSegmentIndex,
+            entryProof.chunkSpan,
+            currentRevealRoundAnchor
+        );
+
+        // In case of SOC, the transformed address is hashed together with its address in the sample
+        if (entryProof.socProofAttached.length > 0) {
+            calculatedTransformedAddr = keccak256(
+                abi.encode(
+                    entryProof.proveSegment, // SOC address
+                    calculatedTransformedAddr
+                )
+            );
+        }
+
+        if (entryProof.proofSegments[0] != calculatedTransformedAddr) {
             revert InclusionProofFailed4();
         }
     }
