@@ -51,6 +51,7 @@
     "lint": "eslint \"**/*.{js,ts}\"",
     "lint:fix": "eslint --fix \"**/*.{js,ts}\"",
     "format": "prettier --write \"**/*.{ts,js,sol}\"",
+    "format:check": "prettier --check \"**/*.{ts,js,sol}\"",
     "test": "cross-env HARDHAT_DEPLOY_FIXTURE=true HARDHAT_COMPILE=true mocha --bail --recursive test --timeout 300000",
     "test:coverage": "hardhat coverage",
     "dev": "hardhat node --reset --watch --export contractsInfo.json",
