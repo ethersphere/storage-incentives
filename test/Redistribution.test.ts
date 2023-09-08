@@ -151,6 +151,17 @@ const errors = {
   claim: {
     noReveals: 'NoReveals()',
     alreadyClaimed: 'AlreadyClaimed()',
+    randomCheckFailed: 'RandomCheckFailed()',
+    outOfDepth: 'OutOfDepth()',
+    reserveCheckFailed: 'ReserveCheckFailed()',
+    indexOutsideSet: 'IndexOutsideSet()',
+    batchValidationFailed: 'BatchValidationFailed()',
+    bucketsDiffers: 'BucketsDiffers()',
+    sigRecoveryFailed: 'SigRecoveryFailed()',
+    inclusionProofFailed1: 'InclusionProofFailed1()',
+    inclusionProofFailed2: 'InclusionProofFailed2()',
+    inclusionProofFailed3: 'InclusionProofFailed3()',
+    inclusionProofFailed4: 'InclusionProofFailed4()',
   },
   general: {
     onlyPauser: 'OnlyPauser()',
@@ -863,7 +874,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith('random element order check failed');
+          ).to.be.revertedWith(errors.claim.randomCheckFailed);
         });
 
         it('should not claim pot because of a witness is not in depth', async () => {
@@ -922,7 +933,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith('witness is not in depth');
+          ).to.be.revertedWith(errors.claim.outOfDepth);
         });
 
         it('should not claim pot because of estimation check', async () => {
@@ -988,7 +999,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith('reserve size estimation check failed');
+          ).to.be.revertedWith(errors.claim.randomCheckFailed);
         });
 
         describe('should not claim pot because of SOC checks', async () => {
@@ -1028,7 +1039,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp available: index resides outside of the valid index set');
+            ).to.be.revertedWith(errors.claim.indexOutsideSet);
           });
 
           it('stamp is not valid anymore', async function () {
@@ -1063,7 +1074,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp alive: batch remaining balance validation failed for attached stamp');
+            ).to.be.revertedWith(errors.claim.batchValidationFailed);
           });
 
           it('postage bucket and address bucket do not match', async function () {
@@ -1075,7 +1086,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp aligned: postage bucket differs from address bucket');
+            ).to.be.revertedWith(errors.claim.bucketsDiffers);
           });
 
           it('wrong postage stamp signature', async function () {
@@ -1087,7 +1098,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp authorized: signature recovery failed for element');
+            ).to.be.revertedWith(errors.claim.sigRecoveryFailed);
           });
         });
 
@@ -1099,7 +1110,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('RC inclusion proof failed for element');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed1);
           });
 
           it('wrong proof segments for the original chunk', async function () {
@@ -1109,7 +1120,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('inclusion proof failed for original address of element');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed3);
           });
 
           it('wrong proof segments for the transformed chunk', async function () {
@@ -1119,7 +1130,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('inclusion proof failed for transformed address of element');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed4);
           });
 
           it('first inclusion proof segment of transformed and original do not match', async function () {
@@ -1129,7 +1140,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('first sister segment in data must match');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed2);
           });
         });
 
