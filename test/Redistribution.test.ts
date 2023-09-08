@@ -1009,8 +1009,8 @@ describe('Redistribution', function () {
             const { proofParams } = await generatedSampling(true);
 
             // alter the identifier into random one
-            proofParams.proof1.socProofAttached![0].identifier = randomBytes(32);
-
+            proofParams.proofLast.socProofAttached![0].identifier = randomBytes(32);
+            console.log(proofParams.proof1.socProofAttached![0]);
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
             ).to.be.revertedWith(errors.claim.socVerificationFailed);
@@ -1019,8 +1019,8 @@ describe('Redistribution', function () {
           it('SOC attachment does not match with witness', async function () {
             const { proofParams } = await generatedSampling(true);
 
-            proofParams.proof1.socProofAttached![0] = await getSocProofAttachment(
-              proofParams.proof1.socProofAttached![0].chunkAddr,
+            proofParams.proofLast.socProofAttached![0] = await getSocProofAttachment(
+              proofParams.proofLast.socProofAttached![0].chunkAddr,
               randomBytes(32),
               depth
             );

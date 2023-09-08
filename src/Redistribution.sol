@@ -6,6 +6,7 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
+import "hardhat/console.sol";
 
 interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
@@ -900,7 +901,8 @@ contract Redistribution is AccessControl, Pausable {
 
     // ----------------------------- Claim verifications  ------------------------------
 
-    function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
+    function socFunction(ChunkInclusionProof calldata entryProof) internal {
+        // console.logBytes32(entryProof.socProofAttached[0].identifier);
         if (entryProof.socProofAttached.length == 0) return;
 
         if (

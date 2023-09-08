@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "hardhat/console.sol";
+
 library Signatures {
     error InvalidSignatureLength();
 
@@ -79,9 +81,16 @@ library Signatures {
         bytes memory _signature,
         bytes32 _identifier,
         bytes32 _chunkAddr
-    ) internal pure returns (bool) {
+    ) internal returns (bool) {
         bytes32 messageHash = getSocMessageHash(_identifier, _chunkAddr);
         bytes32 ethMessageHash = getEthSignedMessageHash(messageHash);
+
+        console.logBytes32(messageHash);
+        console.logBytes32(ethMessageHash);
+
+        console.logAddress(recoverSigner(ethMessageHash, _signature));
+        console.logAddress(_signer);
+        console.log("-----");
 
         return recoverSigner(ethMessageHash, _signature) == _signer;
     }
