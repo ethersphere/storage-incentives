@@ -732,14 +732,14 @@ describe('Redistribution', function () {
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
-          expect(WinnerSelectedEvent.args[0][3]).to.be.eq(
+          expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
+          expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
+          expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+          expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
             BigNumber.from(stakeAmount_0).mul(BigNumber.from(2).pow(parseInt(sanityDepth)))
           ); //stakedensity?
-          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(sanityHash);
-          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(sanityDepth));
+          expect(WinnerSelectedEvent.args[0].hash).to.be.eq(sanityHash);
+          expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(sanityDepth));
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(sanityHash);
           expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(sanityDepth));
@@ -1223,18 +1223,20 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
-            expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
-            expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
+            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
 
-            expect(WinnerSelectedEvent.args[0][3]).to.be.eq(calculateStakeDensity(stakeAmount_5, Number(depth_5)));
-            expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_5);
-            expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
+            expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
+              calculateStakeDensity(stakeAmount_5, Number(depth_5))
+            );
+            expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
+            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
             expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
 
-            expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
+            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
             expect(await postage.lastPrice()).to.be.eq(newPrice);
@@ -1287,12 +1289,14 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
-            expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
-            expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
-            expect(WinnerSelectedEvent.args[0][3]).to.be.eq(calculateStakeDensity(stakeAmount_5, Number(depth_5)));
-            expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_5);
-            expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
+            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
+            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
+              calculateStakeDensity(stakeAmount_5, Number(depth_5))
+            );
+            expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
+            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
             expect(await postage.lastPrice()).to.be.eq(newPrice);
