@@ -155,8 +155,8 @@ const errors = {
     outOfDepth: 'OutOfDepth()',
     reserveCheckFailed: 'ReserveCheckFailed()',
     indexOutsideSet: 'IndexOutsideSet()',
-    batchValidationFailed: 'BatchValidationFailed()',
-    bucketsDiffers: 'BucketsDiffers()',
+    balanceValidationFailed: 'BalanceValidationFailed()',
+    bucketDiffers: 'BucketDiffers()',
     sigRecoveryFailed: 'SigRecoveryFailed()',
     inclusionProofFailed1: 'InclusionProofFailed1()',
     inclusionProofFailed2: 'InclusionProofFailed2()',
@@ -999,7 +999,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith(errors.claim.randomCheckFailed);
+          ).to.be.revertedWith(errors.claim.reserveCheckFailed);
         });
 
         describe('should not claim pot because of SOC checks', async () => {
@@ -1074,7 +1074,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.batchValidationFailed);
+            ).to.be.revertedWith(errors.claim.balanceValidationFailed);
           });
 
           it('postage bucket and address bucket do not match', async function () {
@@ -1086,7 +1086,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.bucketsDiffers);
+            ).to.be.revertedWith(errors.claim.bucketDiffers);
           });
 
           it('wrong postage stamp signature', async function () {
