@@ -162,6 +162,8 @@ const errors = {
     inclusionProofFailed2: 'InclusionProofFailed2()',
     inclusionProofFailed3: 'InclusionProofFailed3()',
     inclusionProofFailed4: 'InclusionProofFailed4()',
+    socVerificationFailed: 'SocVerificationFailed()',
+    socCalcNotMatching: 'SocCalcNotMatching()',
   },
   general: {
     onlyPauser: 'OnlyPauser()',
@@ -1011,7 +1013,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Soc verification failed for element');
+            ).to.be.revertedWith(errors.claim.socVerificationFailed);
           });
 
           it('SOC attachment does not match with witness', async function () {
@@ -1025,7 +1027,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Soc address calculation does not match with the witness');
+            ).to.be.revertedWith(errors.claim.socCalcNotMatching);
           });
         });
 
