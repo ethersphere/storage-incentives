@@ -362,16 +362,16 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
-        uint256 id = findCommit(_overlay, commitHash, currentCommits.length);
-        Commit memory currentCommit = currentCommits[id];
+        uint256 id = findCommit(_overlay, commitHash);
+        Commit memory evaluatedCommit = currentCommits[id];
 
         // Check that commit is in proximity of the current anchor
 
-        if (!inProximity(currentCommit.overlay, currentRevealRoundAnchor, _depth)) {
+        if (!inProximity(evaluatedCommit.overlay, currentRevealRoundAnchor, _depth)) {
             revert OutOfDepth();
         }
         // Check that the commit has not already been revealed
-        if (currentCommit.revealed) {
+        if (evaluatedCommit.revealed) {
             revert AlreadyRevealed();
         }
 
@@ -380,20 +380,20 @@ contract Redistribution is AccessControl, Pausable {
 
         currentReveals.push(
             Reveal({
-                overlay: currentCommit.overlay,
-                owner: currentCommit.owner,
+                overlay: evaluatedCommit.overlay,
+                owner: evaluatedCommit.owner,
                 depth: _depth,
-                stake: currentCommit.stake,
-                stakeDensity: currentCommit.stake * uint256(2 ** _depth),
+                stake: evaluatedCommit.stake,
+                stakeDensity: evaluatedCommit.stake * uint256(2 ** _depth),
                 hash: _hash
             })
         );
 
         emit Revealed(
             cr,
-            currentCommit.overlay,
-            currentCommit.stake,
-            currentCommit.stake * uint256(2 ** _depth),
+            evaluatedCommit.overlay,
+            evaluatedCommit.stake,
+            evaluatedCommit.stake * uint256(2 ** _depth),
             _hash,
             _depth
         );
@@ -732,8 +732,8 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Helper function to get this node reveal in commits
      * @dev
      */
-    function findCommit(bytes32 _overlay, bytes32 _commitHash, uint256 _length) internal view returns (uint256) {
-        for (uint256 i = 0; i < _length; ) {
+    function findCommit(bytes32 _overlay, bytes32 _commitHash) internal view returns (uint256) {
+        for (uint256 i = 0; i < currentCommits.length; ) {
             if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
                 return i;
             }
