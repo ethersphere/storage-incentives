@@ -363,15 +363,15 @@ contract Redistribution is AccessControl, Pausable {
 
         bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
         uint256 id = findCommit(_overlay, commitHash);
-        Commit memory evaluatedCommit = currentCommits[id];
+        Commit memory revealedCommit = currentCommits[id];
 
         // Check that commit is in proximity of the current anchor
 
-        if (!inProximity(evaluatedCommit.overlay, currentRevealRoundAnchor, _depth)) {
+        if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _depth)) {
             revert OutOfDepth();
         }
         // Check that the commit has not already been revealed
-        if (evaluatedCommit.revealed) {
+        if (revealedCommit.revealed) {
             revert AlreadyRevealed();
         }
 
@@ -380,20 +380,20 @@ contract Redistribution is AccessControl, Pausable {
 
         currentReveals.push(
             Reveal({
-                overlay: evaluatedCommit.overlay,
-                owner: evaluatedCommit.owner,
+                overlay: revealedCommit.overlay,
+                owner: revealedCommit.owner,
                 depth: _depth,
-                stake: evaluatedCommit.stake,
-                stakeDensity: evaluatedCommit.stake * uint256(2 ** _depth),
+                stake: revealedCommit.stake,
+                stakeDensity: revealedCommit.stake * uint256(2 ** _depth),
                 hash: _hash
             })
         );
 
         emit Revealed(
             cr,
-            evaluatedCommit.overlay,
-            evaluatedCommit.stake,
-            evaluatedCommit.stake * uint256(2 ** _depth),
+            revealedCommit.overlay,
+            revealedCommit.stake,
+            revealedCommit.stake * uint256(2 ** _depth),
             _hash,
             _depth
         );
