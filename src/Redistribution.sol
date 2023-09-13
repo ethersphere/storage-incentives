@@ -442,7 +442,7 @@ contract Redistribution is AccessControl, Pausable {
 
         inclusionFunction(entryProof1, indexInRC1 * 2);
         stampFunction(entryProof1);
-        socFunction(entryProofLast);
+        socFunction(entryProof1);
 
         if (!inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
             revert OutOfDepth();
@@ -450,7 +450,7 @@ contract Redistribution is AccessControl, Pausable {
 
         inclusionFunction(entryProof2, indexInRC2 * 2);
         stampFunction(entryProof2);
-        socFunction(entryProofLast);
+        socFunction(entryProof2);
 
         checkOrder(
             indexInRC1,
@@ -901,7 +901,7 @@ contract Redistribution is AccessControl, Pausable {
 
     // ----------------------------- Claim verifications  ------------------------------
 
-    function socFunction(ChunkInclusionProof calldata entryProof) internal {
+    function socFunction(ChunkInclusionProof calldata entryProof) internal view {
         // console.logBytes32(entryProof.socProofAttached[0].identifier);
         if (entryProof.socProofAttached.length == 0) return;
 
