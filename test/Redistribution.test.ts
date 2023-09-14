@@ -682,17 +682,48 @@ describe('Redistribution', function () {
       describe('single player', async function () {
         let copyBatch: Awaited<ReturnType<typeof copyBatchForClaim>>, currentSeed: string, r_node_5: Contract;
         const depth = 1;
+        const generatedSampling = async (socAttachment = false) => {
+          const anchor1 = arrayify(currentSeed);
+          const witnessChunks = socAttachment
+            ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
+            : await setWitnesses('claim-pot', anchor1, depth);
 
-        beforeEach(async () => {
-          //copying batch for claim
-          copyBatch = await copyBatchForClaim(deployer);
-          // anchor fixture
-          await mineToNode(redistribution, 5);
-          currentSeed = await redistribution.currentSeed();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
-          r_node_5 = await ethers.getContract('Redistribution', node_5);
-        });
+          const sampleChunk = makeSample(witnessChunks);
 
+          const sampleHashString = hexlify(sampleChunk.address());
+
+          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const currentRound = await r_node_5.currentRound();
+          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+
+          await mineToRevealPhase();
+
+          await r_node_5.reveal(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const anchor2 = await redistribution.currentSeed();
+
+          const { proofParams } = await getClaimProofs(
+            witnessChunks,
+            sampleChunk,
+            anchor1,
+            anchor2,
+            copyBatch.batchOwner,
+            copyBatch.batchId
+          );
+
+          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sampleHashString);
+          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
+          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(depth);
+
+          await mineNBlocks(phaseLength);
+
+          return { proofParams, sampleHashString };
+        };
         const claimEventChecks = async (claimTx: ContractTransaction, sanityHash: string, sanityDepth: string) => {
           const receipt2 = await claimTx.wait();
 
@@ -747,6 +778,16 @@ describe('Redistribution', function () {
           expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(sanityDepth));
         };
 
+        beforeEach(async () => {
+          //copying batch for claim
+          copyBatch = await copyBatchForClaim(deployer);
+          // anchor fixture
+          await mineToNode(redistribution, 5);
+          currentSeed = await redistribution.currentSeed();
+          expect(await redistribution.currentPhaseCommit()).to.be.true;
+          r_node_5 = await ethers.getContract('Redistribution', node_5);
+        });
+
         it('should claim pot by bee sampling', async function () {
           const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
 
@@ -774,49 +815,6 @@ describe('Redistribution', function () {
           const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           await claimEventChecks(tx2, sanityHash, sanityDepth);
         });
-
-        const generatedSampling = async (socAttachment = false) => {
-          const anchor1 = arrayify(currentSeed);
-          const witnessChunks = socAttachment
-            ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
-            : await setWitnesses('claim-pot', anchor1, depth);
-
-          const sampleChunk = makeSample(witnessChunks);
-
-          const sampleHashString = hexlify(sampleChunk.address());
-
-          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const anchor2 = await redistribution.currentSeed();
-
-          const { proofParams } = await getClaimProofs(
-            witnessChunks,
-            sampleChunk,
-            anchor1,
-            anchor2,
-            copyBatch.batchOwner,
-            copyBatch.batchId
-          );
-
-          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sampleHashString);
-          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
-          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
-          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(depth);
-
-          await mineNBlocks(phaseLength);
-
-          return { proofParams, sampleHashString };
-        };
 
         it('should claim pot by generated CAC sampling', async function () {
           const { sampleHashString, proofParams } = await generatedSampling();
