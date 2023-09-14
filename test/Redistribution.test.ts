@@ -829,8 +829,6 @@ describe('Redistribution', function () {
         it('should claim pot by generated SOC sampling', async function () {
           const { sampleHashString, proofParams } = await generatedSampling(true);
 
-          // console.log('socproofattached', proofParams.proof1.proofSegments[0], proofParams.proof2.proofSegments[0], proofParams.proofLast.proofSegments[0]);
-
           expect(proofParams.proof1.socProofAttached).to.have.length(1);
           expect(proofParams.proof2.socProofAttached).to.have.length(1);
           expect(proofParams.proofLast.socProofAttached).to.have.length(1);
@@ -1008,7 +1006,6 @@ describe('Redistribution', function () {
 
             // alter the identifier into random one
             proofParams.proof1.socProofAttached![0].identifier = randomBytes(32);
-            console.log(proofParams.proof1.socProofAttached![0]);
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
             ).to.be.revertedWith(errors.claim.socVerificationFailed);
