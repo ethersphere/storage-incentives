@@ -494,7 +494,9 @@ contract Redistribution is AccessControl, Pausable {
         // but the currentClaimRound is still set to the last time claim was made
         // We add 1 to ensure that for the next round the minimum depth is the same as last winner depth
 
-        uint8 skippedRounds = uint8(currentCommitRound - currentClaimRound) + 1;
+        uint256 difference = currentCommitRound - currentClaimRound;
+        uint8 skippedRounds = uint8(difference > 254 ? 254 : difference) + 1;
+
         uint8 lastWinnerDepth = winner.depth;
 
         // We ensure that skippedRounds is not bigger than lastWinnerDepth, because of overflow
