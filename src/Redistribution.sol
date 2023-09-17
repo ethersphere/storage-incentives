@@ -216,7 +216,8 @@ contract Redistribution is AccessControl, Pausable {
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommited(); // Node already commited in this round
     error NotRevealPhase(); // Game is not in reveal phase
-    error OutOfDepth(); // Anchor is out of reported depth
+    error OutOfDepthReveal(); // Anchor is out of reported depth in Reveal phase
+    error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index info added
     error AlreadyRevealed(); // Node already revealed
     error NoMatchingCommit(); // No matching commit and hash
     error NotClaimPhase(); // Game is not in the claim phase
@@ -367,7 +368,7 @@ contract Redistribution is AccessControl, Pausable {
         // Check that commit is in proximity of the current anchor
 
         if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _depth)) {
-            revert OutOfDepth();
+            revert OutOfDepthReveal();
         }
         // Check that the commit has not already been revealed
         if (revealedCommit.revealed) {
@@ -428,7 +429,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         if (!inProximity(entryProofLast.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
-            revert OutOfDepth();
+            revert OutOfDepthClaim(3);
         }
 
         inclusionFunction(entryProofLast, 30);
@@ -436,7 +437,7 @@ contract Redistribution is AccessControl, Pausable {
         socFunction(entryProofLast);
 
         if (!inProximity(entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
-            revert OutOfDepth();
+            revert OutOfDepthClaim(2);
         }
 
         inclusionFunction(entryProof1, indexInRC1 * 2);
@@ -444,7 +445,7 @@ contract Redistribution is AccessControl, Pausable {
         socFunction(entryProof1);
 
         if (!inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
-            revert OutOfDepth();
+            revert OutOfDepthClaim(1);
         }
 
         inclusionFunction(entryProof2, indexInRC2 * 2);
@@ -900,7 +901,7 @@ contract Redistribution is AccessControl, Pausable {
 
     // ----------------------------- Claim verifications  ------------------------------
 
-    function socFunction(ChunkInclusionProof calldata entryProof) internal view {
+    function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
         if (entryProof.socProofAttached.length == 0) return;
 
         if (

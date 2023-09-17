@@ -79,7 +79,7 @@ library Signatures {
         bytes memory _signature,
         bytes32 _identifier,
         bytes32 _chunkAddr
-    ) internal view returns (bool) {
+    ) internal pure returns (bool) {
         bytes32 messageHash = getSocMessageHash(_identifier, _chunkAddr);
         bytes32 ethMessageHash = getEthSignedMessageHash(messageHash);
 
