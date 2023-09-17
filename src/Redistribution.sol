@@ -232,12 +232,11 @@ contract Redistribution is AccessControl, Pausable {
     error SigRecoveryFailed(); // Stamp authorized: signature recovery failed for element
     error BalanceValidationFailed(); // Stamp alive: batch remaining balance validation failed for attached stamp
     error BucketDiffers(); // Stamp aligned: postage bucket differs from address bucket
-    error InclusionProofFailed1(); // RC inclusion proof failed for element
-    error InclusionProofFailed2(); // First sister segment in data must match
-    error InclusionProofFailed3(); // Inclusion proof failed for original address of element
-    error InclusionProofFailed4(); // Inclusion proof failed for transformed address of element
-    error RandomCheckFailed(); // Random element order check failed
-    error LastCheckFailed(); // Last element order check failed
+    // 1 = RC inclusion proof failed for element, 2 = First sister segment in data must match,
+    // 3 = Inclusion proof failed for original address of element, 4 = Inclusion proof failed for transformed address of element
+    error InclusionProofFailed(uint8);
+    error RandomElementCheckFailed(); // Random element order check failed
+    error LastElementCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(); // Reserve size estimation check failed
 
     // ----------------------------- CONSTRUCTOR ------------------------------
@@ -974,13 +973,13 @@ contract Redistribution is AccessControl, Pausable {
                 32 * 32
             )
         ) {
-            revert InclusionProofFailed1();
+            revert InclusionProofFailed(1);
         }
 
         uint256 randomChunkSegmentIndex = uint256(seed) % 128;
 
         if (entryProof.proofSegments2[0] != entryProof.proofSegments3[0]) {
-            revert InclusionProofFailed2();
+            revert InclusionProofFailed(2);
         }
 
         bytes32 originalAddress = entryProof.socProofAttached.length > 0
@@ -996,7 +995,7 @@ contract Redistribution is AccessControl, Pausable {
                 entryProof.chunkSpan
             )
         ) {
-            revert InclusionProofFailed3();
+            revert InclusionProofFailed(3);
         }
 
         bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
@@ -1018,7 +1017,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         if (entryProof.proofSegments[0] != calculatedTransformedAddr) {
-            revert InclusionProofFailed4();
+            revert InclusionProofFailed(4);
         }
     }
 
@@ -1046,17 +1045,17 @@ contract Redistribution is AccessControl, Pausable {
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
         if (a < b) {
             if (uint256(trA1) >= uint256(trA2)) {
-                revert RandomCheckFailed();
+                revert RandomElementCheckFailed();
             }
             if (uint256(trA2) >= uint256(trALast)) {
-                revert LastCheckFailed();
+                revert LastElementCheckFailed();
             }
         } else {
             if (uint256(trA2) >= uint256(trA1)) {
-                revert RandomCheckFailed();
+                revert RandomElementCheckFailed();
             }
             if (uint256(trA1) >= uint256(trALast)) {
-                revert LastCheckFailed();
+                revert LastElementCheckFailed();
             }
         }
 
