@@ -223,7 +223,6 @@ contract Redistribution is AccessControl, Pausable {
     error NotClaimPhase(); // Game is not in the claim phase
     error NoReveals(); // Round did not receive any reveals
     error AlreadyClaimed(); // This round was already claimed
-    error SenderNotWinner(); // Caller of trx is not winner
     error NotAdmin(); // Caller of trx is not admin
     error OnlyPauser(); // Only account with pauser role can call pause/unpause
     error SocVerificationFailed(); // Soc verification failed for this element
@@ -408,10 +407,6 @@ contract Redistribution is AccessControl, Pausable {
         ChunkInclusionProof calldata entryProofLast
     ) external whenNotPaused {
         winnerSelection();
-
-        if (winner.owner != msg.sender) {
-            revert SenderNotWinner();
-        }
 
         Reveal memory winnerSelected = winner;
         uint256 indexInRC1;
