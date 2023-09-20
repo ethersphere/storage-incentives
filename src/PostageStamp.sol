@@ -401,7 +401,7 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function expireLimited(uint256 limit) public {
         // the lower bound of the normalised balance for which we will check if batches have expired
-        uint256 leb = lastExpiryBalance;
+        uint256 _lastExpiryBalance = lastExpiryBalance;
         uint256 i;
         for (i; i < limit; ) {
             if (isBatchesTreeEmpty()) {
@@ -430,7 +430,7 @@ contract PostageStamp is AccessControl, Pausable {
             validChunkCount -= batchSize;
             // since the batch expired _during_ the period we must add
             // remaining normalised payout for this batch only
-            pot += batchSize * (batch.normalisedBalance - leb);
+            pot += batchSize * (batch.normalisedBalance - _lastExpiryBalance);
             tree.remove(fbi, batch.normalisedBalance);
             delete batches[fbi];
 
@@ -443,7 +443,7 @@ contract PostageStamp is AccessControl, Pausable {
         // multiplied by the remaining total valid chunk count
         // to the pot for the period since the last expiry
 
-        if (lastExpiryBalance < leb) {
+        if (lastExpiryBalance < _lastExpiryBalance) {
             revert TotalOutpaymentDecreased();
         }
 
@@ -451,7 +451,7 @@ contract PostageStamp is AccessControl, Pausable {
         // add the total normalised payout of all batches
         // multiplied by the remaining total valid chunk count
         // to the pot for the period since the last expiry
-        pot += validChunkCount * (lastExpiryBalance - leb);
+        pot += validChunkCount * (lastExpiryBalance - _lastExpiryBalance);
     }
 
     /**
