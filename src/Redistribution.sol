@@ -225,12 +225,12 @@ contract Redistribution is AccessControl, Pausable {
     error AlreadyClaimed(); // This round was already claimed
     error NotAdmin(); // Caller of trx is not admin
     error OnlyPauser(); // Only account with pauser role can call pause/unpause
-    error SocVerificationFailed(); // Soc verification failed for this element
-    error SocCalcNotMatching(); // Soc address calculation does not match with the witness
-    error IndexOutsideSet(); // Stamp available: index resides outside of the valid index set
-    error SigRecoveryFailed(); // Stamp authorized: signature recovery failed for element
-    error BalanceValidationFailed(); // Stamp alive: batch remaining balance validation failed for attached stamp
-    error BucketDiffers(); // Stamp aligned: postage bucket differs from address bucket
+    error SocVerificationFailed(bytes32); // Soc verification failed for this element
+    error SocCalcNotMatching(bytes32); // Soc address calculation does not match with the witness
+    error IndexOutsideSet(bytes32); // Stamp available: index resides outside of the valid index set
+    error SigRecoveryFailed(bytes32); // Stamp authorized: signature recovery failed for element
+    error BalanceValidationFailed(bytes32); // Stamp alive: batch remaining balance validation failed for attached stamp
+    error BucketDiffers(bytes32); // Stamp aligned: postage bucket differs from address bucket
     error InclusionProofFailed(uint8, bytes32);
     // 1 = RC inclusion proof failed for element, 2 = First sister segment in data must match,
     // 3 = Inclusion proof failed for original address of element, 4 = Inclusion proof failed for transformed address of element
@@ -906,14 +906,14 @@ contract Redistribution is AccessControl, Pausable {
                 entryProof.socProofAttached[0].chunkAddr
             )
         ) {
-            revert SocVerificationFailed();
+            revert SocVerificationFailed(entryProof.socProofAttached[0].chunkAddr);
         }
 
         if (
             calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) !=
             entryProof.proveSegment
         ) {
-            revert SocCalcNotMatching();
+            revert SocCalcNotMatching(entryProof.socProofAttached[0].chunkAddr);
         }
     }
 
@@ -925,7 +925,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
         if (postageIndex >= maxPostageIndex) {
-            revert IndexOutsideSet();
+            revert IndexOutsideSet(entryProof.chunkAddr);
         }
 
         // available
@@ -933,14 +933,14 @@ contract Redistribution is AccessControl, Pausable {
 
         // alive
         if (PostageContract.remainingBalance(entryProof.postageId) < PostageContract.minimumInitialBalancePerChunk()) {
-            revert BalanceValidationFailed();
+            revert BalanceValidationFailed(entryProof.chunkAddr);
         }
 
         // aligned
         uint64 postageBucket = getPostageBucket(entryProof.index);
         uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
         if (postageBucket != addressBucket) {
-            revert BucketDiffers();
+            revert BucketDiffers(entryProof.chunkAddr);
         }
 
         // authorized
@@ -954,7 +954,7 @@ contract Redistribution is AccessControl, Pausable {
                 entryProof.timeStamp
             )
         ) {
-            revert SigRecoveryFailed();
+            revert SigRecoveryFailed(entryProof.chunkAddr);
         }
     }
 
