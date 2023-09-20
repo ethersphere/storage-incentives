@@ -216,7 +216,7 @@ contract Redistribution is AccessControl, Pausable {
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommited(); // Node already commited in this round
     error NotRevealPhase(); // Game is not in reveal phase
-    error OutOfDepthReveal(); // Anchor is out of reported depth in Reveal phase
+    error OutOfDepthReveal(bytes32); // Anchor is out of reported depth in Reveal phase, anchor data available
     error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index info added
     error AlreadyRevealed(); // Node already revealed
     error NoMatchingCommit(); // No matching commit and hash
@@ -232,9 +232,9 @@ contract Redistribution is AccessControl, Pausable {
     error SigRecoveryFailed(); // Stamp authorized: signature recovery failed for element
     error BalanceValidationFailed(); // Stamp alive: batch remaining balance validation failed for attached stamp
     error BucketDiffers(); // Stamp aligned: postage bucket differs from address bucket
+    error InclusionProofFailed(uint8, bytes32);
     // 1 = RC inclusion proof failed for element, 2 = First sister segment in data must match,
     // 3 = Inclusion proof failed for original address of element, 4 = Inclusion proof failed for transformed address of element
-    error InclusionProofFailed(uint8);
     error RandomElementCheckFailed(); // Random element order check failed
     error LastElementCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(); // Reserve size estimation check failed
@@ -367,7 +367,7 @@ contract Redistribution is AccessControl, Pausable {
         // Check that commit is in proximity of the current anchor
 
         if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _depth)) {
-            revert OutOfDepthReveal();
+            revert OutOfDepthReveal(currentRevealRoundAnchor);
         }
         // Check that the commit has not already been revealed
         if (revealedCommit.revealed) {
@@ -964,6 +964,15 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {
+        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
+        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+            entryProof.proofSegments3,
+            entryProof.proveSegment2,
+            randomChunkSegmentIndex,
+            entryProof.chunkSpan,
+            currentRevealRoundAnchor
+        );
+
         if (
             winner.hash !=
             BMTChunk.chunkAddressFromInclusionProof(
@@ -973,13 +982,11 @@ contract Redistribution is AccessControl, Pausable {
                 32 * 32
             )
         ) {
-            revert InclusionProofFailed(1);
+            revert InclusionProofFailed(1, calculatedTransformedAddr);
         }
 
-        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
-
         if (entryProof.proofSegments2[0] != entryProof.proofSegments3[0]) {
-            revert InclusionProofFailed(2);
+            revert InclusionProofFailed(2, calculatedTransformedAddr);
         }
 
         bytes32 originalAddress = entryProof.socProofAttached.length > 0
@@ -995,16 +1002,8 @@ contract Redistribution is AccessControl, Pausable {
                 entryProof.chunkSpan
             )
         ) {
-            revert InclusionProofFailed(3);
+            revert InclusionProofFailed(3, calculatedTransformedAddr);
         }
-
-        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-            entryProof.proofSegments3,
-            entryProof.proveSegment2,
-            randomChunkSegmentIndex,
-            entryProof.chunkSpan,
-            currentRevealRoundAnchor
-        );
 
         // In case of SOC, the transformed address is hashed together with its address in the sample
         if (entryProof.socProofAttached.length > 0) {
@@ -1017,7 +1016,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         if (entryProof.proofSegments[0] != calculatedTransformedAddr) {
-            revert InclusionProofFailed(4);
+            revert InclusionProofFailed(4, calculatedTransformedAddr);
         }
     }
 
