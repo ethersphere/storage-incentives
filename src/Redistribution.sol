@@ -216,8 +216,8 @@ contract Redistribution is AccessControl, Pausable {
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommited(); // Node already commited in this round
     error NotRevealPhase(); // Game is not in reveal phase
-    error OutOfDepthReveal(bytes32); // Anchor is out of reported depth in Reveal phase, anchor data available
-    error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index info added
+    error OutOfDepthReveal(bytes32); // Anchor is out of reported depth in Reveal phase, anchor data available as argument
+    error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index is argument
     error AlreadyRevealed(); // Node already revealed
     error NoMatchingCommit(); // No matching commit and hash
     error NotClaimPhase(); // Game is not in the claim phase
