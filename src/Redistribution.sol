@@ -359,8 +359,8 @@ contract Redistribution is AccessControl, Pausable {
             updateRandomness();
         }
 
-        bytes32 commitHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
-        uint256 id = findCommit(_overlay, commitHash);
+        bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
+        uint256 id = findCommit(_overlay, obfuscatedHash);
         Commit memory revealedCommit = currentCommits[id];
 
         // Check that commit is in proximity of the current anchor
@@ -726,9 +726,9 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Helper function to get this node reveal in commits
      * @dev
      */
-    function findCommit(bytes32 _overlay, bytes32 _commitHash) internal view returns (uint256) {
+    function findCommit(bytes32 _overlay, bytes32 _obfuscatedHash) internal view returns (uint256) {
         for (uint256 i = 0; i < currentCommits.length; ) {
-            if (currentCommits[i].overlay == _overlay && _commitHash == currentCommits[i].obfuscatedHash) {
+            if (currentCommits[i].overlay == _overlay && _obfuscatedHash == currentCommits[i].obfuscatedHash) {
                 return i;
             }
             unchecked {
