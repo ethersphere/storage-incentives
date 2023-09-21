@@ -177,7 +177,7 @@ export async function copyBatchForClaim(deployer: string): Promise<{
   const postageDepth = 27;
   const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
   await mintAndApprove(deployer, deployer, postageAdmin.address, bzzFund.toString());
-  const batchId = '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f';
+  const batchId = '0xc58cfde99cb6ae71c9485057c5e6194e303dba7a9e8a82201aa3a117a45237bb';
   const batchOwner = getWalletOfFdpPlayQueen();
 
   const tx = await postageAdmin.copyBatch(
