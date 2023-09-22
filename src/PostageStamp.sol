@@ -475,27 +475,24 @@ contract PostageStamp is AccessControl, Pausable {
     function batchOwner(bytes32 _batchId) public view returns (address) {
         return batches[_batchId].owner;
     }
-    
+
     function batchDepth(bytes32 _batchId) public view returns (uint8) {
         return batches[_batchId].depth;
     }
-    
+
     function batchBucketDepth(bytes32 _batchId) public view returns (uint8) {
         return batches[_batchId].bucketDepth;
     }
-    
+
     function batchImmutableFlag(bytes32 _batchId) public view returns (bool) {
         return batches[_batchId].immutableFlag;
     }
-    
+
     function batchNormalisedBalance(bytes32 _batchId) public view returns (uint256) {
         return batches[_batchId].normalisedBalance;
     }
-    
+
     function batchLastUpdatedBlockNumber(bytes32 _batchId) public view returns (uint256) {
         return batches[_batchId].lastUpdatedBlockNumber;
     }
-    
-
-
 }
