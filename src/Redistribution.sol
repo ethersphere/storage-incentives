@@ -2,14 +2,10 @@
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "./Util/TransformedChunkProof.sol";
+import "./Util/ChunkProof.sol";
+import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
-
-/**
- * Implement interfaces to PostageStamp contract, PriceOracle contract and Staking contract.
- * For PostageStmap we currently use "withdraw" to withdraw funds from Pot
- * For PriceOracle we use "adjustPrice" to change price of PostageStamps
- * For Staking contract we use "lastUpdatedBlockNumberOfOverlay, freezeDeposit, ownerOfOverlay, stakeOfOverlay"
- */
 
 interface IPriceOracle {
     function adjustPrice(uint256 redundancy) external;
@@ -75,6 +71,40 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth;
     }
 
+    struct ChunkInclusionProof{
+        bytes32[] proofSegments;
+        bytes32 proveSegment;
+        // _RCspan is known for RC 32*32
+
+        // Inclusion proof of transformed address
+        bytes32[] proofSegments2;
+        bytes32 proveSegment2;
+        // proveSegmentIndex2 known from deterministic random selection;
+        uint64 chunkSpan;
+        //
+        bytes32[] proofSegments3;
+        //  _proveSegment3 known, is equal _proveSegment2 
+        // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
+        // chunkSpan2 is equal to chunkSpan (as the data is the same)
+
+        // address signer; it is provided by the postage stamp contract
+        bytes signature;
+        bytes32 chunkAddr;
+        bytes32 postageId;
+        uint64 index;
+        uint64 timeStamp;
+
+        SOCProof[] socProofAttached;
+    }
+    
+    struct SOCProof{
+        address signer; // signer Ethereum address to check against
+        bytes signature;
+        bytes32 identifier; // 
+        bytes32 chunkAddr; // wrapped chunk address
+    }
+
+
     // The address of the linked PostageStamp contract.
     IPostageStamp public PostageContract;
     // The address of the linked PriceOracle contract.
@@ -96,12 +126,22 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 MaxH = bytes32(0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff);
 
+
+    // alpha=0.097612 beta=0.0716570 k=16
+    uint256 public constant SAMPLE_MAX_VALUE = 1284401000000000000000000000000000000000000000000000000000000000000000000;
+
     // The current anchor that being processed for the reveal and claim phases of the round.
     bytes32 currentRevealRoundAnchor;
 
     // The current random value from which we will random.
     // inputs for selection of the truth teller and beneficiary.
     bytes32 seed;
+
+    uint256 currentSum;
+    uint256 currentWinnerSelectionSum;
+
+    uint256 x;
+    uint256 y;
 
     // The miniumum stake allowed to be staked using the Staking contract.
     uint256 public minimumStake = 100000000000000000;
@@ -113,6 +153,10 @@ contract Redistribution is AccessControl, Pausable {
 
     // The length of a round in blocks.
     uint256 public roundLength = 152;
+
+    uint256 k;
+    uint256 revIndex;
+    uint256 randomChunkSegmentIndex;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -550,6 +594,131 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Helper function to get this round truth
      * @dev
      */
+    function claim(
+        ChunkInclusionProof calldata entryProof1,
+        ChunkInclusionProof calldata entryProof2,
+        ChunkInclusionProof calldata entryProofLast
+    ) external whenNotPaused {
+        winner = winnerSelection();
+
+        // rand(14)
+        x = uint256(seed) % 15;
+        // rand(13)
+        y = uint256(seed) % 14;
+        if ( y >= x ) {
+            y++;
+        }
+
+        require(inProximity(entryProofLast.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
+        inclusionFunction(entryProofLast, 30);
+        stampFunction(entryProofLast);
+        socFunction(entryProofLast);
+
+        require(inProximity(entryProof1.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
+        inclusionFunction(entryProof1, x * 2);
+        stampFunction(entryProof1);
+        socFunction(entryProof1);
+
+        require(inProximity(entryProof2.proveSegment, currentRevealRoundAnchor, winner.depth), "witness is not in depth");
+        inclusionFunction(entryProof2, y * 2);
+        stampFunction(entryProof2);
+        socFunction(entryProof2);
+        
+        checkOrder(x, y, entryProof1.proofSegments[0], entryProof2.proofSegments[0], entryProofLast.proofSegments[0]);
+
+        emit WinnerSelected(winner);
+
+        PostageContract.withdraw(winner.owner);
+    }
+
+
+    function winnerSelection() internal returns (Reveal memory winner_) {
+
+        require(currentPhaseClaim(), "not in claim phase");
+
+        uint256 cr = currentRound();
+
+        require(cr == currentRevealRound, "round received no reveals");
+        require(cr > currentClaimRound, "round already received successful claim");
+
+        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
+
+        currentSum = 0;
+        currentWinnerSelectionSum = 0;
+        bytes32 randomNumber;
+        uint256 randomNumberTrunc;
+
+        bytes32 truthRevealedHash;
+        uint8 truthRevealedDepth;
+
+        emit CountCommits(currentCommits.length);
+        emit CountReveals(currentReveals.length);
+
+        for (uint256 i = 0; i < currentCommits.length; i++) {
+            if (currentCommits[i].revealed) {
+                revIndex = currentCommits[i].revealIndex;
+                currentSum += currentReveals[revIndex].stakeDensity;
+                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
+
+                randomNumberTrunc = uint256(randomNumber & MaxH);
+
+                // question is whether randomNumber / MaxH < probability
+                // where probability is stakeDensity / currentSum
+                // to avoid resorting to floating points all divisions should be
+                // simplified with multiplying both sides (as long as divisor > 0)
+                // randomNumber / (MaxH + 1) < stakeDensity / currentSum
+                // ( randomNumber / (MaxH + 1) ) * currentSum < stakeDensity
+                // randomNumber * currentSum < stakeDensity * (MaxH + 1)
+                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)) {
+                    truthRevealedHash = currentReveals[revIndex].hash;
+                    truthRevealedDepth = currentReveals[revIndex].depth;
+                }
+            }
+        }
+
+        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
+
+        k = 0;
+
+        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+
+        for (uint256 i = 0; i < currentCommits.length; i++) {
+            revIndex = currentCommits[i].revealIndex;
+            if (currentCommits[i].revealed ) {
+               if ( truthRevealedHash == currentReveals[revIndex].hash && truthRevealedDepth == currentReveals[revIndex].depth) {
+                    currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
+                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
+
+                    randomNumberTrunc = uint256(randomNumber & MaxH);
+
+                    if (
+                        randomNumberTrunc * currentWinnerSelectionSum < currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
+                    ) {
+                        winner_ = currentReveals[revIndex];
+                    }
+
+                    k++;
+                } else {
+                    Stakes.freezeDeposit(currentReveals[revIndex].overlay, penaltyMultiplierDisagreement * roundLength * uint256(2**truthRevealedDepth));
+                    // slash ph5
+                }
+            } else {
+                // slash in later phase
+                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
+                Stakes.freezeDeposit(currentCommits[i].overlay, penaltyMultiplierNonRevealed * roundLength * uint256(2**truthRevealedDepth));
+                continue;
+            }
+        }
+
+        OracleContract.adjustPrice(uint256(k));
+
+        require(winner_.owner == msg.sender, "Only selected winner can do the claim");
+
+        currentClaimRound = cr;
+
+        return winner_;
+    }
+
     function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
         uint256 currentSum;
         bytes32 randomNumber;
@@ -585,86 +754,141 @@ contract Redistribution is AccessControl, Pausable {
         return (truthRevealedHash, truthRevealedDepth);
     }
 
-    /**
-     * @notice Conclude the current round by identifying the selected truth teller and beneficiary.
-     * @dev
-     */
-    function claim() external whenNotPaused {
-        require(currentPhaseClaim(), "not in claim phase");
-        uint256 cr = currentRound();
-        require(cr == currentRevealRound, "round received no reveals");
-        require(cr > currentClaimRound, "round already received successful claim");
+    function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {
+        uint32 prefix = uint32(uint256(swarmAddress) >> (256 - 32));
+        return prefix >> (32 - bucketDepth);
+    }
 
-        uint256 currentWinnerSelectionSum;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
-        bytes32 truthRevealedHash;
-        uint8 truthRevealedDepth;
-        uint256 revIndex;
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-        uint256 k = 0;
+    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal  pure returns (uint256) {
+        return 1 << (postageDepth - bucketDepth);
+    }
 
-        // Get current truth
-        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
-        uint256 commitsArrayLength = currentCommits.length;
-        uint256 revealsArrayLength = currentReveals.length;
+    function getPostageIndex(uint64 signedIndex) internal pure returns (uint32) {
+        return uint32(signedIndex);
+    }
 
-        for (uint256 i = 0; i < commitsArrayLength; i++) {
-            revIndex = currentCommits[i].revealIndex;
+    function getPostageBucket(uint64 signedIndex) internal pure returns (uint64) {
+        return uint32(signedIndex >> 32);
+    }
 
-            // Select winner with valid truth
-            if (
-                currentCommits[i].revealed &&
-                truthRevealedHash == currentReveals[revIndex].hash &&
-                truthRevealedDepth == currentReveals[revIndex].depth
-            ) {
-                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, k));
-                randomNumberTrunc = uint256(randomNumber & MaxH);
+    function calculateSocAddress(bytes32 identifier, address signer) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(identifier, signer));
+    }
 
-                if (
-                    randomNumberTrunc * currentWinnerSelectionSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MaxH) + 1)
-                ) {
-                    winner = currentReveals[revIndex];
-                }
+    function socFunction(ChunkInclusionProof calldata entryProof) pure internal {
+        if(entryProof.socProofAttached.length == 0) return;
 
-                k++;
-            }
+        require(Signatures.socVerify(
+            entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
+            entryProof.socProofAttached[0].signature,
+            entryProof.socProofAttached[0].identifier,
+            entryProof.socProofAttached[0].chunkAddr
+        ), "Soc verification failed for element");
+        
+        require(
+            calculateSocAddress(
+                entryProof.socProofAttached[0].identifier, 
+                entryProof.socProofAttached[0].signer
+            ) == entryProof.proveSegment,
+            "Soc address calculation does not match with the witness"
+        );
+    }
 
-            // Freeze deposit if any truth is false
-            if (
-                currentCommits[i].revealed &&
-                (truthRevealedHash != currentReveals[revIndex].hash ||
-                    truthRevealedDepth != currentReveals[revIndex].depth)
-            ) {
-                Stakes.freezeDeposit(
-                    currentReveals[revIndex].overlay,
-                    penaltyMultiplierDisagreement * roundLength * uint256(2 ** truthRevealedDepth)
-                );
-            }
+    function stampFunction(ChunkInclusionProof calldata entryProof) view internal {
+        // authentic
+        uint8 batchDepth = PostageContract.batchDepth(entryProof.postageId);
+        uint8 bucketDepth = PostageContract.batchBucketDepth(entryProof.postageId);
+        uint32 postageIndex = getPostageIndex(entryProof.index);
+        uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
+        
+        // available
+        require(postageIndex < maxPostageIndex, "Stamp available: index resides outside of the valid index set");
 
-            // Slash deposits if revealed is false
-            if (!currentCommits[i].revealed) {
-                // slash in later phase (ph5)
-                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(
-                    currentCommits[i].overlay,
-                    penaltyMultiplierNonRevealed * roundLength * uint256(2 ** truthRevealedDepth)
-                );
-            }
+        // alive
+        require(
+            PostageContract.remainingBalance(entryProof.postageId) >= PostageContract.minimumInitialBalancePerChunk(),
+            "Stamp alive: batch remaining balance validation failed for attached stamp"
+        );
+
+        // aligned
+        uint64 postageBucket = getPostageBucket(entryProof.index);
+        uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
+        require(
+            postageBucket == addressBucket,
+            "Stamp aligned: postage bucket differs from address bucket"
+        );
+
+        // authorized
+        address batchOwner = PostageContract.batchOwner(entryProof.postageId);
+        require(Signatures.postageVerify(
+            batchOwner,
+            entryProof.signature,
+            entryProof.proveSegment,
+            entryProof.postageId,
+            entryProof.index,
+            entryProof.timeStamp
+        ), "Stamp authorized: signature recovery failed for element");
+    }
+
+    function inclusionFunction(
+        ChunkInclusionProof calldata entryProof,
+        uint256 indexInRC
+        ) internal {
+        require(winner.hash == BMTChunk.chunkAddressFromInclusionProof(
+            entryProof.proofSegments, 
+            entryProof.proveSegment, 
+            indexInRC,
+            32 * 32
+        ), "RC inclusion proof failed for element");
+
+        randomChunkSegmentIndex = uint256(seed) % 128;
+
+        require(entryProof.proofSegments2[0] == entryProof.proofSegments3[0], "first sister segment in data must match");
+
+        bytes32 originalAddress = entryProof.socProofAttached.length > 0 ? 
+            entryProof.socProofAttached[0].chunkAddr : // soc attestation in socFunction
+            entryProof.proveSegment;
+
+        require(originalAddress == BMTChunk.chunkAddressFromInclusionProof(
+            entryProof.proofSegments2, 
+            entryProof.proveSegment2, 
+            randomChunkSegmentIndex, 
+            entryProof.chunkSpan
+        ), "inclusion proof failed for original address of element");
+
+        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+            entryProof.proofSegments3, 
+            entryProof.proveSegment2, 
+            randomChunkSegmentIndex, 
+            entryProof.chunkSpan, 
+            currentRevealRoundAnchor
+        );
+        // in case of SOC, the transformed address is hashed together with its address in the sample
+        if(entryProof.socProofAttached.length > 0) {
+            calculatedTransformedAddr = keccak256(
+                abi.encode(
+                    entryProof.proveSegment, // SOC address
+                    calculatedTransformedAddr
+                )
+            );
         }
 
-        // Apply Important state changes
-        PostageContract.withdraw(winner.owner);
-        OracleContract.adjustPrice(uint256(k));
-        currentClaimRound = cr;
+        require(entryProof.proofSegments[0] == calculatedTransformedAddr, "inclusion proof failed for transformed address of element");
+    }
 
-        // Emit function Events
-        emit CountCommits(commitsArrayLength);
-        emit CountReveals(revealsArrayLength);
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-        emit WinnerSelected(winner);
-        emit ChunkCount(PostageContract.validChunkCount());
+    function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
+        if ( a < b ) {
+            require(uint256(trA1) < uint256(trA2), "random element order check failed");
+            require(uint256(trA2) < uint256(trALast), "last element order check failed"); 
+        } else {
+            require(uint256(trA2) < uint256(trA1), "random element order check failed");
+            require(uint256(trA1) < uint256(trALast), "last element order check failed");
+        }
+
+        estimateSize(trALast);
+    }
+
+    function estimateSize(bytes32 trALast) internal pure {
+        require(uint256(trALast) < SAMPLE_MAX_VALUE, "reserve size estimation check failed");
     }
 }

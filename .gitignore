@@ -1,6 +1,7 @@
 # @nomiclabs/hardhat
 cache/
 artifacts/
+dist/
 
 # solidity-coverage
 coverage*

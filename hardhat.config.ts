@@ -34,6 +34,9 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  mocha: {
+    timeout: Number.MAX_SAFE_INTEGER,
+  },
   preprocess: {
     eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
   },
@@ -49,6 +52,7 @@ const config: HardhatUserConfig = {
     node_2: 8,
     node_3: 9,
     node_4: 10,
+    node_5: 11,
   },
   defaultNetwork: 'hardhat',
   networks: {
@@ -108,6 +112,11 @@ const config: HardhatUserConfig = {
         // node_4
         {
           privateKey: '0xc1a7ca0bc39058d1fb6e331f8a6a3b65e81f171cfeddeec6cd0f32271496f45c',
+          balance: '10000000000000000000000',
+        },
+        // node_5 - FDP Play Worker 1 node - swarm.key
+        {
+          privateKey: '0x195cf6324303f6941ad119d0a1d2e862d810078e1370b8d205552a543ff40aab',
           balance: '10000000000000000000000',
         },
         // other_1
