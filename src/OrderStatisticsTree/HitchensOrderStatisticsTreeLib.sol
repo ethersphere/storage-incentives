@@ -52,6 +52,10 @@ library HitchensOrderStatisticsTreeLib {
         mapping(uint => Node) nodes;
     }
 
+    error ValueDoesNotExist(); // Provided value doesn't exist in the tree.
+    error ValueCannotBeZero(); // Value to insert cannot be zero
+    error ValueKeyPairExists(); // Value and Key pair exists. Cannot be inserted again.
+
     function first(Tree storage self) internal view returns (uint _value) {
         _value = self.root;
         if (_value == EMPTY) return 0;
@@ -76,7 +80,10 @@ library HitchensOrderStatisticsTreeLib {
         Tree storage self,
         uint value
     ) internal view returns (uint _parent, uint _left, uint _right, bool _red, uint keyCount, uint __count) {
-        require(exists(self, value), "OrderStatisticsTree(403) - Value does not exist.");
+        if (!exists(self, value)) {
+            revert ValueDoesNotExist();
+        }
+
         Node storage gn = self.nodes[value];
         return (gn.parent, gn.left, gn.right, gn.red, gn.keys.length, gn.keys.length + gn.count);
     }
@@ -87,7 +94,9 @@ library HitchensOrderStatisticsTreeLib {
     }
 
     function valueKeyAtIndex(Tree storage self, uint value, uint index) internal view returns (bytes32 _key) {
-        require(exists(self, value), "OrderStatisticsTree(404) - Value does not exist.");
+        if (!exists(self, value)) {
+            revert ValueDoesNotExist();
+        }
         return self.nodes[value].keys[index];
     }
 
@@ -219,11 +228,12 @@ library HitchensOrderStatisticsTreeLib {
 */
 
     function insert(Tree storage self, bytes32 key, uint value) internal {
-        require(value != EMPTY, "OrderStatisticsTree(405) - Value to insert cannot be zero");
-        require(
-            !keyExists(self, key, value),
-            "OrderStatisticsTree(406) - Value and Key pair exists. Cannot be inserted again."
-        );
+        if (value == EMPTY) {
+            revert ValueCannotBeZero();
+        }
+        if (keyExists(self, key, value)) {
+            revert ValueKeyPairExists();
+        }
         uint cursor;
         uint probe = self.root;
         while (probe != EMPTY) {
@@ -257,16 +267,23 @@ library HitchensOrderStatisticsTreeLib {
     }
 
     function remove(Tree storage self, bytes32 key, uint value) internal {
-        require(value != EMPTY, "OrderStatisticsTree(407) - Value to delete cannot be zero");
-        require(keyExists(self, key, value), "OrderStatisticsTree(408) - Value to delete does not exist.");
+        if (value == EMPTY) {
+            revert ValueCannotBeZero();
+        }
+        if (!keyExists(self, key, value)) {
+            revert ValueDoesNotExist();
+        }
+
         Node storage nValue = self.nodes[value];
         uint rowToDelete = nValue.keyMap[key];
         bytes32 last = nValue.keys[nValue.keys.length - uint(1)];
         nValue.keys[rowToDelete] = last;
         nValue.keyMap[last] = rowToDelete;
         nValue.keys.pop();
+
         uint probe;
         uint cursor;
+
         if (nValue.keys.length == 0) {
             if (self.nodes[value].left == EMPTY || self.nodes[value].right == EMPTY) {
                 cursor = value;
@@ -276,13 +293,16 @@ library HitchensOrderStatisticsTreeLib {
                     cursor = self.nodes[cursor].left;
                 }
             }
+
             if (self.nodes[cursor].left != EMPTY) {
                 probe = self.nodes[cursor].left;
             } else {
                 probe = self.nodes[cursor].right;
             }
+
             uint cursorParent = self.nodes[cursor].parent;
             self.nodes[probe].parent = cursorParent;
+
             if (cursorParent != EMPTY) {
                 if (cursor == self.nodes[cursorParent].left) {
                     self.nodes[cursorParent].left = probe;
@@ -292,7 +312,9 @@ library HitchensOrderStatisticsTreeLib {
             } else {
                 self.root = probe;
             }
+
             bool doFixup = !self.nodes[cursor].red;
+
             if (cursor != value) {
                 replaceParent(self, cursor, value);
                 self.nodes[cursor].left = self.nodes[value].left;
@@ -303,9 +325,11 @@ library HitchensOrderStatisticsTreeLib {
                 (cursor, value) = (value, cursor);
                 fixCountRecurse(self, value);
             }
+
             if (doFixup) {
                 removeFixup(self, probe);
             }
+
             fixCountRecurse(self, cursorParent);
             delete self.nodes[cursor];
         }
