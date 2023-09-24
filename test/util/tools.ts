@@ -161,7 +161,10 @@ export async function mineToRevealPhase() {
 /**
  * copies batch used for creating fixtures onto the blockchain
  */
-export async function copyBatchForClaim(deployer: string): Promise<{
+export async function copyBatchForClaim(
+  deployer: string,
+  batchId: string
+): Promise<{
   tx: AwaitedTransaction;
   postageDepth: number;
   initialBalance: number;
@@ -177,7 +180,6 @@ export async function copyBatchForClaim(deployer: string): Promise<{
   const postageDepth = 27;
   const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
   await mintAndApprove(deployer, deployer, postageAdmin.address, bzzFund.toString());
-  const batchId = '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f';
   const batchOwner = getWalletOfFdpPlayQueen();
 
   const tx = await postageAdmin.copyBatch(
