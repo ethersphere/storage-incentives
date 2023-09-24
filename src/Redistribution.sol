@@ -218,6 +218,7 @@ contract Redistribution is AccessControl, Pausable {
     error NotRevealPhase(); // Game is not in reveal phase
     error OutOfDepthReveal(bytes32); // Anchor is out of reported depth in Reveal phase, anchor data available as argument
     error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index is argument
+    error OutOfDepth(); // Anchor is out of reported depth
     error AlreadyRevealed(); // Node already revealed
     error NoMatchingCommit(); // No matching commit and hash
     error NotClaimPhase(); // Game is not in the claim phase
@@ -341,6 +342,10 @@ contract Redistribution is AccessControl, Pausable {
      */
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         uint32 cr = uint32(currentRound());
+
+        if (_depth < currentMinimumDepth()) {
+            revert OutOfDepth();
+        }
 
         if (!currentPhaseReveal()) {
             revert NotRevealPhase();
@@ -721,6 +726,23 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     // ----------------------------- Reveal ------------------------------
+
+    /**
+     * @notice Returns minimum depth reveal has to have to participate in this round
+     */
+    function currentMinimumDepth() public view returns (uint8) {
+        // We are checking value in reveal phase, as the currentCommitRound is set to the current round
+        // but the currentClaimRound is still set to the last time claim was made
+        // We add 1 to ensure that for the next round the minimum depth is the same as last winner depth
+
+        uint256 difference = currentCommitRound - currentClaimRound;
+        uint8 skippedRounds = uint8(difference > 254 ? 254 : difference) + 1;
+
+        uint8 lastWinnerDepth = winner.depth;
+
+        // We ensure that skippedRounds is not bigger than lastWinnerDepth, because of overflow
+        return skippedRounds >= lastWinnerDepth ? 0 : lastWinnerDepth - skippedRounds;
+    }
 
     /**
      * @notice Helper function to get this node reveal in commits
