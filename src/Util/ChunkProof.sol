@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.1;
+pragma solidity ^0.8.19;
 
 library BMTChunk {
     // max chunk payload size
@@ -49,7 +49,6 @@ library BMTChunk {
             _calculatedHash = mergeSegment(_calculatedHash, _proofSegments[i], mergeFromRight);
             _proveSegmentIndex >>= 1;
         }
-
         return _calculatedHash;
     }
 

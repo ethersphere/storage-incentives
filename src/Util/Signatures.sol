@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.1;
+pragma solidity ^0.8.19;
 
 library Signatures {
+    error InvalidSignatureLength();
+
     /** Hash of the message to sign */
     function getPostageMessageHash(
         bytes32 _chunkAddr,
@@ -44,7 +46,9 @@ library Signatures {
     }
 
     function splitSignature(bytes memory sig) internal pure returns (bytes32 r_, bytes32 s_, uint8 v_) {
-        require(sig.length == 65, "invalid signature length");
+        if (sig.length != 65) {
+            revert InvalidSignatureLength();
+        }
 
         assembly {
             /*

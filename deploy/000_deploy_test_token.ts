@@ -28,7 +28,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     });
 
     if (process.env.TESTNET_ETHERSCAN_KEY) {
-      console.log('Verifying...');
+      log('Verifying...');
       await verify(token.address, argsToken);
     }
   }

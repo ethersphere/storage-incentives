@@ -58,7 +58,7 @@ const depth_0 = '0x06';
 const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
 
-const obsfucatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 //fake
 const overlay_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
@@ -137,20 +137,36 @@ before(async function () {
 
 const errors = {
   commit: {
-    notOwner: 'owner must match sender',
-    notStaked: 'stake must exceed minimum',
-    stakedRecently: 'stake updated recently',
-    alreadyCommited: 'only one commit each per round',
+    notOwner: 'NotMatchingOwner()',
+    notStaked: 'BelowMinimumStake()',
+    stakedRecently: 'MustStake2Rounds()',
+    alreadyCommited: 'AlreadyCommited()',
   },
   reveal: {
-    noCommits: 'round received no commits',
-    doNotMatch: 'no matching commit or hash',
-    outOfDepth: 'anchor out of self reported depth',
-    notInReveal: 'not in reveal phase',
+    noCommits: 'NoCommitsReceived()',
+    doNotMatch: 'NoMatchingCommit()',
+    outOfDepth: 'OutOfDepth()',
+    notInReveal: 'NotRevealPhase()',
   },
   claim: {
-    noReveals: 'round received no reveals',
-    alreadyClaimed: 'round already received successful claim',
+    noReveals: 'NoReveals()',
+    alreadyClaimed: 'AlreadyClaimed()',
+    randomCheckFailed: 'RandomElementCheckFailed()',
+    outOfDepth: 'OutOfDepth()',
+    reserveCheckFailed: 'ReserveCheckFailed()',
+    indexOutsideSet: 'IndexOutsideSet()',
+    balanceValidationFailed: 'BalanceValidationFailed()',
+    bucketDiffers: 'BucketDiffers()',
+    sigRecoveryFailed: 'SigRecoveryFailed()',
+    inclusionProofFailed1: 'InclusionProofFailed',
+    inclusionProofFailed2: 'InclusionProofFailed',
+    inclusionProofFailed3: 'InclusionProofFailed',
+    inclusionProofFailed4: 'InclusionProofFailed',
+    socVerificationFailed: 'SocVerificationFailed()',
+    socCalcNotMatching: 'SocCalcNotMatching()',
+  },
+  general: {
+    onlyPauser: 'OnlyPauser()',
   },
 };
 
@@ -181,7 +197,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       const currentRound = await r_node_0.currentRound();
-      await expect(r_node_0.commit(obsfucatedHash_0, overlay_0, currentRound)).to.be.revertedWith(
+      await expect(r_node_0.commit(obfuscatedHash_0, overlay_0, currentRound)).to.be.revertedWith(
         errors.commit.notStaked
       );
     });
@@ -320,15 +336,15 @@ describe('Redistribution', function () {
 
     describe('utilities', function () {
       it('should correctly wrap a commit', async function () {
-        const obsfucatedHash = encodeAndHash(overlay_0, depth_0, hash_0, reveal_nonce_0);
+        const obfuscatedHash = encodeAndHash(overlay_0, depth_0, hash_0, reveal_nonce_0);
 
-        expect(await redistribution.wrapCommit(overlay_0, depth_0, hash_0, reveal_nonce_0)).to.be.eq(obsfucatedHash);
+        expect(await redistribution.wrapCommit(overlay_0, depth_0, hash_0, reveal_nonce_0)).to.be.eq(obfuscatedHash);
       });
 
       it('should correctly wrap another commit', async function () {
-        const obsfucatedHash = encodeAndHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
+        const obfuscatedHash = encodeAndHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
 
-        expect(await redistribution.wrapCommit(overlay_3, depth_3, hash_3, reveal_nonce_3)).to.be.eq(obsfucatedHash);
+        expect(await redistribution.wrapCommit(overlay_3, depth_3, hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
       });
     });
 
@@ -412,14 +428,14 @@ describe('Redistribution', function () {
 
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
-        const obsfucatedHash = encodeAndHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
+        const obfuscatedHash = encodeAndHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
 
-        expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obsfucatedHash);
+        expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
 
         const currentRound = await r_node_3.currentRound();
-        await r_node_3.commit(obsfucatedHash, overlay_3, currentRound);
+        await r_node_3.commit(obfuscatedHash, overlay_3, currentRound);
 
-        expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+        expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
         await mineNBlocks(phaseLength);
 
@@ -434,15 +450,15 @@ describe('Redistribution', function () {
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
 
-        await expect(r_node_2.commit(obsfucatedHash, overlay_2, currentRound))
+        await expect(r_node_2.commit(obfuscatedHash, overlay_2, currentRound))
           .to.emit(redistribution, 'Committed')
           .withArgs(currentRound, overlay_2);
 
-        expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+        expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
         await mineNBlocks(phaseLength);
 
@@ -461,11 +477,11 @@ describe('Redistribution', function () {
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
         const currentRound = await r_node_0.currentRound();
-        await r_node_0.commit(obsfucatedHash_0, overlay_0, currentRound);
+        await r_node_0.commit(obfuscatedHash_0, overlay_0, currentRound);
 
         const commit_0 = await r_node_0.currentCommits(0);
         expect(commit_0.overlay).to.be.eq(overlay_0);
-        expect(commit_0.obfuscatedHash).to.be.eq(obsfucatedHash_0);
+        expect(commit_0.obfuscatedHash).to.be.eq(obfuscatedHash_0);
 
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + 1);
 
@@ -484,10 +500,10 @@ describe('Redistribution', function () {
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
 
-        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_0.currentRound();
-        await expect(r_node_0.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(
+        await expect(r_node_0.commit(obfuscatedHash, overlay_2, currentRound)).to.be.revertedWith(
           errors.commit.notOwner
         );
       });
@@ -497,15 +513,15 @@ describe('Redistribution', function () {
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
 
-        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
 
-        expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+        expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
-        await expect(r_node_2.commit(obsfucatedHash, overlay_2, currentRound)).to.be.revertedWith(
+        await expect(r_node_2.commit(obfuscatedHash, overlay_2, currentRound)).to.be.revertedWith(
           errors.commit.alreadyCommited
         );
       });
@@ -561,10 +577,10 @@ describe('Redistribution', function () {
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -580,10 +596,10 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
-        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -599,10 +615,10 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
-        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obsfucatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -616,7 +632,7 @@ describe('Redistribution', function () {
       describe('when pausing', function () {
         it('should not allow anybody but the pauser to pause', async function () {
           const redistributionContract = await ethers.getContract('Redistribution', stamper);
-          await expect(redistributionContract.pause()).to.be.revertedWith('only pauser can pause');
+          await expect(redistributionContract.pause()).to.be.revertedWith(errors.general.onlyPauser);
         });
       });
 
@@ -632,7 +648,7 @@ describe('Redistribution', function () {
           const redistributionContract = await ethers.getContract('Redistribution', deployer);
           await redistributionContract.pause();
           const redistributionContract2 = await ethers.getContract('Redistribution', stamper);
-          await expect(redistributionContract2.unPause()).to.be.revertedWith('only pauser can unpause');
+          await expect(redistributionContract2.unPause()).to.be.revertedWith(errors.general.onlyPauser);
         });
 
         it('should not allow unpausing when not paused', async function () {
@@ -647,10 +663,10 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
-        const obsfucatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obsfucatedHash, overlay_2, parseInt(currentRound));
+        await r_node_2.commit(obfuscatedHash, overlay_2, parseInt(currentRound));
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -666,17 +682,48 @@ describe('Redistribution', function () {
       describe('single player', async function () {
         let copyBatch: Awaited<ReturnType<typeof copyBatchForClaim>>, currentSeed: string, r_node_5: Contract;
         const depth = 1;
+        const generatedSampling = async (socAttachment = false) => {
+          const anchor1 = arrayify(currentSeed);
+          const witnessChunks = socAttachment
+            ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
+            : await setWitnesses('claim-pot', anchor1, depth);
 
-        beforeEach(async () => {
-          //copying batch for claim
-          copyBatch = await copyBatchForClaim(deployer);
-          // anchor fixture
-          await mineToNode(redistribution, 5);
-          currentSeed = await redistribution.currentSeed();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
-          r_node_5 = await ethers.getContract('Redistribution', node_5);
-        });
+          const sampleChunk = makeSample(witnessChunks);
 
+          const sampleHashString = hexlify(sampleChunk.address());
+
+          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const currentRound = await r_node_5.currentRound();
+          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
+
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
+
+          await mineToRevealPhase();
+
+          await r_node_5.reveal(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+
+          const anchor2 = await redistribution.currentSeed();
+
+          const { proofParams } = await getClaimProofs(
+            witnessChunks,
+            sampleChunk,
+            anchor1,
+            anchor2,
+            copyBatch.batchOwner,
+            copyBatch.batchId
+          );
+
+          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sampleHashString);
+          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
+          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(depth);
+
+          await mineNBlocks(phaseLength);
+
+          return { proofParams, sampleHashString };
+        };
         const claimEventChecks = async (claimTx: ContractTransaction, sanityHash: string, sanityDepth: string) => {
           const receipt2 = await claimTx.wait();
 
@@ -718,28 +765,38 @@ describe('Redistribution', function () {
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
-          expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
-          expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
-          expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
-          expect(WinnerSelectedEvent.args[0][3]).to.be.eq(
+          expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
+          expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
+          expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+          expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
             BigNumber.from(stakeAmount_0).mul(BigNumber.from(2).pow(parseInt(sanityDepth)))
           ); //stakedensity?
-          expect(WinnerSelectedEvent.args[0][4]).to.be.eq(sanityHash);
-          expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(sanityDepth));
+          expect(WinnerSelectedEvent.args[0].hash).to.be.eq(sanityHash);
+          expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(sanityDepth));
 
           expect(TruthSelectedEvent.args[0]).to.be.eq(sanityHash);
           expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(sanityDepth));
         };
 
+        beforeEach(async () => {
+          //copying batch for claim
+          copyBatch = await copyBatchForClaim(deployer);
+          // anchor fixture
+          await mineToNode(redistribution, 5);
+          currentSeed = await redistribution.currentSeed();
+          expect(await redistribution.currentPhaseCommit()).to.be.true;
+          r_node_5 = await ethers.getContract('Redistribution', node_5);
+        });
+
         it('should claim pot by bee sampling', async function () {
           const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
 
-          const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
+          const obfuscatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
 
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
           await mineToRevealPhase();
 
@@ -759,49 +816,6 @@ describe('Redistribution', function () {
           await claimEventChecks(tx2, sanityHash, sanityDepth);
         });
 
-        const generatedSampling = async (socAttachment = false) => {
-          const anchor1 = arrayify(currentSeed);
-          const witnessChunks = socAttachment
-            ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
-            : await setWitnesses('claim-pot', anchor1, depth);
-
-          const sampleChunk = makeSample(witnessChunks);
-
-          const sampleHashString = hexlify(sampleChunk.address());
-
-          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const anchor2 = await redistribution.currentSeed();
-
-          const { proofParams } = await getClaimProofs(
-            witnessChunks,
-            sampleChunk,
-            anchor1,
-            anchor2,
-            copyBatch.batchOwner,
-            copyBatch.batchId
-          );
-
-          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sampleHashString);
-          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
-          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
-          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(depth);
-
-          await mineNBlocks(phaseLength);
-
-          return { proofParams, sampleHashString };
-        };
-
         it('should claim pot by generated CAC sampling', async function () {
           const { sampleHashString, proofParams } = await generatedSampling();
 
@@ -814,8 +828,6 @@ describe('Redistribution', function () {
 
         it('should claim pot by generated SOC sampling', async function () {
           const { sampleHashString, proofParams } = await generatedSampling(true);
-
-          // console.log('socproofattached', proofParams.proof1.proofSegments[0], proofParams.proof2.proofSegments[0], proofParams.proofLast.proofSegments[0]);
 
           expect(proofParams.proof1.socProofAttached).to.have.length(1);
           expect(proofParams.proof2.socProofAttached).to.have.length(1);
@@ -834,12 +846,12 @@ describe('Redistribution', function () {
 
           const sampleHashString = hexlify(sampleChunk.address());
 
-          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
 
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
           await mineToRevealPhase();
 
@@ -860,7 +872,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith('random element order check failed');
+          ).to.be.revertedWith(errors.claim.randomCheckFailed);
         });
 
         it('should not claim pot because of a witness is not in depth', async () => {
@@ -893,12 +905,12 @@ describe('Redistribution', function () {
 
           const sampleHashString = hexlify(sampleChunk.address());
 
-          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
 
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
           await mineToRevealPhase();
 
@@ -919,7 +931,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith('witness is not in depth');
+          ).to.be.revertedWith(errors.claim.outOfDepth);
         });
 
         it('should not claim pot because of estimation check', async () => {
@@ -959,12 +971,12 @@ describe('Redistribution', function () {
 
           const sampleHashString = hexlify(sampleChunk.address());
 
-          const obsfucatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
+          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
 
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
           await mineToRevealPhase();
 
@@ -985,7 +997,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith('reserve size estimation check failed');
+          ).to.be.revertedWith(errors.claim.reserveCheckFailed);
         });
 
         describe('should not claim pot because of SOC checks', async () => {
@@ -994,10 +1006,9 @@ describe('Redistribution', function () {
 
             // alter the identifier into random one
             proofParams.proof1.socProofAttached![0].identifier = randomBytes(32);
-
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Soc verification failed for element');
+            ).to.be.revertedWith(errors.claim.socVerificationFailed);
           });
 
           it('SOC attachment does not match with witness', async function () {
@@ -1011,7 +1022,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Soc address calculation does not match with the witness');
+            ).to.be.revertedWith(errors.claim.socCalcNotMatching);
           });
         });
 
@@ -1025,7 +1036,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp available: index resides outside of the valid index set');
+            ).to.be.revertedWith(errors.claim.indexOutsideSet);
           });
 
           it('stamp is not valid anymore', async function () {
@@ -1060,7 +1071,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp alive: batch remaining balance validation failed for attached stamp');
+            ).to.be.revertedWith(errors.claim.balanceValidationFailed);
           });
 
           it('postage bucket and address bucket do not match', async function () {
@@ -1072,7 +1083,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp aligned: postage bucket differs from address bucket');
+            ).to.be.revertedWith(errors.claim.bucketDiffers);
           });
 
           it('wrong postage stamp signature', async function () {
@@ -1084,7 +1095,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('Stamp authorized: signature recovery failed for element');
+            ).to.be.revertedWith(errors.claim.sigRecoveryFailed);
           });
         });
 
@@ -1096,7 +1107,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('RC inclusion proof failed for element');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed1);
           });
 
           it('wrong proof segments for the original chunk', async function () {
@@ -1106,7 +1117,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('inclusion proof failed for original address of element');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed3);
           });
 
           it('wrong proof segments for the transformed chunk', async function () {
@@ -1116,7 +1127,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('inclusion proof failed for transformed address of element');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed4);
           });
 
           it('first inclusion proof segment of transformed and original do not match', async function () {
@@ -1126,7 +1137,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith('first sister segment in data must match');
+            ).to.be.revertedWith(errors.claim.inclusionProofFailed2);
           });
         });
 
@@ -1151,11 +1162,11 @@ describe('Redistribution', function () {
 
             currentRound = await r_node_1.currentRound();
 
-            const obsfucatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
-            await r_node_1.commit(obsfucatedHash_1, overlay_1_n_25, currentRound);
+            const obfuscatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
+            await r_node_1.commit(obfuscatedHash_1, overlay_1_n_25, currentRound);
 
-            const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
-            await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
+            const obfuscatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
+            await r_node_5.commit(obfuscatedHash_5, overlay_5, currentRound);
 
             proof1 = node5_proof1.proof1;
             proof2 = node5_proof1.proof2;
@@ -1209,18 +1220,20 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
-            expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
-            expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
+            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
 
-            expect(WinnerSelectedEvent.args[0][3]).to.be.eq(calculateStakeDensity(stakeAmount_5, Number(depth_5)));
-            expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_5);
-            expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
+            expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
+              calculateStakeDensity(stakeAmount_5, Number(depth_5))
+            );
+            expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
+            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
             expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
 
-            expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
+            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
             expect(await postage.lastPrice()).to.be.eq(newPrice);
@@ -1273,12 +1286,14 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
-            expect(WinnerSelectedEvent.args[0][0]).to.be.eq(node_5);
-            expect(WinnerSelectedEvent.args[0][1]).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0][2]).to.be.eq(stakeAmount_5);
-            expect(WinnerSelectedEvent.args[0][3]).to.be.eq(calculateStakeDensity(stakeAmount_5, Number(depth_5)));
-            expect(WinnerSelectedEvent.args[0][4]).to.be.eq(hash_5);
-            expect(WinnerSelectedEvent.args[0][5]).to.be.eq(parseInt(depth_5));
+            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
+            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
+              calculateStakeDensity(stakeAmount_5, Number(depth_5))
+            );
+            expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
+            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
             expect(await postage.lastPrice()).to.be.eq(newPrice);
