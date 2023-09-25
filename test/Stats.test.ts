@@ -1,10 +1,26 @@
 import { expect } from './util/chai';
 import { ethers, getNamedAccounts, getUnnamedAccounts, deployments } from 'hardhat';
-import { mineNBlocks, encodeAndHash, mintAndApprove, createOverlay } from './util/tools';
+import {
+  mineNBlocks,
+  encodeAndHash,
+  mintAndApprove,
+  createOverlay,
+  ROUND_LENGTH,
+  PHASE_LENGTH,
+  copyBatchForClaim,
+  mineToRevealPhase,
+} from './util/tools';
+import { BigNumber } from 'ethers';
+import { arrayify, hexlify } from 'ethers/lib/utils';
+import { getClaimProofs, makeSample, setWitnesses } from './util/proofs';
 
 const { read, execute } = deployments;
-const phaseLength = 38;
-const roundLength = 152;
+
+interface Outcome {
+  node: string;
+  stake: string;
+  wins: number;
+}
 
 // Named accounts used by tests.
 let deployer: string, stamper: string, oracle: string, pauser: string;
@@ -22,13 +38,6 @@ before(async function () {
 
 async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   const price1 = 100;
-  const batch = {
-    nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-    initialPaymentPerChunk: 200000,
-    depth: 17,
-    bucketDepth: 16,
-    immutable: false,
-  };
 
   const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
   await postageStampOracle.setPrice(price1);
@@ -36,24 +45,19 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   const postageStampAdmin = await ethers.getContract('PostageStamp', deployer);
   await postageStampAdmin.setMinimumValidityBlocks(0);
 
-  const batchSize = 2 ** batch.depth;
-  const transferAmount = 2 * batch.initialPaymentPerChunk * batchSize;
+  const { postageDepth, initialBalance, batchId, batchOwner } = await copyBatchForClaim(
+    deployer,
+    '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f'
+  );
+
+  const batchSize = BigNumber.from(2).pow(BigNumber.from(postageDepth));
+  const transferAmount = BigNumber.from(2).mul(BigNumber.from(initialBalance)).mul(batchSize);
 
   const postage = await ethers.getContract('PostageStamp', stamper);
 
   await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
-  await postage.createBatch(
-    stamper,
-    batch.initialPaymentPerChunk,
-    batch.depth,
-    batch.bucketDepth,
-    batch.nonce,
-    batch.immutable
-  );
-
   const depth = '0x00';
-  const hash = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
   const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
   const reveal_nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -63,57 +67,68 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     await sr_node.depositStake(nodes[i], nonce, stakes[i]);
   }
 
-  interface Outcome {
-    node: string;
-    stake: string;
-    wins: number;
-  }
-
   const winDist: Outcome[] = [];
   for (let i = 0; i < nodes.length; i++) {
     winDist.push({ node: nodes[i], stake: stakes[i], wins: 0 });
   }
 
-  await mineNBlocks(roundLength * 3 - 15 - nodes.length * 3);
+  let r_node = await ethers.getContract('Redistribution', nodes[0]);
+
+  await mineNBlocks(ROUND_LENGTH * 2); // anyway reverted with panic code 0x11 (Arithmetic operation underflowed or overflowed outside of an unchecked block
+
   for (let i = 0; i < trials; i++) {
+    const anchor1 = arrayify(await r_node.currentSeed());
+
+    // mine new witness chunks because of new anchor and reserve estimation
+    const numbering = String(i).padStart(3, '0');
+    const witnessChunks = await setWitnesses(`stats-${numbering}`, anchor1, Number(depth));
+    const sampleChunk = makeSample(witnessChunks);
+
+    const sampleHashString = hexlify(sampleChunk.address());
+
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      const overlay = await createOverlay(nodes[i], '0x00', nonce);
-      const obsfucatedHash = encodeAndHash(overlay, depth, hash, reveal_nonce);
+      const overlay = createOverlay(nodes[i], depth, nonce);
+      const obfuscatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
       const currentRound = await r_node.currentRound();
-      await r_node.commit(obsfucatedHash, overlay, currentRound);
+      await r_node.commit(obfuscatedHash, overlay, currentRound);
     }
 
-    await mineNBlocks(phaseLength - nodes.length);
+    await mineToRevealPhase();
 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      const overlay = await createOverlay(nodes[i], '0x00', nonce);
-      await r_node.reveal(overlay, depth, hash, reveal_nonce);
+      const overlay = createOverlay(nodes[i], depth, nonce);
+      await r_node.reveal(overlay, depth, sampleHashString, reveal_nonce);
     }
 
-    await mineNBlocks(phaseLength - nodes.length + 1);
+    const anchor2 = await r_node.currentSeed(); // for creating proofs
 
-    const r_node = await ethers.getContract('Redistribution', nodes[0]);
+    await mineNBlocks(PHASE_LENGTH - nodes.length + 1);
 
+    let winnerIndex = 0;
     for (let i = 0; i < winDist.length; i++) {
-      const overlay = await createOverlay(winDist[i].node, '0x00', nonce);
+      const overlay = createOverlay(winDist[i].node, depth, nonce);
       if (await r_node.isWinner(overlay)) {
         winDist[i].wins++;
+        winnerIndex = i;
       }
     }
+    r_node = await ethers.getContract('Redistribution', nodes[winnerIndex]);
 
-    await r_node.claim();
+    const { proofParams } = await getClaimProofs(witnessChunks, sampleChunk, anchor1, anchor2, batchOwner, batchId);
+
+    await r_node.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
 
     const sr = await ethers.getContract('StakeRegistry');
 
     //stakes are preserved
     for (let i = 0; i < nodes.length; i++) {
-      const overlay = await createOverlay(nodes[i], '0x00', nonce);
+      const overlay = createOverlay(nodes[i], '0x00', nonce);
       expect(await sr.usableStakeOfOverlay(overlay)).to.be.eq(stakes[i]);
     }
 
-    await mineNBlocks(phaseLength * 2 - nodes.length);
+    await mineNBlocks(PHASE_LENGTH * 2 - nodes.length);
   }
 
   return winDist;
@@ -128,6 +143,7 @@ describe('Stats', async function () {
     const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
   });
+
   describe('two player game', async function () {
     const trials = 150;
 
@@ -145,10 +161,10 @@ describe('Stats', async function () {
 
       for (let i = 0; i < dist.length; i++) {
         const actual =
-          parseInt((BigInt(dist[i].stake) / BigInt(100000000000000000)).toString()) /
-          parseInt((sumStakes / BigInt(100000000000000000)).toString());
+          parseInt((BigInt(dist[i].stake) / BigInt('100000000000000000')).toString()) /
+          parseInt((sumStakes / BigInt('100000000000000000')).toString());
         const probable = dist[i].wins / trials;
-        await expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
+        expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
       }
     });
   });
