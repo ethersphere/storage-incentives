@@ -56,14 +56,14 @@ const configs: Record<string, ChainConfig> = {
     swarmNetworkId: networkDeployedData.swarmNetworkId ? networkDeployedData.swarmNetworkId : 10,
     networkName: network.name,
     deployedData: networkDeployedData,
-    url: hre.config.etherscan.customChains[0]['urls']['browserURL'].toString(),
+    url: hre.config.etherscan.customChains[1]['urls']['browserURL'].toString(),
   },
   mainnet: {
     chainId: network.config.chainId,
     swarmNetworkId: networkDeployedData.swarmNetworkId ? networkDeployedData.swarmNetworkId : 1,
     networkName: network.name,
     deployedData: networkDeployedData,
-    url: hre.config.etherscan.customChains[1]['urls']['browserURL'].toString(),
+    url: hre.config.etherscan.customChains[2]['urls']['browserURL'].toString(),
   },
 };
 
