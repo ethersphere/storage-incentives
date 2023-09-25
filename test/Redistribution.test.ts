@@ -833,6 +833,7 @@ describe('Redistribution', function () {
             deployer,
             '0x6cccd65a68bc5f7c19a273e9567ebf4b968a13c9be74fc99ad90159730eff219'
           );
+          // console.log('anchor1', await redistribution.currentSeed());
 
           const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_soc_proof1;
 
@@ -848,6 +849,7 @@ describe('Redistribution', function () {
           await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
           currentSeed = await redistribution.currentSeed();
+          // console.log('anchor2', currentSeed);
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
@@ -868,9 +870,9 @@ describe('Redistribution', function () {
         it('should claim pot by generated CAC sampling', async function () {
           const { sampleHashString, proofParams } = await generatedSampling();
 
-          expect(proofParams.proof1.socProofAttached).to.have.length(0);
-          expect(proofParams.proof2.socProofAttached).to.have.length(0);
-          expect(proofParams.proofLast.socProofAttached).to.have.length(0);
+          expect(proofParams.proof1.socProof).to.have.length(0);
+          expect(proofParams.proof2.socProof).to.have.length(0);
+          expect(proofParams.proofLast.socProof).to.have.length(0);
           const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
           await claimEventChecks(tx2, sampleHashString, hexlify(depth));
         });
@@ -878,9 +880,9 @@ describe('Redistribution', function () {
         it('should claim pot by generated SOC sampling', async function () {
           const { sampleHashString, proofParams } = await generatedSampling(true);
 
-          expect(proofParams.proof1.socProofAttached).to.have.length(1);
-          expect(proofParams.proof2.socProofAttached).to.have.length(1);
-          expect(proofParams.proofLast.socProofAttached).to.have.length(1);
+          expect(proofParams.proof1.socProof).to.have.length(1);
+          expect(proofParams.proof2.socProof).to.have.length(1);
+          expect(proofParams.proofLast.socProof).to.have.length(1);
           const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
           await claimEventChecks(tx2, sampleHashString, hexlify(depth));
         });
@@ -1054,7 +1056,8 @@ describe('Redistribution', function () {
             const { proofParams } = await generatedSampling(true);
 
             // alter the identifier into random one
-            proofParams.proof1.socProofAttached![0].identifier = randomBytes(32);
+            proofParams.proof1.socProof![0].identifier = randomBytes(32);
+
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
             ).to.be.revertedWith(errors.claim.socVerificationFailed);
@@ -1063,8 +1066,8 @@ describe('Redistribution', function () {
           it('SOC attachment does not match with witness', async function () {
             const { proofParams } = await generatedSampling(true);
 
-            proofParams.proof1.socProofAttached![0] = await getSocProofAttachment(
-              proofParams.proof1.socProofAttached![0].chunkAddr,
+            proofParams.proof1.socProof![0] = await getSocProofAttachment(
+              proofParams.proof1.socProof![0].chunkAddr,
               randomBytes(32),
               depth
             );
@@ -1079,9 +1082,9 @@ describe('Redistribution', function () {
           it('stamp index is out of range', async function () {
             const { proofParams } = await generatedSampling();
 
-            const index = Buffer.from(proofParams.proof1.index);
+            const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(2 ** 30, 4);
-            proofParams.proof1.index = index;
+            proofParams.proof1.postageProof.index = index;
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1113,10 +1116,10 @@ describe('Redistribution', function () {
             const chunkAddr = Buffer.from(proofParams.proof1.proveSegment);
             const { index, signature, timeStamp } = await constructPostageStamp(batchId, chunkAddr, wallet);
 
-            proofParams.proof1.postageId = batchId;
-            proofParams.proof1.signature = signature;
-            proofParams.proof1.index = index;
-            proofParams.proof1.timeStamp = timeStamp;
+            proofParams.proof1.postageProof.postageId = batchId;
+            proofParams.proof1.postageProof.signature = signature;
+            proofParams.proof1.postageProof.index = index;
+            proofParams.proof1.postageProof.timeStamp = timeStamp;
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1126,9 +1129,9 @@ describe('Redistribution', function () {
           it('postage bucket and address bucket do not match', async function () {
             const { proofParams } = await generatedSampling();
 
-            const index = Buffer.from(proofParams.proof1.index);
+            const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(0, 0);
-            proofParams.proof1.index = index;
+            proofParams.proof1.postageProof.index = index;
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1138,9 +1141,9 @@ describe('Redistribution', function () {
           it('wrong postage stamp signature', async function () {
             const { proofParams } = await generatedSampling();
 
-            const index = Buffer.from(proofParams.proof1.index);
+            const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(1, 4);
-            proofParams.proof1.index = index;
+            proofParams.proof1.postageProof.index = index;
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)

@@ -16,7 +16,7 @@ type Message = BmtUtils.Message;
 type WitnessData = {
   nonce: number;
   transformedAddress: Uint8Array;
-  socProofAttached?: SocProofAttachment;
+  socProofAttached?: SocProof;
 };
 
 type WitnessDataStore = {
@@ -25,7 +25,7 @@ type WitnessDataStore = {
   socProofAttached?: SocProofAttachmentStore;
 };
 
-type WitnessChunks = { ogChunk: Chunk; transformedChunk: Chunk; socProofAttached?: SocProofAttachment };
+type WitnessChunks = { ogChunk: Chunk; transformedChunk: Chunk; socProofAttached?: SocProof };
 type WitnessProof = {
   proofSegments: Uint8Array[];
   proveSegment: Uint8Array;
@@ -33,15 +33,16 @@ type WitnessProof = {
   proveSegment2: Uint8Array;
   proofSegments3: Uint8Array[];
   chunkSpan: number;
-  signer: Uint8Array; // address of the uploader
+  postageProof: PostageProof;
+  socProof: SocProof[];
+};
+type PostageProof = {
   signature: Uint8Array;
-  chunkAddr: Uint8Array; //chunk address that must be signed with postage stamp
   postageId: Uint8Array;
   index: Uint8Array;
   timeStamp: number;
-  socProofAttached: SocProofAttachment[];
 };
-type SocProofAttachment = {
+type SocProof = {
   signer: string; // signer Ethereum address to check against
   signature: string;
   identifier: Uint8Array;
@@ -198,13 +199,13 @@ export async function getClaimProof(
     proveSegment2,
     proofSegments3,
     chunkSpan,
-    signer: arrayify(postageWallet.address),
-    signature,
-    chunkAddr,
-    postageId,
-    index,
-    timeStamp,
-    socProofAttached: proofWitnessChunk.socProofAttached ? [proofWitnessChunk.socProofAttached] : [],
+    postageProof: {
+      signature,
+      postageId,
+      index,
+      timeStamp,
+    },
+    socProof: proofWitnessChunk.socProofAttached ? [proofWitnessChunk.socProofAttached] : [],
   };
 }
 
@@ -212,7 +213,7 @@ export async function getSocProofAttachment(
   chunkAddr: Uint8Array,
   anchor: Uint8Array,
   depth: number
-): Promise<SocProofAttachment> {
+): Promise<SocProof> {
   let identifier: Uint8Array;
   const randomWallet = ethers.Wallet.createRandom();
   const owner = arrayify(randomWallet.address);
