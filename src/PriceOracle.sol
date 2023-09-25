@@ -10,7 +10,10 @@ import "./interface/IPostageStamp.sol";
  */
 
 contract PriceOracle is AccessControl {
-    // ----------------------------- State variables ------------------------------
+    /**
+     *@dev Emitted on every price update.
+     */
+    event PriceUpdate(uint256 price);
 
     // Role allowed to update price
     bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
@@ -33,23 +36,10 @@ contract PriceOracle is AccessControl {
     // The address of the linked PostageStamp contract
     IPostageStamp public postageStamp;
 
-    // ----------------------------- Events ------------------------------
-
-    /**
-     *@dev Emitted on every price update.
-     */
-    event PriceUpdate(uint256 price);
-
-    // ----------------------------- CONSTRUCTOR ------------------------------
-
     constructor(address _postageStamp, address multisig) {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
     }
-
-    ////////////////////////////////////////
-    //              SETTERS               //
-    ////////////////////////////////////////
 
     /**
      * @notice Manually set the price.
@@ -67,6 +57,24 @@ contract PriceOracle is AccessControl {
 
         postageStamp.setPrice(currentPrice);
         emit PriceUpdate(currentPrice);
+    }
+
+    /**
+     * @notice Pause the contract.
+     * @dev Can only be called by the admin role.
+     */
+    function pause() external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        isPaused = true;
+    }
+
+    /**
+     * @notice Unpause the contract.
+     * @dev Can only be called by the admin role.
+     */
+    function unPause() external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        isPaused = false;
     }
 
     /**
@@ -117,23 +125,5 @@ contract PriceOracle is AccessControl {
             postageStamp.setPrice(currentPrice);
             emit PriceUpdate(currentPrice);
         }
-    }
-
-    /**
-     * @notice Pause the contract.
-     * @dev Can only be called by the admin role.
-     */
-    function pause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
-        isPaused = true;
-    }
-
-    /**
-     * @notice Unpause the contract.
-     * @dev Can only be called by the admin role.
-     */
-    function unPause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
-        isPaused = false;
     }
 }

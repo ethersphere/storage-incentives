@@ -200,7 +200,6 @@ export async function copyBatchForClaim(
     batchOwner,
   };
 }
-
 export function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): string {
   const differenceString = '0x' + (difference - 1).toString(16).padStart(64, '0');
   const currentAnchor = ethers.utils.keccak256(

@@ -89,9 +89,9 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
       const overlay = createOverlay(nodes[i], depth, nonce);
-      const obsfucatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
+      const obfuscatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
       const currentRound = await r_node.currentRound();
-      await r_node.commit(obsfucatedHash, overlay, currentRound);
+      await r_node.commit(obfuscatedHash, overlay, currentRound);
     }
 
     await mineToRevealPhase();

@@ -34,18 +34,18 @@ const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
 
 const errors = {
   remainingBalance: {
-    doesNotExist: 'BatchDoesNotExist()',
+    doesNotExist: 'batch does not exist or expired',
   },
   erc20: {
     exceedsBalance: 'ERC20: insufficient allowance',
   },
   createBatch: {
-    invalidDepth: 'InvalidDepth()',
-    alreadyExists: 'BatchExists()',
+    invalidDepth: 'invalid bucket depth',
+    alreadyExists: 'batch already exists',
     paused: 'Pausable: paused',
   },
   firstBatchId: {
-    noneExist: 'NoBatchesExist()',
+    noneExist: 'no batches exist',
   },
 };
 
@@ -688,7 +688,7 @@ describe('PostageStamp', function () {
       it('should not top up non-existing batches', async function () {
         const nonExistingBatchId = computeBatchId(deployer, batch.nonce);
         await expect(postageStamp.topUp(nonExistingBatchId, topupAmountPerChunk)).to.be.revertedWith(
-          'BatchDoesNotExist()'
+          'batch does not exist'
         );
       });
 
@@ -700,7 +700,7 @@ describe('PostageStamp', function () {
 
       it('should not top up expired batches', async function () {
         await mineNBlocks(initialBatchBlocks + 10);
-        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk)).to.be.revertedWith('BatchExpired()');
+        await expect(postageStamp.topUp(batch.id, topupAmountPerChunk)).to.be.revertedWith('batch already expired');
       });
 
       it('should not top up when paused', async function () {
@@ -828,21 +828,21 @@ describe('PostageStamp', function () {
 
       it('should not allow other accounts to increase depth', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', others[0]);
-        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith('NotBatchOwner()');
+        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith('not batch owner');
       });
 
       it('should not allow decreasing the depth', async function () {
-        await expect(postageStamp.increaseDepth(batch.id, batch.depth - 1)).to.be.revertedWith('DepthNotIncreasing()');
+        await expect(postageStamp.increaseDepth(batch.id, batch.depth - 1)).to.be.revertedWith('depth not increasing');
       });
 
       it('should not allow the same depth', async function () {
-        await expect(postageStamp.increaseDepth(batch.id, batch.depth)).to.be.revertedWith('DepthNotIncreasing()');
+        await expect(postageStamp.increaseDepth(batch.id, batch.depth)).to.be.revertedWith('depth not increasing');
       });
 
       it('should not increase depth of expired batches', async function () {
         // one price applied so far, this ensures the currentTotalOutpayment will be exactly the batch value when increaseDepth is called
         await mineNBlocks(100);
-        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith('BatchExpired()');
+        await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith('batch already expired');
       });
 
       it('should not increase depth when paused', async function () {
@@ -969,14 +969,14 @@ describe('PostageStamp', function () {
 
       it('should revert if not called by oracle', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
-        await expect(postageStamp.setPrice(100)).to.be.revertedWith('PriceOracleOnly()');
+        await expect(postageStamp.setPrice(100)).to.be.revertedWith('only price oracle can set the price');
       });
     });
 
     describe('when pausing', function () {
       it('should not allow anybody but the pauser to pause', async function () {
         const postageStamp = await ethers.getContract('PostageStamp', stamper);
-        await expect(postageStamp.pause()).to.be.revertedWith('OnlyPauser()');
+        await expect(postageStamp.pause()).to.be.revertedWith('only pauser can pause');
       });
     });
 
@@ -992,7 +992,7 @@ describe('PostageStamp', function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await postageStamp.pause();
         const postageStamp2 = await ethers.getContract('PostageStamp', stamper);
-        await expect(postageStamp2.unPause()).to.be.revertedWith('OnlyPauser()');
+        await expect(postageStamp2.unPause()).to.be.revertedWith('only pauser can unpause');
       });
 
       it('should not allow unpausing when not paused', async function () {
@@ -1006,7 +1006,7 @@ describe('PostageStamp', function () {
         const postageStamp = await ethers.getContract('PostageStamp', deployer);
         await expect(
           postageStamp.remainingBalance('0x000000000000000000000000000000000000000000000000000000000000abcd')
-        ).to.be.revertedWith('BatchDoesNotExist()');
+        ).to.be.revertedWith('batch does not exist');
       });
     });
 
@@ -1273,7 +1273,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('ZeroAddress()');
+        ).to.be.revertedWith('owner cannot be the zero address');
       });
 
       it('should not allow zero as bucket depth', async function () {
@@ -1286,7 +1286,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('InvalidDepth()');
+        ).to.be.revertedWith('invalid bucket depth');
       });
 
       it('should not allow bucket depth larger than depth', async function () {
@@ -1299,7 +1299,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('InvalidDepth()');
+        ).to.be.revertedWith('invalid bucket depth');
       });
 
       it('should not allow bucket depth equal to depth', async function () {
@@ -1312,7 +1312,7 @@ describe('PostageStamp', function () {
             batch.nonce,
             batch.immutable
           )
-        ).to.be.revertedWith('InvalidDepth()');
+        ).to.be.revertedWith('invalid bucket depth');
       });
 
       it('should not allow duplicate batch', async function () {
@@ -1326,13 +1326,13 @@ describe('PostageStamp', function () {
         );
         await expect(
           postageStampStamper.copyBatch(stamper, 1000, batch.depth, batch.bucketDepth, batch.nonce, batch.immutable)
-        ).to.be.revertedWith('BatchExists()');
+        ).to.be.revertedWith('batch already exists');
       });
 
       it('should not allow normalized balance to be zero', async function () {
         await expect(
           postageStampStamper.copyBatch(stamper, 0, batch.depth, batch.bucketDepth, batch.nonce, batch.immutable)
-        ).to.be.revertedWith('ZeroBalance()');
+        ).to.be.revertedWith('normalisedBalance cannot be zero');
       });
 
       it('should not return empty batches', async function () {

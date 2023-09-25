@@ -28,66 +28,6 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
 contract PostageStamp is AccessControl, Pausable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
-    // ----------------------------- State variables ------------------------------
-
-    // Address of the ERC20 token this contract references.
-    address public bzzToken;
-
-    // Minimum allowed depth of bucket.
-    uint8 public minimumBucketDepth;
-
-    // Role allowed to increase totalOutPayment.
-    bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
-    // Role allowed to pause
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
-    // Role allowed to withdraw the pot.
-    bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
-
-    // Associate every batch id with batch data.
-    mapping(bytes32 => Batch) public batches;
-    // Store every batch id ordered by normalisedBalance.
-    HitchensOrderStatisticsTreeLib.Tree tree;
-
-    // Total out payment per chunk, at the blockheight of the last price change.
-    uint256 private totalOutPayment;
-
-    // Combined global chunk capacity of valid batches remaining at the blockheight expire() was last called.
-    uint256 public validChunkCount;
-
-    // Lottery pot at last update.
-    uint256 public pot;
-
-    // Normalised balance at the blockheight expire() was last called.
-    uint256 public lastExpiryBalance;
-
-    // Price from the last update.
-    uint64 public lastPrice;
-
-    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
-    uint64 public minimumValidityBlocks = 17280;
-
-    // Block at which the last update occured.
-    uint64 public lastUpdatedBlock;
-
-    // ----------------------------- Type declarations ------------------------------
-
-    struct Batch {
-        // Owner of this batch (0 if not valid).
-        address owner;
-        // Current depth of this batch.
-        uint8 depth;
-        //
-        uint8 bucketDepth;
-        // Whether this batch is immutable.
-        bool immutableFlag;
-        // Normalised balance per chunk.
-        uint256 normalisedBalance;
-        //
-        uint256 lastUpdatedBlockNumber;
-    }
-
-    // ----------------------------- Events ------------------------------
-
     /**
      * @dev Emitted when a new batch is created.
      */
@@ -101,9 +41,6 @@ contract PostageStamp is AccessControl, Pausable {
         bool immutableFlag
     );
 
-    /**
-     * @dev Emitted when an pot is Withdrawn.
-     */
     event PotWithdrawn(address recipient, uint256 totalAmount);
 
     /**
@@ -121,29 +58,57 @@ contract PostageStamp is AccessControl, Pausable {
      */
     event PriceUpdate(uint256 price);
 
-    // ----------------------------- Errors ------------------------------
+    struct Batch {
+        // Owner of this batch (0 if not valid).
+        address owner;
+        // Current depth of this batch.
+        uint8 depth;
+        //
+        uint8 bucketDepth;
+        // Whether this batch is immutable.
+        bool immutableFlag;
+        // Normalised balance per chunk.
+        uint256 normalisedBalance;
+        //
+        uint256 lastUpdatedBlockNumber;
+    }
 
-    error ZeroAddress(); // Owner cannot be the zero address
-    error InvalidDepth(); // Invalid bucket depth
-    error BatchExists(); // Batch already exists
-    error InsufficientBalance(); // Insufficient initial balance for 24h minimum validity
-    error TransferFailed(); // Failed transfer of BZZ tokens
-    error ZeroBalance(); // NormalisedBalance cannot be zero
-    error AdministratorOnly(); // Only administrator can use copy method
-    error BatchDoesNotExist(); // Batch does not exist or has expired
-    error BatchExpired(); // Batch already expired
-    error BatchTooSmall(); // Batch too small to renew
-    error NotBatchOwner(); // Not batch owner
-    error DepthNotIncreasing(); // Depth not increasing
-    error BatchIsImmutable(); // Batch is immutable
-    error PriceOracleOnly(); // Only price oracle can set the price
-    error InsufficienChunkCount(); // Insufficient valid chunk count
-    error TotalOutpaymentDecreased(); // Current total outpayment should never decrease
-    error NoBatchesExist(); // There are no batches
-    error OnlyPauser(); // Only Pauser role can pause or unpause contracts
-    error OnlyRedistributor(); // Only redistributor role can withdraw from the contract
+    // Role allowed to increase totalOutPayment.
+    bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
+    // Role allowed to pause
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    // Role allowed to withdraw the pot.
+    bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
-    // ----------------------------- CONSTRUCTOR ------------------------------
+    // Associate every batch id with batch data.
+    mapping(bytes32 => Batch) public batches;
+    // Store every batch id ordered by normalisedBalance.
+    HitchensOrderStatisticsTreeLib.Tree tree;
+
+    // Address of the ERC20 token this contract references.
+    address public bzzToken;
+
+    // Total out payment per chunk, at the blockheight of the last price change.
+    uint256 private totalOutPayment;
+
+    // Minimum allowed depth of bucket.
+    uint8 public minimumBucketDepth;
+
+    // Combined global chunk capacity of valid batches remaining at the blockheight expire() was last called.
+    uint256 public validChunkCount;
+
+    // Lottery pot at last update.
+    uint256 public pot;
+
+    // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
+    uint256 public minimumValidityBlocks = 17280;
+
+    // Price from the last update.
+    uint256 public lastPrice = 0;
+    // Block at which the last update occured.
+    uint256 public lastUpdatedBlock;
+    // Normalised balance at the blockheight expire() was last called.
+    uint256 public lastExpiryBalance;
 
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
@@ -155,10 +120,6 @@ contract PostageStamp is AccessControl, Pausable {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
-
-    ////////////////////////////////////////
-    //              SETTERS               //
-    ////////////////////////////////////////
 
     /**
      * @notice Create a new batch.
@@ -177,34 +138,32 @@ contract PostageStamp is AccessControl, Pausable {
         bytes32 _nonce,
         bool _immutable
     ) external whenNotPaused {
-        if (_owner == address(0)) {
-            revert ZeroAddress();
-        }
-
-        if (_bucketDepth == 0 || _bucketDepth < minimumBucketDepth || _bucketDepth >= _depth) {
-            revert InvalidDepth();
-        }
-
+        require(_owner != address(0), "owner cannot be the zero address");
+        // bucket depth should be non-zero and smaller than the depth
+        require(
+            _bucketDepth != 0 && minimumBucketDepth <= _bucketDepth && _bucketDepth < _depth,
+            "invalid bucket depth"
+        );
+        // derive batchId from msg.sender to ensure another party cannot use the same batch id and frontrun us.
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
-        if (batches[batchId].owner != address(0)) {
-            revert BatchExists();
-        }
-
-        if (_initialBalancePerChunk < minimumInitialBalancePerChunk()) {
-            revert InsufficientBalance();
-        }
-
+        require(batches[batchId].owner == address(0), "batch already exists");
+        require(
+            _initialBalancePerChunk >= minimumInitialBalancePerChunk(),
+            "insufficient initial balance for 24h minimum validity"
+        );
+        // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount)) {
-            revert TransferFailed();
-        }
+        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
+        // normalisedBalance is an absolute value per chunk, as if the batch had existed
+        // since the block the contract was deployed, so we must supplement this batch's
+        // _initialBalancePerChunk with the currentTotalOutPayment()
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
-        if (normalisedBalance == 0) {
-            revert ZeroBalance();
-        }
 
+        //update validChunkCount to remove currently expired batches
         expireLimited(type(uint256).max);
+
+        //then add the chunks this batch will contribute
         validChunkCount += 1 << _depth;
 
         batches[batchId] = Batch({
@@ -216,13 +175,16 @@ contract PostageStamp is AccessControl, Pausable {
             lastUpdatedBlockNumber: block.number
         });
 
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
+
+        // insert into the ordered tree
         tree.insert(batchId, normalisedBalance);
 
         emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
     }
 
     /**
-     * @notice Manually create a new batch when facilitating migration, can only be called by the Admin role.
+     * @notice Manually create a new batch when faciliatating migration, can only be called by the Admin role.
      * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20 token contract.
      * @param _owner Owner of the new batch.
      * @param _initialBalancePerChunk Initial balance per chunk of the batch.
@@ -238,31 +200,16 @@ contract PostageStamp is AccessControl, Pausable {
         bytes32 _batchId,
         bool _immutable
     ) external whenNotPaused {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
-            revert AdministratorOnly();
-        }
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only administrator can use copy method");
+        require(_owner != address(0), "owner cannot be the zero address");
+        require(_bucketDepth != 0 && _bucketDepth < _depth, "invalid bucket depth");
+        require(batches[_batchId].owner == address(0), "batch already exists");
 
-        if (_owner == address(0)) {
-            revert ZeroAddress();
-        }
-
-        if (_bucketDepth == 0 || _bucketDepth >= _depth) {
-            revert InvalidDepth();
-        }
-
-        if (batches[_batchId].owner != address(0)) {
-            revert BatchExists();
-        }
-
+        // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount)) {
-            revert TransferFailed();
-        }
+        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
 
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
-        if (normalisedBalance == 0) {
-            revert ZeroBalance();
-        }
 
         //update validChunkCount to remove currently expired batches
         expireLimited(type(uint256).max);
@@ -278,6 +225,8 @@ contract PostageStamp is AccessControl, Pausable {
             lastUpdatedBlockNumber: block.number
         });
 
+        require(normalisedBalance > 0, "normalisedBalance cannot be zero");
+
         tree.insert(_batchId, normalisedBalance);
 
         emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
@@ -290,36 +239,23 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _topupAmountPerChunk The amount of additional tokens to add per chunk.
      */
     function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external whenNotPaused {
-        Batch memory batch = batches[_batchId];
-
-        if (batch.owner == address(0)) {
-            revert BatchDoesNotExist();
-        }
-
-        if (batch.normalisedBalance <= currentTotalOutPayment()) {
-            revert BatchExpired();
-        }
-
-        if (batch.depth <= minimumBucketDepth) {
-            revert BatchTooSmall();
-        }
-
-        if (remainingBalance(_batchId) + (_topupAmountPerChunk) < minimumInitialBalancePerChunk()) {
-            revert InsufficientBalance();
-        }
+        Batch storage batch = batches[_batchId];
+        require(batch.owner != address(0), "batch does not exist or has expired");
+        require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
+        require(batch.depth > minimumBucketDepth, "batch too small to renew");
+        require(
+            remainingBalance(_batchId) + (_topupAmountPerChunk) >= minimumInitialBalancePerChunk(),
+            "insufficient topped up balance for 24h minimum validity"
+        );
 
         // per chunk balance multiplied by the batch size in chunks must be transferred from the sender
         uint256 totalAmount = _topupAmountPerChunk * (1 << batch.depth);
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount)) {
-            revert TransferFailed();
-        }
-
+        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount), "failed transfer");
         // update by removing batch and then reinserting
         tree.remove(_batchId, batch.normalisedBalance);
         batch.normalisedBalance = batch.normalisedBalance + (_topupAmountPerChunk);
         tree.insert(_batchId, batch.normalisedBalance);
 
-        batches[_batchId].normalisedBalance = batch.normalisedBalance;
         emit BatchTopUp(_batchId, totalAmount, batch.normalisedBalance);
     }
 
@@ -330,42 +266,48 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _newDepth the new (larger than the previous one) depth for this batch.
      */
     function increaseDepth(bytes32 _batchId, uint8 _newDepth) external whenNotPaused {
-        Batch memory batch = batches[_batchId];
+        Batch storage batch = batches[_batchId];
 
-        if (batch.owner != msg.sender) {
-            revert NotBatchOwner();
-        }
-
-        if (!(minimumBucketDepth < _newDepth && batch.depth < _newDepth)) {
-            revert DepthNotIncreasing();
-        }
-
-        if (batch.immutableFlag) {
-            revert BatchIsImmutable();
-        }
-
-        if (batch.normalisedBalance <= currentTotalOutPayment()) {
-            revert BatchExpired();
-        }
+        require(batch.owner == msg.sender, "not batch owner");
+        require(minimumBucketDepth < _newDepth && batch.depth < _newDepth, "depth not increasing");
+        require(!batch.immutableFlag, "batch is immutable");
+        require(batch.normalisedBalance > currentTotalOutPayment(), "batch already expired");
 
         uint8 depthChange = _newDepth - batch.depth;
+        // divide by the change in batch size (2^depthChange)
         uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
 
-        if (newRemainingBalance < minimumInitialBalancePerChunk()) {
-            revert InsufficientBalance();
-        }
-
+        require(
+            newRemainingBalance >= minimumInitialBalancePerChunk(),
+            "remaining balance after depth increase wouldn't meet 24h minimum validity"
+        );
+        // expire batches up to current block before amending validChunkCount to include
+        // the new chunks resultant of the depth increase
         expireLimited(type(uint256).max);
         validChunkCount += (1 << _newDepth) - (1 << batch.depth);
-        tree.remove(_batchId, batch.normalisedBalance);
-        batches[_batchId].depth = _newDepth;
-        batches[_batchId].lastUpdatedBlockNumber = block.number;
 
-        batch.normalisedBalance = currentTotalOutPayment() + newRemainingBalance;
-        batches[_batchId].normalisedBalance = batch.normalisedBalance;
+        // update by removing batch and then reinserting
+        tree.remove(_batchId, batch.normalisedBalance);
+        batch.depth = _newDepth;
+        batch.lastUpdatedBlockNumber = block.number;
+
+        batch.normalisedBalance = currentTotalOutPayment() + (newRemainingBalance);
         tree.insert(_batchId, batch.normalisedBalance);
 
         emit BatchDepthIncrease(_batchId, _newDepth, batch.normalisedBalance);
+    }
+
+    /**
+     * @notice Return the per chunk balance not yet used up.
+     * @param _batchId The id of an existing batch.
+     */
+    function remainingBalance(bytes32 _batchId) public view returns (uint256) {
+        Batch storage batch = batches[_batchId];
+        require(batch.owner != address(0), "batch does not exist or expired");
+        if (batch.normalisedBalance <= currentTotalOutPayment()) {
+            return 0;
+        }
+        return batch.normalisedBalance - currentTotalOutPayment();
     }
 
     /**
@@ -374,144 +316,25 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _price The new price.
      */
     function setPrice(uint256 _price) external {
-        if (!hasRole(PRICE_ORACLE_ROLE, msg.sender)) {
-            revert PriceOracleOnly();
-        }
+        require(hasRole(PRICE_ORACLE_ROLE, msg.sender), "only price oracle can set the price");
 
+        // if there was a last price, add the outpayment since the last update
+        // using the last price to _totalOutPayment_. if there was not a lastPrice,
+        // the lastprice must have been zero.
         if (lastPrice != 0) {
             totalOutPayment = currentTotalOutPayment();
         }
 
-        lastPrice = uint64(_price);
-        lastUpdatedBlock = uint64(block.number);
+        lastPrice = _price;
+        lastUpdatedBlock = block.number;
 
         emit PriceUpdate(_price);
     }
 
     function setMinimumValidityBlocks(uint256 _value) external {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
-            revert AdministratorOnly();
-        }
-
-        minimumValidityBlocks = uint64(_value);
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only administrator can set minimum validity blocks");
+        minimumValidityBlocks = _value;
     }
-
-    /**
-     * @notice Reclaims a limited number of expired batches
-     * @dev Can be used if reclaiming all expired batches would exceed the block gas limit, causing other
-     * contract method calls to fail.
-     * @param limit The maximum number of batches to expire.
-     */
-    function expireLimited(uint256 limit) public {
-        // the lower bound of the normalised balance for which we will check if batches have expired
-        uint256 _lastExpiryBalance = lastExpiryBalance;
-        uint256 i;
-        for (i; i < limit; ) {
-            if (isBatchesTreeEmpty()) {
-                lastExpiryBalance = currentTotalOutPayment();
-                break;
-            }
-            // get the batch with the smallest normalised balance
-            bytes32 fbi = firstBatchId();
-            // if the batch with the smallest balance has not yet expired
-            // we have already reached the end of the batches we need
-            // to expire, so exit the loop
-            if (remainingBalance(fbi) > 0) {
-                // the upper bound of the normalised balance for which we will check if batches have expired
-                // value is updated when there are no expired batches left
-                lastExpiryBalance = currentTotalOutPayment();
-                break;
-            }
-            // otherwise, the batch with the smallest balance has expired,
-            // so we must remove the chunks this batch contributes to the global validChunkCount
-            Batch memory batch = batches[fbi];
-            uint256 batchSize = 1 << batch.depth;
-
-            if (validChunkCount < batchSize) {
-                revert InsufficienChunkCount();
-            }
-            validChunkCount -= batchSize;
-            // since the batch expired _during_ the period we must add
-            // remaining normalised payout for this batch only
-            pot += batchSize * (batch.normalisedBalance - _lastExpiryBalance);
-            tree.remove(fbi, batch.normalisedBalance);
-            delete batches[fbi];
-
-            unchecked {
-                ++i;
-            }
-        }
-        // then, for all batches that have _not_ expired during the period
-        // add the total normalised payout of all batches
-        // multiplied by the remaining total valid chunk count
-        // to the pot for the period since the last expiry
-
-        if (lastExpiryBalance < _lastExpiryBalance) {
-            revert TotalOutpaymentDecreased();
-        }
-
-        // then, for all batches that have _not_ expired during the period
-        // add the total normalised payout of all batches
-        // multiplied by the remaining total valid chunk count
-        // to the pot for the period since the last expiry
-        pot += validChunkCount * (lastExpiryBalance - _lastExpiryBalance);
-    }
-
-    /**
-     * @notice The current pot.
-     */
-    function totalPot() public returns (uint256) {
-        expireLimited(type(uint256).max);
-        uint256 balance = ERC20(bzzToken).balanceOf(address(this));
-        return pot < balance ? pot : balance;
-    }
-
-    /**
-     * @notice Withdraw the pot, authorised callers only.
-     * @param beneficiary Recieves the current total pot.
-     */
-
-    function withdraw(address beneficiary) external {
-        if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) {
-            revert OnlyRedistributor();
-        }
-
-        uint256 totalAmount = totalPot();
-        if (!ERC20(bzzToken).transfer(beneficiary, totalAmount)) {
-            revert TransferFailed();
-        }
-
-        emit PotWithdrawn(beneficiary, totalAmount);
-        pot = 0;
-    }
-
-    /**
-     * @notice Pause the contract.
-     * @dev Can only be called by the pauser when not paused.
-     * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
-     */
-    function pause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) {
-            revert OnlyPauser();
-        }
-        _pause();
-    }
-
-    /**
-     * @notice Unpause the contract.
-     * @dev Can only be called by the pauser role while paused.
-     */
-    function unPause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) {
-            revert OnlyPauser();
-        }
-
-        _unpause();
-    }
-
-    ////////////////////////////////////////
-    //              GETTERS               //
-    ////////////////////////////////////////
 
     /**
      * @notice Total per-chunk cost since the contract's deployment.
@@ -529,31 +352,22 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     /**
-     * @notice Return the per chunk balance not yet used up.
-     * @param _batchId The id of an existing batch.
+     * @notice Pause the contract.
+     * @dev Can only be called by the pauser when not paused.
+     * The contract can be provably stopped by renouncing the pauser role and the admin role once paused.
      */
-    function remainingBalance(bytes32 _batchId) public view returns (uint256) {
-        Batch memory batch = batches[_batchId];
-
-        if (batch.owner == address(0)) {
-            revert BatchDoesNotExist(); // Batch does not exist or expired
-        }
-
-        if (batch.normalisedBalance <= currentTotalOutPayment()) {
-            return 0;
-        }
-
-        return batch.normalisedBalance - currentTotalOutPayment();
+    function pause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        _pause();
     }
 
     /**
-     * @notice Indicates whether expired batches exist.
+     * @notice Unpause the contract.
+     * @dev Can only be called by the pauser role while paused.
      */
-    function expiredBatchesExist() public view returns (bool) {
-        if (isBatchesTreeEmpty()) {
-            return false;
-        }
-        return (remainingBalance(firstBatchId()) <= 0);
+    function unPause() public {
+        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        _unpause();
     }
 
     /**
@@ -569,36 +383,116 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function firstBatchId() public view returns (bytes32) {
         uint256 val = tree.first();
-        if (val == 0) {
-            revert NoBatchesExist();
-        }
+        require(val > 0, "no batches exist");
         return tree.valueKeyAtIndex(val, 0);
+    }
+
+    /**
+     * @notice Reclaims a limited number of expired batches
+     * @dev Can be used if reclaiming all expired batches would exceed the block gas limit, causing other
+     * contract method calls to fail.
+     * @param limit The maximum number of batches to expire.
+     */
+    function expireLimited(uint256 limit) public {
+        // the lower bound of the normalised balance for which we will check if batches have expired
+        uint256 leb = lastExpiryBalance;
+        uint256 i;
+        for (i = 0; i < limit; i++) {
+            if (isBatchesTreeEmpty()) {
+                lastExpiryBalance = currentTotalOutPayment();
+                break;
+            }
+            // get the batch with the smallest normalised balance
+            bytes32 fbi = firstBatchId();
+            // if the batch with the smallest balance has not yet expired
+            // we have already reached the end of the batches we need
+            // to expire, so exit the loop
+            if (remainingBalance(fbi) > 0) {
+                // the upper bound of the normalised balance for which we will check if batches have expired
+                // value is updated when there are no expired batches left
+                lastExpiryBalance = currentTotalOutPayment();
+                break;
+            }
+            // otherwise, the batch with the smallest balance has expired,
+            // so we must remove the chunks this batch contributes to the global validChunkCount
+            Batch storage batch = batches[fbi];
+            uint256 batchSize = 1 << batch.depth;
+            require(validChunkCount >= batchSize, "insufficient valid chunk count");
+            validChunkCount -= batchSize;
+            // since the batch expired _during_ the period we must add
+            // remaining normalised payout for this batch only
+            pot += batchSize * (batch.normalisedBalance - leb);
+            tree.remove(fbi, batch.normalisedBalance);
+            delete batches[fbi];
+        }
+        // then, for all batches that have _not_ expired during the period
+        // add the total normalised payout of all batches
+        // multiplied by the remaining total valid chunk count
+        // to the pot for the period since the last expiry
+
+        require(lastExpiryBalance >= leb, "current total outpayment should never decrease");
+
+        // then, for all batches that have _not_ expired during the period
+        // add the total normalised payout of all batches
+        // multiplied by the remaining total valid chunk count
+        // to the pot for the period since the last expiry
+        pot += validChunkCount * (lastExpiryBalance - leb);
+    }
+
+    /**
+     * @notice Indicates whether expired batches exist.
+     */
+    function expiredBatchesExist() public view returns (bool) {
+        if (isBatchesTreeEmpty()) {
+            return false;
+        }
+        return (remainingBalance(firstBatchId()) <= 0);
+    }
+
+    /**
+     * @notice The current pot.
+     */
+    function totalPot() public returns (uint256) {
+        expireLimited(type(uint256).max);
+        uint256 balance = ERC20(bzzToken).balanceOf(address(this));
+        return pot < balance ? pot : balance;
+    }
+
+    /**
+     * @notice Withdraw the pot, authorised callers only.
+     * @param beneficiary Recieves the current total pot.
+     */
+
+    function withdraw(address beneficiary) external {
+        require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can withdraw from the contract");
+        uint256 totalAmount = totalPot();
+        require(ERC20(bzzToken).transfer(beneficiary, totalAmount), "failed transfer");
+
+        emit PotWithdrawn(beneficiary, totalAmount);
+        pot = 0;
     }
 
     function batchOwner(bytes32 _batchId) public view returns (address) {
         return batches[_batchId].owner;
     }
-    
+
     function batchDepth(bytes32 _batchId) public view returns (uint8) {
         return batches[_batchId].depth;
     }
-    
+
     function batchBucketDepth(bytes32 _batchId) public view returns (uint8) {
         return batches[_batchId].bucketDepth;
     }
-    
+
     function batchImmutableFlag(bytes32 _batchId) public view returns (bool) {
         return batches[_batchId].immutableFlag;
     }
-    
+
     function batchNormalisedBalance(bytes32 _batchId) public view returns (uint256) {
         return batches[_batchId].normalisedBalance;
     }
-    
+
     function batchLastUpdatedBlockNumber(bytes32 _batchId) public view returns (uint256) {
         return batches[_batchId].lastUpdatedBlockNumber;
     }
-    
-
-
 }
