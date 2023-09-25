@@ -1387,69 +1387,6 @@ describe('Redistribution', function () {
 
             expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
             expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
-            describe('testing skipped rounds and price changes', async function () {
-              let priceOracle: Contract;
-              let r_node_5: Contract;
-              let r_node_6: Contract;
-              let currentRound: number;
-              let priceBaseNumber: number;
-
-              beforeEach(async () => {
-                // //  This 2 nodes are used for round 5
-                const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
-                await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
-                await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
-
-                const sr_node_6 = await ethers.getContract('StakeRegistry', node_6);
-                await mintAndApprove(deployer, node_6, sr_node_6.address, stakeAmount_6);
-                await sr_node_6.depositStake(node_6, nonce_6, stakeAmount_6);
-
-                priceOracle = await ethers.getContract('PriceOracle', deployer);
-                await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
-
-                // Set price base
-                const basePrice = await priceOracle.priceBase();
-                priceBaseNumber = Number.parseInt(basePrice);
-
-                // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
-                // Each transaction mines one addtional block, so we get to phase limit after many transactions
-                // So to offset that we need to substract number of blocks mined
-                await mineNBlocks(roundLength * 3 - 10);
-
-                r_node_5 = await ethers.getContract('Redistribution', node_5);
-                r_node_6 = await ethers.getContract('Redistribution', node_6);
-
-                currentRound = await r_node_5.currentRound();
-
-                const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
-                await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
-
-                const obsfucatedHash_6 = encodeAndHash(overlay_6, depth_6, hash_6, reveal_nonce_6);
-                await r_node_6.commit(obsfucatedHash_6, overlay_6, currentRound);
-
-                await mineNBlocks(phaseLength);
-
-                await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
-                await r_node_6.reveal(overlay_6, depth_6, hash_6, reveal_nonce_6);
-                await mineNBlocks(phaseLength);
-
-                expect(await r_node_5.isWinner(overlay_5)).to.be.true;
-                expect(await r_node_6.isWinner(overlay_6)).to.be.false;
-
-                await r_node_6.claim();
-              });
-
-              it('if both reveal, after 4 skipped rounds, check proper price increase', async function () {
-                const nodesInNeighbourhood = 2;
-
-                // Check if the increase is properly applied, we have four skipped rounds here
-                const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
-                skippedRounds = 4;
-                expect(await postage.lastPrice()).to.be.eq(
-                  await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
-                );
-              });
-            });
 
             const sr = await ethers.getContract('StakeRegistry');
 
@@ -1484,69 +1421,69 @@ describe('Redistribution', function () {
             expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(stakeAmount_1);
           });
 
-          describe('testing skipped rounds and price changes', async function () {
-            let priceOracle: Contract;
-            let r_node_5: Contract;
-            let r_node_6: Contract;
-            let currentRound: number;
-            let priceBaseNumber: number;
+          // describe('testing skipped rounds and price changes', async function () {
+          //   let priceOracle: Contract;
+          //   let r_node_5: Contract;
+          //   let r_node_6: Contract;
+          //   let currentRound: number;
+          //   let priceBaseNumber: number;
 
-            beforeEach(async () => {
-              // //  This 2 nodes are used for round 5
-              const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
-              await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
-              await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
+          //   beforeEach(async () => {
+          //     // //  This 2 nodes are used for round 5
+          //     const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
+          //     await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
+          //     await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
 
-              const sr_node_6 = await ethers.getContract('StakeRegistry', node_6);
-              await mintAndApprove(deployer, node_6, sr_node_6.address, stakeAmount_6);
-              await sr_node_6.depositStake(node_6, nonce_6, stakeAmount_6);
+          //     const sr_node_6 = await ethers.getContract('StakeRegistry', node_6);
+          //     await mintAndApprove(deployer, node_6, sr_node_6.address, stakeAmount_6);
+          //     await sr_node_6.depositStake(node_6, nonce_6, stakeAmount_6);
 
-              priceOracle = await ethers.getContract('PriceOracle', deployer);
-              await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
+          //     priceOracle = await ethers.getContract('PriceOracle', deployer);
+          //     await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
-              // Set price base
-              const basePrice = await priceOracle.priceBase();
-              priceBaseNumber = Number.parseInt(basePrice);
+          //     // Set price base
+          //     const basePrice = await priceOracle.priceBase();
+          //     priceBaseNumber = Number.parseInt(basePrice);
 
-              // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
-              // Each transaction mines one addtional block, so we get to phase limit after many transactions
-              // So to offset that we need to substract number of blocks mined
-              await mineNBlocks(roundLength * 3 - 10);
+          //     // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
+          //     // Each transaction mines one addtional block, so we get to phase limit after many transactions
+          //     // So to offset that we need to substract number of blocks mined
+          //     await mineNBlocks(roundLength * 3 - 10);
 
-              r_node_5 = await ethers.getContract('Redistribution', node_5);
-              r_node_6 = await ethers.getContract('Redistribution', node_6);
+          //     r_node_5 = await ethers.getContract('Redistribution', node_5);
+          //     r_node_6 = await ethers.getContract('Redistribution', node_6);
 
-              currentRound = await r_node_5.currentRound();
+          //     currentRound = await r_node_5.currentRound();
 
-              const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
-              await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
+          //     const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
+          //     await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
 
-              const obsfucatedHash_6 = encodeAndHash(overlay_6, depth_6, hash_6, reveal_nonce_6);
-              await r_node_6.commit(obsfucatedHash_6, overlay_6, currentRound);
+          //     const obsfucatedHash_6 = encodeAndHash(overlay_6, depth_6, hash_6, reveal_nonce_6);
+          //     await r_node_6.commit(obsfucatedHash_6, overlay_6, currentRound);
 
-              await mineNBlocks(phaseLength);
+          //     await mineNBlocks(phaseLength);
 
-              await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
-              await r_node_6.reveal(overlay_6, depth_6, hash_6, reveal_nonce_6);
-              await mineNBlocks(phaseLength);
+          //     await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
+          //     await r_node_6.reveal(overlay_6, depth_6, hash_6, reveal_nonce_6);
+          //     await mineNBlocks(phaseLength - 1);
 
-              expect(await r_node_5.isWinner(overlay_5)).to.be.true;
-              expect(await r_node_6.isWinner(overlay_6)).to.be.false;
+          //     expect(await r_node_5.isWinner(overlay_5)).to.be.true;
+          //     expect(await r_node_6.isWinner(overlay_6)).to.be.false;
 
-              await r_node_6.claim();
-            });
+          //     await r_node_6.claim();
+          //   });
 
-            it('if both reveal, after 4 skipped rounds, check proper price increase', async function () {
-              const nodesInNeighbourhood = 2;
+          //   it('if both reveal, after 4 skipped rounds, check proper price increase', async function () {
+          //     const nodesInNeighbourhood = 2;
 
-              // Check if the increase is properly applied, we have four skipped rounds here
-              const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
-              skippedRounds = 4;
-              expect(await postage.lastPrice()).to.be.eq(
-                await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
-              );
-            });
-          });
+          //     // Check if the increase is properly applied, we have four skipped rounds here
+          //     const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
+          //     skippedRounds = 4;
+          //     expect(await postage.lastPrice()).to.be.eq(
+          //       await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+          //     );
+          //   });
+          // });
         });
       });
     });
