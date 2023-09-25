@@ -82,20 +82,15 @@ contract Redistribution is AccessControl, Pausable {
         bytes32[] proofSegments2;
         bytes32 proveSegment2;
         // proveSegmentIndex2 known from deterministic random selection;
+        uint64 chunkSpan;
 
         bytes32[] proofSegments3;
         //  _proveSegment3 known, is equal _proveSegment2
         // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
         // chunkSpan2 is equal to chunkSpan (as the data is the same)
-
-        // address signer; it is provided by the postage stamp contract
-        bytes signature;
-        bytes32 chunkAddr;
-        bytes32 postageId;
-        uint64 chunkSpan;
-        uint64 index;
-        uint64 timeStamp;
-        SOCProof[] socProofAttached;
+        //
+        PostageProof postageProof;
+        SOCProof[] socProof;
     }
 
     struct SOCProof {
@@ -105,7 +100,15 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 chunkAddr; // wrapped chunk address
     }
 
-    // ----------------------------- State variables ------------------------------
+    struct PostageProof{
+        bytes signature;
+        bytes32 postageId;
+        uint64 index;
+        uint64 timeStamp;
+        // address signer; it is provided by the postage stamp contract
+        // bytes32 chunkAddr; it equals to the proveSegment argument
+    }
+
 
     // The address of the linked PostageStamp contract.
     IPostageStamp public PostageContract;
@@ -233,8 +236,10 @@ contract Redistribution is AccessControl, Pausable {
     error BalanceValidationFailed(bytes32); // Stamp alive: batch remaining balance validation failed for attached stamp
     error BucketDiffers(bytes32); // Stamp aligned: postage bucket differs from address bucket
     error InclusionProofFailed(uint8, bytes32);
-    // 1 = RC inclusion proof failed for element, 2 = First sister segment in data must match,
-    // 3 = Inclusion proof failed for original address of element, 4 = Inclusion proof failed for transformed address of element
+    // 1 = RC inclusion proof failed for element
+    // 2 = First sister segment in data must match,
+    // 3 = Inclusion proof failed for original address of element
+    // 4 = Inclusion proof failed for transformed address of element
     error RandomElementCheckFailed(); // Random element order check failed
     error LastElementCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(); // Reserve size estimation check failed
@@ -919,65 +924,65 @@ contract Redistribution is AccessControl, Pausable {
     // ----------------------------- Claim verifications  ------------------------------
 
     function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
-        if (entryProof.socProofAttached.length == 0) return;
+        if (entryProof.socProof.length == 0) return;
 
         if (
             !Signatures.socVerify(
-                entryProof.socProofAttached[0].signer, // signer Ethereum address to check against
-                entryProof.socProofAttached[0].signature,
-                entryProof.socProofAttached[0].identifier,
-                entryProof.socProofAttached[0].chunkAddr
+                entryProof.socProof[0].signer, // signer Ethereum address to check against
+                entryProof.socProof[0].signature,
+                entryProof.socProof[0].identifier,
+                entryProof.socProof[0].chunkAddr
             )
         ) {
-            revert SocVerificationFailed(entryProof.socProofAttached[0].chunkAddr);
+            revert SocVerificationFailed(entryProof.socProof[0].chunkAddr);
         }
 
         if (
-            calculateSocAddress(entryProof.socProofAttached[0].identifier, entryProof.socProofAttached[0].signer) !=
+            calculateSocAddress(entryProof.socProof[0].identifier, entryProof.socProof[0].signer) !=
             entryProof.proveSegment
         ) {
-            revert SocCalcNotMatching(entryProof.socProofAttached[0].chunkAddr);
+            revert SocCalcNotMatching(entryProof.socProof[0].chunkAddr);
         }
     }
 
     function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
         // authentic
-        uint8 batchDepth = PostageContract.batchDepth(entryProof.postageId);
-        uint8 bucketDepth = PostageContract.batchBucketDepth(entryProof.postageId);
-        uint32 postageIndex = getPostageIndex(entryProof.index);
+        uint8 batchDepth = PostageContract.batchDepth(entryProof.postageProof.postageId);
+        uint8 bucketDepth = PostageContract.batchBucketDepth(entryProof.postageProof.postageId);
+        uint32 postageIndex = getPostageIndex(entryProof.postageProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
         if (postageIndex >= maxPostageIndex) {
-            revert IndexOutsideSet(entryProof.chunkAddr);
+            revert IndexOutsideSet(entryProof.postageProof.postageId);
         }
 
         // available
-        address batchOwner = PostageContract.batchOwner(entryProof.postageId);
+        address batchOwner = PostageContract.batchOwner(entryProof.postageProof.postageId);
 
         // alive
-        if (PostageContract.remainingBalance(entryProof.postageId) < PostageContract.minimumInitialBalancePerChunk()) {
-            revert BalanceValidationFailed(entryProof.chunkAddr);
+        if (PostageContract.remainingBalance(entryProof.postageProof.postageId) < PostageContract.minimumInitialBalancePerChunk()) {
+            revert BalanceValidationFailed(entryProof.postageProof.postageId);
         }
 
         // aligned
-        uint64 postageBucket = getPostageBucket(entryProof.index);
+        uint64 postageBucket = getPostageBucket(entryProof.postageProof.index);
         uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
         if (postageBucket != addressBucket) {
-            revert BucketDiffers(entryProof.chunkAddr);
+            revert BucketDiffers(entryProof.postageProof.postageId);
         }
 
         // authorized
         if (
             !Signatures.postageVerify(
                 batchOwner,
-                entryProof.signature,
+                entryProof.postageProof.signature,
                 entryProof.proveSegment,
-                entryProof.postageId,
-                entryProof.index,
-                entryProof.timeStamp
+                entryProof.postageProof.postageId,
+                entryProof.postageProof.index,
+                entryProof.postageProof.timeStamp
             )
         ) {
-            revert SigRecoveryFailed(entryProof.chunkAddr);
+            revert SigRecoveryFailed(entryProof.postageProof.postageId);
         }
     }
 
@@ -1007,8 +1012,8 @@ contract Redistribution is AccessControl, Pausable {
             revert InclusionProofFailed(2, calculatedTransformedAddr);
         }
 
-        bytes32 originalAddress = entryProof.socProofAttached.length > 0
-            ? entryProof.socProofAttached[0].chunkAddr // soc attestation in socFunction
+        bytes32 originalAddress = entryProof.socProof.length > 0
+            ? entryProof.socProof[0].chunkAddr // soc attestation in socFunction
             : entryProof.proveSegment;
 
         if (
@@ -1024,7 +1029,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         // In case of SOC, the transformed address is hashed together with its address in the sample
-        if (entryProof.socProofAttached.length > 0) {
+        if (entryProof.socProof.length > 0) {
             calculatedTransformedAddr = keccak256(
                 abi.encode(
                     entryProof.proveSegment, // SOC address
