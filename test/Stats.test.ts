@@ -45,7 +45,10 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   const postageStampAdmin = await ethers.getContract('PostageStamp', deployer);
   await postageStampAdmin.setMinimumValidityBlocks(0);
 
-  const { postageDepth, initialBalance, batchId, batchOwner } = await copyBatchForClaim(deployer);
+const { postageDepth, initialBalance, batchId, batchOwner } = await copyBatchForClaim(
+  deployer,
+  '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f'
+);
 
   const batchSize = BigNumber.from(2).pow(BigNumber.from(postageDepth));
   const transferAmount = BigNumber.from(2).mul(BigNumber.from(initialBalance)).mul(batchSize);

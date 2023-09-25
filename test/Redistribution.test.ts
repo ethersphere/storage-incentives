@@ -16,7 +16,7 @@ import {
   WITNESS_COUNT,
 } from './util/tools';
 import { proximity } from './util/tools';
-import { node5_proof1 } from './claim-proofs';
+import { node5_proof1, node5_soc_proof1 } from './claim-proofs';
 import {
   getClaimProofs,
   loadWitnesses,
@@ -724,7 +724,14 @@ describe('Redistribution', function () {
 
           return { proofParams, sampleHashString };
         };
-        const claimEventChecks = async (claimTx: ContractTransaction, sanityHash: string, sanityDepth: string) => {
+        const claimEventChecks = async (
+          claimTx: ContractTransaction,
+          sanityHash: string,
+          sanityDepth: string,
+          options?: {
+            additionalReward?: number; // in case of there was another copybatch before claim
+          }
+        ) => {
           const receipt2 = await claimTx.wait();
 
           let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -760,7 +767,8 @@ describe('Redistribution', function () {
 
           const expectedPotPayout =
             (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
-            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
+            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth + // batch in the beforeHook
+            (options?.additionalReward ? options?.additionalReward : 0);
           expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
@@ -780,7 +788,10 @@ describe('Redistribution', function () {
 
         beforeEach(async () => {
           //copying batch for claim
-          copyBatch = await copyBatchForClaim(deployer);
+          copyBatch = await copyBatchForClaim(
+            deployer,
+            '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f'
+          );
           // anchor fixture
           await mineToNode(redistribution, 5);
           currentSeed = await redistribution.currentSeed();
@@ -788,7 +799,7 @@ describe('Redistribution', function () {
           r_node_5 = await ethers.getContract('Redistribution', node_5);
         });
 
-        it('should claim pot by bee sampling', async function () {
+        it('should claim pot by bee CAC sampling', async function () {
           const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
 
           const obfuscatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
@@ -814,6 +825,44 @@ describe('Redistribution', function () {
 
           const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           await claimEventChecks(tx2, sanityHash, sanityDepth);
+        });
+
+        it('should claim pot by bee SOC sampling', async function () {
+          //copying batch for claim because pull sync does not work correctly
+          const copyBatch2 = await copyBatchForClaim(
+            deployer,
+            '0x6cccd65a68bc5f7c19a273e9567ebf4b968a13c9be74fc99ad90159730eff219'
+          );
+
+          const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_soc_proof1;
+
+          const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
+
+          const currentRound = await r_node_5.currentRound();
+          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+
+          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
+
+          await mineToRevealPhase();
+
+          await r_node_5.reveal(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
+
+          currentSeed = await redistribution.currentSeed();
+
+          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
+          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
+          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
+
+          await mineNBlocks(phaseLength);
+
+          const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
+          const receipt2 = await tx2.wait();
+          await claimEventChecks(tx2, sanityHash, sanityDepth, {
+            additionalReward:
+              (receipt2.blockNumber - copyBatch2.tx.blockNumber) * price1 * 2 ** copyBatch2.postageDepth,
+          });
         });
 
         it('should claim pot by generated CAC sampling', async function () {
