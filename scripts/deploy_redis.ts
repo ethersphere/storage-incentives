@@ -15,7 +15,7 @@ interface DeployedContract {
 
 interface DeployedData {
   chainId: number;
-  networkId: number;
+  swarmNetworkId: number;
   contracts: {
     bzzToken: DeployedContract;
     staking: DeployedContract;
@@ -27,7 +27,7 @@ interface DeployedData {
 
 interface ChainConfig {
   chainId?: number;
-  networkId?: number;
+  swarmNetworkId?: number;
   networkName: string;
   deployedData: DeployedData;
   url: string;
@@ -39,7 +39,7 @@ try {
 } catch (e) {
   networkDeployedData = {
     chainId: 0,
-    networkId: 0,
+    swarmNetworkId: 0,
     contracts: {
       bzzToken: {} as DeployedContract,
       staking: {} as DeployedContract,
@@ -53,14 +53,14 @@ try {
 const configs: Record<string, ChainConfig> = {
   testnet: {
     chainId: network.config.chainId,
-    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : 10,
+    swarmNetworkId: networkDeployedData.swarmNetworkId ? networkDeployedData.swarmNetworkId : 10,
     networkName: network.name,
     deployedData: networkDeployedData,
     url: hre.config.etherscan.customChains[0]['urls']['browserURL'].toString(),
   },
   mainnet: {
     chainId: network.config.chainId,
-    networkId: networkDeployedData.networkId ? networkDeployedData.networkId : 100,
+    swarmNetworkId: networkDeployedData.swarmNetworkId ? networkDeployedData.swarmNetworkId : 1,
     networkName: network.name,
     deployedData: networkDeployedData,
     url: hre.config.etherscan.customChains[1]['urls']['browserURL'].toString(),
@@ -71,7 +71,7 @@ const config: ChainConfig = configs[network.name]
   ? configs[network.name]
   : ({
       chainId: network.config.chainId,
-      networkId: networkDeployedData.networkId ? networkDeployedData.networkId : network.config.chainId,
+      swarmNetworkId: networkDeployedData.swarmNetworkId ? networkDeployedData.swarmNetworkId : network.config.chainId,
       networkName: network.name,
       deployedData: networkDeployedData,
       url: '',
@@ -81,7 +81,7 @@ async function main() {
   // This is deployer script for emergency deployment of only the redistribution contract with some quick fixes
   let args: string[] = [];
   if (network.name == 'mainnet') {
-    // Staking, Stamps, Oracle args
+    // Staking, Stamps, Oracle args, multisig
     args = [
       '0x781c6D1f0eaE6F1Da1F604c6cDCcdB8B76428ba7',
       '0x30d155478eF27Ab32A1D578BE7b84BC5988aF381',
