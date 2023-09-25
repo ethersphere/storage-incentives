@@ -83,7 +83,6 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 proveSegment2;
         // proveSegmentIndex2 known from deterministic random selection;
         uint64 chunkSpan;
-
         bytes32[] proofSegments3;
         //  _proveSegment3 known, is equal _proveSegment2
         // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
@@ -100,7 +99,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 chunkAddr; // wrapped chunk address
     }
 
-    struct PostageProof{
+    struct PostageProof {
         bytes signature;
         bytes32 postageId;
         uint64 index;
@@ -108,7 +107,6 @@ contract Redistribution is AccessControl, Pausable {
         // address signer; it is provided by the postage stamp contract
         // bytes32 chunkAddr; it equals to the proveSegment argument
     }
-
 
     // The address of the linked PostageStamp contract.
     IPostageStamp public PostageContract;
@@ -957,7 +955,10 @@ contract Redistribution is AccessControl, Pausable {
 
 
         // alive
-        if (PostageContract.remainingBalance(entryProof.postageProof.postageId) < PostageContract.minimumInitialBalancePerChunk()) {
+        if (
+            PostageContract.remainingBalance(entryProof.postageProof.postageId) <
+            PostageContract.minimumInitialBalancePerChunk()
+        ) {
             revert BalanceValidationFailed(entryProof.postageProof.postageId);
         }
 

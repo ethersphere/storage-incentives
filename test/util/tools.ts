@@ -64,6 +64,61 @@ async function mineNBlocks(n: number): Promise<undefined> {
   return;
 }
 
+/**
+ * Attempts to mine overlays to match the given prefix up to a certain depth.
+ *
+ * @async
+ * @function
+ * @param {string} prefix -First N bytes of anchor hash to match with overlay hash per depth. E.g. depth 6 is first 6 bits of Anchor which is 0xfc
+ * @param {string} nonce - The nonce of the overlay to match.
+ * @param {string} networkID - The networkID of the overlay to match.
+ * @param {number} depth - Number of bits to match.
+ * @param {number} maxAttempts - Maximum number of attempts to find a match.
+ * @returns {Promise<undefined>} Resolves when a match is found or maximum attempts are reached.
+ * @example
+ * mineOverlaysInDepth("0xa92b32", "0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33", "0x00", 6, 10000);
+ */
+async function mineOverlaysInDepth(
+  prefix: string,
+  nonce: string,
+  networkID: string,
+  depth: number,
+  maxAttempts: number
+): Promise<undefined> {
+  let found = false;
+  let w, o;
+  let i = 0;
+  while (found == false) {
+    w = ethers.Wallet.createRandom();
+    o = await createOverlay(w.address, networkID, nonce);
+    found = compareHexAsBinary(o, prefix.padEnd(66, '0'), depth);
+    console.log(i, o.substring(0, 8), prefix.padEnd(66, '0').substring(0, 8));
+    if (maxAttempts == i + 1) {
+      console.log('failed with max attempts', maxAttempts);
+      return;
+    }
+    i++;
+  }
+  if (w !== undefined) {
+    console.log(`found in ${i} attempts`, 'o a p', o, w.address, w.privateKey);
+    return;
+  }
+}
+
+async function skippedRoundsIncrease(
+  skippedRounds: number,
+  newPrice: number,
+  priceBase: number,
+  maxIncreaseRate: number
+): Promise<number> {
+  let currentPrice = newPrice;
+
+  for (let index = 0; index < skippedRounds; index++) {
+    currentPrice = Math.floor((maxIncreaseRate * currentPrice) / priceBase);
+  }
+  return currentPrice;
+}
+
 async function getBlockNumber(): Promise<number> {
   const blockNumber = await ethers.provider.send('eth_blockNumber', []);
   return parseInt(blockNumber);
@@ -227,4 +282,6 @@ export {
   createOverlay,
   hexToBinaryArray,
   compareHexAsBinary,
+  mineOverlaysInDepth,
+  skippedRoundsIncrease,
 };

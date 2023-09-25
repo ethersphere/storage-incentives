@@ -10,10 +10,7 @@ import "./interface/IPostageStamp.sol";
  */
 
 contract PriceOracle is AccessControl {
-    /**
-     *@dev Emitted on every price update.
-     */
-    event PriceUpdate(uint256 price);
+    // ----------------------------- State variables ------------------------------
 
     // Role allowed to update price
     bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
@@ -21,11 +18,14 @@ contract PriceOracle is AccessControl {
     // The minimum price allowed
     uint256 public constant minimumPrice = 1024;
 
+    // The priceBase to modulate the price
+    uint256 public constant priceBase = 514155;
+
     // The current price is the atomic unit.
     uint256 public currentPrice = minimumPrice;
 
     // Constants used to modulate the price, see below usage
-    uint256[] public increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+    uint256[] public increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
 
     uint16 targetRedundancy = 4;
     uint16 maxConsideredExtraRedundancy = 4;
@@ -33,13 +33,33 @@ contract PriceOracle is AccessControl {
     // When the contract is paused, price changes are not effective
     bool public isPaused = true;
 
+    // The length of a round in blocks.
+    uint256 public roundLength = 152;
+
+    // The number of the last round price adjusting happend
+    uint256 public lastAdjustedRound;
+
     // The address of the linked PostageStamp contract
     IPostageStamp public postageStamp;
+
+    // ----------------------------- Events ------------------------------
+
+    /**
+     *@dev Emitted on every price update.
+     */
+    event PriceUpdate(uint256 price);
+
+    // ----------------------------- CONSTRUCTOR ------------------------------
 
     constructor(address _postageStamp, address multisig) {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
+        lastAdjustedRound = currentRound();
     }
+
+    ////////////////////////////////////////
+    //              SETTERS               //
+    ////////////////////////////////////////
 
     /**
      * @notice Manually set the price.
@@ -57,24 +77,6 @@ contract PriceOracle is AccessControl {
 
         postageStamp.setPrice(currentPrice);
         emit PriceUpdate(currentPrice);
-    }
-
-    /**
-     * @notice Pause the contract.
-     * @dev Can only be called by the admin role.
-     */
-    function pause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
-        isPaused = true;
-    }
-
-    /**
-     * @notice Unpause the contract.
-     * @dev Can only be called by the admin role.
-     */
-    function unPause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
-        isPaused = false;
     }
 
     /**
@@ -96,9 +98,11 @@ contract PriceOracle is AccessControl {
         if (isPaused == false) {
             require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
 
-            uint256 multiplier = minimumPrice;
             uint256 usedRedundancy = redundancy;
+            uint256 currentRoundNumber = currentRound();
 
+            // price can only be adjusted once per round
+            require(currentRoundNumber > lastAdjustedRound, "price already adjusted in this round");
             // redundancy may not be zero
             require(redundancy > 0, "unexpected zero");
 
@@ -108,22 +112,64 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
-            // use the increaseRate array of constants to determine
+            // Set the number of rounds that were skipped
+            uint256 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
+
+            // Use the increaseRate array of constants to determine
             // the rate at which the price will modulate - if usedRedundancy
             // is the target value 4 there is no change, > 4 causes an increase
             // and < 4 a decrease.
+            // the priceBase is used to ensure whole number
+
+            // We first apply the increase/decrease rate for the current round
             uint256 ir = increaseRate[usedRedundancy];
+            currentPrice = (ir * currentPrice) / priceBase;
 
-            // the multiplier is used to ensure whole number
-            currentPrice = (ir * currentPrice) / multiplier;
+            // If previous rounds were skipped, use MAX price increase for the previouse rounds
+            if (skippedRounds > 0) {
+                ir = increaseRate[0];
+                for (uint256 i = 0; i < skippedRounds; i++) {
+                    currentPrice = (ir * currentPrice) / priceBase;
+                }
+            }
 
-            //enforce minimum price
+            // Enforce minimum price
             if (currentPrice < minimumPrice) {
                 currentPrice = minimumPrice;
             }
 
             postageStamp.setPrice(currentPrice);
+            lastAdjustedRound = currentRoundNumber;
             emit PriceUpdate(currentPrice);
         }
+    }
+
+    /**
+     * @notice Pause the contract.
+     * @dev Can only be called by the admin role.
+     */
+    function pause() external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        isPaused = true;
+    }
+
+    /**
+     * @notice Unpause the contract.
+     * @dev Can only be called by the admin role.
+     */
+    function unPause() external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        isPaused = false;
+    }
+
+    ////////////////////////////////////////
+    //              GETTERS               //
+    ////////////////////////////////////////
+
+    /**
+     * @notice Return the number of the current round.
+     */
+    function currentRound() public view returns (uint256) {
+        return (block.number / roundLength);
     }
 }

@@ -14,6 +14,7 @@ import {
   calculateStakeDensity,
   getWalletOfFdpPlayQueen,
   WITNESS_COUNT,
+  skippedRoundsIncrease,
 } from './util/tools';
 import { proximity } from './util/tools';
 import { node5_proof1, node5_soc_proof1 } from './claim-proofs';
@@ -37,7 +38,7 @@ const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
-const increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+const increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
 
 // round anchor after startRoundFixture()
 const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
@@ -103,6 +104,22 @@ const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const { depth: depth_5, hash: hash_5 } = node5_proof1;
 
+let node_6: string;
+const overlay_6 = '0x141680b0d9c7ab250672fd4603ac13e39e47de6e2c93d71bbdc66459a6c5e39f';
+const stakeAmount_6 = '100000000000000000';
+const nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const hash_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const depth_6 = '0x06';
+const reveal_nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+
+let node_7: string;
+const overlay_7 = '0x152d169abc6e6a0e0a2a7b78dcfea0bebe32942f05e9bb10ee2996203d5361ef';
+const stakeAmount_7 = '100000000000000000';
+const nonce_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const hash_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const depth_7 = '0x06';
+const reveal_nonce_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+
 // start round number after startRoundFixture()
 const startRoundNumber = 3;
 // start round number after mintToNode(red, 0) -> without claim
@@ -133,6 +150,8 @@ before(async function () {
   node_3 = namedAccounts.node_3;
   node_4 = namedAccounts.node_4;
   node_5 = namedAccounts.node_5;
+  node_6 = namedAccounts.node_6;
+  node_7 = namedAccounts.node_7;
 });
 
 const errors = {
@@ -304,6 +323,8 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
       await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
 
+      // We need to mine 2 rounds to make the staking possible
+      // as this is the minimum time between staking and committing
       await mineNBlocks(roundLength * 2);
       await startRoundFixture();
       // await setPrevRandDAO();
@@ -679,6 +700,7 @@ describe('Redistribution', function () {
     });
 
     describe('claim phase', async function () {
+      let skippedRounds: number;
       describe('single player', async function () {
         let copyBatch: Awaited<ReturnType<typeof copyBatchForClaim>>, currentSeed: string, r_node_5: Contract;
         const depth = 1;
@@ -1198,6 +1220,7 @@ describe('Redistribution', function () {
           let r_node_1: Contract;
           let r_node_5: Contract;
           let currentRound: number;
+          let priceBaseNumber: number;
           let proof1: unknown, proof2: unknown, proofLast: unknown;
 
           // no need to mineToNode function call in test cases
@@ -1211,6 +1234,10 @@ describe('Redistribution', function () {
 
             r_node_1 = await ethers.getContract('Redistribution', node_1);
             r_node_5 = await ethers.getContract('Redistribution', node_5);
+
+            // Set price base
+            const basePrice = await priceOracle.priceBase();
+            priceBaseNumber = Number.parseInt(basePrice);
 
             currentRound = await r_node_1.currentRound();
 
@@ -1287,8 +1314,12 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
-            expect(await postage.lastPrice()).to.be.eq(newPrice);
+            // Check if the increase is properly applied, we have one skipped round here
+            const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
+            skippedRounds = 1;
+            expect(await postage.lastPrice()).to.be.eq(
+              await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+            );
 
             const sr = await ethers.getContract('StakeRegistry');
 
@@ -1347,8 +1378,12 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            const newPrice = (increaseRate[nodesInNeighbourhood] * price1) / 1024;
-            expect(await postage.lastPrice()).to.be.eq(newPrice);
+            // Check if the increase is properly applied, we have one skipped round here
+            const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
+            skippedRounds = 1;
+            expect(await postage.lastPrice()).to.be.eq(
+              await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+            );
 
             expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
             expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
@@ -1385,6 +1420,70 @@ describe('Redistribution', function () {
             //node_2 stake is preserved and not frozen
             expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(stakeAmount_1);
           });
+
+          // describe('testing skipped rounds and price changes', async function () {
+          //   let priceOracle: Contract;
+          //   let r_node_5: Contract;
+          //   let r_node_6: Contract;
+          //   let currentRound: number;
+          //   let priceBaseNumber: number;
+
+          //   beforeEach(async () => {
+          //     // //  This 2 nodes are used for round 5
+          //     const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
+          //     await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
+          //     await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
+
+          //     const sr_node_6 = await ethers.getContract('StakeRegistry', node_6);
+          //     await mintAndApprove(deployer, node_6, sr_node_6.address, stakeAmount_6);
+          //     await sr_node_6.depositStake(node_6, nonce_6, stakeAmount_6);
+
+          //     priceOracle = await ethers.getContract('PriceOracle', deployer);
+          //     await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
+
+          //     // Set price base
+          //     const basePrice = await priceOracle.priceBase();
+          //     priceBaseNumber = Number.parseInt(basePrice);
+
+          //     // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
+          //     // Each transaction mines one addtional block, so we get to phase limit after many transactions
+          //     // So to offset that we need to substract number of blocks mined
+          //     await mineNBlocks(roundLength * 3 - 10);
+
+          //     r_node_5 = await ethers.getContract('Redistribution', node_5);
+          //     r_node_6 = await ethers.getContract('Redistribution', node_6);
+
+          //     currentRound = await r_node_5.currentRound();
+
+          //     const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
+          //     await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
+
+          //     const obsfucatedHash_6 = encodeAndHash(overlay_6, depth_6, hash_6, reveal_nonce_6);
+          //     await r_node_6.commit(obsfucatedHash_6, overlay_6, currentRound);
+
+          //     await mineNBlocks(phaseLength);
+
+          //     await r_node_5.reveal(overlay_5, depth_5, hash_5, reveal_nonce_5);
+          //     await r_node_6.reveal(overlay_6, depth_6, hash_6, reveal_nonce_6);
+          //     await mineNBlocks(phaseLength - 1);
+
+          //     expect(await r_node_5.isWinner(overlay_5)).to.be.true;
+          //     expect(await r_node_6.isWinner(overlay_6)).to.be.false;
+
+          //     await r_node_6.claim();
+          //   });
+
+          //   it('if both reveal, after 4 skipped rounds, check proper price increase', async function () {
+          //     const nodesInNeighbourhood = 2;
+
+          //     // Check if the increase is properly applied, we have four skipped rounds here
+          //     const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
+          //     skippedRounds = 4;
+          //     expect(await postage.lastPrice()).to.be.eq(
+          //       await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+          //     );
+          //   });
+          // });
         });
       });
     });
