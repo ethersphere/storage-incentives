@@ -175,7 +175,7 @@ const config: HardhatUserConfig = {
     sources: 'src',
   },
   contractSizer: {
-    runOnCompile: true,
+    runOnCompile: false,
   },
   gasReporter: {
     enabled: true,

@@ -369,7 +369,6 @@ contract Redistribution is AccessControl, Pausable {
         Commit memory revealedCommit = currentCommits[id];
 
         // Check that commit is in proximity of the current anchor
-
         if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _depth)) {
             revert OutOfDepthReveal(currentRevealRoundAnchor);
         }
@@ -663,10 +662,12 @@ contract Redistribution is AccessControl, Pausable {
      * @dev A node must be within proximity order of less than or equal to the storage depth they intend to report.
      */
     function currentRoundAnchor() public view returns (bytes32 returnVal) {
+        // This will be called in reveal phase and set as currentRevealRoundAnchor or in
+        // commit phase when checking eligibility for next round by isParticipatingInUpcomingRound
         if (currentPhaseCommit() || (currentRound() > currentRevealRound && !currentPhaseClaim())) {
             return currentSeed();
         }
-
+        // This will be called by isParticipatingInUpcomingRound check in claim phase
         if (currentPhaseClaim()) {
             return nextSeed();
         }
