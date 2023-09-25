@@ -162,16 +162,16 @@ const config: HardhatUserConfig = {
         network: 'sepolia',
         chainId: 11155111,
         urls: {
-          apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/address/',
+          apiURL: 'https://api-sepolia.etherscan.io/api',
+          browserURL: 'https://sepolia.etherscan.io/address/',
         },
       },
       {
         network: 'testnet',
         chainId: 5,
         urls: {
-          apiURL: 'https://api-sepolia.etherscan.io/api',
-          browserURL: 'https://sepolia.etherscan.io/address/',
+          apiURL: 'https://api-goerli.etherscan.io/api',
+          browserURL: 'https://goerli.etherscan.io/address/',
         },
       },
       {
