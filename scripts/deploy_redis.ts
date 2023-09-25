@@ -56,14 +56,14 @@ const configs: Record<string, ChainConfig> = {
     swarmNetworkId: networkDeployedData.swarmNetworkId ? networkDeployedData.swarmNetworkId : 10,
     networkName: network.name,
     deployedData: networkDeployedData,
-    url: hre.config.etherscan.customChains[0]['urls']['browserURL'].toString(),
+    url: hre.config.etherscan.customChains[1]['urls']['browserURL'].toString(),
   },
   mainnet: {
     chainId: network.config.chainId,
     swarmNetworkId: networkDeployedData.swarmNetworkId ? networkDeployedData.swarmNetworkId : 1,
     networkName: network.name,
     deployedData: networkDeployedData,
-    url: hre.config.etherscan.customChains[1]['urls']['browserURL'].toString(),
+    url: hre.config.etherscan.customChains[2]['urls']['browserURL'].toString(),
   },
 };
 
@@ -93,7 +93,7 @@ async function main() {
     args = [
       '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac',
       '0x1f87FEDa43e6ABFe1058E96A07d0ea182e7dc9BD',
-      '0x3e475aEAB162E28fee46E69225af446D3c4f3Bd3',
+      '0xefC5Ead3188402eCC951DB45827F6e0F99B67a25',
       '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
     ];
   } else if (network.name == 'localhost') {
