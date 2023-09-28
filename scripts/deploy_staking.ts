@@ -78,43 +78,43 @@ const config: ChainConfig = configs[network.name]
     } as ChainConfig);
 
 async function main() {
-  // This is deployer script for emergency deployment of only the oracle contract with some quick fixes
+  // This is deployer script for emergency deployment of only the stake contract with some quick fixes
   let args: string[] = [];
   let waitTime = 6;
   if (network.name == 'mainnet') {
-    //Stamps, Multisig
-    args = ['0x30d155478eF27Ab32A1D578BE7b84BC5988aF381', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    //SwarmNetworkId, BZZ token, Multisig
+    args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '1', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
   } else if (network.name == 'testnet') {
-    args = ['0x1f87FEDa43e6ABFe1058E96A07d0ea182e7dc9BD', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', '10', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
   } else if (network.name == 'localhost') {
-    args = ['0x9A2F29598CB0787Aa806Bbfb65B82A9e558945E7', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
+    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', '0', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
     waitTime = 1;
   }
 
   // Deploy the contract
-  const oracleFactory = await ethers.getContractFactory('PriceOracle');
+  const stakeFactory = await ethers.getContractFactory('StakeRegistry');
   console.log('Deploying contract...');
-  const oracle = await oracleFactory.deploy(...args);
-  await oracle.deployed();
-  console.log(`Deployed contract to: ${oracle.address}`);
-  const deploymentReceipt = await oracle.deployTransaction.wait(waitTime);
+  const stake = await stakeFactory.deploy(...args);
+  await stake.deployed();
+  console.log(`Deployed contract to: ${stake.address}`);
+  const deploymentReceipt = await stake.deployTransaction.wait(waitTime);
 
   // Add metadata for Bee Node
   const deployed = await JSON.parse(JSON.stringify(config.deployedData).toString());
-  const oracleABI = await require('../artifacts/src/PriceOracle.sol/PriceOracle.json');
-  deployed['contracts']['priceOracle']['abi'] = oracleABI.abi;
-  deployed['contracts']['priceOracle']['bytecode'] = oracleABI.bytecode.toString();
-  deployed['contracts']['priceOracle']['address'] = oracle.address;
+  const stakeABI = await require('../artifacts/src/Staking.sol/StakeRegistry.json');
+  deployed['contracts']['priceOracle']['abi'] = stakeABI.abi;
+  deployed['contracts']['priceOracle']['bytecode'] = stakeABI.bytecode.toString();
+  deployed['contracts']['priceOracle']['address'] = stake.address;
   deployed['contracts']['priceOracle']['block'] = deploymentReceipt.blockNumber;
-  deployed['contracts']['priceOracle']['url'] = config.url + oracle.address;
+  deployed['contracts']['priceOracle']['url'] = config.url + stake.address;
 
-  // TODO Needs to be unpaused to be running, either here with trx on through etherscan or something like that
+  // TODO role in redistribution is needed to be changed to current staking once its deployed
 
   fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
 
   if ((process.env.MAINNET_ETHERSCAN_KEY || process.env.TESTNET_ETHERSCAN_KEY) && network.name != 'localhost') {
     console.log('Verifying...');
-    await verify(oracle.address, args);
+    await verify(stake.address, args);
   }
 }
 
