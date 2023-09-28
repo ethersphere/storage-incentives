@@ -78,7 +78,7 @@ const config: ChainConfig = configs[network.name]
     } as ChainConfig);
 
 async function main() {
-  // This is deployer script for emergency deployment of only the oracle contract with some quick fixes
+  // This is deployer script for emergency deployment of only the stake contract with some quick fixes
   let args: string[] = [];
   let waitTime = 6;
   if (network.name == 'mainnet') {
@@ -92,9 +92,9 @@ async function main() {
   }
 
   // Deploy the contract
-  const oracleFactory = await ethers.getContractFactory('StakeRegistry');
+  const stakeFactory = await ethers.getContractFactory('StakeRegistry');
   console.log('Deploying contract...');
-  const stake = await oracleFactory.deploy(...args);
+  const stake = await stakeFactory.deploy(...args);
   await stake.deployed();
   console.log(`Deployed contract to: ${stake.address}`);
   const deploymentReceipt = await stake.deployTransaction.wait(waitTime);
