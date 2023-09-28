@@ -83,11 +83,11 @@ async function main() {
   let waitTime = 6;
   if (network.name == 'mainnet') {
     //SwarmNetworkId, BZZ token, Multisig
-    args = ['1', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '1', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
   } else if (network.name == 'testnet') {
-    args = ['10', '0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', '10', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
   } else if (network.name == 'localhost') {
-    args = ['0', '0x942C6684eB9874C63d4ed26Ab0623F951D253081', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
+    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', '0', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
     waitTime = 1;
   }
 
