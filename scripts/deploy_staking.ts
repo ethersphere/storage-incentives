@@ -108,6 +108,8 @@ async function main() {
   deployed['contracts']['priceOracle']['block'] = deploymentReceipt.blockNumber;
   deployed['contracts']['priceOracle']['url'] = config.url + stake.address;
 
+  // TODO role in redistribution is needed to be changed to current staking once its deployed
+
   fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
 
   if ((process.env.MAINNET_ETHERSCAN_KEY || process.env.TESTNET_ETHERSCAN_KEY) && network.name != 'localhost') {

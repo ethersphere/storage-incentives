@@ -108,7 +108,7 @@ async function main() {
   deployed['contracts']['priceOracle']['block'] = deploymentReceipt.blockNumber;
   deployed['contracts']['priceOracle']['url'] = config.url + oracle.address;
 
-  // Needs to be unpaused to be running, either here with trx on through etherscan or something like that
+  // TODO Needs to be unpaused to be running, either here with trx on through etherscan or something like that
 
   fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
 
