@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 
 interface IPostageStamp {
-    
     function withdraw(address beneficiary) external;
 
     function validChunkCount() external view returns (uint256);
@@ -20,12 +19,17 @@ interface IPostageStamp {
 
     function setPrice(uint256 _price) external;
 
-    function batches(bytes32) external view returns (
-        address owner,
-        uint8 depth,
-        uint8 bucketDepth,
-        bool immutableFlag,
-        uint256 normalisedBalance,
-        uint256 lastUpdatedBlockNumber
-    );
+    function batches(
+        bytes32
+    )
+        external
+        view
+        returns (
+            address owner,
+            uint8 depth,
+            uint8 bucketDepth,
+            bool immutableFlag,
+            uint256 normalisedBalance,
+            uint256 lastUpdatedBlockNumber
+        );
 }

@@ -944,7 +944,9 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
-        (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , ,) = PostageContract.batches(entryProof.postageProof.postageId);
+        (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , , ) = PostageContract.batches(
+            entryProof.postageProof.postageId
+        );
         // authentic
         uint32 postageIndex = getPostageIndex(entryProof.postageProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
@@ -952,7 +954,6 @@ contract Redistribution is AccessControl, Pausable {
         if (postageIndex >= maxPostageIndex) {
             revert IndexOutsideSet(entryProof.postageProof.postageId);
         }
-
 
         // alive
         if (

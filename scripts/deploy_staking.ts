@@ -81,14 +81,18 @@ async function main() {
   // This is deployer script for emergency deployment of only the stake contract with some quick fixes
   let args: string[] = [];
   let waitTime = 6;
+  let currentRedis = '';
   if (network.name == 'mainnet') {
     //SwarmNetworkId, BZZ token, Multisig
     args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '1', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    currentRedis = '';
   } else if (network.name == 'testnet') {
     args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', '10', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    currentRedis = '0x9e3BDb0c69838CC06D85409d4AD6245e54F70F1d';
   } else if (network.name == 'localhost') {
     args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', '0', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
     waitTime = 1;
+    currentRedis = '0xDF64aed195102E644ad6A0204eD5377589b29618';
   }
 
   // Deploy the contract
@@ -108,7 +112,10 @@ async function main() {
   deployed['contracts']['staking']['block'] = deploymentReceipt.blockNumber;
   deployed['contracts']['staking']['url'] = config.url + stake.address;
 
-  // TODO role in redistribution is needed to be changed to current staking once its deployed
+  // Change roles on current staking contract
+  const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
+  const tx2 = await stake.grantRole(redistributorRole, currentRedis);
+  console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
 
   fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
 
