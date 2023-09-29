@@ -21,7 +21,7 @@ interface DeployedData {
     staking: DeployedContract;
     postageStamp: DeployedContract;
     priceOracle: DeployedContract;
-    oracle: DeployedContract;
+    redistribution: DeployedContract;
   };
 }
 
@@ -45,7 +45,7 @@ try {
       staking: {} as DeployedContract,
       postageStamp: {} as DeployedContract,
       priceOracle: {} as DeployedContract,
-      oracle: {} as DeployedContract,
+      redistribution: {} as DeployedContract,
     },
   } as DeployedData;
 }
@@ -102,11 +102,11 @@ async function main() {
   // Add metadata for Bee Node
   const deployed = await JSON.parse(JSON.stringify(config.deployedData).toString());
   const stakeABI = await require('../artifacts/src/Staking.sol/StakeRegistry.json');
-  deployed['contracts']['priceOracle']['abi'] = stakeABI.abi;
-  deployed['contracts']['priceOracle']['bytecode'] = stakeABI.bytecode.toString();
-  deployed['contracts']['priceOracle']['address'] = stake.address;
-  deployed['contracts']['priceOracle']['block'] = deploymentReceipt.blockNumber;
-  deployed['contracts']['priceOracle']['url'] = config.url + stake.address;
+  deployed['contracts']['staking']['abi'] = stakeABI.abi;
+  deployed['contracts']['staking']['bytecode'] = stakeABI.bytecode.toString();
+  deployed['contracts']['staking']['address'] = stake.address;
+  deployed['contracts']['staking']['block'] = deploymentReceipt.blockNumber;
+  deployed['contracts']['staking']['url'] = config.url + stake.address;
 
   // TODO role in redistribution is needed to be changed to current staking once its deployed
 
