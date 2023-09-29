@@ -21,7 +21,7 @@ interface DeployedData {
     staking: DeployedContract;
     postageStamp: DeployedContract;
     priceOracle: DeployedContract;
-    oracle: DeployedContract;
+    redistribution: DeployedContract;
   };
 }
 
@@ -45,7 +45,7 @@ try {
       staking: {} as DeployedContract,
       postageStamp: {} as DeployedContract,
       priceOracle: {} as DeployedContract,
-      oracle: {} as DeployedContract,
+      redistribution: {} as DeployedContract,
     },
   } as DeployedData;
 }
