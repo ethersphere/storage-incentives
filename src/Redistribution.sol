@@ -207,7 +207,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Logs for inclusion proof
      */
-    event transformedChunkAddressFromInclusionProof(uint256, bytes32);
+    event transformedChunkAddressFromInclusionProof(uint256 , bytes32 chunkAddress);
 
     // ----------------------------- Errors ------------------------------
 
