@@ -224,6 +224,7 @@ contract Redistribution is AccessControl, Pausable {
     error NoMatchingCommit(); // No matching commit and hash
     error NotClaimPhase(); // Game is not in the claim phase
     error NoReveals(); // Round did not receive any reveals
+    error FirsRevealDone(); // We don't want to return value after first reveal
     error AlreadyClaimed(); // This round was already claimed
     error NotAdmin(); // Caller of trx is not admin
     error OnlyPauser(); // Only account with pauser role can call pause/unpause
@@ -670,9 +671,15 @@ contract Redistribution is AccessControl, Pausable {
         if (currentPhaseCommit() || (currentRound() > currentRevealRound && !currentPhaseClaim())) {
             return currentSeed();
         }
+
         // This will be called by isParticipatingInUpcomingRound check in claim phase
         if (currentPhaseClaim()) {
             return nextSeed();
+        }
+
+        // Without this, this function will output 0x0 after first reveal which is value and we prefere it reverts
+        if (currentPhaseReveal() && currentRound() == currentRevealRound) {
+            revert FirsRevealDone();
         }
     }
 
