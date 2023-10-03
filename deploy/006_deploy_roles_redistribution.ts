@@ -7,7 +7,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   log('Setting Redistribution roles');
 
   const redisAddress = (await get('Redistribution')).address;
-
+  // This Role executions are also done in other steps for, but tests will fail if this is not used unless they are changed
   const redistributorRoleStakeRegistry = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
   await execute('StakeRegistry', { from: deployer }, 'grantRole', redistributorRoleStakeRegistry, redisAddress);
 
