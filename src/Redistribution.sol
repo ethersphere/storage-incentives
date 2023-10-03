@@ -544,7 +544,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        OracleContract.adjustPrice(uint256(redundancyCount));
+        OracleContract.adjustPrice(uint32(redundancyCount));
         currentClaimRound = cr;
     }
 

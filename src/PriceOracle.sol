@@ -12,20 +12,8 @@ import "./interface/IPostageStamp.sol";
 contract PriceOracle is AccessControl {
     // ----------------------------- State variables ------------------------------
 
-    // Role allowed to update price
-    bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
-
-    // The minimum price allowed
-    uint256 public constant minimumPrice = 1024;
-
-    // The priceBase to modulate the price
-    uint256 public constant priceBase = 514155;
-
-    // The current price is the atomic unit.
-    uint256 public currentPrice = minimumPrice;
-
-    // Constants used to modulate the price, see below usage
-    uint256[] public increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
+    // The address of the linked PostageStamp contract
+    IPostageStamp public postageStamp;
 
     uint16 targetRedundancy = 4;
     uint16 maxConsideredExtraRedundancy = 4;
@@ -33,14 +21,26 @@ contract PriceOracle is AccessControl {
     // When the contract is paused, price changes are not effective
     bool public isPaused = true;
 
-    // The length of a round in blocks.
-    uint256 private constant ROUND_LENGTH = 152;
-
     // The number of the last round price adjusting happend
-    uint256 public lastAdjustedRound;
+    uint32 public lastAdjustedRound;
 
-    // The address of the linked PostageStamp contract
-    IPostageStamp public postageStamp;
+    // The minimum price allowed
+    uint32 public minimumPrice = 1024;
+
+    // The priceBase to modulate the price
+    uint32 public priceBase = 514155;
+
+    // The current price is the atomic unit.
+    uint32 public currentPrice = minimumPrice;
+
+    // Constants used to modulate the price, see below usage
+    uint32[9] public increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
+
+    // Role allowed to update price
+    bytes32 public immutable PRICE_UPDATER_ROLE;
+
+    // The length of a round in blocks.
+    uint8 private constant ROUND_LENGTH = 152;
 
     // ----------------------------- Events ------------------------------
 
@@ -61,6 +61,7 @@ contract PriceOracle is AccessControl {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
         lastAdjustedRound = currentRound();
+        PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
     }
 
     ////////////////////////////////////////
@@ -71,7 +72,7 @@ contract PriceOracle is AccessControl {
      * @notice Manually set the price.
      * @dev Can only be called by the admin role.
      * @param _price The new price.
-     */ function setPrice(uint256 _price) external {
+     */ function setPrice(uint32 _price) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert CallerNotAdmin();
         }
@@ -82,18 +83,19 @@ contract PriceOracle is AccessControl {
             currentPrice = minimumPrice;
         }
 
-        postageStamp.setPrice(currentPrice);
+        // Price in postagestamp is set at 256 so we need to upcast it
+        postageStamp.setPrice(uint256(currentPrice));
         emit PriceUpdate(currentPrice);
     }
 
-    function adjustPrice(uint256 redundancy) external {
+    function adjustPrice(uint32 redundancy) external {
         if (isPaused == false) {
             if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
                 revert CallerNotPriceUpdater();
             }
 
-            uint256 usedRedundancy = redundancy;
-            uint256 currentRoundNumber = currentRound();
+            uint32 usedRedundancy = redundancy;
+            uint32 currentRoundNumber = currentRound();
 
             // price can only be adjusted once per round
             if (currentRoundNumber <= lastAdjustedRound) {
@@ -111,16 +113,16 @@ contract PriceOracle is AccessControl {
             }
 
             // Set the number of rounds that were skipped
-            uint256 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
+            uint32 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // We first apply the increase/decrease rate for the current round
-            uint256 ir = increaseRate[usedRedundancy];
+            uint32 ir = increaseRate[usedRedundancy];
             currentPrice = (ir * currentPrice) / priceBase;
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
                 ir = increaseRate[0];
-                for (uint256 i = 0; i < skippedRounds; i++) {
+                for (uint32 i = 0; i < skippedRounds; i++) {
                     currentPrice = (ir * currentPrice) / priceBase;
                 }
             }
@@ -157,7 +159,7 @@ contract PriceOracle is AccessControl {
     /**
      * @notice Return the number of the current round.
      */
-    function currentRound() public view returns (uint256) {
-        return (block.number / ROUND_LENGTH);
+    function currentRound() public view returns (uint32) {
+        return uint32(block.number / uint256(ROUND_LENGTH));
     }
 }
