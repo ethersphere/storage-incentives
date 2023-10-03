@@ -21,10 +21,10 @@ const roundLength = 152;
 
 const errors = {
   manual: {
-    notAdmin: 'caller is not the admin',
+    notAdmin: 'CallerNotAdmin()',
   },
   auto: {
-    notZero: 'unexpected zero',
+    notZero: 'UnexpectedZero()',
   },
 };
 

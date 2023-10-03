@@ -49,6 +49,12 @@ contract PriceOracle is AccessControl {
      */
     event PriceUpdate(uint256 price);
 
+    // ----------------------------- Custom Errors ------------------------------
+    error CallerNotAdmin(); // Caller is not the admin
+    error CallerNotPriceUpdater(); // Caller is not a price updater
+    error PriceAlreadyAdjusted(); // Price already adjusted in this round
+    error UnexpectedZero(); // Redundancy needs to be higher then 0
+
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     constructor(address _postageStamp, address multisig) {
@@ -58,16 +64,17 @@ contract PriceOracle is AccessControl {
     }
 
     ////////////////////////////////////////
-    //              SETTERS               //
+    //            STATE SETTING           //
     ////////////////////////////////////////
 
     /**
      * @notice Manually set the price.
      * @dev Can only be called by the admin role.
      * @param _price The new price.
-     */
-    function setPrice(uint256 _price) external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+     */ function setPrice(uint256 _price) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert CallerNotAdmin();
+        }
         currentPrice = _price;
 
         //enforce minimum price
@@ -79,32 +86,23 @@ contract PriceOracle is AccessControl {
         emit PriceUpdate(currentPrice);
     }
 
-    /**
-     * @notice Automatically adjusts the price, called from the Redistribution contract
-     * @dev The ideal redundancy in Swarm is 4 nodes per neighbourhood. Each round, the
-     * Redistribution contract reports the current amount of nodes in the neighbourhood
-     * who have commited and revealed truthy reserve commitment hashes, this is called
-     * the redundancy signal. The target redundancy is 4, so, if the redundancy signal is 4,
-     * no action is taken. If the redundancy signal is greater than 4, i.e. there is extra
-     * redundancy, a price decrease is applied in order to reduce the incentive to run a node.
-     * If the redundancy signal is less than 4, a price increase is applied in order to
-     * increase the incentive to run a node. If the redundancy signal is more than 8, we
-     * apply the max price decrease as if there were just four extra nodes.
-     *
-     * Can only be called by the price updater role, this should be set to be the deployed
-     * Redistribution contract's address. Rounds down to return an integer.
-     */
     function adjustPrice(uint256 redundancy) external {
         if (isPaused == false) {
-            require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
+            if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
+                revert CallerNotPriceUpdater();
+            }
 
             uint256 usedRedundancy = redundancy;
             uint256 currentRoundNumber = currentRound();
 
             // price can only be adjusted once per round
-            require(currentRoundNumber > lastAdjustedRound, "price already adjusted in this round");
+            if (currentRoundNumber <= lastAdjustedRound) {
+                revert PriceAlreadyAdjusted();
+            }
             // redundancy may not be zero
-            require(redundancy > 0, "unexpected zero");
+            if (redundancy == 0) {
+                revert UnexpectedZero();
+            }
 
             // enforce maximum considered extra redundancy
             uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
@@ -115,17 +113,11 @@ contract PriceOracle is AccessControl {
             // Set the number of rounds that were skipped
             uint256 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
-            // Use the increaseRate array of constants to determine
-            // the rate at which the price will modulate - if usedRedundancy
-            // is the target value 4 there is no change, > 4 causes an increase
-            // and < 4 a decrease.
-            // the priceBase is used to ensure whole number
-
             // We first apply the increase/decrease rate for the current round
             uint256 ir = increaseRate[usedRedundancy];
             currentPrice = (ir * currentPrice) / priceBase;
 
-            // If previous rounds were skipped, use MAX price increase for the previouse rounds
+            // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
                 ir = increaseRate[0];
                 for (uint256 i = 0; i < skippedRounds; i++) {
@@ -144,26 +136,22 @@ contract PriceOracle is AccessControl {
         }
     }
 
-    /**
-     * @notice Pause the contract.
-     * @dev Can only be called by the admin role.
-     */
     function pause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert CallerNotAdmin();
+        }
         isPaused = true;
     }
 
-    /**
-     * @notice Unpause the contract.
-     * @dev Can only be called by the admin role.
-     */
     function unPause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert CallerNotAdmin();
+        }
         isPaused = false;
     }
 
     ////////////////////////////////////////
-    //              GETTERS               //
+    //            STATE READING           //
     ////////////////////////////////////////
 
     /**
