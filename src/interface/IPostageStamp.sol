@@ -6,12 +6,11 @@ interface IPostageStamp {
 
     function validChunkCount() external view returns (uint256);
 
-    // Dont use commented out until we deploy new postagestamp contract that has this methods
-    // function batchOwner(bytes32 _batchId) external view returns (address);
+    function batchOwner(bytes32 _batchId) external view returns (address);
 
-    // function batchDepth(bytes32 _batchId) external view returns (uint8);
+    function batchDepth(bytes32 _batchId) external view returns (uint8);
 
-    // function batchBucketDepth(bytes32 _batchId) external view returns (uint8);
+    function batchBucketDepth(bytes32 _batchId) external view returns (uint8);
 
     function remainingBalance(bytes32 _batchId) external view returns (uint256);
 
