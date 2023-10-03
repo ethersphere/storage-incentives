@@ -8,7 +8,7 @@ import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
 
 interface IPriceOracle {
-    function adjustPrice(uint256 redundancy) external;
+    function adjustPrice(uint16 redundancy) external;
 }
 
 interface IStakeRegistry {
@@ -128,9 +128,9 @@ contract Redistribution is AccessControl, Pausable {
     bytes32 private seed;
 
     // The number of the currently active round phases.
-    uint32 public currentCommitRound;
-    uint32 public currentRevealRound;
-    uint32 public currentClaimRound;
+    uint64 public currentCommitRound;
+    uint64 public currentRevealRound;
+    uint64 public currentClaimRound;
 
     // Settings for slashing and freezing
     uint8 private penaltyMultiplierDisagreement = 1;
@@ -272,8 +272,8 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
      * and be derived from the same key pair as the message sender.
      */
-    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint32 _roundNumber) external whenNotPaused {
-        uint32 cr = uint32(currentRound());
+    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint64 _roundNumber) external whenNotPaused {
+        uint64 cr = uint64(currentRound());
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
 
         if (!currentPhaseCommit()) {
@@ -344,7 +344,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
-        uint32 cr = uint32(currentRound());
+        uint64 cr = uint64(currentRound());
 
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
@@ -467,7 +467,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function winnerSelection() internal {
-        uint32 cr = uint32(currentRound());
+        uint64 cr = uint64(currentRound());
 
         if (!currentPhaseClaim()) {
             revert NotClaimPhase();
@@ -544,7 +544,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        OracleContract.adjustPrice(uint32(redundancyCount));
+        OracleContract.adjustPrice(uint16(redundancyCount));
         currentClaimRound = cr;
     }
 

@@ -22,7 +22,7 @@ contract PriceOracle is AccessControl {
     bool public isPaused = true;
 
     // The number of the last round price adjusting happend
-    uint32 public lastAdjustedRound;
+    uint64 public lastAdjustedRound;
 
     // The minimum price allowed
     uint32 public minimumPrice = 1024;
@@ -90,14 +90,14 @@ contract PriceOracle is AccessControl {
         emit PriceUpdate(_currentPrice);
     }
 
-    function adjustPrice(uint32 redundancy) external {
+    function adjustPrice(uint16 redundancy) external {
         if (isPaused == false) {
             if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
                 revert CallerNotPriceUpdater();
             }
 
-            uint32 usedRedundancy = redundancy;
-            uint32 currentRoundNumber = currentRound();
+            uint16 usedRedundancy = redundancy;
+            uint64 currentRoundNumber = currentRound();
 
             // price can only be adjusted once per round
             if (currentRoundNumber <= lastAdjustedRound) {
@@ -119,16 +119,16 @@ contract PriceOracle is AccessControl {
             uint32 _priceBase = priceBase;
 
             // Set the number of rounds that were skipped
-            uint32 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
+            uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // We first apply the increase/decrease rate for the current round
             uint32 ir = increaseRate[usedRedundancy];
-            _currentPrice = (ir * _currentPrice) / priceBase;
+            _currentPrice = (ir * _currentPrice) / _priceBase;
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
                 ir = increaseRate[0];
-                for (uint32 i = 0; i < skippedRounds; i++) {
+                for (uint64 i = 0; i < skippedRounds; i++) {
                     _currentPrice = (ir * _currentPrice) / _priceBase;
                 }
             }
@@ -166,10 +166,10 @@ contract PriceOracle is AccessControl {
     /**
      * @notice Return the number of the current round.
      */
-    function currentRound() public view returns (uint32) {
-        // We downcasted to uint32 as uint32 has  4,294,967,296 places 
+    function currentRound() public view returns (uint64) {
+        // We downcasted to uint32 as uint32 has  4,294,967,296 places
         // as each round is 152 x 5 = 760 seconds which fits more then 5 Million rounds
         // each day has around 113 rounds so we have 50011 days to fill, which is 137 years
-        return uint32(block.number / uint256(ROUND_LENGTH));
+        return uint64(block.number / uint256(ROUND_LENGTH));
     }
 }
