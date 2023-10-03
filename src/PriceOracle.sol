@@ -34,7 +34,7 @@ contract PriceOracle is AccessControl {
     bool public isPaused = true;
 
     // The length of a round in blocks.
-    uint256 public roundLength = 152;
+    uint256 private constant ROUND_LENGTH = 152;
 
     // The number of the last round price adjusting happend
     uint256 public lastAdjustedRound;
@@ -158,6 +158,6 @@ contract PriceOracle is AccessControl {
      * @notice Return the number of the current round.
      */
     function currentRound() public view returns (uint256) {
-        return (block.number / roundLength);
+        return (block.number / ROUND_LENGTH);
     }
 }
