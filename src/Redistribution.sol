@@ -204,6 +204,11 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth
     );
 
+    /**
+     * @dev Logs for inclusion proof
+     */
+    event transformedChunkAddressFromInclusionProof(uint256, bytes32 chunkAddress);
+
     // ----------------------------- Errors ------------------------------
 
     error NotCommitPhase(); // Game is not in commit phase
@@ -224,6 +229,7 @@ contract Redistribution is AccessControl, Pausable {
     error NoMatchingCommit(); // No matching commit and hash
     error NotClaimPhase(); // Game is not in the claim phase
     error NoReveals(); // Round did not receive any reveals
+    error FirstRevealDone(); // We don't want to return value after first reveal
     error AlreadyClaimed(); // This round was already claimed
     error NotAdmin(); // Caller of trx is not admin
     error OnlyPauser(); // Only account with pauser role can call pause/unpause
@@ -259,7 +265,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     ////////////////////////////////////////
-    //              SETTERS               //
+    //           STATE CHANGING           //
     ////////////////////////////////////////
 
     /**
@@ -548,6 +554,65 @@ contract Redistribution is AccessControl, Pausable {
         currentClaimRound = cr;
     }
 
+    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
+        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
+        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
+            entryProof.proofSegments3,
+            entryProof.proveSegment2,
+            randomChunkSegmentIndex,
+            entryProof.chunkSpan,
+            currentRevealRoundAnchor
+        );
+
+        emit transformedChunkAddressFromInclusionProof(indexInRC, calculatedTransformedAddr);
+
+        if (
+            winner.hash !=
+            BMTChunk.chunkAddressFromInclusionProof(
+                entryProof.proofSegments,
+                entryProof.proveSegment,
+                indexInRC,
+                32 * 32
+            )
+        ) {
+            revert InclusionProofFailed(1, calculatedTransformedAddr);
+        }
+
+        if (entryProof.proofSegments2[0] != entryProof.proofSegments3[0]) {
+            revert InclusionProofFailed(2, calculatedTransformedAddr);
+        }
+
+        bytes32 originalAddress = entryProof.socProof.length > 0
+            ? entryProof.socProof[0].chunkAddr // soc attestation in socFunction
+            : entryProof.proveSegment;
+
+        if (
+            originalAddress !=
+            BMTChunk.chunkAddressFromInclusionProof(
+                entryProof.proofSegments2,
+                entryProof.proveSegment2,
+                randomChunkSegmentIndex,
+                entryProof.chunkSpan
+            )
+        ) {
+            revert InclusionProofFailed(3, calculatedTransformedAddr);
+        }
+
+        // In case of SOC, the transformed address is hashed together with its address in the sample
+        if (entryProof.socProof.length > 0) {
+            calculatedTransformedAddr = keccak256(
+                abi.encode(
+                    entryProof.proveSegment, // SOC address
+                    calculatedTransformedAddr
+                )
+            );
+        }
+
+        if (entryProof.proofSegments[0] != calculatedTransformedAddr) {
+            revert InclusionProofFailed(4, calculatedTransformedAddr);
+        }
+    }
+
     /**
      * @notice Set freezing parameters
      */
@@ -591,7 +656,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     ////////////////////////////////////////
-    //              GETTERS               //
+    //            STATE READING           //
     ////////////////////////////////////////
 
     // ----------------------------- Anchor calculations ------------------------------
@@ -670,9 +735,15 @@ contract Redistribution is AccessControl, Pausable {
         if (currentPhaseCommit() || (currentRound() > currentRevealRound && !currentPhaseClaim())) {
             return currentSeed();
         }
+
         // This will be called by isParticipatingInUpcomingRound check in claim phase
         if (currentPhaseClaim()) {
             return nextSeed();
+        }
+
+        // Without this, this function will output 0x0 after first reveal which is value and we prefere it reverts
+        if (currentPhaseReveal() && currentRound() == currentRevealRound) {
+            revert FirstRevealDone();
         }
     }
 
@@ -982,63 +1053,6 @@ contract Redistribution is AccessControl, Pausable {
             )
         ) {
             revert SigRecoveryFailed(entryProof.postageProof.postageId);
-        }
-    }
-
-    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal view {
-        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
-        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-            entryProof.proofSegments3,
-            entryProof.proveSegment2,
-            randomChunkSegmentIndex,
-            entryProof.chunkSpan,
-            currentRevealRoundAnchor
-        );
-
-        if (
-            winner.hash !=
-            BMTChunk.chunkAddressFromInclusionProof(
-                entryProof.proofSegments,
-                entryProof.proveSegment,
-                indexInRC,
-                32 * 32
-            )
-        ) {
-            revert InclusionProofFailed(1, calculatedTransformedAddr);
-        }
-
-        if (entryProof.proofSegments2[0] != entryProof.proofSegments3[0]) {
-            revert InclusionProofFailed(2, calculatedTransformedAddr);
-        }
-
-        bytes32 originalAddress = entryProof.socProof.length > 0
-            ? entryProof.socProof[0].chunkAddr // soc attestation in socFunction
-            : entryProof.proveSegment;
-
-        if (
-            originalAddress !=
-            BMTChunk.chunkAddressFromInclusionProof(
-                entryProof.proofSegments2,
-                entryProof.proveSegment2,
-                randomChunkSegmentIndex,
-                entryProof.chunkSpan
-            )
-        ) {
-            revert InclusionProofFailed(3, calculatedTransformedAddr);
-        }
-
-        // In case of SOC, the transformed address is hashed together with its address in the sample
-        if (entryProof.socProof.length > 0) {
-            calculatedTransformedAddr = keccak256(
-                abi.encode(
-                    entryProof.proveSegment, // SOC address
-                    calculatedTransformedAddr
-                )
-            );
-        }
-
-        if (entryProof.proofSegments[0] != calculatedTransformedAddr) {
-            revert InclusionProofFailed(4, calculatedTransformedAddr);
         }
     }
 
