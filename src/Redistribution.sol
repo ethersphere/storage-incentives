@@ -273,7 +273,7 @@ contract Redistribution is AccessControl, Pausable {
      * and be derived from the same key pair as the message sender.
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint64 _roundNumber) external whenNotPaused {
-        uint64 cr = uint64(currentRound());
+        uint64 cr = currentRound();
         uint256 nstake = Stakes.stakeOfOverlay(_overlay);
 
         if (!currentPhaseCommit()) {
@@ -344,7 +344,7 @@ contract Redistribution is AccessControl, Pausable {
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
     function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
-        uint64 cr = uint64(currentRound());
+        uint64 cr = currentRound();
 
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
@@ -467,7 +467,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function winnerSelection() internal {
-        uint64 cr = uint64(currentRound());
+        uint64 cr = currentRound();
 
         if (!currentPhaseClaim()) {
             revert NotClaimPhase();
@@ -602,7 +602,7 @@ contract Redistribution is AccessControl, Pausable {
      * random seed and hence a new round anchor.
      */
     function currentSeed() public view returns (bytes32) {
-        uint256 cr = currentRound();
+        uint64 cr = currentRound();
         bytes32 currentSeedValue = seed;
 
         if (cr > currentRevealRound + 1) {
@@ -618,7 +618,7 @@ contract Redistribution is AccessControl, Pausable {
      * Used to determine what the next round's anchor will be.
      */
     function nextSeed() public view returns (bytes32) {
-        uint256 cr = currentRound() + 1;
+        uint64 cr = currentRound() + 1;
         bytes32 currentSeedValue = seed;
 
         if (cr > currentRevealRound + 1) {
@@ -637,7 +637,7 @@ contract Redistribution is AccessControl, Pausable {
             revert NotClaimPhase();
         }
 
-        uint256 cr = currentRound();
+        uint64 cr = currentRound();
         if (cr != currentRevealRound) {
             revert NoReveals();
         }
@@ -652,7 +652,7 @@ contract Redistribution is AccessControl, Pausable {
         if (!currentPhaseClaim()) {
             revert NotClaimPhase();
         }
-        uint256 cr = currentRound();
+        uint64 cr = currentRound();
         if (cr != currentRevealRound) {
             revert NoReveals();
         }
@@ -694,8 +694,8 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @notice The number of the current round.
      */
-    function currentRound() public view returns (uint256) {
-        return (block.number / ROUND_LENGTH);
+    function currentRound() public view returns (uint64) {
+        return uint64(block.number / ROUND_LENGTH);
     }
 
     /**
@@ -799,7 +799,7 @@ contract Redistribution is AccessControl, Pausable {
         if (!currentPhaseClaim()) {
             revert NotClaimPhase();
         }
-        uint256 cr = currentRound();
+        uint64 cr = currentRound();
         if (cr != currentRevealRound) {
             revert NoReveals();
         }
@@ -866,7 +866,7 @@ contract Redistribution is AccessControl, Pausable {
             revert NotClaimPhase();
         }
 
-        uint256 cr = currentRound();
+        uint64 cr = currentRound();
         if (cr != currentRevealRound) {
             revert NoReveals();
         }
