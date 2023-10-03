@@ -77,16 +77,17 @@ contract PriceOracle is AccessControl {
             revert CallerNotAdmin();
         }
         uint32 _currentPrice = _price;
+        uint32 _minimumPrice = minimumPrice;
 
         //enforce minimum price
-        if (_currentPrice < minimumPrice) {
-            _currentPrice = minimumPrice;
+        if (_currentPrice < _minimumPrice) {
+            _currentPrice = _minimumPrice;
         }
+        currentPrice = _currentPrice;
 
         // Price in postagestamp is set at 256 so we need to upcast it
         postageStamp.setPrice(uint256(_currentPrice));
         emit PriceUpdate(_currentPrice);
-        currentPrice = _currentPrice;
     }
 
     function adjustPrice(uint32 redundancy) external {
@@ -113,29 +114,34 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
+            uint32 _currentPrice = currentPrice;
+            uint32 _minimumPrice = minimumPrice;
+            uint32 _priceBase = priceBase;
+
             // Set the number of rounds that were skipped
             uint32 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // We first apply the increase/decrease rate for the current round
             uint32 ir = increaseRate[usedRedundancy];
-            currentPrice = (ir * currentPrice) / priceBase;
+            _currentPrice = (ir * _currentPrice) / priceBase;
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
                 ir = increaseRate[0];
                 for (uint32 i = 0; i < skippedRounds; i++) {
-                    currentPrice = (ir * currentPrice) / priceBase;
+                    _currentPrice = (ir * _currentPrice) / _priceBase;
                 }
             }
 
             // Enforce minimum price
-            if (currentPrice < minimumPrice) {
-                currentPrice = minimumPrice;
+            if (_currentPrice < _minimumPrice) {
+                _currentPrice = _minimumPrice;
             }
+            currentPrice = _currentPrice;
 
-            postageStamp.setPrice(currentPrice);
+            postageStamp.setPrice(_currentPrice);
             lastAdjustedRound = currentRoundNumber;
-            emit PriceUpdate(currentPrice);
+            emit PriceUpdate(_currentPrice);
         }
     }
 
@@ -161,6 +167,9 @@ contract PriceOracle is AccessControl {
      * @notice Return the number of the current round.
      */
     function currentRound() public view returns (uint32) {
+        // We downcasted to uint32 as uint32 has  4,294,967,296 places 
+        // as each round is 152 x 5 = 760 seconds which fits more then 5 Million rounds
+        // each day has around 113 rounds so we have 50011 days to fill, which is 137 years
         return uint32(block.number / uint256(ROUND_LENGTH));
     }
 }
