@@ -83,7 +83,7 @@ async function main() {
   let waitTime = 6;
   let currentRedis = '';
   if (network.name == 'mainnet') {
-    // BZZ token, SwarmNetworkId, Multisig
+    //SwarmNetworkId, BZZ token, Multisig
     args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '1', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '';
   } else if (network.name == 'testnet') {
