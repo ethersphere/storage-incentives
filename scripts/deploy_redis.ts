@@ -92,7 +92,7 @@ async function main() {
   } else if (network.name == 'testnet') {
     args = [
       '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac',
-      '0x1f87FEDa43e6ABFe1058E96A07d0ea182e7dc9BD',
+      '0xF5147D56502C80004f91FB4112d6812CddE8eDE3',
       '0xefC5Ead3188402eCC951DB45827F6e0F99B67a25',
       '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
     ];

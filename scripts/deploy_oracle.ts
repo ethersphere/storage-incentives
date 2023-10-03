@@ -83,11 +83,11 @@ async function main() {
   let waitTime = 6;
   let currentRedis = '';
   if (network.name == 'mainnet') {
-    //Stamps, Multisig
+    // Postagestamp, Multisig
     args = ['0x30d155478eF27Ab32A1D578BE7b84BC5988aF381', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '0xDF64aed195102E644ad6A0204eD5377589b29618';
   } else if (network.name == 'testnet') {
-    args = ['0x1f87FEDa43e6ABFe1058E96A07d0ea182e7dc9BD', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0xF5147D56502C80004f91FB4112d6812CddE8eDE3', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '0x9e3BDb0c69838CC06D85409d4AD6245e54F70F1d';
   } else if (network.name == 'localhost') {
     args = ['0x9A2F29598CB0787Aa806Bbfb65B82A9e558945E7', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
@@ -113,8 +113,8 @@ async function main() {
   deployed['contracts']['priceOracle']['url'] = config.url + oracle.address;
 
   // Change roles on current oracle contract
-  const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_UPDATER_ROLE'));
-  const tx2 = await oracle.grantRole(redistributorRole, currentRedis);
+  const updaterRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_UPDATER_ROLE'));
+  const tx2 = await oracle.grantRole(updaterRole, currentRedis);
   console.log('Changed PRICE UPDATER ROLE at : ', tx2.hash);
 
   // TODO Needs to be unpaused to be running, either here with trx on through etherscan or something like that
