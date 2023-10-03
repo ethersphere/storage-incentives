@@ -76,8 +76,7 @@ contract PriceOracle is AccessControl {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert CallerNotAdmin();
         }
-        currentPrice = _price;
-        uint32 _currentPrice = currentPrice;
+        uint32 _currentPrice = _price;
 
         //enforce minimum price
         if (_currentPrice < minimumPrice) {
@@ -87,6 +86,7 @@ contract PriceOracle is AccessControl {
         // Price in postagestamp is set at 256 so we need to upcast it
         postageStamp.setPrice(uint256(_currentPrice));
         emit PriceUpdate(_currentPrice);
+        currentPrice = _currentPrice;
     }
 
     function adjustPrice(uint32 redundancy) external {
