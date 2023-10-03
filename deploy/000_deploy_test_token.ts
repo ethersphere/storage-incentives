@@ -19,7 +19,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   }
 
   if (network.name == 'testnet') {
-    const argsToken = ['sBZZ', 'sBZZ', '1250000000000000000000000', networkConfig[network.name]?.multisig];
+    const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000', networkConfig[network.name]?.multisig];
     token = await deploy('TestToken', {
       from: deployer,
       args: argsToken,
@@ -28,7 +28,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     });
 
     if (process.env.TESTNET_ETHERSCAN_KEY) {
-      console.log('Verifying...');
+      log('Verifying...');
       await verify(token.address, argsToken);
     }
   }

@@ -34,6 +34,9 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  mocha: {
+    timeout: Number.MAX_SAFE_INTEGER,
+  },
   preprocess: {
     eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
   },
@@ -49,65 +52,83 @@ const config: HardhatUserConfig = {
     node_2: 8,
     node_3: 9,
     node_4: 10,
+    node_5: 11,
+    node_6: 12,
+    node_7: 13,
   },
   defaultNetwork: 'hardhat',
   networks: {
     hardhat: {
       initialBaseFeePerGas: 0,
       accounts: [
-        // deployer
+        // deployer 0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8
         {
           privateKey: '0x0d8f0a76e88539c4ceaa6ad01372cce44fb621b56b34b2cc614b4c77fb081f20',
           balance: '10000000000000000000000',
         },
-        // admin
+        // admin 0x7E71bA1aB8AF3454a01CFafe358BEbb7691d02f8
         {
           privateKey: '0x8d56d322a1bb1e94c7d64ccd62aa2e5cc9760f59575eda0f7fd392bab8d6ba0d',
           balance: '10000000000000000000000',
         },
-        // stamper
+        // stamper 0xFCA295bC36F47A3Eb53F657b88f3f324374656C6
         {
           privateKey: '0x963893a36bd803209c07615b0650303706fb01158479a46fba4dea3fe8cf0734',
           balance: '10000000000000000000000',
         },
-        // oracle
+        // oracle 0xB5963cAcF590909407433024cD3BA0319542E99D
         {
           privateKey: '0xee65b03b4dfdde207a44c6ff5da99201ee0642841ae9f2e07927e8d2ad523d55',
           balance: '10000000000000000000000',
         },
-        // redistributor
+        // redistributor 0x9C8EEad79edDC16594489d63E5A9F7530b642079
         {
           privateKey: '0x34777daf03381f4666635bff0e03720a49f62ba28daa3ab6cabe0922e8574422',
           balance: '10000000000000000000000',
         },
-        // pauser
+        // pauser 0x4e0B2f8C2210e9ea9341a401C4276549Ea9541c7
         {
           privateKey: '0x4b2519006fefa239fcca606ab6f7d9d474023f6fa1bdab4a13d2fae44f97368d',
           balance: '10000000000000000000000',
         },
-        // node_0
+        // node_0 0xbFC32C0779b9B17D2e2DCd916493528BF4561142
         {
           privateKey: '0x94a0fc3d873f4f33cfb2841fe2f177d4aac7e0d6f884244f51e23b1f4539c136',
           balance: '10000000000000000000000',
         },
-        // node_1
+        // node_1 0xb5CFb878581FD7c0bDC9854de707eD47065388c4
         {
           privateKey: '0xc71550f728fccc9e392301d50bde558745ac2ed4c3b0ceb3e38d2047bda480fa',
           balance: '10000000000000000000000',
         },
-        // node_2
+        // node_2 0x02c7d652018E232ECBe0145716FF061A5E8917E0
         {
           privateKey: '0xb66c4187cc9779d6b76b91b1b7b3deb8bd8ef31633685a7f351c613f5cf31727',
           balance: '10000000000000000000000',
         },
-        // node_3
+        // node_3 0xa8bF80107abAFC6eF2192AB1D7Ce3f9D777E1161
         {
           privateKey: '0xcd6b1d6669b75582f59971b348eec6e37107fa765fcdb02ae4ad698e684c9803',
           balance: '10000000000000000000000',
         },
-        // node_4
+        // node_4 0xB257DaAc87899038871E3FB280da58191eFB5Ca2
         {
           privateKey: '0xc1a7ca0bc39058d1fb6e331f8a6a3b65e81f171cfeddeec6cd0f32271496f45c',
+          balance: '10000000000000000000000',
+        },
+        // node_5 - FDP Play Worker 1 node - swarm.key
+        {
+          privateKey: '0x195cf6324303f6941ad119d0a1d2e862d810078e1370b8d205552a543ff40aab',
+          balance: '10000000000000000000000',
+        },
+        // node_6 0x77CbAdb1059dDC7334227e025fC940469f52FEd8
+        {
+          privateKey: '0xb65c0589ad60bc9985f0b6eafe5dd480b7ad63f073a7e9625dd23466a0d1947d',
+          balance: '10000000000000000000000',
+        },
+        // node_7 0x4906632d6693733554EE11eA785EB718d2e2ffdA
+        {
+          privateKey: '0x9d715c14789abdc4c97fd775cf620196bebe991c60c614ba00fedbac943a5e67',
           balance: '10000000000000000000000',
         },
         // other_1
@@ -115,7 +136,7 @@ const config: HardhatUserConfig = {
           privateKey: 'f09baf4a06da707abeb96568a1419b4eec094774eaa85ef85517457ffe25b515',
           balance: '10000000000000000000000',
         },
-        // other_2
+        // other_2 0xb22D48A49c0Aa99AC94072E229E52687E97da253
         {
           privateKey: '5d6172133423006770002831e395aca9d2dad3bcf9257e38c2f19224b4aef78b',
           balance: '10000000000000000000000',
@@ -128,6 +149,11 @@ const config: HardhatUserConfig = {
       chainId: 31337,
     },
     testnet: {
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+      accounts,
+      chainId: 5,
+    },
+    sepolia: {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://rpc2.sepolia.org',
       accounts,
       chainId: 11155111,
@@ -145,11 +171,19 @@ const config: HardhatUserConfig = {
     },
     customChains: [
       {
-        network: 'testnet',
+        network: 'sepolia',
         chainId: 11155111,
         urls: {
           apiURL: 'https://api-sepolia.etherscan.io/api',
           browserURL: 'https://sepolia.etherscan.io/address/',
+        },
+      },
+      {
+        network: 'testnet',
+        chainId: 5,
+        urls: {
+          apiURL: 'https://api-goerli.etherscan.io/api',
+          browserURL: 'https://goerli.etherscan.io/address/',
         },
       },
       {
@@ -166,7 +200,7 @@ const config: HardhatUserConfig = {
     sources: 'src',
   },
   contractSizer: {
-    runOnCompile: true,
+    runOnCompile: false,
   },
   gasReporter: {
     enabled: true,

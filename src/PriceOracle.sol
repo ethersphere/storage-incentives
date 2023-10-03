@@ -12,17 +12,8 @@ import "./interface/IPostageStamp.sol";
 contract PriceOracle is AccessControl {
     // ----------------------------- State variables ------------------------------
 
-    // Role allowed to update price
-    bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
-
-    // The minimum price allowed
-    uint256 public constant minimumPrice = 1024;
-
-    // The current price is the atomic unit.
-    uint256 public currentPrice = minimumPrice;
-
-    // Constants used to modulate the price, see below usage
-    uint256[] public increaseRate = [0, 1036, 1027, 1025, 1024, 1023, 1021, 1017, 1012];
+    // The address of the linked PostageStamp contract
+    IPostageStamp public postageStamp;
 
     uint16 targetRedundancy = 4;
     uint16 maxConsideredExtraRedundancy = 4;
@@ -30,8 +21,26 @@ contract PriceOracle is AccessControl {
     // When the contract is paused, price changes are not effective
     bool public isPaused = true;
 
-    // The address of the linked PostageStamp contract
-    IPostageStamp public postageStamp;
+    // The number of the last round price adjusting happend
+    uint64 public lastAdjustedRound;
+
+    // The minimum price allowed
+    uint32 public minimumPrice = 1024;
+
+    // The priceBase to modulate the price
+    uint32 public priceBase = 514155;
+
+    // The current price is the atomic unit.
+    uint32 public currentPrice = minimumPrice;
+
+    // Constants used to modulate the price, see below usage
+    uint32[9] public increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
+
+    // Role allowed to update price
+    bytes32 public immutable PRICE_UPDATER_ROLE;
+
+    // The length of a round in blocks.
+    uint8 private constant ROUND_LENGTH = 152;
 
     // ----------------------------- Events ------------------------------
 
@@ -40,59 +49,64 @@ contract PriceOracle is AccessControl {
      */
     event PriceUpdate(uint256 price);
 
+    // ----------------------------- Custom Errors ------------------------------
+    error CallerNotAdmin(); // Caller is not the admin
+    error CallerNotPriceUpdater(); // Caller is not a price updater
+    error PriceAlreadyAdjusted(); // Price already adjusted in this round
+    error UnexpectedZero(); // Redundancy needs to be higher then 0
+
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     constructor(address _postageStamp, address multisig) {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
+        lastAdjustedRound = currentRound();
+        PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
     }
 
     ////////////////////////////////////////
-    //              SETTERS               //
+    //            STATE SETTING           //
     ////////////////////////////////////////
 
     /**
      * @notice Manually set the price.
      * @dev Can only be called by the admin role.
      * @param _price The new price.
-     */
-    function setPrice(uint256 _price) external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
-        currentPrice = _price;
+     */ function setPrice(uint32 _price) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert CallerNotAdmin();
+        }
+        uint32 _currentPrice = _price;
+        uint32 _minimumPrice = minimumPrice;
 
         //enforce minimum price
-        if (currentPrice < minimumPrice) {
-            currentPrice = minimumPrice;
+        if (_currentPrice < _minimumPrice) {
+            _currentPrice = _minimumPrice;
         }
+        currentPrice = _currentPrice;
 
-        postageStamp.setPrice(currentPrice);
-        emit PriceUpdate(currentPrice);
+        // Price in postagestamp is set at 256 so we need to upcast it
+        postageStamp.setPrice(uint256(_currentPrice));
+        emit PriceUpdate(_currentPrice);
     }
 
-    /**
-     * @notice Automatically adjusts the price, called from the Redistribution contract
-     * @dev The ideal redundancy in Swarm is 4 nodes per neighbourhood. Each round, the
-     * Redistribution contract reports the current amount of nodes in the neighbourhood
-     * who have commited and revealed truthy reserve commitment hashes, this is called
-     * the redundancy signal. The target redundancy is 4, so, if the redundancy signal is 4,
-     * no action is taken. If the redundancy signal is greater than 4, i.e. there is extra
-     * redundancy, a price decrease is applied in order to reduce the incentive to run a node.
-     * If the redundancy signal is less than 4, a price increase is applied in order to
-     * increase the incentive to run a node. If the redundancy signal is more than 8, we
-     * apply the max price decrease as if there were just four extra nodes.
-     *
-     * Can only be called by the price updater role, this should be set to be the deployed
-     * Redistribution contract's address. Rounds down to return an integer.
-     */
-    function adjustPrice(uint256 redundancy) external {
+    function adjustPrice(uint16 redundancy) external {
         if (isPaused == false) {
-            require(hasRole(PRICE_UPDATER_ROLE, msg.sender), "caller is not a price updater");
+            if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
+                revert CallerNotPriceUpdater();
+            }
 
-            uint256 multiplier = minimumPrice;
-            uint256 usedRedundancy = redundancy;
+            uint16 usedRedundancy = redundancy;
+            uint64 currentRoundNumber = currentRound();
 
+            // price can only be adjusted once per round
+            if (currentRoundNumber <= lastAdjustedRound) {
+                revert PriceAlreadyAdjusted();
+            }
             // redundancy may not be zero
-            require(redundancy > 0, "unexpected zero");
+            if (redundancy == 0) {
+                revert UnexpectedZero();
+            }
 
             // enforce maximum considered extra redundancy
             uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
@@ -100,40 +114,62 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
-            // use the increaseRate array of constants to determine
-            // the rate at which the price will modulate - if usedRedundancy
-            // is the target value 4 there is no change, > 4 causes an increase
-            // and < 4 a decrease.
-            uint256 ir = increaseRate[usedRedundancy];
+            uint32 _currentPrice = currentPrice;
+            uint32 _minimumPrice = minimumPrice;
+            uint32 _priceBase = priceBase;
 
-            // the multiplier is used to ensure whole number
-            currentPrice = (ir * currentPrice) / multiplier;
+            // Set the number of rounds that were skipped
+            uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
-            //enforce minimum price
-            if (currentPrice < minimumPrice) {
-                currentPrice = minimumPrice;
+            // We first apply the increase/decrease rate for the current round
+            uint32 ir = increaseRate[usedRedundancy];
+            _currentPrice = (ir * _currentPrice) / _priceBase;
+
+            // If previous rounds were skipped, use MAX price increase for the previous rounds
+            if (skippedRounds > 0) {
+                ir = increaseRate[0];
+                for (uint64 i = 0; i < skippedRounds; i++) {
+                    _currentPrice = (ir * _currentPrice) / _priceBase;
+                }
             }
 
-            postageStamp.setPrice(currentPrice);
-            emit PriceUpdate(currentPrice);
+            // Enforce minimum price
+            if (_currentPrice < _minimumPrice) {
+                _currentPrice = _minimumPrice;
+            }
+            currentPrice = _currentPrice;
+
+            postageStamp.setPrice(_currentPrice);
+            lastAdjustedRound = currentRoundNumber;
+            emit PriceUpdate(_currentPrice);
         }
     }
 
-    /**
-     * @notice Pause the contract.
-     * @dev Can only be called by the admin role.
-     */
     function pause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert CallerNotAdmin();
+        }
         isPaused = true;
     }
 
-    /**
-     * @notice Unpause the contract.
-     * @dev Can only be called by the admin role.
-     */
     function unPause() external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "caller is not the admin");
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert CallerNotAdmin();
+        }
         isPaused = false;
+    }
+
+    ////////////////////////////////////////
+    //            STATE READING           //
+    ////////////////////////////////////////
+
+    /**
+     * @notice Return the number of the current round.
+     */
+    function currentRound() public view returns (uint64) {
+        // We downcasted to uint64 as uint64 has 18,446,744,073,709,551,616 places
+        // as each round is 152 x 5 = 760, each day has around 113 rounds which is 41245 in a year
+        // it results 4.4724801e+14 years to run this game
+        return uint64(block.number / uint256(ROUND_LENGTH));
     }
 }
