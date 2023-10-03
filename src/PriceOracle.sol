@@ -167,9 +167,9 @@ contract PriceOracle is AccessControl {
      * @notice Return the number of the current round.
      */
     function currentRound() public view returns (uint64) {
-        // We downcasted to uint32 as uint32 has  4,294,967,296 places
-        // as each round is 152 x 5 = 760 seconds which fits more then 5 Million rounds
-        // each day has around 113 rounds so we have 50011 days to fill, which is 137 years
+        // We downcasted to uint64 as uint64 has 18,446,744,073,709,551,616 places
+        // as each round is 152 x 5 = 760, each day has around 113 rounds which is 41245 in a year
+        // it results 4.4724801e+14 years to run this game
         return uint64(block.number / uint256(ROUND_LENGTH));
     }
 }
