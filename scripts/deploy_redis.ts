@@ -82,16 +82,16 @@ async function main() {
   let args: string[] = [];
   let waitTime = 6;
   if (network.name == 'mainnet') {
-    // Staking, Stamps, Oracle args, multisig
+    // Staking, Stamps, Oracle, multisig
     args = [
-      '0x781c6D1f0eaE6F1Da1F604c6cDCcdB8B76428ba7',
+      '0x781c6D1f0eaE6F1Da1F604c6cDCcdB8B76428ba7', // old staking
       '0x30d155478eF27Ab32A1D578BE7b84BC5988aF381',
       '0x344A2CC7304B32A87EfDC5407cD4bEC7cf98F035',
       '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
     ];
   } else if (network.name == 'testnet') {
     args = [
-      '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac',
+      '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac', // old staking
       '0xF5147D56502C80004f91FB4112d6812CddE8eDE3',
       '0xefC5Ead3188402eCC951DB45827F6e0F99B67a25',
       '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
