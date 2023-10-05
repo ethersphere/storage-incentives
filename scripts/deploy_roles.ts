@@ -7,7 +7,7 @@ async function main() {
   // Order of contracts and how should they be deployed, testnet addresses
   const currentPostage = '0xF5147D56502C80004f91FB4112d6812CddE8eDE3';
   const currentOracle = '0xd41A47fCaa67945A11a398F00D5f7F130aF03733';
-  const currentStaking = '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac'; // old staking
+  const currentStaking = '0xB05D6304a6A4f940917Ff908325d6560409543dF';
   const currentRedis = '0x264079eeF0CE42D790e3FA7DF8D0cfA675ef6504';
 
   // Change roles on current stamp contract

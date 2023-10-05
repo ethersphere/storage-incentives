@@ -89,9 +89,11 @@ async function main() {
     args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', swarmNetworkID, '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '';
   } else if (network.name == 'testnet') {
-    swarmNetworkID = '10';
-    args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', swarmNetworkID, '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
-    currentRedis = '0x9e3BDb0c69838CC06D85409d4AD6245e54F70F1d';
+    swarmNetworkID = '333';
+    //args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', swarmNetworkID, '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    // Old gBZZ
+    args = ['0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335', swarmNetworkID, '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    currentRedis = '0x264079eeF0CE42D790e3FA7DF8D0cfA675ef6504';
   } else if (network.name == 'localhost') {
     swarmNetworkID = '0';
     args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', swarmNetworkID, '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
