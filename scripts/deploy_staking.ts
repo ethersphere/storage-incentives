@@ -82,15 +82,19 @@ async function main() {
   let args: string[] = [];
   let waitTime = 6;
   let currentRedis = '';
+  let swarmNetworkID = '1';
   if (network.name == 'mainnet') {
+    swarmNetworkID = '1';
     // BZZ token, SwarmNetworkId, Multisig
-    args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '1', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', swarmNetworkID, '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '';
   } else if (network.name == 'testnet') {
-    args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', '10', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    swarmNetworkID = '10';
+    args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', swarmNetworkID, '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '0x9e3BDb0c69838CC06D85409d4AD6245e54F70F1d';
   } else if (network.name == 'localhost') {
-    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', '0', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
+    swarmNetworkID = '0';
+    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', swarmNetworkID, '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
     waitTime = 1;
     currentRedis = '0xDF64aed195102E644ad6A0204eD5377589b29618';
   }
