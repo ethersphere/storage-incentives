@@ -13,7 +13,7 @@ import { removeConsoleLog } from 'hardhat-preprocessor';
 
 const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? undefined : process.env.PRIVATE_RPC_MAINNET;
 const PRIVATE_RPC_TESTNET = !process.env.PRIVATE_RPC_TESTNET ? undefined : process.env.PRIVATE_RPC_TESTNET;
-const FDP_PLAY_URL = process.env.FDP_PLAY_URL || 'http://localhost';
+const FDP_PLAY_URL = process.env.FDP_PLAY_URL || 'http://127.0.0.1';
 
 const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : process.env.WALLET_SECRET;
 if (walletSecret === 'undefined') {
@@ -173,6 +173,7 @@ const config: HardhatUserConfig = {
     apiKey: {
       mainnet: mainnetEtherscanKey || '',
       testnet: testnetEtherscanKey || '',
+      fdpPlay: 'hello_there!',
     },
     customChains: [
       {
