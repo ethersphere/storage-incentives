@@ -204,8 +204,8 @@ const config: HardhatUserConfig = {
         network: 'fdpPlay',
         chainId: 4020,
         urls: {
-          apiURL: `${FDP_PLAY_URL}/poa/sokol/api`,
-          browserURL: `${FDP_PLAY_URL}/poa/sokol`,
+          apiURL: `${FDP_PLAY_URL}/api`,
+          browserURL: `${FDP_PLAY_URL}`,
         },
       },
     ],
