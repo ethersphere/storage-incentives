@@ -13,6 +13,7 @@ import { removeConsoleLog } from 'hardhat-preprocessor';
 
 const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? undefined : process.env.PRIVATE_RPC_MAINNET;
 const PRIVATE_RPC_TESTNET = !process.env.PRIVATE_RPC_TESTNET ? undefined : process.env.PRIVATE_RPC_TESTNET;
+const FDP_PLAY_URL = process.env.FDP_PLAY_URL || 'http://localhost';
 
 const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : process.env.WALLET_SECRET;
 if (walletSecret === 'undefined') {
@@ -163,6 +164,10 @@ const config: HardhatUserConfig = {
       accounts,
       chainId: 100,
     },
+    fdpPlay: {
+      url: `${FDP_PLAY_URL}:9545`,
+      chainId: 4020,
+    },
   },
   etherscan: {
     apiKey: {
@@ -192,6 +197,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: 'https://api.gnosisscan.io/',
           browserURL: 'https://gnosisscan.io/address/',
+        },
+      },
+      {
+        network: 'fdpPlay',
+        chainId: 4020,
+        urls: {
+          apiURL: `${FDP_PLAY_URL}/poa/sokol/api`,
+          browserURL: `${FDP_PLAY_URL}/poa/sokol`,
         },
       },
     ],
