@@ -89,7 +89,7 @@ async function main() {
     currentRedis = '';
     currentOracle = '';
   } else if (network.name == 'testnet') {
-    args = ['0x0b2bbcbe94d5d4bb782713b137c85d29aa609a13', '16', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335', '16', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '0x9e3BDb0c69838CC06D85409d4AD6245e54F70F1d';
     currentOracle = '0xefC5Ead3188402eCC951DB45827F6e0F99B67a25';
   } else if (network.name == 'localhost') {
