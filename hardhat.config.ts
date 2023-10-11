@@ -9,6 +9,23 @@ import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 
+task('copy', 'Use copyBatch function from postageStamp contract')
+  .addParam('owner', "The account's address")
+  .addParam('initialbalance', "The account's address")
+  .addParam('depth', "The account's address")
+  .addParam('bucketDepth', "The account's address")
+  .addParam('batchid', "The account's address")
+  .addParam('immutable', "The account's address")
+
+  .setAction(async (taskArgs: any) => {
+    const currentPostage = '0xf86b48B65355D292dDE7da8B4ad1913a72ad45C9';
+
+    const stamp = await ethers.getContractAt('PostageStamp', currentPostage);
+    const tx = await stamp.copyBatch(...taskArgs);
+
+    console.log('Created new CopyBatch at : ', tx.hash);
+  });
+
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
 
 const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? undefined : process.env.PRIVATE_RPC_MAINNET;
