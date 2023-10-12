@@ -153,7 +153,7 @@ contract PostageStamp is AccessControl, Pausable {
     constructor(address _bzzToken, uint8 _minimumBucketDepth, address multisig) {
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
-        PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
+        PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE_ROLE");
         PAUSER_ROLE = keccak256("PAUSER_ROLE");
         REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
