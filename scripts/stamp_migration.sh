@@ -1,5 +1,6 @@
-postagecontract="0x822828dC7978ed03fd793B36E7a0cb9bce7e2048"
-tokenaddress="0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335"
+# This bash is used on data gathered from this script here https://github.com/ethersphere/batch-migration/tree/master
+# Using task defined in hardhat config, set PostageStamp contract that will be used in that config
+
 
 for row in $(cat ./private_testnet_batches.json | jq -c '.batches[]'); do
     _field() {
