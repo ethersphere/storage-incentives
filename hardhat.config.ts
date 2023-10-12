@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { HardhatUserConfig } from 'hardhat/types';
+import { task } from 'hardhat/config';
 import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
@@ -17,10 +18,10 @@ task('copy', 'Use copyBatch function from postageStamp contract')
   .addParam('batchid', "The account's address")
   .addParam('immutable', "The account's address")
 
-  .setAction(async (taskArgs: any) => {
+  .setAction(async (taskArgs: any, hre) => {
     const currentPostage = '0xf86b48B65355D292dDE7da8B4ad1913a72ad45C9';
 
-    const stamp = await ethers.getContractAt('PostageStamp', currentPostage);
+    const stamp = await hre.ethers.getContractAt('PostageStamp', currentPostage);
     const tx = await stamp.copyBatch(...taskArgs);
 
     console.log('Created new CopyBatch at : ', tx.hash);
