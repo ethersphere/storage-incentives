@@ -4,7 +4,7 @@ task('sigs', 'Generate ABI signatures for errors and functions')
   .addParam('c', 'Name of the contract for which to generate ABI data')
   .setAction(async (taskArgs: any, { ethers }) => {
     // Load the contract ABI based on the contract name
-    const ABI = require(`../artifacts/src/${taskArgs.c}.sol/${taskArgs.c}.json`).abi;
+    const ABI = (await import(`../artifacts/src/${taskArgs.c}.sol/${taskArgs.c}.json`)).abi;
 
     const prepareData = (e: { name: string; inputs: { type: string }[] }) =>
       `${e.name}(${e.inputs.map((param) => param.type)})`;
