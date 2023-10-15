@@ -467,9 +467,9 @@ contract Redistribution is AccessControl, Pausable {
             entryProofLast.proofSegments[0]
         );
 
-        emit WinnerSelected(winnerSelected);
-
         PostageContract.withdraw(winnerSelected.owner);
+        emit WinnerSelected(winnerSelected);
+        emit ChunkCount(PostageContract.validChunkCount());
     }
 
     function winnerSelection() internal {
