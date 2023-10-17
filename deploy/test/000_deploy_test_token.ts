@@ -2,8 +2,8 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 import verify from '../../utils/verify';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { deploy, log, getOrNull } = deployments;
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
+  const { deploy, log, getOrNull, getDeploymentsFromAddress } = deployments;
   const { deployer } = await getNamedAccounts();
 
   let token = null;
@@ -27,6 +27,12 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       log('Using already deployed token at', token.address);
     }
   }
+
+  // if (network.name == 'testnet') {
+  //   // We use gBZZ token deployed long time ago
+  //   const token = await ethers.getContractAt('TestToken', '0x2aC3c1d3e24b45c6C310534Bc2Dd84B5ed576335');
+  //   log('Using already deployed token at', token.address);
+  // }
 
   log('----------------------------------------------------');
 };

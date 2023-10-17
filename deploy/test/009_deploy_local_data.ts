@@ -48,25 +48,20 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
     log('Data saved to ' + fileName);
   }
 
+  const tokenContract = await get('TestToken');
   const stampsContract = await get('PostageStamp');
   const oracleContract = await get('PriceOracle');
   const stakingContract = await get('StakeRegistry');
   const redisContract = await get('Redistribution');
   const browserURL = config.etherscan.customChains.find((chain) => chain.network === network.name)?.urls.browserURL;
 
-  // Insert already deployed data
-  if (!developmentChains.includes(network.name)) {
-    deployedData['contracts']['bzzToken'] = deployedBzzData.testnet;
-  } else {
-    // Token data
-    const tokenContract = await get('TestToken');
-    deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
-    deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
-    deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
-    deployedData['contracts']['bzzToken']['block'] =
-      tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 0;
-    deployedData['contracts']['bzzToken']['url'] = browserURL + tokenContract.address;
-  }
+  // Token data
+  deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
+  deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
+  deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
+  deployedData['contracts']['bzzToken']['block'] =
+    tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 0;
+  deployedData['contracts']['bzzToken']['url'] = browserURL + tokenContract.address;
 
   // PostageStamp data
   deployedData['contracts']['postageStamp']['abi'] = stampsContract.abi;
