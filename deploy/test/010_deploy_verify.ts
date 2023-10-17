@@ -2,7 +2,7 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 import verify from '../../utils/verify';
 
-const func: DeployFunction = async function ({ deployments, network, ethers }) {
+const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
   if (network.name == 'testnet' && process.env.TESTNET_ETHERSCAN_KEY) {

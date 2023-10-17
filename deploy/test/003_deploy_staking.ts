@@ -1,7 +1,7 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
   const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
   const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;

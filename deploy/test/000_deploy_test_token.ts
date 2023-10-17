@@ -1,9 +1,8 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
-import verify from '../../utils/verify';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
-  const { deploy, log, getOrNull, getDeploymentsFromAddress } = deployments;
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+  const { deploy, log, getOrNull } = deployments;
   const { deployer } = await getNamedAccounts();
 
   let token = null;
