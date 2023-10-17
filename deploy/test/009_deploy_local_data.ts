@@ -54,13 +54,11 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
   const redisContract = await get('Redistribution');
   const browserURL = config.etherscan.customChains.find((chain) => chain.network === network.name)?.urls.browserURL;
 
-  // Insert already deployed data if it is mainnet or testnet
+  // Insert already deployed data
   if (!developmentChains.includes(network.name)) {
-    network.name == 'mainnet'
-      ? (deployedData['contracts']['bzzToken'] = deployedBzzData.mainnet)
-      : (deployedData['contracts']['bzzToken'] = deployedBzzData.testnet);
+    deployedData['contracts']['bzzToken'] = deployedBzzData.testnet;
   } else {
-    // Token data for dev chains
+    // Token data
     const tokenContract = await get('TestToken');
     deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
     deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
@@ -107,4 +105,4 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
 };
 
 export default func;
-func.tags = ['main', 'local'];
+func.tags = ['local'];
