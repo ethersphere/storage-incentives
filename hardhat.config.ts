@@ -155,16 +155,19 @@ const config: HardhatUserConfig = {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
       accounts,
       chainId: 5,
+      deploy: ['deploy/test/'],
     },
     sepolia: {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://rpc2.sepolia.org',
       accounts,
       chainId: 11155111,
+      deploy: ['deploy/test/'],
     },
     mainnet: {
       url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
       accounts,
       chainId: 100,
+      deploy: ['deploy/main/'],
     },
   },
   etherscan: {

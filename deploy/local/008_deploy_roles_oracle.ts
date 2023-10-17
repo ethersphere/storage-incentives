@@ -14,4 +14,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 };
 
 export default func;
-func.tags = ['main', 'staking_roles', 'roles'];
+func.tags = ['oracle_roles', 'roles'];
