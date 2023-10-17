@@ -1,22 +1,11 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
+import { networkConfig } from '../../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  let token = null;
-  if (developmentChains.includes(network.name)) {
-    token = await get('TestToken');
-  }
-
-  if (network.name == 'mainnet' || network.name == 'testnet') {
-    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
-  }
-
-  if (token == null) {
-    throw new Error(`Unsupported network: ${network.name}`);
-  }
+  const token = await get('TestToken');
 
   const argsStamp = [token.address, 16, networkConfig[network.name]?.multisig];
 
@@ -31,4 +20,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['main', 'postageStamp', 'contracts'];
+func.tags = ['postageStamp', 'contracts'];

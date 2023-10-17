@@ -1,10 +1,9 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains, deployedBzzData } from '../helper-hardhat-config';
+import { networkConfig, developmentChains, deployedBzzData } from '../../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
-  const { deploy, get, log } = deployments;
+  const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
-  const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
 
   let token = null;
   if (developmentChains.includes(network.name)) {
@@ -19,10 +18,11 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     throw new Error(`Unsupported network: ${network.name}`);
   }
 
-  const args = [token.address, swarmNetworkID, networkConfig[network.name]?.multisig];
-  await deploy('StakeRegistry', {
+  const argsStamp = [token.address, 16, networkConfig[network.name]?.multisig];
+
+  await deploy('PostageStamp', {
     from: deployer,
-    args: args,
+    args: argsStamp,
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });
@@ -31,4 +31,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['main', 'staking', 'contracts'];
+func.tags = ['main', 'postageStamp', 'contracts'];

@@ -208,7 +208,6 @@ describe('Redistribution', function () {
       await deployments.fixture();
       redistribution = await ethers.getContract('Redistribution');
       await mineNBlocks(roundLength * 2);
-      // await setPrevRandDAO();
     });
 
     it('should not create a commit with unstaked node', async function () {
@@ -325,9 +324,8 @@ describe('Redistribution', function () {
 
       // We need to mine 2 rounds to make the staking possible
       // as this is the minimum time between staking and committing
-      await mineNBlocks(roundLength * 2);
+      await mineNBlocks(roundLength * 2 + 3);
       await startRoundFixture();
-      // await setPrevRandDAO();
     });
 
     describe('round numbers and phases', function () {
