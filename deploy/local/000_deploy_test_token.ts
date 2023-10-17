@@ -1,6 +1,6 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { developmentChains, networkConfig } from '../helper-hardhat-config';
-import verify from '../utils/verify';
+import { developmentChains, networkConfig } from '../../helper-hardhat-config';
+import verify from '../../utils/verify';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
   const { deploy, log } = deployments;

@@ -1,6 +1,6 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { deployedBzzData, networkConfig } from '../helper-hardhat-config';
-import verify from '../utils/verify';
+import { deployedBzzData, networkConfig } from '../../helper-hardhat-config';
+import verify from '../../utils/verify';
 
 const func: DeployFunction = async function ({ deployments, network, ethers }) {
   const { log, get } = deployments;

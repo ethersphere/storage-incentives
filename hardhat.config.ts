@@ -144,10 +144,12 @@ const config: HardhatUserConfig = {
         },
       ],
       hardfork: 'merge',
+      deploy: ['deploy/local/'],
     },
     localhost: {
       url: 'http://localhost:8545',
       chainId: 31337,
+      deploy: ['deploy/local/'],
     },
     testnet: {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
