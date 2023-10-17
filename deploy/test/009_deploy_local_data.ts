@@ -60,7 +60,7 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
   deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
   deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
   deployedData['contracts']['bzzToken']['block'] =
-    tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 0;
+    tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 4224739;
   deployedData['contracts']['bzzToken']['url'] = browserURL + tokenContract.address;
 
   // PostageStamp data
