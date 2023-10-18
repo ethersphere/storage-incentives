@@ -1027,7 +1027,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         // alive
-        if (PostageContract.remainingBalance(entryProof.postageProof.postageId) > 0) {
+        if (PostageContract.remainingBalance(entryProof.postageProof.postageId) <= 0) {
             revert BalanceValidationFailed(entryProof.postageProof.postageId);
         }
 
