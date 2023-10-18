@@ -237,7 +237,7 @@ contract Redistribution is AccessControl, Pausable {
     error SocCalcNotMatching(bytes32); // Soc address calculation does not match with the witness
     error IndexOutsideSet(bytes32); // Stamp available: index resides outside of the valid index set
     error SigRecoveryFailed(bytes32); // Stamp authorized: signature recovery failed for element
-    error BalanceValidationFailed(bytes32); // Stamp alive: batch remaining balance validation failed for attached stamp
+    error BatchDoesNotExist(bytes32); // Stamp alive: batch remaining balance validation failed for attached stamp
     error BucketDiffers(bytes32); // Stamp aligned: postage bucket differs from address bucket
     error InclusionProofFailed(uint8, bytes32);
     // 1 = RC inclusion proof failed for element
@@ -1019,16 +1019,17 @@ contract Redistribution is AccessControl, Pausable {
         (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , , ) = PostageContract.batches(
             entryProof.postageProof.postageId
         );
+
+        // alive
+        if (batchOwner == address(0)) {
+            revert BatchDoesNotExist(entryProof.postageProof.postageId); // Batch does not exist or expired
+        }
+
         uint32 postageIndex = getPostageIndex(entryProof.postageProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
         if (postageIndex >= maxPostageIndex) {
             revert IndexOutsideSet(entryProof.postageProof.postageId);
-        }
-
-        // alive
-        if (PostageContract.remainingBalance(entryProof.postageProof.postageId) <= 0) {
-            revert BalanceValidationFailed(entryProof.postageProof.postageId);
         }
 
         // aligned
