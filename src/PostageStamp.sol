@@ -136,7 +136,6 @@ contract PostageStamp is AccessControl, Pausable {
     error BatchTooSmall(); // Batch too small to renew
     error NotBatchOwner(); // Not batch owner
     error DepthNotIncreasing(); // Depth not increasing
-    error BatchIsImmutable(); // Batch is immutable
     error PriceOracleOnly(); // Only price oracle can set the price
     error InsufficienChunkCount(); // Insufficient valid chunk count
     error TotalOutpaymentDecreased(); // Current total outpayment should never decrease
@@ -342,10 +341,6 @@ contract PostageStamp is AccessControl, Pausable {
 
         if (!(minimumBucketDepth < _newDepth && batch.depth < _newDepth)) {
             revert DepthNotIncreasing();
-        }
-
-        if (batch.immutableFlag) {
-            revert BatchIsImmutable();
         }
 
         if (batch.normalisedBalance <= currentTotalOutPayment()) {
