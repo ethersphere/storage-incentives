@@ -1,5 +1,5 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { developmentChains, deployedBzzData, networkConfig } from '../../helper-hardhat-config';
+import { networkConfig } from '../../helper-hardhat-config';
 import * as fs from 'fs';
 
 interface DeployedContract {
@@ -48,27 +48,20 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
     log('Data saved to ' + fileName);
   }
 
+  const tokenContract = await get('Token');
   const stampsContract = await get('PostageStamp');
   const oracleContract = await get('PriceOracle');
   const stakingContract = await get('StakeRegistry');
   const redisContract = await get('Redistribution');
   const browserURL = config.etherscan.customChains.find((chain) => chain.network === network.name)?.urls.browserURL;
 
-  // Insert already deployed data if it is mainnet or testnet
-  if (!developmentChains.includes(network.name)) {
-    network.name == 'mainnet'
-      ? (deployedData['contracts']['bzzToken'] = deployedBzzData.mainnet)
-      : (deployedData['contracts']['bzzToken'] = deployedBzzData.testnet);
-  } else {
-    // Token data for dev chains
-    const tokenContract = await get('TestToken');
-    deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
-    deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
-    deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
-    deployedData['contracts']['bzzToken']['block'] =
-      tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 0;
-    deployedData['contracts']['bzzToken']['url'] = browserURL + tokenContract.address;
-  }
+  // Token data
+  deployedData['contracts']['bzzToken']['abi'] = tokenContract.abi;
+  deployedData['contracts']['bzzToken']['bytecode'] = tokenContract.bytecode ? tokenContract.bytecode : '';
+  deployedData['contracts']['bzzToken']['address'] = tokenContract.address;
+  deployedData['contracts']['bzzToken']['block'] =
+    tokenContract.receipt && tokenContract.receipt.blockNumber ? tokenContract.receipt.blockNumber : 16514506;
+  deployedData['contracts']['bzzToken']['url'] = browserURL + tokenContract.address;
 
   // PostageStamp data
   deployedData['contracts']['postageStamp']['abi'] = stampsContract.abi;
@@ -107,4 +100,4 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
 };
 
 export default func;
-func.tags = ['main', 'local'];
+func.tags = ['local'];
