@@ -392,12 +392,12 @@ contract PostageStamp is AccessControl, Pausable {
         emit PriceUpdate(_price);
     }
 
-    function setMinimumValidityBlocks(uint256 _value) external {
+    function setMinimumValidityBlocks(uint64 _value) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
         }
 
-        minimumValidityBlocks = uint64(_value);
+        minimumValidityBlocks = _value;
     }
 
     /**
