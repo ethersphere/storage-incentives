@@ -5,7 +5,7 @@ import verify from '../../utils/verify';
 const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
-  if (network.name == 'mainnet' && process.env.MAINNET_ETHERSCAN_KEY) {
+  if (process.env.MAINNET_ETHERSCAN_KEY) {
     const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
 
     // Verify TestNet token

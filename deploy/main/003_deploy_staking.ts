@@ -6,14 +6,13 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer } = await getNamedAccounts();
   const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
   const token = await get('Token');
-  
-  const args = [token.address, swarmNetworkID, networkConfig[network.name]?.multisig];
-  await deploy('StakeRegistry', {
-    from: deployer,
-    args: args,
-    log: true,
-    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
-  });
+  let staking = null;
+
+  // We use legacy token that was migrated, until we deploy new one with this framework
+  if (!(staking = await get('StakeRegistry'))) {
+  } else {
+    log('Using already deployed token at', staking.address);
+  }
 
   log('----------------------------------------------------');
 };

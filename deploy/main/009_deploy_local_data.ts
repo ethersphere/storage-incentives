@@ -84,7 +84,7 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
   deployedData['contracts']['staking']['bytecode'] = stakingContract.bytecode ? stakingContract.bytecode : '';
   deployedData['contracts']['staking']['address'] = stakingContract.address;
   deployedData['contracts']['staking']['block'] =
-    stakingContract.receipt && stakingContract.receipt.blockNumber ? stakingContract.receipt.blockNumber : 0;
+    stakingContract.receipt && stakingContract.receipt.blockNumber ? stakingContract.receipt.blockNumber : 25527075;
   deployedData['contracts']['staking']['url'] = browserURL + stakingContract.address;
 
   // Oracle data
