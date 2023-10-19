@@ -7,14 +7,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
   if (process.env.MAINNET_ETHERSCAN_KEY) {
     const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
-
-    // Verify TestNet token
-    const token = await get('TestToken');
-    const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000', networkConfig[network.name]?.multisig];
-
-    log('Verifying...');
-    await verify(token.address, argsToken);
-    log('----------------------------------------------------');
+    const token = await get('Token');
 
     // Verify postageStamp
     const postageStamp = await get('PostageStamp');
