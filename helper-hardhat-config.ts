@@ -15,6 +15,11 @@ export const networkConfig: networkConfigInfo = {
     swarmNetworkId: 333, // For testnet2 we use 333, for regular testnet we use 10
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
+  mainfork: {
+    blockConfirmations: 1,
+    swarmNetworkId: 1,
+    multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
+  },
   mainnet: {
     blockConfirmations: 6,
     swarmNetworkId: 1,

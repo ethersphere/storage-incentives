@@ -163,6 +163,12 @@ const config: HardhatUserConfig = {
       chainId: 11155111,
       deploy: ['deploy/test/'],
     },
+    mainfork: {
+      url: 'https://rpc.tenderly.co/fork/8677f2d4-7c4f-4a5e-be4f-656f936e36da',
+      accounts,
+      chainId: 100,
+      deploy: ['deploy/main/'],
+    },
     mainnet: {
       url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
       accounts,
