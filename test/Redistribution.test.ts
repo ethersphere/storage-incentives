@@ -174,7 +174,7 @@ const errors = {
     outOfDepth: 'OutOfDepth()',
     reserveCheckFailed: 'ReserveCheckFailed()',
     indexOutsideSet: 'IndexOutsideSet()',
-    balanceValidationFailed: 'BalanceValidationFailed()',
+    batchDoesNotExist: 'BatchDoesNotExist()',
     bucketDiffers: 'BucketDiffers()',
     sigRecoveryFailed: 'SigRecoveryFailed()',
     inclusionProofFailed1: 'InclusionProofFailed',
@@ -1118,7 +1118,7 @@ describe('Redistribution', function () {
             const postage = await ethers.getContract('PostageStamp', deployer);
             const validityBlockTx = await postage.setMinimumValidityBlocks(1);
             await validityBlockTx.wait();
-            const initialPaymentPerChunk = price1 * 2 - 1; // it works without substracting 1, the one block is the "createBatch"
+            const initialPaymentPerChunk = price1 * 2 - 1;
             const batchSize = 2 ** batch.depth;
             const transferAmount = initialPaymentPerChunk * batchSize;
             await mintAndApprove(deployer, deployer, postage.address, transferAmount.toString());
@@ -1130,6 +1130,8 @@ describe('Redistribution', function () {
               '0x00000000000000000000000000000000000000000000000000000000b0bafe77',
               batch.immutable
             );
+            await mineNBlocks(1); // in order to expire batch
+            await postage.expireLimited(1); // remove batch
             const batchReceipt = await batchTx.wait();
             const batchCreatedEvent = batchReceipt.events.filter((e: { event: string }) => e.event === 'BatchCreated');
             const batchId = Buffer.from(arrayify(batchCreatedEvent[0].args[0]));
@@ -1143,7 +1145,7 @@ describe('Redistribution', function () {
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.balanceValidationFailed);
+            ).to.be.revertedWith(errors.claim.batchDoesNotExist);
           });
 
           it('postage bucket and address bucket do not match', async function () {
