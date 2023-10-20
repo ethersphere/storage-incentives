@@ -147,7 +147,7 @@ contract Redistribution is AccessControl, Pausable {
 
     // alpha=0.097612 beta=0.0716570 k=16
     uint256 private constant SAMPLE_MAX_VALUE =
-        1284401000000000000000000000000000000000000000000000000000000000000000000;
+        128440100000000000000000000000000000000000000000000000000000000000000000000;
 
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
