@@ -6,7 +6,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 
   let token = null;
 
-  const argsToken = ['TEST', 'TST', '1249989122910552325012092', deployer];
+  const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
 
   token = await deploy('TestToken', {
     from: deployer,

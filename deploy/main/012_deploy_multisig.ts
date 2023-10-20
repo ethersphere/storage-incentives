@@ -14,4 +14,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 };
 
 export default func;
-func.tags = ['state_changes'];
+func.tags = ['main', 'state_changes'];
