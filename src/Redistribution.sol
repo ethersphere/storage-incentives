@@ -246,7 +246,7 @@ contract Redistribution is AccessControl, Pausable {
     // 4 = Inclusion proof failed for transformed address of element
     error RandomElementCheckFailed(); // Random element order check failed
     error LastElementCheckFailed(); // Last element order check failed
-    error ReserveCheckFailed(); // Reserve size estimation check failed
+    error ReserveCheckFailed(bytes32 trALast); // Reserve size estimation check failed
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -1097,7 +1097,7 @@ contract Redistribution is AccessControl, Pausable {
 
     function estimateSize(bytes32 trALast) internal pure {
         if (uint256(trALast) >= SAMPLE_MAX_VALUE) {
-            revert ReserveCheckFailed();
+            revert ReserveCheckFailed(trALast);
         }
     }
 }
