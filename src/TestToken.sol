@@ -6,15 +6,10 @@ import "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetMinterPauser.sol"
 contract TestToken is ERC20PresetMinterPauser {
     uint256 private _initialSupply;
 
-    constructor(
-        string memory name,
-        string memory symbol,
-        uint256 initialSupply,
-        address multisig
-    ) ERC20PresetMinterPauser(name, symbol) {
+    constructor(string memory name, string memory symbol, uint256 initialSupply) ERC20PresetMinterPauser(name, symbol) {
         _initialSupply = initialSupply;
-        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
-        _mint(multisig, initialSupply);
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _mint(msg.sender, initialSupply);
     }
 
     // We use 16 decimals for BZZ/sBZZ token so we need to override it here
