@@ -19,7 +19,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     throw new Error(`Unsupported network: ${network.name}`);
   }
 
-  const args = [token.address, swarmNetworkID, networkConfig[network.name]?.multisig];
+  const args = [token.address, swarmNetworkID];
   await deploy('StakeRegistry', {
     from: deployer,
     args: args,

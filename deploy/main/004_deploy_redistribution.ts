@@ -9,7 +9,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     (await get('StakeRegistry')).address,
     (await get('PostageStamp')).address,
     (await get('PriceOracle')).address,
-    networkConfig[network.name]?.multisig,
   ];
 
   await deploy('Redistribution', {

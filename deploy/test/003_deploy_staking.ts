@@ -7,7 +7,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
   const token = await get('TestToken');
 
-  const args = [token.address, swarmNetworkID, networkConfig[network.name]?.multisig];
+  const args = [token.address, swarmNetworkID];
   await deploy('StakeRegistry', {
     from: deployer,
     args: args,

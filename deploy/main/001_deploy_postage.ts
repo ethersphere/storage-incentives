@@ -18,7 +18,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     throw new Error(`Unsupported network: ${network.name}`);
   }
 
-  const argsStamp = [token.address, 16, networkConfig[network.name]?.multisig];
+  const argsStamp = [token.address, 16];
 
   await deploy('PostageStamp', {
     from: deployer,
