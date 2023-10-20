@@ -7,7 +7,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   let token = null;
 
-  if (network.name == 'testnet') {
+  if (network.name == 'testnet' || network.name == 'pretestnet') {
     // We deploy new token if there is no token
     if (!(token = await getOrNull('TestToken'))) {
       const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000', networkConfig[network.name]?.multisig];

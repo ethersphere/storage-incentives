@@ -10,9 +10,14 @@ export interface networkConfigInfo {
 export const networkConfig: networkConfigInfo = {
   localhost: { swarmNetworkId: 0, multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
   hardhat: { swarmNetworkId: 0, multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
+  pretestnet: {
+    blockConfirmations: 6,
+    swarmNetworkId: 333,
+    multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
+  },
   testnet: {
     blockConfirmations: 6,
-    swarmNetworkId: 333, // For testnet2 we use 333, for regular testnet we use 10
+    swarmNetworkId: 10,
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
   mainnet: {

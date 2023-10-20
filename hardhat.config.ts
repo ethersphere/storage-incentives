@@ -151,6 +151,12 @@ const config: HardhatUserConfig = {
       chainId: 31337,
       deploy: ['deploy/local/'],
     },
+    pretestnet: {
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+      accounts,
+      chainId: 5,
+      deploy: ['deploy/test/'],
+    },
     testnet: {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
       accounts,
