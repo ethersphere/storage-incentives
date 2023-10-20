@@ -136,6 +136,10 @@ contract Redistribution is AccessControl, Pausable {
     uint8 private penaltyMultiplierDisagreement = 1;
     uint8 private penaltyMultiplierNonRevealed = 2;
 
+    // alpha=0.097612 beta=0.0716570 k=16
+    uint256 private sampleMaxValue =
+        1284401000000000000000000000000000000000000000000000000000000000000000000;
+
     // The reveal of the winner of the last round.
     Reveal public winner;
 
@@ -144,10 +148,6 @@ contract Redistribution is AccessControl, Pausable {
 
     // The miniumum stake allowed to be staked using the Staking contract.
     uint64 private constant MIN_STAKE = 100000000000000000;
-
-    // alpha=0.097612 beta=0.0716570 k=16
-    uint256 private constant SAMPLE_MAX_VALUE =
-        1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
@@ -246,7 +246,7 @@ contract Redistribution is AccessControl, Pausable {
     // 4 = Inclusion proof failed for transformed address of element
     error RandomElementCheckFailed(); // Random element order check failed
     error LastElementCheckFailed(); // Last element order check failed
-    error ReserveCheckFailed(); // Reserve size estimation check failed
+    error ReserveCheckFailed(bytes32 trALast); // Reserve size estimation check failed
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -467,6 +467,8 @@ contract Redistribution is AccessControl, Pausable {
             entryProofLast.proofSegments[0]
         );
 
+        estimateSize(entryProofLast.proofSegments[0]);
+
         PostageContract.withdraw(winnerSelected.owner);
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
@@ -623,6 +625,17 @@ contract Redistribution is AccessControl, Pausable {
 
         penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
         penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
+    }
+
+    /**
+     * @notice changes the max sample value used for reserve estimation
+     */
+    function setSampleMaxValue(uint256 _sampleMaxValue) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert NotAdmin();
+        }
+
+        sampleMaxValue = _sampleMaxValue;
     }
 
     /**
@@ -1091,13 +1104,11 @@ contract Redistribution is AccessControl, Pausable {
                 revert LastElementCheckFailed();
             }
         }
-
-        estimateSize(trALast);
     }
 
-    function estimateSize(bytes32 trALast) internal pure {
-        if (uint256(trALast) >= SAMPLE_MAX_VALUE) {
-            revert ReserveCheckFailed();
+    function estimateSize(bytes32 trALast) internal view {
+        if (uint256(trALast) >= sampleMaxValue) {
+            revert ReserveCheckFailed(trALast);
         }
     }
 }
