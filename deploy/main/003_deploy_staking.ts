@@ -1,34 +1,21 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig, developmentChains, deployedBzzData } from '../../helper-hardhat-config';
+import { networkConfig } from '../../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
-  const { deploy, get, log } = deployments;
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+  const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
   const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
+  const token = await get('Token');
+  let staking = null;
 
-  let token = null;
-  if (developmentChains.includes(network.name)) {
-    token = await get('TestToken');
+  // We use legacy token that was migrated, until we deploy new one with this framework
+  if (!(staking = await get('StakeRegistry'))) {
+  } else {
+    log('Using already deployed token at', staking.address);
   }
-
-  if (network.name == 'mainnet' || network.name == 'testnet') {
-    token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
-  }
-
-  if (token == null) {
-    throw new Error(`Unsupported network: ${network.name}`);
-  }
-
-  const args = [token.address, swarmNetworkID];
-  await deploy('StakeRegistry', {
-    from: deployer,
-    args: args,
-    log: true,
-    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
-  });
 
   log('----------------------------------------------------');
 };
 
 export default func;
-func.tags = ['main', 'staking', 'contracts'];
+func.tags = ['staking', 'contracts'];
