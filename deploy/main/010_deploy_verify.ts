@@ -1,14 +1,13 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { deployedBzzData, networkConfig } from '../../helper-hardhat-config';
+import { networkConfig } from '../../helper-hardhat-config';
 import verify from '../../utils/verify';
 
-const func: DeployFunction = async function ({ deployments, network, ethers }) {
+const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
-  if ((network.name == 'mainnet' || network.name == 'testnet') && process.env.MAINNET_ETHERSCAN_KEY) {
-    // contract verifying vars
-    const token = await ethers.getContractAt(deployedBzzData[network.name].abi, deployedBzzData[network.name].address);
+  if (process.env.MAINNET_ETHERSCAN_KEY) {
     const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
+    const token = await get('Token');
 
     // Verify postageStamp
     const postageStamp = await get('PostageStamp');
@@ -50,4 +49,4 @@ const func: DeployFunction = async function ({ deployments, network, ethers }) {
 };
 
 export default func;
-func.tags = ['main', 'verify'];
+func.tags = ['verify'];

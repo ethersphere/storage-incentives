@@ -16,11 +16,11 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     from: deployer,
     args: args,
     log: true,
-    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
+    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
   });
 
   log('----------------------------------------------------');
 };
 
 export default func;
-func.tags = ['main', 'redistribution', 'contracts'];
+func.tags = ['redistribution', 'contracts'];
