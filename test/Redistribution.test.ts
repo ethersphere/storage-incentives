@@ -251,10 +251,10 @@ describe('Redistribution', function () {
     let redistribution: Contract;
     let token: Contract;
     let postage: Contract;
-    const price1 = 2048;
+    const price1 = 1048576;
     const batch = {
       nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-      initialPaymentPerChunk: 2000000000,
+      initialPaymentPerChunk: 20000000000,
       depth: 17,
       bucketDepth: 16,
       immutable: false,
