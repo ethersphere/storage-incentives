@@ -1,0 +1,76 @@
+{
+    "batches": [
+        {
+            "batchid": "a132cef1f9fadb073b1cbfe77ed4ec07f360172d717f09c580dbb465bb34f3e1",
+            "owner": "0x033bd22972c4b862d17192e5570152945e9d9d39",
+            "depth": 18,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 150837072000
+        },
+        {
+            "batchid": "cce14284257912901f9e68df216bd74a77b0646c1b0918ae86a38d23b6848a49",
+            "owner": "0x1fb1f1d3620eab8e3b69dd2b2c40933a61c7f276",
+            "depth": 18,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 150842832000
+        },
+        {
+            "batchid": "390569a8a6a575036531289426e384548be4227335343b8a23d941e8fb115e5d",
+            "owner": "0x033bd22972c4b862d17192e5570152945e9d9d39",
+            "depth": 18,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 150853776000
+        },
+        {
+            "batchid": "697fae02338dfe8990821899b4278a3955abe850dd9bcafa2a50ba4ee5952cab",
+            "owner": "0x1fb1f1d3620eab8e3b69dd2b2c40933a61c7f276",
+            "depth": 18,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 150960504000
+        },
+        {
+            "batchid": "5fe3b84537de241614df4cab60aaa10702f3add26fa211162b895306781e1126",
+            "owner": "0x033bd22972c4b862d17192e5570152945e9d9d39",
+            "depth": 18,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 150967776000
+        },
+        {
+            "batchid": "d9c67529022536487062d50fd4c9f52d6238f39e7623ff37b5aca4763cf820c4",
+            "owner": "0x10cf984996e1060fa65c10576c3e298ffddcca40",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 382232000
+        },
+        {
+            "batchid": "dabcde8d33c1de0b0c235118ff2ca0768bde3446d4aa26814fe72cb9fb67e228",
+            "owner": "0x3f32bbca61d3e6eef9581d6f62a76a6820975b99",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 382232000
+        },
+        {
+            "batchid": "e133c7a1fd9ae7b6f1f9436db032de2a01184dee5110c5f30da74c0b27271288",
+            "owner": "0x9aeacae994899b298e6f7de67a94cb9bafccea3a",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 382304000
+        },
+        {
+            "batchid": "6702dbc810512b16fb1fa5e4b13a32ccfda471117dafc3144abe53fa92ce19e9",
+            "owner": "0x92883e7f478f6b96c56435e16c181f182315eeb6",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 382328000
+        }
+    ]
+}
