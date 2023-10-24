@@ -16,7 +16,7 @@ before(async function () {
   others = await getUnnamedAccounts();
 });
 
-const increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
+const increaseRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
 const roundLength = 152;
 
 const errors = {
