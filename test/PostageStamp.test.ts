@@ -24,6 +24,7 @@ before(async function () {
   stamper = namedAccounts.stamper;
   oracle = namedAccounts.oracle;
   others = await getUnnamedAccounts();
+  const minimumPrice = 1048576;
 });
 
 async function setPrice(price: number) {
@@ -88,7 +89,7 @@ describe('PostageStamp', function () {
     let postageStampStamper: Contract, token: Contract, priceOracle: Contract;
     let batch: Batch;
     let batchSize: number, transferAmount: number;
-    const price0 = 1024;
+    const price0 = minimumPrice;
     let setPrice0Block: number;
 
     beforeEach(async function () {
@@ -621,10 +622,10 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, token: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      const price0 = 1024;
+      const price0 = minimumPrice;
       let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 10;
-      const topupAmountPerChunk = 1024;
+      const topupAmountPerChunk = minimumPrice;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
@@ -751,7 +752,7 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      const price0 = 1024;
+      const price0 = minimumPrice;
       let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 100;
       const newDepth = 18;
@@ -852,7 +853,7 @@ describe('PostageStamp', function () {
       });
 
       it('should compute correct balance if outpayments changed since creation', async function () {
-        const newPrice = 2048;
+        const newPrice = 2 * minimumPrice;
         await priceOracle.setPrice(newPrice);
 
         const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - newPrice * 1;
@@ -1018,7 +1019,7 @@ describe('PostageStamp', function () {
       let batch0Size: number, transferAmount0: number;
       let batch1Size: number, transferAmount1: number;
       let batch2Size: number, transferAmount2: number;
-      const price0 = 1024;
+      const price0 = minimumPrice;
       const initialBatch0Blocks = 10;
       const initialBatch1Blocks = 10;
       const initialBatch2Blocks = 200;
