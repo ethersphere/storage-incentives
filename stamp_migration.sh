@@ -9,14 +9,14 @@ for row in $(cat ./batches.json | jq -c '.batches[]'); do
     owner=$(_field $row ".owner")
     balance=$(_field $row ".remainingBalance")
     depth=$(_field $row ".depth")
-    bucketDepth=16
+    bucketdepth=$(_field $row ".bucketDepth")
     batchid=$(_field $row ".batchid")
     immutable=$(_field $row ".immutable")
 
     echo "current balance #####"
     echo ${balance}
 
-    cmd="npx hardhat --network mainfork copy --owner ${owner} --initialbalance ${balance}  --depth ${depth} --bucketDepth ${bucketDepth}  --batchid ${batchid}  --immutable ${immutable}"
+    cmd="npx hardhat --network mainfork copy --owner ${owner} --initialbalance ${balance}  --depth ${depth} --bucketdepth ${bucketdepth}  --batchid ${batchid}  --immutable ${immutable}"
     $cmd
     [ $? -eq 0 ] && echo "${batchid} migration successful" || echo "${batchid} migration failure"
 done
