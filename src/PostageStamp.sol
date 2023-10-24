@@ -258,10 +258,6 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount)) {
-            revert TransferFailed();
-        }
-
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
         if (normalisedBalance == 0) {
             revert ZeroBalance();

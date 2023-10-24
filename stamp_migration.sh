@@ -13,7 +13,7 @@ for row in $(cat ./batches.json | jq -c '.batches[]'); do
     batchid=$(_field $row ".batchid")
     immutable=$(_field $row ".immutable")
 
-    echo "current balance #####"
+    echo "Batch balance #####"
     echo ${balance}
 
     cmd="npx hardhat --network mainfork copy --owner ${owner} --initialbalance ${balance}  --depth ${depth} --bucketdepth ${bucketdepth}  --batchid ${batchid}  --immutable ${immutable}"
