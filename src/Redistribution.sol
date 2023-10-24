@@ -136,6 +136,10 @@ contract Redistribution is AccessControl, Pausable {
     uint8 private penaltyMultiplierDisagreement = 1;
     uint8 private penaltyMultiplierNonRevealed = 2;
 
+    // alpha=0.097612 beta=0.0716570 k=16
+    uint256 private sampleMaxValue =
+        1284401000000000000000000000000000000000000000000000000000000000000000000;
+
     // The reveal of the winner of the last round.
     Reveal public winner;
 
@@ -144,10 +148,6 @@ contract Redistribution is AccessControl, Pausable {
 
     // The miniumum stake allowed to be staked using the Staking contract.
     uint64 private constant MIN_STAKE = 100000000000000000;
-
-    // alpha=0.097612 beta=0.0716570 k=16
-    uint256 private constant SAMPLE_MAX_VALUE =
-        1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
@@ -207,7 +207,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Logs for inclusion proof
      */
-    event transformedChunkAddressFromInclusionProof(uint256, bytes32 chunkAddress);
+    event transformedChunkAddressFromInclusionProof(uint256 indexInRC, bytes32 chunkAddress);
 
     // ----------------------------- Errors ------------------------------
 
@@ -237,7 +237,7 @@ contract Redistribution is AccessControl, Pausable {
     error SocCalcNotMatching(bytes32); // Soc address calculation does not match with the witness
     error IndexOutsideSet(bytes32); // Stamp available: index resides outside of the valid index set
     error SigRecoveryFailed(bytes32); // Stamp authorized: signature recovery failed for element
-    error BalanceValidationFailed(bytes32); // Stamp alive: batch remaining balance validation failed for attached stamp
+    error BatchDoesNotExist(bytes32); // Stamp alive: batch remaining balance validation failed for attached stamp
     error BucketDiffers(bytes32); // Stamp aligned: postage bucket differs from address bucket
     error InclusionProofFailed(uint8, bytes32);
     // 1 = RC inclusion proof failed for element
@@ -246,7 +246,7 @@ contract Redistribution is AccessControl, Pausable {
     // 4 = Inclusion proof failed for transformed address of element
     error RandomElementCheckFailed(); // Random element order check failed
     error LastElementCheckFailed(); // Last element order check failed
-    error ReserveCheckFailed(); // Reserve size estimation check failed
+    error ReserveCheckFailed(bytes32 trALast); // Reserve size estimation check failed
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -467,9 +467,11 @@ contract Redistribution is AccessControl, Pausable {
             entryProofLast.proofSegments[0]
         );
 
-        emit WinnerSelected(winnerSelected);
+        estimateSize(entryProofLast.proofSegments[0]);
 
         PostageContract.withdraw(winnerSelected.owner);
+        emit WinnerSelected(winnerSelected);
+        emit ChunkCount(PostageContract.validChunkCount());
     }
 
     function winnerSelection() internal {
@@ -623,6 +625,17 @@ contract Redistribution is AccessControl, Pausable {
 
         penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
         penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
+    }
+
+    /**
+     * @notice changes the max sample value used for reserve estimation
+     */
+    function setSampleMaxValue(uint256 _sampleMaxValue) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert NotAdmin();
+        }
+
+        sampleMaxValue = _sampleMaxValue;
     }
 
     /**
@@ -1015,23 +1028,21 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
+        // authentic
         (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , , ) = PostageContract.batches(
             entryProof.postageProof.postageId
         );
-        // authentic
+
+        // alive
+        if (batchOwner == address(0)) {
+            revert BatchDoesNotExist(entryProof.postageProof.postageId); // Batch does not exist or expired
+        }
+
         uint32 postageIndex = getPostageIndex(entryProof.postageProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
         if (postageIndex >= maxPostageIndex) {
             revert IndexOutsideSet(entryProof.postageProof.postageId);
-        }
-
-        // alive
-        if (
-            PostageContract.remainingBalance(entryProof.postageProof.postageId) <
-            PostageContract.minimumInitialBalancePerChunk()
-        ) {
-            revert BalanceValidationFailed(entryProof.postageProof.postageId);
         }
 
         // aligned
@@ -1093,13 +1104,11 @@ contract Redistribution is AccessControl, Pausable {
                 revert LastElementCheckFailed();
             }
         }
-
-        estimateSize(trALast);
     }
 
-    function estimateSize(bytes32 trALast) internal pure {
-        if (uint256(trALast) >= SAMPLE_MAX_VALUE) {
-            revert ReserveCheckFailed();
+    function estimateSize(bytes32 trALast) internal view {
+        if (uint256(trALast) >= sampleMaxValue) {
+            revert ReserveCheckFailed(trALast);
         }
     }
 }

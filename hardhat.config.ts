@@ -9,6 +9,7 @@ import '@nomiclabs/hardhat-etherscan';
 import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
+import './tasks';
 
 task('copy', 'Use copyBatch function from postageStamp contract')
   .addParam('owner', "The account's address")
@@ -161,25 +162,42 @@ const config: HardhatUserConfig = {
         },
       ],
       hardfork: 'merge',
+      deploy: ['deploy/local/'],
     },
     localhost: {
       url: 'http://localhost:8545',
       chainId: 31337,
+      deploy: ['deploy/local/'],
+    },
+    pretestnet: {
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+      accounts,
+      chainId: 5,
+      deploy: ['deploy/test/'],
     },
     testnet: {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
       accounts,
       chainId: 5,
+      deploy: ['deploy/test/'],
     },
     sepolia: {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://rpc2.sepolia.org',
       accounts,
       chainId: 11155111,
+      deploy: ['deploy/test/'],
+    },
+    mainfork: {
+      url: 'https://rpc.tenderly.co/fork/0ce88d9f-0a77-4cac-927b-84da71e97648',
+      accounts,
+      chainId: 100,
+      deploy: ['deploy/main/'],
     },
     mainnet: {
       url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
       accounts,
       chainId: 100,
+      deploy: ['deploy/main/'],
     },
   },
   etherscan: {

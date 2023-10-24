@@ -136,7 +136,6 @@ contract PostageStamp is AccessControl, Pausable {
     error BatchTooSmall(); // Batch too small to renew
     error NotBatchOwner(); // Not batch owner
     error DepthNotIncreasing(); // Depth not increasing
-    error BatchIsImmutable(); // Batch is immutable
     error PriceOracleOnly(); // Only price oracle can set the price
     error InsufficienChunkCount(); // Insufficient valid chunk count
     error TotalOutpaymentDecreased(); // Current total outpayment should never decrease
@@ -153,7 +152,7 @@ contract PostageStamp is AccessControl, Pausable {
     constructor(address _bzzToken, uint8 _minimumBucketDepth, address multisig) {
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
-        PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE");
+        PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE_ROLE");
         PAUSER_ROLE = keccak256("PAUSER_ROLE");
         REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
@@ -344,10 +343,6 @@ contract PostageStamp is AccessControl, Pausable {
             revert DepthNotIncreasing();
         }
 
-        if (batch.immutableFlag) {
-            revert BatchIsImmutable();
-        }
-
         if (batch.normalisedBalance <= currentTotalOutPayment()) {
             revert BatchExpired();
         }
@@ -392,12 +387,12 @@ contract PostageStamp is AccessControl, Pausable {
         emit PriceUpdate(_price);
     }
 
-    function setMinimumValidityBlocks(uint256 _value) external {
+    function setMinimumValidityBlocks(uint64 _value) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
         }
 
-        minimumValidityBlocks = uint64(_value);
+        minimumValidityBlocks = _value;
     }
 
     /**

@@ -4,11 +4,12 @@ import { ethers, network } from 'hardhat';
 import hre from 'hardhat';
 
 async function main() {
+  // TESTNET
   // Order of contracts and how should they be deployed, testnet addresses
   const currentPostage = '0xf86b48B65355D292dDE7da8B4ad1913a72ad45C9';
   const currentOracle = '0x17CFdc0Ac0723ef2c9F39D4BC1FFBeD0405FffeD';
-  const currentStaking = '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac'; // this is old staking addy
-  const currentRedis = '0x73Ddb38a85b2BEfEF29238aA97433C685304db66';
+  const currentStaking = '0x484fc3388FD1083fbaF8CE12F282df11F1095Ddf';
+  const currentRedis = '0x3803158ebED151c44cbd74CFa877ef28f5224eC3';
 
   // Change roles on current stamp contract
   const stamp = await ethers.getContractAt('PostageStamp', currentPostage);

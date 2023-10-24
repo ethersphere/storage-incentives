@@ -1,5 +1,5 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig } from '../helper-hardhat-config';
+import { networkConfig } from '../../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
   const { deploy, get, log } = deployments;
@@ -10,11 +10,11 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     from: deployer,
     args: args,
     log: true,
-    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
+    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
   });
 
   log('----------------------------------------------------');
 };
 
 export default func;
-func.tags = ['main', 'oracle', 'contracts'];
+func.tags = ['oracle', 'contracts'];

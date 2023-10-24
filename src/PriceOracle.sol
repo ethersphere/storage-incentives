@@ -61,7 +61,7 @@ contract PriceOracle is AccessControl {
         _setupRole(DEFAULT_ADMIN_ROLE, multisig);
         postageStamp = IPostageStamp(_postageStamp);
         lastAdjustedRound = currentRound();
-        PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER");
+        PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER_ROLE");
     }
 
     ////////////////////////////////////////

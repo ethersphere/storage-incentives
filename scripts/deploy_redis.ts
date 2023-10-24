@@ -91,7 +91,7 @@ async function main() {
     ];
   } else if (network.name == 'testnet') {
     args = [
-      '0xCb07bf0603da228C8ec602bf12b973b8A94f9bac', // old staking
+      '0x484fc3388FD1083fbaF8CE12F282df11F1095Ddf',
       '0xf86b48B65355D292dDE7da8B4ad1913a72ad45C9',
       '0x17CFdc0Ac0723ef2c9F39D4BC1FFBeD0405FffeD',
       '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
