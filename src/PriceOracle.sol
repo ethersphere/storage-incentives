@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./interface/IPostageStamp.sol";
+import "hardhat/console.sol";
 
 /**
  * @title PriceOracle contract.
@@ -118,6 +119,8 @@ contract PriceOracle is AccessControl {
             uint32 _minimumPrice = minimumPrice;
             uint32 _priceBase = priceBase;
 
+            console.log(currentRoundNumber);
+            console.log(lastAdjustedRound);
             // Set the number of rounds that were skipped
             uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
