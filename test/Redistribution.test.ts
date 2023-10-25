@@ -251,7 +251,7 @@ describe('Redistribution', function () {
     let redistribution: Contract;
     let token: Contract;
     let postage: Contract;
-    const price1 = 2048576;
+    const price1 = 2048;
     const batch = {
       nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
       initialPaymentPerChunk: 200000000000,
