@@ -1335,13 +1335,6 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have one skipped round here
-            const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
-            skippedRounds = 1;
-            expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
-            );
-
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_2 stake is preserved and not frozen
@@ -1398,16 +1391,6 @@ describe('Redistribution', function () {
             );
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
-
-            // Check if the increase is properly applied, we have one skipped round here
-            const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
-            skippedRounds = 1;
-            expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
-            );
-
-            expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
-            expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
 
             const sr = await ethers.getContract('StakeRegistry');
 

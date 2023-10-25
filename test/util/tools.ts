@@ -114,7 +114,7 @@ async function skippedRoundsIncrease(
   let currentPrice = newPrice;
 
   for (let index = 0; index < skippedRounds; index++) {
-    currentPrice = Math.floor((maxIncreaseRate * currentPrice) / priceBase);
+    currentPrice = Math.floor((maxIncreaseRate / priceBase) * currentPrice);
   }
   return currentPrice;
 }

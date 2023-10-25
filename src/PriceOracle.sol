@@ -134,6 +134,7 @@ contract PriceOracle is AccessControl {
                 ir = increaseRate[0];
                 for (uint64 i = 0; i < skippedRounds; i++) {
                     _currentPrice = ir * (_currentPrice / _priceBase);
+                         _currentPrice = (ir * _currentPrice) / _priceBase;
                 }
             }
 
