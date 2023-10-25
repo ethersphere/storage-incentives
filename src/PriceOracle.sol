@@ -123,17 +123,17 @@ contract PriceOracle is AccessControl {
             uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // We first apply the increase/decrease rate for the current round
-            uint32 ir = increaseRate[usedRedundancy];
-            _currentPrice = ir * (_currentPrice / _priceBase);
+            uint32 _increaseRate = increaseRate[usedRedundancy];
+            _currentPrice =  (_increaseRate / _priceBase) * _currentPrice;
 
             console.log(skippedRounds);
             console.log(_currentPrice);
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
-                ir = increaseRate[0];
+                _increaseRate = increaseRate[0];
                 for (uint64 i = 0; i < skippedRounds; i++) {
-                    _currentPrice = ir * (_currentPrice / _priceBase);
+                    _currentPrice = (_increaseRate / _priceBase) * _currentPrice;
                 }
             }
 
