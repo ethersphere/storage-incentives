@@ -790,27 +790,36 @@ describe('Redistribution', function () {
             (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth + // batch in the beforeHook
             (options?.additionalReward ? options?.additionalReward : 0);
 
-          // Define your variables with BigNumber
           const receiptBlockNumber = BigNumber.from(receipt2.blockNumber);
           const copyBatchBlockNumber = BigNumber.from(copyBatch.tx.blockNumber);
-          const stampCreatedBlockNumber = BigNumber.from(stampCreatedBlock);
           const price1Value = BigNumber.from(price1);
+          const copyBatchPostageDepth = BigNumber.from(copyBatch.postageDepth);
+          const stampCreatedBlockValue = BigNumber.from(stampCreatedBlock);
+          const batchDepth = BigNumber.from(batch.depth);
 
-          // Perform calculations using BigNumber
+          // Calculate the expectedPotPayout using BigNumber
           const expectedPotPayout = receiptBlockNumber
             .sub(copyBatchBlockNumber)
             .mul(price1Value)
-            .mul(BigNumber.from(2).pow(copyBatch.postageDepth))
-            .add(
-              receiptBlockNumber.sub(stampCreatedBlockNumber).mul(price1Value).mul(BigNumber.from(2).pow(batch.depth))
-            )
+            .mul(BigNumber.from(2).pow(copyBatchPostageDepth))
+            .add(receiptBlockNumber.sub(stampCreatedBlockValue).mul(price1Value).mul(BigNumber.from(2).pow(batchDepth)))
             .add(options?.additionalReward ? BigNumber.from(options.additionalReward) : BigNumber.from(0));
 
           console.log(await token.balanceOf(node_5));
           console.log(expectedPotPayout);
           console.log(expectedPotPayout2);
 
-          expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
+          expect(await token.balanceOf(node_5)).to.be.eq(
+            receiptBlockNumber
+              .sub(copyBatchBlockNumber)
+              .mul(price1Value)
+              .mul(BigNumber.from(2).pow(copyBatchPostageDepth))
+              .add(
+                receiptBlockNumber.sub(stampCreatedBlockValue).mul(price1Value).mul(BigNumber.from(2).pow(batchDepth))
+              )
+              .add(options?.additionalReward ? BigNumber.from(options.additionalReward) : BigNumber.from(0))
+          );
+
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
