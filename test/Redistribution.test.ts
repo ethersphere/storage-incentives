@@ -38,7 +38,7 @@ const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
-const increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
+const increaseRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
 
 // round anchor after startRoundFixture()
 const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
@@ -251,10 +251,10 @@ describe('Redistribution', function () {
     let redistribution: Contract;
     let token: Contract;
     let postage: Contract;
-    const price1 = 1048576;
+    const price1 = 2048576;
     const batch = {
       nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-      initialPaymentPerChunk: 20000000000,
+      initialPaymentPerChunk: 200000000000,
       depth: 17,
       bucketDepth: 16,
       immutable: false,
@@ -785,10 +785,31 @@ describe('Redistribution', function () {
             throw new Error('CountCommitsEvent has not triggered');
           }
 
-          const expectedPotPayout =
+          const expectedPotPayout2 =
             (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
             (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth + // batch in the beforeHook
             (options?.additionalReward ? options?.additionalReward : 0);
+
+          // Define your variables with BigNumber
+          const receiptBlockNumber = BigNumber.from(receipt2.blockNumber);
+          const copyBatchBlockNumber = BigNumber.from(copyBatch.tx.blockNumber);
+          const stampCreatedBlockNumber = BigNumber.from(stampCreatedBlock);
+          const price1Value = BigNumber.from(price1);
+
+          // Perform calculations using BigNumber
+          const expectedPotPayout = receiptBlockNumber
+            .sub(copyBatchBlockNumber)
+            .mul(price1Value)
+            .mul(BigNumber.from(2).pow(copyBatch.postageDepth))
+            .add(
+              receiptBlockNumber.sub(stampCreatedBlockNumber).mul(price1Value).mul(BigNumber.from(2).pow(batch.depth))
+            )
+            .add(options?.additionalReward ? BigNumber.from(options.additionalReward) : BigNumber.from(0));
+
+          console.log(await token.balanceOf(node_5));
+          console.log(expectedPotPayout);
+          console.log(expectedPotPayout2);
+
           expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
