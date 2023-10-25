@@ -1222,7 +1222,7 @@ describe('Redistribution', function () {
           let r_node_1: Contract;
           let r_node_5: Contract;
           let currentRound: number;
-          let priceBaseNumber: number;
+          let basePrice: number;
           let proof1: unknown, proof2: unknown, proofLast: unknown;
 
           // no need to mineToNode function call in test cases
@@ -1238,9 +1238,7 @@ describe('Redistribution', function () {
             r_node_5 = await ethers.getContract('Redistribution', node_5);
 
             // Set price base
-            const basePrice = await priceOracle.priceBase();
-            priceBaseNumber = Number.parseInt(basePrice);
-
+            basePrice = await priceOracle.priceBase();
             currentRound = await r_node_1.currentRound();
 
             const obfuscatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
@@ -1427,9 +1425,8 @@ describe('Redistribution', function () {
           //     await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
           //     // Set price base
-          //     const basePrice = await priceOracle.priceBase();
-          //     priceBaseNumber = Number.parseInt(basePrice);
-
+          //     basePrice = await priceOracle.priceBase();
+          //
           //     // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
           //     // Each transaction mines one addtional block, so we get to phase limit after many transactions
           //     // So to offset that we need to substract number of blocks mined
@@ -1462,10 +1459,10 @@ describe('Redistribution', function () {
           //     const nodesInNeighbourhood = 2;
 
           //     // Check if the increase is properly applied, we have four skipped rounds here
-          //     const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
+          //     const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / basePrice);
           //     skippedRounds = 4;
           //     expect(await postage.lastPrice()).to.be.eq(
-          //       await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+          //       await skippedRoundsIncrease(skippedRounds, newPrice, basePrice, increaseRate[0])
           //     );
           //   });
           // });
