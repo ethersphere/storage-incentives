@@ -26,7 +26,7 @@ contract PriceOracle is AccessControl {
     uint64 public lastAdjustedRound;
 
     // The minimum price allowed
-    uint32 public minimumPrice = 1048576;
+    uint32 public minimumPrice = 24000;
 
     // The priceBase to modulate the price
     uint32 public priceBase = 524288;
@@ -136,6 +136,8 @@ contract PriceOracle is AccessControl {
                     _currentPrice = ir * (_currentPrice / _priceBase);
                 }
             }
+
+               console.log(_currentPrice);
 
             // Enforce minimum price
             if (_currentPrice < _minimumPrice) {

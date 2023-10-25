@@ -251,10 +251,10 @@ describe('Redistribution', function () {
     let redistribution: Contract;
     let token: Contract;
     let postage: Contract;
-    const price1 = 2048;
+    const price1 = 48000;
     const batch = {
       nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-      initialPaymentPerChunk: 200000000000,
+      initialPaymentPerChunk: 20000000000,
       depth: 17,
       bucketDepth: 16,
       immutable: false,
@@ -785,40 +785,12 @@ describe('Redistribution', function () {
             throw new Error('CountCommitsEvent has not triggered');
           }
 
-          const expectedPotPayout2 =
+          const expectedPotPayout =
             (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
             (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth + // batch in the beforeHook
             (options?.additionalReward ? options?.additionalReward : 0);
 
-          const receiptBlockNumber = BigNumber.from(receipt2.blockNumber);
-          const copyBatchBlockNumber = BigNumber.from(copyBatch.tx.blockNumber);
-          const price1Value = BigNumber.from(price1);
-          const copyBatchPostageDepth = BigNumber.from(copyBatch.postageDepth);
-          const stampCreatedBlockValue = BigNumber.from(stampCreatedBlock);
-          const batchDepth = BigNumber.from(batch.depth);
-
-          // Calculate the expectedPotPayout using BigNumber
-          const expectedPotPayout = receiptBlockNumber
-            .sub(copyBatchBlockNumber)
-            .mul(price1Value)
-            .mul(BigNumber.from(2).pow(copyBatchPostageDepth))
-            .add(receiptBlockNumber.sub(stampCreatedBlockValue).mul(price1Value).mul(BigNumber.from(2).pow(batchDepth)))
-            .add(options?.additionalReward ? BigNumber.from(options.additionalReward) : BigNumber.from(0));
-
-          console.log(await token.balanceOf(node_5));
-          console.log(expectedPotPayout);
-          console.log(expectedPotPayout2);
-
-          expect(await token.balanceOf(node_5)).to.be.eq(
-            receiptBlockNumber
-              .sub(copyBatchBlockNumber)
-              .mul(price1Value)
-              .mul(BigNumber.from(2).pow(copyBatchPostageDepth))
-              .add(
-                receiptBlockNumber.sub(stampCreatedBlockValue).mul(price1Value).mul(BigNumber.from(2).pow(batchDepth))
-              )
-              .add(options?.additionalReward ? BigNumber.from(options.additionalReward) : BigNumber.from(0))
-          );
+          expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
 
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
