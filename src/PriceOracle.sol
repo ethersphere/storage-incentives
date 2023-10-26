@@ -37,7 +37,7 @@ contract PriceOracle is AccessControl {
     uint32 private currentPriceUpscaled = minimumPrice << 10; // we upscale it by 2^10
 
     // Constants used to modulate the price, see below usage
-    uint32[9] public increaseRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
+    uint32[9] public changeRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
 
     // Role allowed to update price
     bytes32 public immutable PRICE_UPDATER_ROLE;
@@ -126,24 +126,29 @@ contract PriceOracle is AccessControl {
             // Set the number of rounds that were skipped
             uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
-            // We first apply the increase/decrease rate for the current round
-            uint32 _increaseRate = increaseRate[usedRedundancy];
-            _currentPriceUpscaled = (_increaseRate * _currentPriceUpscaled) / _priceBase;
-
-            console.log(skippedRounds);
+            //console.log(_currentPrice);
             console.log(_currentPriceUpscaled);
+            // We first apply the increase/decrease rate for the current round
+            uint32 _changeRate = changeRate[usedRedundancy];
+            _currentPriceUpscaled = (_changeRate * _currentPriceUpscaled) / _priceBase;
+
+            //    console.log(skippedRounds);
+
+            //  console.log(_currentPriceUpscaled);
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
-                _increaseRate = increaseRate[0];
+                _changeRate = changeRate[0];
                 for (uint64 i = 0; i < skippedRounds; i++) {
-                    _currentPriceUpscaled = (_increaseRate * _currentPriceUpscaled) / _priceBase;
+                    _currentPriceUpscaled = (_changeRate * _currentPriceUpscaled) / _priceBase;
                 }
             }
 
             _currentPrice = uint32(_currentPriceUpscaled) >> 10;
 
-            console.log(_currentPrice);
+            //   console.log(_currentPrice);
+            console.log(_currentPriceUpscaled);
+            console.log("-----");
 
             // Enforce minimum price
             if (_currentPrice < _minimumPrice) {
