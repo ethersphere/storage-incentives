@@ -24,7 +24,6 @@ before(async function () {
   stamper = namedAccounts.stamper;
   oracle = namedAccounts.oracle;
   others = await getUnnamedAccounts();
-  const minimumPrice = 1048576;
 });
 
 async function setPrice(price: number) {
@@ -51,9 +50,12 @@ const errors = {
 };
 
 describe('PostageStamp', function () {
+  let minimumPrice: number;
   describe('when deploying contract', function () {
     beforeEach(async function () {
       await deployments.fixture();
+      const priceOracle = await ethers.getContract('PriceOracle');
+      minimumPrice = await priceOracle.minimumPrice();
     });
 
     it('should have minimum bucket depth set to 16', async function () {
@@ -89,13 +91,18 @@ describe('PostageStamp', function () {
     let postageStampStamper: Contract, token: Contract, priceOracle: Contract;
     let batch: Batch;
     let batchSize: number, transferAmount: number;
-    const price0 = minimumPrice;
+    let minimumPrice: number;
+    let price0: number;
     let setPrice0Block: number;
 
     beforeEach(async function () {
       await deployments.fixture();
       const postageStamp = await ethers.getContract('PostageStamp', deployer);
       await postageStamp.setMinimumValidityBlocks(0);
+      const priceOracle = await ethers.getContract('PriceOracle');
+      minimumPrice = await priceOracle.minimumPrice();
+      price0 = minimumPrice;
+
       const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
       await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
     });
@@ -622,7 +629,6 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, token: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      const price0 = minimumPrice;
       let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 10;
       const topupAmountPerChunk = minimumPrice;
@@ -752,7 +758,6 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      const price0 = minimumPrice;
       let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 100;
       const newDepth = 18;
@@ -1019,7 +1024,6 @@ describe('PostageStamp', function () {
       let batch0Size: number, transferAmount0: number;
       let batch1Size: number, transferAmount1: number;
       let batch2Size: number, transferAmount2: number;
-      const price0 = minimumPrice;
       const initialBatch0Blocks = 10;
       const initialBatch1Blocks = 10;
       const initialBatch2Blocks = 200;
