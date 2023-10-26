@@ -217,9 +217,9 @@ describe('PostageStamp', function () {
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
-        const initialPaymentPerChunk0 = 330000;
-        const initialPaymentPerChunk1 = 110000;
-        const initialPaymentPerChunk2 = 220000;
+        const initialPaymentPerChunk0 = 3300;
+        const initialPaymentPerChunk1 = 1100;
+        const initialPaymentPerChunk2 = 2200;
 
         const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000001234';
         await postageStampStamper.createBatch(
@@ -259,10 +259,14 @@ describe('PostageStamp', function () {
         );
 
         const batch2 = computeBatchId(stamper, nonce2);
-        expect(batch1).equal(await postageStampStamper.firstBatchId());
-        expect(batch2).not.equal(await postageStampStamper.firstBatchId());
+        console.log(batch1);
+        console.log(batch2);
+        expect(batch2).equal(await postageStampStamper.firstBatchId());
+        expect(batch1).not.equal(await postageStampStamper.firstBatchId());
 
         const stamp = await postageStampStamper.batches(batch1);
+        console.log(stamp);
+
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(batch.depth);
         expect(stamp[2]).to.equal(batch.bucketDepth);
@@ -357,7 +361,7 @@ describe('PostageStamp', function () {
       });
 
       it('should correctly return if batches are empty', async function () {
-        const initialPaymentPerChunk0 = 204800;
+        const initialPaymentPerChunk0 = 2048;
         const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance = initialPaymentPerChunk0 + blocksElapsed * price0;
 
