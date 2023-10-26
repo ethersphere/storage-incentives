@@ -34,6 +34,8 @@ contract PriceOracle is AccessControl {
     // The current price is the atomic unit.
     uint32 public currentPrice = minimumPrice;
 
+    uint32 private currentPriceUpscaled = minimumPrice << 10; // we upscale it by 2^10
+
     // Constants used to modulate the price, see below usage
     uint32[9] public increaseRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
 
@@ -85,6 +87,7 @@ contract PriceOracle is AccessControl {
             _currentPrice = _minimumPrice;
         }
         currentPrice = _currentPrice;
+        currentPriceUpscaled = _currentPrice << 10;
 
         // Price in postagestamp is set at 256 so we need to upcast it
         postageStamp.setPrice(uint256(_currentPrice));
@@ -118,32 +121,38 @@ contract PriceOracle is AccessControl {
             uint32 _currentPrice = currentPrice;
             uint32 _minimumPrice = minimumPrice;
             uint32 _priceBase = priceBase;
+            uint64 _currentPriceUpscaled = currentPriceUpscaled;
 
             // Set the number of rounds that were skipped
             uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // We first apply the increase/decrease rate for the current round
             uint32 _increaseRate = increaseRate[usedRedundancy];
-            _currentPrice =  (_increaseRate / _priceBase) * _currentPrice;
+            _currentPriceUpscaled = (_increaseRate * _currentPriceUpscaled) / _priceBase;
 
             console.log(skippedRounds);
-            console.log(_currentPrice);
+            console.log(_currentPriceUpscaled);
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
                 _increaseRate = increaseRate[0];
                 for (uint64 i = 0; i < skippedRounds; i++) {
-                    _currentPrice = (_increaseRate / _priceBase) * _currentPrice;
+                    _currentPriceUpscaled = (_increaseRate * _currentPriceUpscaled) / _priceBase;
                 }
             }
 
-               console.log(_currentPrice);
+            _currentPrice = uint32(_currentPriceUpscaled) >> 10;
+
+            console.log(_currentPrice);
 
             // Enforce minimum price
             if (_currentPrice < _minimumPrice) {
                 _currentPrice = _minimumPrice;
+                _currentPriceUpscaled = _minimumPrice << 10;
             }
+
             currentPrice = _currentPrice;
+            currentPriceUpscaled = uint32(_currentPriceUpscaled);
 
             postageStamp.setPrice(uint256(_currentPrice));
             lastAdjustedRound = currentRoundNumber;
