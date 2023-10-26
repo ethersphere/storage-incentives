@@ -633,16 +633,16 @@ describe('PostageStamp', function () {
       let batch: Batch;
       let batchSize: number, transferAmount: number;
       let initialBlock: number, buyStampBlock: number;
-      const initialBatchBlocks = 10;
-      const topupAmountPerChunk = minimumPrice;
+      let initialBatchBlocks = 10;
+      let topupAmountPerChunk: number;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
         token = await ethers.getContract('TestToken', deployer);
         priceOracle = await ethers.getContract('PriceOracle', deployer);
+        topupAmountPerChunk = minimumPrice;
 
         initialBlock = await getBlockNumber();
-        console.log(price0);
         await priceOracle.setPrice(price0);
 
         batch = {
@@ -658,9 +658,6 @@ describe('PostageStamp', function () {
         transferAmount += topupAmountPerChunk * batchSize;
 
         batch.id = computeBatchId(stamper, batch.nonce);
-
-        console.log(transferAmount);
-        console.log(postageStamp.address);
 
         await mintAndApprove(deployer, stamper, postageStamp.address, transferAmount.toString());
 
