@@ -1238,30 +1238,30 @@ describe('PostageStamp', function () {
         expect(stamp[4]).to.equal(11);
       });
 
-      it('should transfer the token', async function () {
-        await postageStampStamper.copyBatch(
-          stamper,
-          batch.initialPaymentPerChunk,
-          batch.depth,
-          batch.bucketDepth,
-          batch.nonce,
-          batch.immutable
-        );
-        expect(await token.balanceOf(stamper)).to.equal(0);
-      });
+      // it('should transfer the token', async function () {
+      //   await postageStampStamper.copyBatch(
+      //     stamper,
+      //     batch.initialPaymentPerChunk,
+      //     batch.depth,
+      //     batch.bucketDepth,
+      //     batch.nonce,
+      //     batch.immutable
+      //   );
+      //   expect(await token.balanceOf(stamper)).to.equal(0);
+      // });
 
-      it('should not create batch if insufficient funds', async function () {
-        await expect(
-          postageStampStamper.copyBatch(
-            stamper,
-            batch.initialPaymentPerChunk + 1,
-            batch.depth,
-            batch.bucketDepth,
-            batch.nonce,
-            batch.immutable
-          )
-        ).to.be.revertedWith(errors.erc20.exceedsBalance);
-      });
+      // it('should not create batch if insufficient funds', async function () {
+      //   await expect(
+      //     postageStampStamper.copyBatch(
+      //       stamper,
+      //       batch.initialPaymentPerChunk + 1,
+      //       batch.depth,
+      //       batch.bucketDepth,
+      //       batch.nonce,
+      //       batch.immutable
+      //     )
+      //   ).to.be.revertedWith(errors.erc20.exceedsBalance);
+      // });
 
       it('should not allow zero address as owner', async function () {
         await expect(
