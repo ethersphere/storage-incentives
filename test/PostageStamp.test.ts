@@ -633,8 +633,9 @@ describe('PostageStamp', function () {
       let batch: Batch;
       let batchSize: number, transferAmount: number;
       let initialBlock: number, buyStampBlock: number;
-      let initialBatchBlocks = 10;
       let topupAmountPerChunk: number;
+
+      const initialBatchBlocks = 10;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);

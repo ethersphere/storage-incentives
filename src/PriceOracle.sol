@@ -2,7 +2,6 @@
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./interface/IPostageStamp.sol";
-import "hardhat/console.sol";
 
 /**
  * @title PriceOracle contract.
