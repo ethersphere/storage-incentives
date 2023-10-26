@@ -208,7 +208,7 @@ describe('PriceOracle', function () {
       it('if redundany factor is 1 twice', async function () {
         const priceOracleU = await ethers.getContract('PriceOracle', updater);
 
-        let currentPrice = await priceOracle.currentPrice();
+        const currentPrice = await priceOracle.currentPrice();
         expect(currentPrice).to.be.eq(minimumPrice);
         expect(await postageStamp.lastPrice()).to.be.eq(minimumPrice);
 
