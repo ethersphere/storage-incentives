@@ -33,7 +33,7 @@ contract PriceOracle is AccessControl {
     // The current price is the atomic unit.
     uint32 public currentPrice = minimumPrice;
 
-    uint32 private currentPriceUpscaled = minimumPrice << 10; // we upscale it by 2^10
+    uint64 private currentPriceUpscaled = minimumPrice << 10; // we upscale it by 2^10
 
     // Constants used to modulate the price, see below usage
     uint32[9] public changeRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
