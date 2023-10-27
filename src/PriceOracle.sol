@@ -137,7 +137,7 @@ contract PriceOracle is AccessControl {
                 }
             }
 
-            _currentPrice = uint32(_currentPriceUpscaled) >> 10;
+            _currentPrice = uint32((_currentPriceUpscaled) >> 10);
 
             // Enforce minimum price
             if (_currentPrice < _minimumPrice) {
