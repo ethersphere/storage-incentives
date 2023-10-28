@@ -179,7 +179,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint8 _bucketDepth,
         bytes32 _nonce,
         bool _immutable
-    ) external whenNotPaused {
+    ) external whenNotPaused returns (bytes32) {
         if (_owner == address(0)) {
             revert ZeroAddress();
         }
@@ -222,6 +222,8 @@ contract PostageStamp is AccessControl, Pausable {
         tree.insert(batchId, normalisedBalance);
 
         emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+
+        return batchId;
     }
 
     /**
