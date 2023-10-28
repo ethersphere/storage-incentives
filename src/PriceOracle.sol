@@ -30,7 +30,7 @@ contract PriceOracle is AccessControl {
     // The priceBase to modulate the price
     uint32 public priceBase = 524288;
 
-    uint64 private currentPrice = minimumPrice << 10; // we upscale it by 2^10
+    uint64 private currentPriceUpScaled = minimumPrice << 10; // we upscale it by 2^10
 
     // Constants used to modulate the price, see below usage
     uint32[9] public changeRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
@@ -76,18 +76,18 @@ contract PriceOracle is AccessControl {
             revert CallerNotAdmin();
         }
 
-        uint64 _currentPrice = _price << 10;
+        uint64 _currentPriceUpScaled = _price << 10;
         uint64 _minimumPrice = minimumPrice << 10;
 
         // Enforce minimum price
-        if (_currentPrice < _minimumPrice) {
-            _currentPrice = _minimumPrice;
+        if (_currentPriceUpScaled < _minimumPrice) {
+            _currentPriceUpScaled = _minimumPrice;
         }
-        currentPrice = _currentPrice;
+        currentPriceUpScaled = _currentPriceUpScaled;
 
         // Price in postagestamp is set at 256 so we need to upcast it
-        postageStamp.setPrice(uint256(currentPriceDownScale()));
-        emit PriceUpdate(currentPriceDownScale());
+        postageStamp.setPrice(uint256(currentPrice()));
+        emit PriceUpdate(currentPrice());
     }
 
     function adjustPrice(uint16 redundancy) external {
@@ -114,7 +114,7 @@ contract PriceOracle is AccessControl {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
-            uint64 _currentPrice = currentPrice;
+            uint64 _currentPriceUpScaled = currentPriceUpScaled;
             uint64 _minimumPrice = minimumPrice << 10;
             uint32 _priceBase = priceBase;
 
@@ -123,25 +123,25 @@ contract PriceOracle is AccessControl {
 
             // We first apply the increase/decrease rate for the current round
             uint32 _changeRate = changeRate[usedRedundancy];
-            _currentPrice = (_changeRate * _currentPrice) / _priceBase;
+            _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
                 _changeRate = changeRate[0];
                 for (uint64 i = 0; i < skippedRounds; i++) {
-                    _currentPrice = (_changeRate * _currentPrice) / _priceBase;
+                    _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
                 }
             }
 
             // Enforce minimum price
-            if (_currentPrice < _minimumPrice) {
-                _currentPrice = _minimumPrice;
+            if (_currentPriceUpScaled < _minimumPrice) {
+                _currentPriceUpScaled = _minimumPrice;
             }
 
-            currentPrice = _currentPrice;
+            currentPriceUpScaled = _currentPriceUpScaled;
             lastAdjustedRound = currentRoundNumber;
-            postageStamp.setPrice(uint256(currentPriceDownScale()));
-            emit PriceUpdate(currentPriceDownScale());
+            postageStamp.setPrice(uint256(currentPrice()));
+            emit PriceUpdate(currentPrice());
         }
     }
 
@@ -176,16 +176,8 @@ contract PriceOracle is AccessControl {
     /**
      * @notice Return the price downscaled
      */
-    function currentPriceDownScale() public view returns (uint32) {
+    function currentPrice() public view returns (uint32) {
         // We downcasted to uint32 and bitshift it by 2^10
-        return uint32((currentPrice) >> 10);
-    }
-
-    /**
-     * @notice Return the price upscaled
-     */
-    function currentPriceUpScale() public view returns (uint64) {
-        // We upcasted to uint64 and bitshift it by 2^10
-        return uint64((currentPrice) << 10);
+        return uint32((currentPriceUpScaled) >> 10);
     }
 }
