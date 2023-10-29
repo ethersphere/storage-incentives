@@ -1223,6 +1223,7 @@ describe('Redistribution', function () {
           let r_node_5: Contract;
           let currentRound: number;
           let basePrice: number;
+          let currentPriceUpScaled: number;
           let proof1: unknown, proof2: unknown, proofLast: unknown;
 
           // no need to mineToNode function call in test cases
@@ -1240,6 +1241,7 @@ describe('Redistribution', function () {
             // Set price base
             basePrice = await priceOracle.priceBase();
             currentRound = await r_node_1.currentRound();
+            currentPriceUpScaled = await priceOracle.currentPriceUpScaled();
 
             const obfuscatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
             await r_node_1.commit(obfuscatedHash_1, overlay_1_n_25, currentRound);
@@ -1314,6 +1316,13 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
+            // Check if the increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            skippedRounds = 3;
+            expect(await postage.lastPrice()).to.be.eq(
+              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
+            );
+
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_2 stake is preserved and not frozen
@@ -1370,6 +1379,16 @@ describe('Redistribution', function () {
             );
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
+
+            // Check if the increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            skippedRounds = 3;
+            expect(await postage.lastPrice()).to.be.eq(
+              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
+            );
+
+            expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
+            expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
 
             const sr = await ethers.getContract('StakeRegistry');
 
