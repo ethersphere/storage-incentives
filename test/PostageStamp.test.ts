@@ -93,7 +93,7 @@ describe('PostageStamp', function () {
     let batchSize: number, transferAmount: number;
     let minimumPrice: number;
     let price0: number;
-    let initialBlock: number;
+    let setPrice0Block: number;
 
     beforeEach(async function () {
       await deployments.fixture();
@@ -113,7 +113,7 @@ describe('PostageStamp', function () {
         token = await ethers.getContract('TestToken', deployer);
         priceOracle = await ethers.getContract('PriceOracle', deployer);
 
-        initialBlock = await getBlockNumber();
+        setPrice0Block = await getBlockNumber();
         await priceOracle.setPrice(price0);
 
         batch = {
@@ -133,7 +133,7 @@ describe('PostageStamp', function () {
       });
 
       it('should fire the BatchCreated event', async function () {
-        const blocksElapsed = (await getBlockNumber()) - initialBlock;
+        const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance = batch.initialPaymentPerChunk + blocksElapsed * price0;
         await expect(
           postageStampStamper.createBatch(
@@ -158,7 +158,7 @@ describe('PostageStamp', function () {
       });
 
       it('should store the batch', async function () {
-        const blocksElapsed = (await getBlockNumber()) - initialBlock;
+        const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance = batch.initialPaymentPerChunk + blocksElapsed * price0;
         await postageStampStamper.createBatch(
           stamper,
@@ -233,7 +233,7 @@ describe('PostageStamp', function () {
         const batch0 = computeBatchId(stamper, nonce0);
         expect(batch0).equal(await postageStampStamper.firstBatchId());
 
-        const blocksElapsed = (await getBlockNumber()) - initialBlock;
+        const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance1 = initialPaymentPerChunk1 + blocksElapsed * price0;
 
         const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
@@ -247,7 +247,7 @@ describe('PostageStamp', function () {
         );
         const batch1 = computeBatchId(stamper, nonce1);
         expect(batch1).equal(await postageStampStamper.firstBatchId());
-        const blocksElapsed2 = (await getBlockNumber()) - initialBlock;
+        const blocksElapsed2 = (await getBlockNumber()) - setPrice0Block;
 
         const nonce2 = '0x0000000000000000000000000000000000000000000000000000000000001236';
         await postageStampStamper.createBatch(
@@ -361,7 +361,7 @@ describe('PostageStamp', function () {
 
       it('should correctly return if batches are empty', async function () {
         const initialPaymentPerChunk0 = 2048;
-        const blocksElapsed = (await getBlockNumber()) - initialBlock;
+        const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance = initialPaymentPerChunk0 + blocksElapsed * price0;
 
         await postageStampStamper.createBatch(
@@ -410,7 +410,7 @@ describe('PostageStamp', function () {
         ).to.be.revertedWith(errors.createBatch.paused);
         await postage_p.unPause();
 
-        const blocksElapsed = (await getBlockNumber()) - initialBlock;
+        const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance = batch.initialPaymentPerChunk + blocksElapsed * price0;
         await postageStampStamper.createBatch(
           stamper,
@@ -632,7 +632,7 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, token: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      let initialBlock: number, buyStampBlock: number;
+      let setPrice0Block: number, buyStampBlock: number;
       let topupAmountPerChunk: number;
 
       const initialBatchBlocks = 10;
@@ -643,7 +643,7 @@ describe('PostageStamp', function () {
         priceOracle = await ethers.getContract('PriceOracle', deployer);
         topupAmountPerChunk = minimumPrice;
 
-        initialBlock = await getBlockNumber();
+        setPrice0Block = await getBlockNumber();
         await priceOracle.setPrice(price0);
 
         batch = {
@@ -675,7 +675,7 @@ describe('PostageStamp', function () {
 
       it('should fire the BatchTopUp event', async function () {
         const expectedNormalisedBalance =
-          price0 * (buyStampBlock - initialBlock) + price0 * initialBatchBlocks + topupAmountPerChunk;
+          price0 * (buyStampBlock - setPrice0Block) + price0 * initialBatchBlocks + topupAmountPerChunk;
         await expect(postageStamp.topUp(batch.id, topupAmountPerChunk))
           .to.emit(postageStamp, 'BatchTopUp')
           .withArgs(batch.id, topupAmountPerChunk * batchSize, expectedNormalisedBalance);
@@ -683,7 +683,7 @@ describe('PostageStamp', function () {
 
       it('should update the normalised balance', async function () {
         const expectedNormalisedBalance =
-          price0 * (buyStampBlock - initialBlock) + price0 * initialBatchBlocks + topupAmountPerChunk;
+          price0 * (buyStampBlock - setPrice0Block) + price0 * initialBatchBlocks + topupAmountPerChunk;
         await postageStamp.topUp(batch.id, topupAmountPerChunk);
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp.normalisedBalance).to.equal(expectedNormalisedBalance);
@@ -763,7 +763,7 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      let initialBlock: number, buyStampBlock: number;
+      let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 100;
       const newDepth = 18;
       let depthChange: number;
@@ -772,7 +772,7 @@ describe('PostageStamp', function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
         priceOracle = await ethers.getContract('PriceOracle', deployer);
 
-        initialBlock = await getBlockNumber();
+        setPrice0Block = await getBlockNumber();
         await priceOracle.setPrice(price0);
 
         batch = {
@@ -807,7 +807,7 @@ describe('PostageStamp', function () {
         const depthChange = newDepth - batch.depth;
         // the expected normalised balance should be changed - the total amount remaining should be multiplied by the new batch size over the old batch size
         // so the total expected normalised balance should be the normalised balance up to that point, plus the future normalised balance adjusted by this factor
-        const expectedNormalisedBalance = batch.initialPaymentPerChunk + (buyStampBlock - initialBlock) * price0;
+        const expectedNormalisedBalance = batch.initialPaymentPerChunk + (buyStampBlock - setPrice0Block) * price0;
 
         const stamp = await postageStamp.batches(batch.id);
         expect(stamp.normalisedBalance.toString()).to.be.equal(expectedNormalisedBalance.toString());

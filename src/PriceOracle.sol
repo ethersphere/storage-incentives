@@ -25,12 +25,12 @@ contract PriceOracle is AccessControl {
     uint64 public lastAdjustedRound;
 
     // The minimum price allowed
-    uint32 public minimumPrice = 24000;
+    uint32 public minimumPriceUpscaled = 24000 << 10; // we upscale it by 2^10
 
     // The priceBase to modulate the price
     uint32 public priceBase = 524288;
 
-    uint64 public currentPriceUpScaled = minimumPrice << 10; // we upscale it by 2^10
+    uint64 public currentPriceUpScaled = minimumPriceUpscaled;
 
     // Constants used to modulate the price, see below usage
     uint32[9] public changeRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
@@ -77,11 +77,11 @@ contract PriceOracle is AccessControl {
         }
 
         uint64 _currentPriceUpScaled = _price << 10;
-        uint64 _minimumPrice = minimumPrice << 10;
+        uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
 
         // Enforce minimum price
-        if (_currentPriceUpScaled < _minimumPrice) {
-            _currentPriceUpScaled = _minimumPrice;
+        if (_currentPriceUpScaled < _minimumPriceUpscaled) {
+            _currentPriceUpScaled = _minimumPriceUpscaled;
         }
         currentPriceUpScaled = _currentPriceUpScaled;
 
@@ -115,7 +115,7 @@ contract PriceOracle is AccessControl {
             }
 
             uint64 _currentPriceUpScaled = currentPriceUpScaled;
-            uint64 _minimumPrice = minimumPrice << 10;
+            uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
             uint32 _priceBase = priceBase;
 
             // Set the number of rounds that were skipped
@@ -134,8 +134,8 @@ contract PriceOracle is AccessControl {
             }
 
             // Enforce minimum price
-            if (_currentPriceUpScaled < _minimumPrice) {
-                _currentPriceUpScaled = _minimumPrice;
+            if (_currentPriceUpScaled < _minimumPriceUpscaled) {
+                _currentPriceUpScaled = _minimumPriceUpscaled;
             }
 
             currentPriceUpScaled = _currentPriceUpScaled;
@@ -179,5 +179,13 @@ contract PriceOracle is AccessControl {
     function currentPrice() public view returns (uint32) {
         // We downcasted to uint32 and bitshift it by 2^10
         return uint32((currentPriceUpScaled) >> 10);
+    }
+
+    /**
+     * @notice Return the price downscaled
+     */
+    function minimumPrice() public view returns (uint32) {
+        // We downcasted to uint32 and bitshift it by 2^10
+        return uint32((minimumPriceUpscaled) >> 10);
     }
 }
