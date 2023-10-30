@@ -25,16 +25,15 @@ contract PriceOracle is AccessControl {
     uint64 public lastAdjustedRound;
 
     // The minimum price allowed
-    uint32 public minimumPrice = 1024;
+    uint32 public minimumPriceUpscaled = 24000 << 10; // we upscale it by 2^10
 
     // The priceBase to modulate the price
-    uint32 public priceBase = 514155;
+    uint32 public priceBase = 524288;
 
-    // The current price is the atomic unit.
-    uint32 public currentPrice = minimumPrice;
+    uint64 public currentPriceUpScaled = minimumPriceUpscaled;
 
     // Constants used to modulate the price, see below usage
-    uint32[9] public increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
+    uint32[9] public changeRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
 
     // Role allowed to update price
     bytes32 public immutable PRICE_UPDATER_ROLE;
@@ -76,18 +75,19 @@ contract PriceOracle is AccessControl {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert CallerNotAdmin();
         }
-        uint32 _currentPrice = _price;
-        uint32 _minimumPrice = minimumPrice;
 
-        //enforce minimum price
-        if (_currentPrice < _minimumPrice) {
-            _currentPrice = _minimumPrice;
+        uint64 _currentPriceUpScaled = _price << 10;
+        uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
+
+        // Enforce minimum price
+        if (_currentPriceUpScaled < _minimumPriceUpscaled) {
+            _currentPriceUpScaled = _minimumPriceUpscaled;
         }
-        currentPrice = _currentPrice;
+        currentPriceUpScaled = _currentPriceUpScaled;
 
         // Price in postagestamp is set at 256 so we need to upcast it
-        postageStamp.setPrice(uint256(_currentPrice));
-        emit PriceUpdate(_currentPrice);
+        postageStamp.setPrice(uint256(currentPrice()));
+        emit PriceUpdate(currentPrice());
     }
 
     function adjustPrice(uint16 redundancy) external {
@@ -99,49 +99,49 @@ contract PriceOracle is AccessControl {
             uint16 usedRedundancy = redundancy;
             uint64 currentRoundNumber = currentRound();
 
-            // price can only be adjusted once per round
+            // Price can only be adjusted once per round
             if (currentRoundNumber <= lastAdjustedRound) {
                 revert PriceAlreadyAdjusted();
             }
-            // redundancy may not be zero
+            // Redundancy may not be zero
             if (redundancy == 0) {
                 revert UnexpectedZero();
             }
 
-            // enforce maximum considered extra redundancy
+            // Enforce maximum considered extra redundancy
             uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
             if (redundancy > maxConsideredRedundancy) {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
-            uint32 _currentPrice = currentPrice;
-            uint32 _minimumPrice = minimumPrice;
+            uint64 _currentPriceUpScaled = currentPriceUpScaled;
+            uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
             uint32 _priceBase = priceBase;
 
             // Set the number of rounds that were skipped
             uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // We first apply the increase/decrease rate for the current round
-            uint32 ir = increaseRate[usedRedundancy];
-            _currentPrice = (ir * _currentPrice) / _priceBase;
+            uint32 _changeRate = changeRate[usedRedundancy];
+            _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
 
             // If previous rounds were skipped, use MAX price increase for the previous rounds
             if (skippedRounds > 0) {
-                ir = increaseRate[0];
+                _changeRate = changeRate[0];
                 for (uint64 i = 0; i < skippedRounds; i++) {
-                    _currentPrice = (ir * _currentPrice) / _priceBase;
+                    _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
                 }
             }
 
             // Enforce minimum price
-            if (_currentPrice < _minimumPrice) {
-                _currentPrice = _minimumPrice;
+            if (_currentPriceUpScaled < _minimumPriceUpscaled) {
+                _currentPriceUpScaled = _minimumPriceUpscaled;
             }
-            currentPrice = _currentPrice;
 
-            postageStamp.setPrice(_currentPrice);
+            currentPriceUpScaled = _currentPriceUpScaled;
             lastAdjustedRound = currentRoundNumber;
-            emit PriceUpdate(_currentPrice);
+            postageStamp.setPrice(uint256(currentPrice()));
+            emit PriceUpdate(currentPrice());
         }
     }
 
@@ -171,5 +171,21 @@ contract PriceOracle is AccessControl {
         // as each round is 152 x 5 = 760, each day has around 113 rounds which is 41245 in a year
         // it results 4.4724801e+14 years to run this game
         return uint64(block.number / uint256(ROUND_LENGTH));
+    }
+
+    /**
+     * @notice Return the price downscaled
+     */
+    function currentPrice() public view returns (uint32) {
+        // We downcasted to uint32 and bitshift it by 2^10
+        return uint32((currentPriceUpScaled) >> 10);
+    }
+
+    /**
+     * @notice Return the price downscaled
+     */
+    function minimumPrice() public view returns (uint32) {
+        // We downcasted to uint32 and bitshift it by 2^10
+        return uint32((minimumPriceUpscaled) >> 10);
     }
 }

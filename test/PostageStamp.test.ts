@@ -50,9 +50,12 @@ const errors = {
 };
 
 describe('PostageStamp', function () {
+  let minimumPrice: number;
   describe('when deploying contract', function () {
     beforeEach(async function () {
       await deployments.fixture();
+      const priceOracle = await ethers.getContract('PriceOracle');
+      minimumPrice = await priceOracle.minimumPrice();
     });
 
     it('should have minimum bucket depth set to 16', async function () {
@@ -88,13 +91,18 @@ describe('PostageStamp', function () {
     let postageStampStamper: Contract, token: Contract, priceOracle: Contract;
     let batch: Batch;
     let batchSize: number, transferAmount: number;
-    const price0 = 1024;
+    let minimumPrice: number;
+    let price0: number;
     let setPrice0Block: number;
 
     beforeEach(async function () {
       await deployments.fixture();
       const postageStamp = await ethers.getContract('PostageStamp', deployer);
       await postageStamp.setMinimumValidityBlocks(0);
+      const priceOracle = await ethers.getContract('PriceOracle');
+      minimumPrice = await priceOracle.minimumPrice();
+      price0 = minimumPrice;
+
       const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
       await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
     });
@@ -239,6 +247,7 @@ describe('PostageStamp', function () {
         );
         const batch1 = computeBatchId(stamper, nonce1);
         expect(batch1).equal(await postageStampStamper.firstBatchId());
+        const blocksElapsed2 = (await getBlockNumber()) - setPrice0Block;
 
         const nonce2 = '0x0000000000000000000000000000000000000000000000000000000000001236';
         await postageStampStamper.createBatch(
@@ -251,15 +260,17 @@ describe('PostageStamp', function () {
         );
 
         const batch2 = computeBatchId(stamper, nonce2);
-        expect(batch1).equal(await postageStampStamper.firstBatchId());
-        expect(batch2).not.equal(await postageStampStamper.firstBatchId());
+        expect(batch2).equal(await postageStampStamper.firstBatchId());
+        expect(batch1).not.equal(await postageStampStamper.firstBatchId());
 
-        const stamp = await postageStampStamper.batches(batch1);
+        const stamp = await postageStampStamper.batches(batch2);
+        const expectedNormalisedBalance2 = initialPaymentPerChunk2 + blocksElapsed2 * price0;
+
         expect(stamp[0]).to.equal(stamper);
         expect(stamp[1]).to.equal(batch.depth);
         expect(stamp[2]).to.equal(batch.bucketDepth);
         expect(stamp[3]).to.equal(batch.immutable);
-        expect(stamp[4]).to.equal(expectedNormalisedBalance1);
+        expect(stamp[4]).to.equal(expectedNormalisedBalance2);
       });
 
       it('should transfer the token', async function () {
@@ -621,15 +632,16 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, token: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      const price0 = 1024;
       let setPrice0Block: number, buyStampBlock: number;
+      let topupAmountPerChunk: number;
+
       const initialBatchBlocks = 10;
-      const topupAmountPerChunk = 1024;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
         token = await ethers.getContract('TestToken', deployer);
         priceOracle = await ethers.getContract('PriceOracle', deployer);
+        topupAmountPerChunk = minimumPrice;
 
         setPrice0Block = await getBlockNumber();
         await priceOracle.setPrice(price0);
@@ -751,7 +763,6 @@ describe('PostageStamp', function () {
       let postageStamp: Contract, priceOracle: Contract;
       let batch: Batch;
       let batchSize: number, transferAmount: number;
-      const price0 = 1024;
       let setPrice0Block: number, buyStampBlock: number;
       const initialBatchBlocks = 100;
       const newDepth = 18;
@@ -852,7 +863,7 @@ describe('PostageStamp', function () {
       });
 
       it('should compute correct balance if outpayments changed since creation', async function () {
-        const newPrice = 2048;
+        const newPrice = 2 * minimumPrice;
         await priceOracle.setPrice(newPrice);
 
         const remainingBalanceNextBlock = parseInt(await postageStamp.remainingBalance(batch.id)) - newPrice * 1;
@@ -1018,7 +1029,6 @@ describe('PostageStamp', function () {
       let batch0Size: number, transferAmount0: number;
       let batch1Size: number, transferAmount1: number;
       let batch2Size: number, transferAmount2: number;
-      const price0 = 1024;
       const initialBatch0Blocks = 10;
       const initialBatch1Blocks = 10;
       const initialBatch2Blocks = 200;
