@@ -164,7 +164,7 @@ const config: HardhatUserConfig = {
       deploy: ['deploy/test/'],
     },
     sepolia: {
-      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://rpc2.sepolia.org',
+      url: 'https://rpc2.sepolia.org',
       accounts,
       chainId: 11155111,
       deploy: ['deploy/test/'],
