@@ -10,7 +10,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
     // Verify TestNet token
     const token = await get('TestToken');
-    const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000'];
+    const argsToken = ['sBZZ', 'sBZZ', '1250000000000000000000000'];
 
     log('Verifying...');
     await verify(token.address, argsToken);
