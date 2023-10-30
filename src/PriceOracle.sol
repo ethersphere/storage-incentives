@@ -56,8 +56,8 @@ contract PriceOracle is AccessControl {
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
-    constructor(address _postageStamp, address multisig) {
-        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
+    constructor(address _postageStamp) {
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         postageStamp = IPostageStamp(_postageStamp);
         lastAdjustedRound = currentRound();
         PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER_ROLE");

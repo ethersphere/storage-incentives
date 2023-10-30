@@ -254,12 +254,12 @@ contract Redistribution is AccessControl, Pausable {
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
      */
-    constructor(address staking, address postageContract, address oracleContract, address multisig) {
+    constructor(address staking, address postageContract, address oracleContract) {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
         PAUSER_ROLE = keccak256("PAUSER_ROLE");
-        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 

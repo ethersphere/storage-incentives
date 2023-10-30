@@ -60,10 +60,10 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _bzzToken Address of the staked ERC20 token
      * @param _NetworkId Swarm network ID
      */
-    constructor(address _bzzToken, uint64 _NetworkId, address multisig) {
+    constructor(address _bzzToken, uint64 _NetworkId) {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
-        _setupRole(DEFAULT_ADMIN_ROLE, multisig);
+        _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 
