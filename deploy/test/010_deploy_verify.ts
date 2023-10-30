@@ -12,7 +12,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     const token = await get('TestToken');
     const argsToken = ['sBZZ', 'sBZZ', '1250000000000000000000000'];
 
-    log('Verifying...');
+    log('TestToken');
     await verify(token.address, argsToken);
     log('----------------------------------------------------');
 
@@ -20,7 +20,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     const postageStamp = await get('PostageStamp');
     const argsStamp = [token.address, 16];
 
-    log('Verifying...');
+    log('PostageStamp');
     await verify(postageStamp.address, argsStamp);
     log('----------------------------------------------------');
 
@@ -28,7 +28,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     const priceOracle = await get('PriceOracle');
     const argsOracle = [postageStamp.address];
 
-    log('Verifying...');
+    log('PriceOracle');
     await verify(priceOracle.address, argsOracle);
     log('----------------------------------------------------');
 
@@ -36,7 +36,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     const staking = await get('StakeRegistry');
     const argStaking = [token.address, swarmNetworkID];
 
-    log('Verifying...');
+    log('Staking');
     await verify(staking.address, argStaking);
     log('----------------------------------------------------');
 
@@ -44,7 +44,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     const redistribution = await get('Redistribution');
     const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
 
-    log('Verifying...');
+    log('Redistribution');
     await verify(redistribution.address, argRedistribution);
     log('----------------------------------------------------');
   }
