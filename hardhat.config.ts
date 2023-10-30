@@ -197,6 +197,14 @@ const config: HardhatUserConfig = {
         },
       },
       {
+        network: 'pretestnet',
+        chainId: 5,
+        urls: {
+          apiURL: 'https://api-goerli.etherscan.io/api',
+          browserURL: 'https://goerli.etherscan.io/address/',
+        },
+      },
+      {
         network: 'testnet',
         chainId: 5,
         urls: {
