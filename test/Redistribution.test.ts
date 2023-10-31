@@ -38,7 +38,7 @@ const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
-const increaseRate = [514191, 514182, 514173, 514164, 514155, 514146, 514137, 514128, 514119];
+const increaseRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
 
 // round anchor after startRoundFixture()
 const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
@@ -251,10 +251,10 @@ describe('Redistribution', function () {
     let redistribution: Contract;
     let token: Contract;
     let postage: Contract;
-    const price1 = 2048;
+    const price1 = 48000;
     const batch = {
       nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-      initialPaymentPerChunk: 2000000000,
+      initialPaymentPerChunk: 20000000000,
       depth: 17,
       bucketDepth: 16,
       immutable: false,
@@ -789,7 +789,9 @@ describe('Redistribution', function () {
             (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
             (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth + // batch in the beforeHook
             (options?.additionalReward ? options?.additionalReward : 0);
+
           expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
+
           expect(CountCommitsEvent.args[0]).to.be.eq(1);
           expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
@@ -1220,7 +1222,8 @@ describe('Redistribution', function () {
           let r_node_1: Contract;
           let r_node_5: Contract;
           let currentRound: number;
-          let priceBaseNumber: number;
+          let basePrice: number;
+          let currentPriceUpScaled: number;
           let proof1: unknown, proof2: unknown, proofLast: unknown;
 
           // no need to mineToNode function call in test cases
@@ -1236,10 +1239,9 @@ describe('Redistribution', function () {
             r_node_5 = await ethers.getContract('Redistribution', node_5);
 
             // Set price base
-            const basePrice = await priceOracle.priceBase();
-            priceBaseNumber = Number.parseInt(basePrice);
-
+            basePrice = await priceOracle.priceBase();
             currentRound = await r_node_1.currentRound();
+            currentPriceUpScaled = await priceOracle.currentPriceUpScaled();
 
             const obfuscatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
             await r_node_1.commit(obfuscatedHash_1, overlay_1_n_25, currentRound);
@@ -1314,11 +1316,11 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have one skipped round here
-            const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
-            skippedRounds = 1;
+            // Check if the increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
             );
 
             const sr = await ethers.getContract('StakeRegistry');
@@ -1378,11 +1380,11 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have one skipped round here
-            const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
-            skippedRounds = 1;
+            // Check if the increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
             );
 
             expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
@@ -1442,9 +1444,8 @@ describe('Redistribution', function () {
           //     await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
           //     // Set price base
-          //     const basePrice = await priceOracle.priceBase();
-          //     priceBaseNumber = Number.parseInt(basePrice);
-
+          //     basePrice = await priceOracle.priceBase();
+          //
           //     // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
           //     // Each transaction mines one addtional block, so we get to phase limit after many transactions
           //     // So to offset that we need to substract number of blocks mined
@@ -1477,10 +1478,10 @@ describe('Redistribution', function () {
           //     const nodesInNeighbourhood = 2;
 
           //     // Check if the increase is properly applied, we have four skipped rounds here
-          //     const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / priceBaseNumber);
+          //     const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / basePrice);
           //     skippedRounds = 4;
           //     expect(await postage.lastPrice()).to.be.eq(
-          //       await skippedRoundsIncrease(skippedRounds, newPrice, priceBaseNumber, increaseRate[0])
+          //       await skippedRoundsIncrease(skippedRounds, newPrice, basePrice, increaseRate[0])
           //     );
           //   });
           // });

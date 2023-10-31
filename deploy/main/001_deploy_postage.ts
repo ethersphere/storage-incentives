@@ -6,7 +6,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer } = await getNamedAccounts();
 
   const token = await get('Token');
-  const argsStamp = [token.address, 16, networkConfig[network.name]?.multisig];
+  const argsStamp = [token.address, 16];
 
   await deploy('PostageStamp', {
     from: deployer,

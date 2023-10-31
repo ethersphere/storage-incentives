@@ -165,7 +165,7 @@ const config: HardhatUserConfig = {
       deploy: ['deploy/test/'],
     },
     sepolia: {
-      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://rpc2.sepolia.org',
+      url: 'https://1rpc.io/sepolia',
       accounts,
       chainId: 11155111,
       deploy: ['deploy/test/'],
@@ -186,6 +186,7 @@ const config: HardhatUserConfig = {
   etherscan: {
     apiKey: {
       mainnet: mainnetEtherscanKey || '',
+      sepolia: mainnetEtherscanKey || '',
       testnet: testnetEtherscanKey || '',
     },
     customChains: [
@@ -195,6 +196,14 @@ const config: HardhatUserConfig = {
         urls: {
           apiURL: 'https://api-sepolia.etherscan.io/api',
           browserURL: 'https://sepolia.etherscan.io/address/',
+        },
+      },
+      {
+        network: 'pretestnet',
+        chainId: 5,
+        urls: {
+          apiURL: 'https://api-goerli.etherscan.io/api',
+          browserURL: 'https://goerli.etherscan.io/address/',
         },
       },
       {
@@ -222,7 +231,7 @@ const config: HardhatUserConfig = {
     runOnCompile: false,
   },
   gasReporter: {
-    enabled: true,
+    enabled: false,
     currency: 'USD',
     gasPriceApi: 'https://api.gnosisscan.io/api?module=proxy&action=eth_gasPrice', // https://docs.gnosischain.com/tools/oracles/gas-price
     token: 'GNO',

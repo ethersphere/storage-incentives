@@ -107,16 +107,15 @@ async function mineOverlaysInDepth(
 
 async function skippedRoundsIncrease(
   skippedRounds: number,
-  newPrice: number,
+  currentPriceUpScaled: number,
   priceBase: number,
   maxIncreaseRate: number
 ): Promise<number> {
-  let currentPrice = newPrice;
-
   for (let index = 0; index < skippedRounds; index++) {
-    currentPrice = Math.floor((maxIncreaseRate * currentPrice) / priceBase);
+    currentPriceUpScaled = (maxIncreaseRate * currentPriceUpScaled) / priceBase;
   }
-  return currentPrice;
+
+  return currentPriceUpScaled >> 10;
 }
 
 async function getBlockNumber(): Promise<number> {

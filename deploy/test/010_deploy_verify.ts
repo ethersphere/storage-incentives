@@ -5,51 +5,46 @@ import verify from '../../utils/verify';
 const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
-  if ((network.name == 'testnet' || network.name == 'pretestnet') && process.env.TESTNET_ETHERSCAN_KEY) {
+  if (process.env.TESTNET_ETHERSCAN_KEY) {
     const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
 
     // Verify TestNet token
     const token = await get('TestToken');
-    const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000', networkConfig[network.name]?.multisig];
+    const argsToken = ['sBZZ', 'sBZZ', '1250000000000000000000000'];
 
-    log('Verifying...');
+    log('TestToken');
     await verify(token.address, argsToken);
     log('----------------------------------------------------');
 
     // Verify postageStamp
     const postageStamp = await get('PostageStamp');
-    const argsStamp = [token.address, 16, networkConfig[network.name]?.multisig];
+    const argsStamp = [token.address, 16];
 
-    log('Verifying...');
+    log('PostageStamp');
     await verify(postageStamp.address, argsStamp);
     log('----------------------------------------------------');
 
     // Verify oracle
     const priceOracle = await get('PriceOracle');
-    const argsOracle = [postageStamp.address, networkConfig[network.name]?.multisig];
+    const argsOracle = [postageStamp.address];
 
-    log('Verifying...');
+    log('PriceOracle');
     await verify(priceOracle.address, argsOracle);
     log('----------------------------------------------------');
 
     // Verify staking
     const staking = await get('StakeRegistry');
-    const argStaking = [token.address, swarmNetworkID, networkConfig[network.name]?.multisig];
+    const argStaking = [token.address, swarmNetworkID];
 
-    log('Verifying...');
+    log('Staking');
     await verify(staking.address, argStaking);
     log('----------------------------------------------------');
 
     // Verify redistribution
     const redistribution = await get('Redistribution');
-    const argRedistribution = [
-      staking.address,
-      postageStamp.address,
-      priceOracle.address,
-      networkConfig[network.name]?.multisig,
-    ];
+    const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
 
-    log('Verifying...');
+    log('Redistribution');
     await verify(redistribution.address, argRedistribution);
     log('----------------------------------------------------');
   }

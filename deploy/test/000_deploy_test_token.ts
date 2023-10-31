@@ -7,19 +7,17 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   let token = null;
 
-  if (network.name == 'testnet' || network.name == 'pretestnet') {
-    // We deploy new token if there is no token
-    if (!(token = await getOrNull('TestToken'))) {
-      const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000', networkConfig[network.name]?.multisig];
-      token = await deploy('TestToken', {
-        from: deployer,
-        args: argsToken,
-        log: true,
-        waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
-      });
-    } else {
-      log('Using already deployed token at', token.address);
-    }
+  // We deploy new token if there is no token
+  if (!(token = await getOrNull('TestToken'))) {
+    const argsToken = ['sBZZ', 'sBZZ', '1250000000000000000000000'];
+    token = await deploy('TestToken', {
+      from: deployer,
+      args: argsToken,
+      log: true,
+      waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
+    });
+  } else {
+    log('Using already deployed token at', token.address);
   }
 
   log('----------------------------------------------------');

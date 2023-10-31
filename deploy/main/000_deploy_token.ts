@@ -11,7 +11,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   } else {
     log('Using already deployed token at', token.address);
   }
-  
+
   log('----------------------------------------------------');
 };
 
