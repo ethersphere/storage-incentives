@@ -173,7 +173,7 @@ const config: HardhatUserConfig = {
       deploy: ['deploy/test/'],
     },
     mainfork: {
-      url: 'https://rpc.tenderly.co/fork/0ce88d9f-0a77-4cac-927b-84da71e97648',
+      url: 'https://rpc.tenderly.co/fork/7e8ac429-5007-44b9-b627-68c2db68de29',
       accounts,
       chainId: 100,
       deploy: ['deploy/main/'],
@@ -242,6 +242,11 @@ const config: HardhatUserConfig = {
     // noColors: true,
     // gasPrice: 40,
     coinmarketcap: process.env.CMC_KEY,
+  },
+  tenderly: {
+    username: 'SwarmDebug',
+    project: 'Swarm',
+    privateVerification: false, // if true, contracts will be verified privately, if false, contracts will be verified publicly
   },
 };
 

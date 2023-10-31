@@ -9,8 +9,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   // we either need to add deployer temporarly as ADMIN or do this manually over multisig
   const redisAddress = (await get('Redistribution')).address;
 
-  const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
-  await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
+  // const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
+  // await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
   log('----------------------------------------------------');
 };
 
