@@ -10,6 +10,8 @@ import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import './tasks';
+import * as tdly from '@tenderly/hardhat-tenderly';
+tdly.setup();
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
 
