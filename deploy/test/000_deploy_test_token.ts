@@ -9,7 +9,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   // We deploy new token if there is no token
   if (!(token = await getOrNull('TestToken'))) {
-    const argsToken = ['gBZZ', 'gBZZ', '1250000000000000000000000'];
+    const argsToken = ['sBZZ', 'sBZZ', '1250000000000000000000000'];
     token = await deploy('TestToken', {
       from: deployer,
       args: argsToken,
