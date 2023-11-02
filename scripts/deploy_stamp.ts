@@ -83,7 +83,7 @@ async function main() {
   let waitTime = 6;
   let currentRedis = '';
   let currentOracle = '';
-  if (network.name == 'mainfork') {
+  if (network.name == 'tenderly') {
     // BZZ Token address, minimumBucketDepth, multisig
     args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '16'];
     currentRedis = '';
@@ -105,7 +105,7 @@ async function main() {
   const stamp = await stampFactory.deploy(...args);
   await stamp.deployed();
   console.log(`Deployed contract to: ${stamp.address}`);
-  const deploymentReceipt = await stamp.deployTransaction.wait(waitTime);
+  const deploymentReceipt = await stamp.deployTransaction.wait(1);
 
   // Add metadata for Bee Node
   const deployed = await JSON.parse(JSON.stringify(config.deployedData).toString());
