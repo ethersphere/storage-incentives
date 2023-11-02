@@ -9,14 +9,14 @@ task('copy', 'Use copyBatch function from postageStamp contract')
   .addParam('immutable', "The account's address")
 
   .setAction(async (taskArgs: any, hre) => {
-    const currentPostage = '0xf86b48B65355D292dDE7da8B4ad1913a72ad45C9';
-
     const argsArray = Object.values(taskArgs);
     console.log(argsArray);
 
     if (typeof argsArray[4] === 'string' && !argsArray[4].startsWith('0x')) {
       argsArray[4] = '0x' + argsArray[4];
     }
+
+    const currentPostage: any = argsArray.pop();
 
     const stamp = await hre.ethers.getContractAt('PostageStamp', currentPostage);
     const tx = await stamp.copyBatch(...argsArray);

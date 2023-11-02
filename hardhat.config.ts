@@ -11,8 +11,8 @@ import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import './tasks';
 import 'hardhat-flat-exporter';
-import * as tdly from '@tenderly/hardhat-tenderly';
-tdly.setup({ automaticVerifications: true });
+// import * as tdly from '@tenderly/hardhat-tenderly';
+// tdly.setup({ automaticVerifications: true });
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
 
