@@ -243,11 +243,11 @@ const config: HardhatUserConfig = {
     // gasPrice: 40,
     coinmarketcap: process.env.CMC_KEY,
   },
-  tenderly: {
-    username: 'SwarmDebug',
-    project: 'Swarm',
-    privateVerification: false,
-  },
+  // tenderly: {
+  //   username: 'SwarmDebug',
+  //   project: 'Swarm',
+  //   privateVerification: false,
+  // },
 };
 
 export default config;
