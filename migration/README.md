@@ -5,7 +5,9 @@ Clone this repo https://github.com/ethersphere/batch-migration/tree/master
 and use the tool to download batches that are on Gnosis mainnet
 We will need some Gnosis RPC, try with https://getblock.io/
 
-make binary && dist/batchpull --stamp-address 0x647942035bb69c8e4d7eb17c8313ebc50b0babfa --rpc-endpoint https://go.getblock.io/f1147e377b1c4022a7462499e9258f27 --sleep '0.0001s' --block-start 25527076 --output "batches.json"
+Some notes, one year will have somewhere around 5.5M blocks, line below should be run to get output
+
+make binary && dist/batchpull --stamp-address 0x647942035bb69c8e4d7eb17c8313ebc50b0babfa --rpc-endpoint https://go.getblock.io/f1147e377b1c4022a7462499e9258f27 --sleep '0.0001s' --block-start 30321200 --output "batches.json"
 
 Step 2
 Before we start the process we need to PAUSE old postageStamp contract so no new batches are created.
