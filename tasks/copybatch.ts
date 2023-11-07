@@ -11,7 +11,7 @@ task('copy', 'Use copyBatch function from postageStamp contract')
 
   .setAction(async (taskArgs: any, hre) => {
     const argsArray = Object.values(taskArgs);
-    console.log(argsArray);
+    //console.log(argsArray);
 
     if (typeof argsArray[4] === 'string' && !argsArray[4].startsWith('0x')) {
       argsArray[4] = '0x' + argsArray[4];

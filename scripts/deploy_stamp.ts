@@ -83,7 +83,7 @@ async function main() {
   let waitTime = 6;
   let currentRedis = '';
   let currentOracle = '';
-  if (network.name == 'tenderly') {
+  if (network.name == 'mainnet') {
     // BZZ Token address, minimumBucketDepth, multisig
     args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '16'];
     currentRedis = '';
