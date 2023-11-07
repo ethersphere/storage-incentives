@@ -7,6 +7,7 @@ task('copy', 'Use copyBatch function from postageStamp contract')
   .addParam('bucketdepth', "The account's address")
   .addParam('batchid', "The account's address")
   .addParam('immutable', "The account's address")
+  .addParam('contract', 'Postage Stamp contract address')
 
   .setAction(async (taskArgs: any, hre) => {
     const argsArray = Object.values(taskArgs);

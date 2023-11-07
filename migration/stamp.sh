@@ -1,6 +1,6 @@
 # This bash is used on data gathered from this script here https://github.com/ethersphere/batch-migration/tree/master
 # Using task defined in hardhat config, set PostageStamp contract that will be used in that config
-postagecontract="0xeee84eb22f3d7fed1bec46124e5b1106d186c4e0"
+postagecontract="0x30d155478eF27Ab32A1D578BE7b84BC5988aF381"
 
 for row in $(cat ./migration/batches.json | jq -c '.batches[]'); do
     _field() {
