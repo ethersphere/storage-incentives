@@ -1,6 +1,6 @@
 # This bash is used on data gathered from this script here https://github.com/ethersphere/batch-migration/tree/master
 # Using task defined in hardhat config, set PostageStamp contract that will be used in that config
-postagecontract="0x30d155478eF27Ab32A1D578BE7b84BC5988aF381"
+postagecontract="0x3a235fd10563fDD954C3199c08f4DA132284287D"
 
 for row in $(cat ./migration/batches.json | jq -c '.batches[]'); do
     _field() {
@@ -16,7 +16,7 @@ for row in $(cat ./migration/batches.json | jq -c '.batches[]'); do
     echo "Batch balance #####"
     echo ${balance}
 
-    cmd="npx hardhat --network mainfork copy --owner ${owner} --initialbalance ${balance}  --depth ${depth} --bucketdepth ${bucketdepth}  --batchid ${batchid}  --immutable ${immutable} --contract ${postagecontract}"
+    cmd="npx hardhat --network tenderly copy --owner ${owner} --initialbalance ${balance}  --depth ${depth} --bucketdepth ${bucketdepth}  --batchid ${batchid}  --immutable ${immutable} --contract ${postagecontract}"
     $cmd
     [ $? -eq 0 ] && echo "${batchid} migration successful" || echo "${batchid} migration failure"
 done
