@@ -12,11 +12,11 @@ interface Batch {
 
 async function main() {
   // Read the JSON file with the batches
-  const batchesData = JSON.parse(fs.readFileSync('./migration/batches2.json', 'utf8'));
+  const batchesData = JSON.parse(fs.readFileSync('./migration/batches.json', 'utf8'));
   const batches: Batch[] = batchesData.batches;
 
   // Group the batches into chunks of 10
-  const chunkSize = 10;
+  const chunkSize = 500;
   const batchGroups: Batch[][] = chunkArray(batches, chunkSize);
 
   // Assuming you have the contract deployed and have its address
