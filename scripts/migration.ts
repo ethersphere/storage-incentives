@@ -15,8 +15,8 @@ async function main() {
   const batchesData = JSON.parse(fs.readFileSync('./migration/batches.json', 'utf8'));
   const batches: Batch[] = batchesData.batches;
 
-  // Group the batches into chunks of 10
-  const chunkSize = 500;
+  // Group the batches into chunks of 80, this uses around 14M of gas. Some usual total block limit is +20M
+  const chunkSize = 80;
   const batchGroups: Batch[][] = chunkArray(batches, chunkSize);
 
   // Assuming you have the contract deployed and have its address
@@ -24,8 +24,12 @@ async function main() {
 
   const contract = await ethers.getContractAt('PostageStamp', contractAddress);
 
+  // A numerator to keep track of the batch group number
+  let groupNumber = 0;
+
   // Iterate over the chunks and send them to the smart contract
   for (const group of batchGroups) {
+    groupNumber++; // Increment the group number for each batch group sent
     const batchStructs = group.map((batch) => ({
       batchId: batch.batchid,
       owner: batch.owner,
@@ -37,7 +41,7 @@ async function main() {
 
     // Send the batch group to the smart contract
     const tx = await contract.copyBatchBulk(batchStructs);
-    console.log(`Batches sent with transaction: ${tx.hash}`);
+    console.log(`Batch group #${groupNumber} sent with transaction: ${tx.hash}`);
     await tx.wait();
   }
 }
