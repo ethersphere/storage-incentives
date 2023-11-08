@@ -12,7 +12,7 @@ interface Batch {
 
 async function main() {
   // Read the JSON file with the batches
-  const batchesData = JSON.parse(fs.readFileSync('./batches2.json', 'utf8'));
+  const batchesData = JSON.parse(fs.readFileSync('./migration/batches2.json', 'utf8'));
   const batches: Batch[] = batchesData.batches;
 
   // Group the batches into chunks of 10
@@ -20,14 +20,13 @@ async function main() {
   const batchGroups: Batch[][] = chunkArray(batches, chunkSize);
 
   // Assuming you have the contract deployed and have its address
-  const contractAddress = '0x7c89b0ac426ca28c4718ac96b5982052fbf8a3b6';
+  const contractAddress = '0x3a235fd10563fdd954c3199c08f4da132284287d';
 
   const contract = await ethers.getContractAt('PostageStamp', contractAddress);
 
   // Iterate over the chunks and send them to the smart contract
   for (const group of batchGroups) {
-    const batchStructs = group.map((batch): any => ({
-      // Use the actual contract method parameters type instead of any if available
+    const batchStructs = group.map((batch) => ({
       batchId: batch.batchid,
       owner: batch.owner,
       depth: batch.depth,
