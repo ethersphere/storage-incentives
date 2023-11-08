@@ -15,8 +15,12 @@ async function main() {
   const batchesData = JSON.parse(fs.readFileSync('./migration/batches.json', 'utf8'));
   const batches: Batch[] = batchesData.batches;
 
-  // Group the batches into chunks of 80, this uses around 14M of gas. Some usual total block limit is +20M
-  const chunkSize = 80;
+  // Group the batches into chunks
+  // When using siz of 80, each trx will use around 14M of gas
+  // When using size of 90, each trx will use around 21M of gas
+  // Block total gas limit is around 20M
+
+  const chunkSize = 90;
   const batchGroups: Batch[][] = chunkArray(batches, chunkSize);
 
   // Assuming you have the contract deployed and have its address
