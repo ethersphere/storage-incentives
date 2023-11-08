@@ -87,6 +87,15 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 lastUpdatedBlockNumber;
     }
 
+    struct ImportBatch {
+        bytes32 batchId;
+        address owner;
+        uint8 depth;
+        uint8 bucketDepth;
+        bool immutableFlag;
+        uint256 remainingBalance;
+    }
+
     // ----------------------------- Events ------------------------------
 
     /**
@@ -242,7 +251,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint8 _bucketDepth,
         bytes32 _batchId,
         bool _immutable
-    ) external whenNotPaused {
+    ) public whenNotPaused {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
         }
@@ -282,6 +291,25 @@ contract PostageStamp is AccessControl, Pausable {
         tree.insert(_batchId, normalisedBalance);
 
         emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+    }
+
+    /**
+     * @notice Import batches in bulk
+     * @dev Import batches in bulk to save number of transactions, limit number of batches in each array to X
+     * @param bulkBatches array of batches
+     */
+    function copyBatchBulk(ImportBatch[] calldata bulkBatches) external {
+        for (uint i = 0; i < bulkBatches.length; i++) {
+            ImportBatch memory _batch = bulkBatches[i];
+            copyBatch(
+                _batch.owner,
+                _batch.remainingBalance,
+                _batch.depth,
+                _batch.bucketDepth,
+                _batch.batchId,
+                _batch.immutableFlag
+            );
+        }
     }
 
     /**
