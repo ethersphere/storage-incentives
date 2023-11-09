@@ -40,7 +40,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   const { deployer } = await getNamedAccounts();
   let token = null;
 
-  // We ONLY use already deployed token for MAINNET
+  // We ONLY use already deployed token for MAINNET FORKS
   if (!(token = await get('Token'))) {
     // we have problem as there is not token, error out
   } else {

@@ -28,7 +28,7 @@ export const networkConfig: networkConfigInfo = {
   tenderly: {
     blockConfirmations: 1,
     swarmNetworkId: 1,
-    multisig: '0x647942035bb69C8e4d7EB17C8313EBC50b0bABFA',
+    multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
   mainnet: {
     blockConfirmations: 6,
