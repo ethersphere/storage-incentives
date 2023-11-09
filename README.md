@@ -132,8 +132,6 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
 
 **Note** can also use npx instead of yarn, so it would be 'yarn hardhat compile'. For fastest typing you can install https://hardhat.org/hardhat-runner/docs/guides/command-line-completion and then just run 'hh compile' 'hh test'
 
-**Note:** If using Goerli as tesnet be aware that GAS prices are very high and maybe you will should add custom gasPrice that is very high if you want to get your picked up fast, set it in hardhat.config.ts or as options when deploying
-
 **Note:** After successfully deploying to mainnet or testnet the [mainnet_deployed.json](./mainnet_deployed.json) and [testnet_deployed.json](./testnet_deployed.json) will be automatically updated and those changes should be committed as bee node is picking them up as data that is used in nodes. This is done utilizing codegen/generate_src.sh script that is activated as github action, more on this at the bottom in Releasing section
 
 **Note:** `WALLET_SECRET` can be **Mnemonic** or **Private Key**.

@@ -152,19 +152,13 @@ const config: HardhatUserConfig = {
       deploy: ['deploy/local/'],
     },
     pretestnet: {
-      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://1rpc.io/sepolia',
       accounts,
-      chainId: 5,
+      chainId: 11155111,
       deploy: ['deploy/test/'],
     },
     testnet: {
-      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://goerli.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
-      accounts,
-      chainId: 5,
-      deploy: ['deploy/test/'],
-    },
-    sepolia: {
-      url: 'https://1rpc.io/sepolia',
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://1rpc.io/sepolia',
       accounts,
       chainId: 11155111,
       deploy: ['deploy/test/'],
@@ -190,7 +184,7 @@ const config: HardhatUserConfig = {
     },
     customChains: [
       {
-        network: 'sepolia',
+        network: 'testnet',
         chainId: 11155111,
         urls: {
           apiURL: 'https://api-sepolia.etherscan.io/api',
@@ -199,18 +193,10 @@ const config: HardhatUserConfig = {
       },
       {
         network: 'pretestnet',
-        chainId: 5,
+        chainId: 11155111,
         urls: {
-          apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/address/',
-        },
-      },
-      {
-        network: 'testnet',
-        chainId: 5,
-        urls: {
-          apiURL: 'https://api-goerli.etherscan.io/api',
-          browserURL: 'https://goerli.etherscan.io/address/',
+          apiURL: 'https://api-sepolia.etherscan.io/api',
+          browserURL: 'https://sepolia.etherscan.io/address/',
         },
       },
       {
