@@ -40,6 +40,30 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   const { deployer } = await getNamedAccounts();
   let token = null;
 
+  // Remove previous deployment so we start fresh for contracts that will be deployed, modify them per case
+  await deleteFiles(filesToDelete);
+  await deleteDirectory(directoryToDelete);
+
+  // Do preparation for FRESH Tenderly deployment
+  log('Funding deployment wallets');
+
+  const namedAccounts = await getNamedAccounts();
+  const WALLETS = [deployer];
+  const multiSig: string | undefined = networkConfig[network.name].multisig;
+
+  const result = await ethers.provider.send('tenderly_setBalance', [
+    WALLETS,
+    // Amount in wei will be set for all wallets
+    ethers.utils.hexValue(ethers.utils.parseUnits('10', 'ether').toHexString()),
+  ]);
+
+  // Add missing role for Staking so deployer can set roles to new contracts
+  // On Tenderly we can set any FROM it will work
+  // const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
+  // await execute('StakeRegistry', { from: multiSig }, 'grantRole', adminRole, deployer);
+
+  log('Funded wallet(s)', ...WALLETS);
+
   // We ONLY use already deployed token for MAINNET FORKS
   if (!(token = await get('Token'))) {
     // we have problem as there is not token, error out
@@ -48,32 +72,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   }
 
   log('----------------------------------------------------');
-
-  // Do preparation for Tenderly
-  if (network.name == 'tenderly') {
-    log('Funding deployment wallets');
-
-    const namedAccounts = await getNamedAccounts();
-    const deployer = namedAccounts.deployer;
-    const WALLETS = [deployer];
-    const multiSig: string | undefined = networkConfig[network.name].multisig;
-
-    const result = await ethers.provider.send('tenderly_setBalance', [
-      WALLETS,
-      //amount in wei will be set for all wallets
-      ethers.utils.hexValue(ethers.utils.parseUnits('10', 'ether').toHexString()),
-    ]);
-
-    // Add missing role for Staking so deployer can set roles to new contracts
-    // On Tenderly we can set any FROM it will work
-    // const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
-    // await execute('StakeRegistry', { from: multiSig }, 'grantRole', adminRole, deployer);
-
-    log('Funded wallet(s)', ...WALLETS);
-    // Remove previous deployment so we start fresh for contracts that will be deployed, modify them per case
-    await deleteFiles(filesToDelete);
-    await deleteDirectory(directoryToDelete);
-  }
 };
 
 export default func;
