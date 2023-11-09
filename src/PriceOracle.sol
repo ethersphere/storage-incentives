@@ -19,7 +19,7 @@ contract PriceOracle is AccessControl {
     uint16 maxConsideredExtraRedundancy = 4;
 
     // When the contract is paused, price changes are not effective
-    bool public isPaused = true;
+    bool public isPaused = false;
 
     // The number of the last round price adjusting happend
     uint64 public lastAdjustedRound;
