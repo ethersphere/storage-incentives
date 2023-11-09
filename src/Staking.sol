@@ -229,4 +229,9 @@ contract StakeRegistry is AccessControl, Pausable {
         require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
         _unpause();
     }
+
+    function changeNetworkId(uint64 _NetworkId) external {
+        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only admin can change Network ID");
+        NetworkId = _NetworkId;
+    }
 }
