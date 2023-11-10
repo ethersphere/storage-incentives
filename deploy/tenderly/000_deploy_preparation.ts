@@ -68,7 +68,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   if (!(token = await get('Token'))) {
     // we have problem as there is not token, error out
   } else {
-    log('Using already deployed token at', token.address);
+    log('Using already deployed Token at', token.address);
   }
 
   log('----------------------------------------------------');

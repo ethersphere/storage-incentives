@@ -11,7 +11,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   // We use legacy token that was migrated, until we deploy new one with this framework
   if (!(staking = await get('StakeRegistry'))) {
   } else {
-    log('Using already deployed token at', staking.address);
+    log('Using already deployed Staking at', staking.address);
   }
 
   log('----------------------------------------------------');
