@@ -104,34 +104,35 @@ async function main() {
   console.log('Deploying contract...');
   const stamp = await stampFactory.deploy(...args);
   await stamp.deployed();
+  const deploymentReceipt = await stamp.deployTransaction.wait(waitTime);
 
-  // // Add metadata for Bee Node
-  // const deployed = await JSON.parse(JSON.stringify(config.deployedData).toString());
-  // const stampABI = await require('../artifacts/src/PostageStamp.sol/PostageStamp.json');
-  // deployed['contracts']['postageStamp']['abi'] = stampABI.abi;
-  // deployed['contracts']['postageStamp']['bytecode'] = stampABI.bytecode.toString();
-  // deployed['contracts']['postageStamp']['address'] = stamp.address;
-  // deployed['contracts']['postageStamp']['block'] = deploymentReceipt.blockNumber;
-  // deployed['contracts']['postageStamp']['url'] = config.url + stamp.address;
+  // Add metadata for Bee Node
+  const deployed = await JSON.parse(JSON.stringify(config.deployedData).toString());
+  const stampABI = await require('../artifacts/src/PostageStamp.sol/PostageStamp.json');
+  deployed['contracts']['postageStamp']['abi'] = stampABI.abi;
+  deployed['contracts']['postageStamp']['bytecode'] = stampABI.bytecode.toString();
+  deployed['contracts']['postageStamp']['address'] = stamp.address;
+  deployed['contracts']['postageStamp']['block'] = deploymentReceipt.blockNumber;
+  deployed['contracts']['postageStamp']['url'] = config.url + stamp.address;
 
-  // // We need to first deploy this contract and then use this address and deploy with it redistribution
-  // // After that we can add here redis role
+  // We need to first deploy this contract and then use this address and deploy with it redistribution
+  // After that we can add here redis role
 
-  // // Change roles on current staking contract
-  // const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
-  // const tx2 = await stamp.grantRole(redistributorRole, currentRedis);
-  // console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
+  // Change roles on current staking contract
+  const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
+  const tx2 = await stamp.grantRole(redistributorRole, currentRedis);
+  console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
 
-  // const oracleRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_ORACLE_ROLE'));
-  // const tx3 = await stamp.grantRole(oracleRole, currentOracle);
-  // console.log('Changed ORACLE ROLE at : ', tx3.hash);
+  const oracleRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_ORACLE_ROLE'));
+  const tx3 = await stamp.grantRole(oracleRole, currentOracle);
+  console.log('Changed ORACLE ROLE at : ', tx3.hash);
 
-  // fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
+  fs.writeFileSync(config.networkName + '_deployed.json', JSON.stringify(deployed, null, '\t'));
 
-  // if ((process.env.MAINNET_ETHERSCAN_KEY || process.env.TESTNET_ETHERSCAN_KEY) && network.name != 'localhost') {
-  //   console.log('Verifying...');
-  //   await verify(stamp.address, args);
-  // }
+  if ((process.env.MAINNET_ETHERSCAN_KEY || process.env.TESTNET_ETHERSCAN_KEY) && network.name != 'localhost') {
+    console.log('Verifying...');
+    await verify(stamp.address, args);
+  }
 }
 
 main()
