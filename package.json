@@ -25,6 +25,7 @@
     "@types/node": "^18.14.6",
     "@typescript-eslint/eslint-plugin": "^5.54.1",
     "@typescript-eslint/parser": "^5.54.1",
+    "axios": "^1.6.1",
     "chai": "^4.2.0",
     "chai-ethers": "^0.0.1",
     "cross-env": "^7.0.2",

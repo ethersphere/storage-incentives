@@ -4,6 +4,7 @@ import { networkConfig } from '../../helper-hardhat-config';
 import { unlink, rm } from 'fs';
 import { promisify } from 'util';
 
+const axios = require('axios');
 const unlinkAsync = promisify(unlink);
 const rmAsync = promisify(rm);
 
@@ -47,8 +48,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   // Do preparation for FRESH Tenderly deployment
   log('Funding deployment wallets');
 
-  const namedAccounts = await getNamedAccounts();
-  const WALLETS = [deployer];
+  const WALLETS = [deployer, networkConfig['mainnet'].multisig];
   const multiSig: string | undefined = networkConfig[network.name].multisig;
 
   const result = await ethers.provider.send('tenderly_setBalance', [
@@ -59,8 +59,25 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
 
   // Add missing role for Staking so deployer can set roles to new contracts
   // On Tenderly we can set any FROM it will work
-  // const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
-  // await execute('StakeRegistry', { from: multiSig }, 'grantRole', adminRole, deployer);
+  // const staking = await get('StakeRegistry');
+  // const SIMULATE_API = `https://api.tenderly.co/api/v1/account/SwarmDebug/project/swarm/fork/eb11cba9-0fae-4998-a77b-f5afd326521f/simulate`;
+  // // Transaction details
+  // const transaction = {
+  //   network_id: '100',
+  //   from: networkConfig['mainnet'].multisig,
+  //   to: staking.address,
+  //   input:
+  //     '0x2f2ff15d0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b1c7f17ed88189abf269bf68a3b2ed83c5276aae',
+  //   save: true,
+  // };
+
+  // const opts = {
+  //   headers: {
+  //     'X-Access-Key': process.env.TENDERLY_ACCESS_KEY || '',
+  //   },
+  // };
+  // const resp = await axios.post(SIMULATE_API, transaction, opts);
+  // console.log('Added current deployer as ADMIN via simulated multisig wallet');
 
   log('Funded wallet(s)', ...WALLETS);
 
@@ -75,4 +92,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
 };
 
 export default func;
-func.tags = ['token', 'preparation', 'contracts'];
+func.tags = ['token', 'preparation'];
