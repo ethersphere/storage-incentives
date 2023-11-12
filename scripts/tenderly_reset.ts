@@ -2,7 +2,7 @@
 
 import 'hardhat-deploy-ethers';
 import '@nomiclabs/hardhat-etherscan';
-import { ethers, getNamedAccounts } from 'hardhat';
+import { ethers, getNamedAccounts, network } from 'hardhat';
 const axios = require('axios');
 import { networkConfig } from '../helper-hardhat-config';
 
@@ -43,24 +43,18 @@ async function deleteDirectory(directoryPath: string) {
 async function main() {
   const { deployer } = await getNamedAccounts();
 
-  // Fund deployer wallet
-  console.log('Funding deployment wallets');
-
-  const WALLETS = [deployer, networkConfig['mainnet'].multisig];
-  await ethers.provider.send('tenderly_setBalance', [
-    WALLETS,
-    // Amount in wei will be set for all wallets
-    ethers.utils.hexValue(ethers.utils.parseUnits('10', 'ether').toHexString()),
-  ]);
-
   // Remove previous deployment so we start fresh for contracts that will be deployed, modify them per case
   await deleteFiles(filesToDelete);
   await deleteDirectory(directoryToDelete);
 
+  const forkId = network.config.url.split('/').slice(-2).join('/');
+
   // Add missing role for Staking so deployer can set roles to new contracts
   // On Tenderly we can set any FROM it will work
   const staking = await ethers.getContractAt('StakeRegistry', '0x781c6D1f0eaE6F1Da1F604c6cDCcdB8B76428ba7');
-  const SIMULATE_API = `https://api.tenderly.co/api/v1/account/SwarmDebug/project/swarm/fork/eb11cba9-0fae-4998-a77b-f5afd326521f/simulate`;
+  const SIMULATE_API = `https://api.tenderly.co/api/v1/account/SwarmDebug/project/swarm/${forkId}/simulate`;
+
+  console.log(SIMULATE_API);
   // Transaction details
   const transaction = {
     network_id: '100',
@@ -78,6 +72,16 @@ async function main() {
   };
   const resp = await axios.post(SIMULATE_API, transaction, opts);
   console.log('Added current deployer as ADMIN via simulated multisig wallet');
+
+  // Fund deployer wallet
+  console.log('Funding deployment wallets');
+
+  const WALLETS = [deployer, networkConfig['mainnet'].multisig];
+  await ethers.provider.send('tenderly_setBalance', [
+    WALLETS,
+    // Amount in wei will be set for all wallets
+    ethers.utils.hexValue(ethers.utils.parseUnits('100', 'ether').toHexString()),
+  ]);
 }
 
 main()

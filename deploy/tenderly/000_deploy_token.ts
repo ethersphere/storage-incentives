@@ -1,3 +1,6 @@
+// BEFORE running the deployment reset the environment with this command/script
+//  hh run scripts/tenderly_reset.ts --network tenderly
+
 import { DeployFunction } from 'hardhat-deploy/types';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers, network }) {

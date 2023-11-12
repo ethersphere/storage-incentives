@@ -173,7 +173,7 @@ const config: HardhatUserConfig = {
       deploy: ['deploy/test/'],
     },
     tenderly: {
-      url: 'https://rpc.tenderly.co/fork/aa5f32cb-e713-4ef9-875d-16d21bcee545',
+      url: 'https://rpc.tenderly.co/fork/7ccb24d3-e1fa-43fd-8b71-02da55c9170e',
       accounts,
       chainId: 100,
       deploy: ['deploy/tenderly/'],
