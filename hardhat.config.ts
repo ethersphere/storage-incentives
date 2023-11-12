@@ -10,8 +10,8 @@ import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import './tasks';
-import * as tdly from '@tenderly/hardhat-tenderly';
-tdly.setup({ automaticVerifications: true });
+// import * as tdly from '@tenderly/hardhat-tenderly';
+// tdly.setup({ automaticVerifications: true });
 
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
 
@@ -243,11 +243,11 @@ const config: HardhatUserConfig = {
     // gasPrice: 40,
     coinmarketcap: process.env.CMC_KEY,
   },
-  tenderly: {
-    username: 'SwarmDebug',
-    project: 'Swarm',
-    privateVerification: false,
-  },
+  // tenderly: {
+  //   username: 'SwarmDebug',
+  //   project: 'Swarm',
+  //   privateVerification: false,
+  // },
 };
 
 export default config;
