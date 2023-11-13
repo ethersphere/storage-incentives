@@ -3,11 +3,11 @@
 import 'hardhat-deploy-ethers';
 import '@nomiclabs/hardhat-etherscan';
 import { ethers, getNamedAccounts, network } from 'hardhat';
-const axios = require('axios');
 import { networkConfig } from '../helper-hardhat-config';
 
 import { unlink, rm } from 'fs';
 import { promisify } from 'util';
+import axios from 'axios';
 
 const unlinkAsync = promisify(unlink);
 const rmAsync = promisify(rm);
