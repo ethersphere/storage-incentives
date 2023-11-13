@@ -53,8 +53,8 @@ async function main() {
 // Helper function to divide the array into chunks of a specific size
 function chunkArray<T>(array: T[], size: number): T[][] {
   return array.reduce((acc: T[][], val: T, i: number) => {
-    let idx = Math.floor(i / size);
-    let page: T[] = acc[idx] || (acc[idx] = []);
+    const idx = Math.floor(i / size);
+    const page: T[] = acc[idx] || (acc[idx] = []);
     page.push(val);
     return acc;
   }, []);
