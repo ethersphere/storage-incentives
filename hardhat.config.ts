@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import { HardhatUserConfig } from 'hardhat/types';
-import { task } from 'hardhat/config';
 import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
@@ -10,6 +9,8 @@ import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import './tasks';
+
+// Tenderly config breaks tests for some reason, so its commented out
 // import * as tdly from '@tenderly/hardhat-tenderly';
 // tdly.setup({ automaticVerifications: true });
 

@@ -295,7 +295,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Import batches in bulk
-     * @dev Import batches in bulk to save number of transactions, limit number of batches in each array to X
+     * @dev Import batches in bulk to lower the number of transactions needed,
+     * @dev becase of block limitations 90 batches per trx is ceiling, 60 to 70 sweetspot
      * @param bulkBatches array of batches
      */
     function copyBatchBulk(ImportBatch[] calldata bulkBatches) external {

@@ -1,8 +1,12 @@
-// Run this only when you have NEW Tenderly FORK and what to do a new SETUP for it.
+// This script should be used when you CREATE new fork on Tenderly and you want to make automated setup for it
+// What we do here is delete files from hardhat deployments folders as we will deploy new contracts to forked network
+// then we will give ADMIN role to deployer on forked staking contract, finally we will send XDAI funds to deployer so
+// it can be used to deploy contracts for this fork
 
 import 'hardhat-deploy-ethers';
 import '@nomiclabs/hardhat-etherscan';
 import { ethers, getNamedAccounts, network } from 'hardhat';
+import { NetworkConfig, HttpNetworkConfig } from 'hardhat/types';
 import { networkConfig } from '../helper-hardhat-config';
 
 import { unlink, rm } from 'fs';
@@ -40,6 +44,10 @@ async function deleteDirectory(directoryPath: string) {
   }
 }
 
+function isHttpNetworkConfig(config: NetworkConfig): config is HttpNetworkConfig {
+  return 'url' in config;
+}
+
 async function main() {
   const { deployer } = await getNamedAccounts();
 
@@ -47,10 +55,16 @@ async function main() {
   await deleteFiles(filesToDelete);
   await deleteDirectory(directoryToDelete);
 
-  const forkId = network.config.url.split('/').slice(-2).join('/');
+  let forkId: string;
 
-  // Add missing role for Staking so deployer can set roles to new contracts
-  // On Tenderly we can set any FROM it will work
+  if (isHttpNetworkConfig(network.config)) {
+    forkId = network.config.url.split('/').slice(-2).join('/');
+  } else {
+    throw new Error('Network configuration does not include a URL');
+  }
+
+  // Give ADMIN role to deployer on deployed Staking, then it can set roles to new contracts
+  // On Tenderly we can fake FROM with this API call
   const staking = await ethers.getContractAt('StakeRegistry', '0x781c6D1f0eaE6F1Da1F604c6cDCcdB8B76428ba7');
   const SIMULATE_API = `https://api.tenderly.co/api/v1/account/SwarmDebug/project/swarm/${forkId}/simulate`;
 
@@ -70,7 +84,8 @@ async function main() {
       'X-Access-Key': process.env.TENDERLY_ACCESS_KEY || '',
     },
   };
-  const resp = await axios.post(SIMULATE_API, transaction, opts);
+
+  await axios.post(SIMULATE_API, transaction, opts);
   console.log('Added current deployer as ADMIN via simulated multisig wallet');
 
   // Fund deployer wallet
