@@ -1,6 +1,6 @@
 {
 	"chainId": 11155111,
-	"swarmNetworkId": 666,
+	"swarmNetworkId": 10,
 	"contracts": {
 		"bzzToken": {
 			"abi": [
