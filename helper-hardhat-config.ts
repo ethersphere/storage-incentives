@@ -17,7 +17,7 @@ export const networkConfig: networkConfigInfo = {
   },
   sepolia: {
     blockConfirmations: 6,
-    swarmNetworkId: 666,
+    swarmNetworkId: 10,
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
   testnet: {
