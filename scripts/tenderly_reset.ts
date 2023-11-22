@@ -6,7 +6,7 @@
 import 'hardhat-deploy-ethers';
 import '@nomiclabs/hardhat-etherscan';
 import { ethers, getNamedAccounts, network } from 'hardhat';
-import { NetworkConfig, HttpNetworkConfig } from 'hardhat/types';
+import { HttpNetworkConfig } from 'hardhat/types';
 import { networkConfig } from '../helper-hardhat-config';
 
 import { unlink, rm } from 'fs';
@@ -42,10 +42,6 @@ async function deleteDirectory(directoryPath: string) {
   } catch (error) {
     console.error('Error deleting directory:', error);
   }
-}
-
-function isHttpNetworkConfig(config: NetworkConfig): config is HttpNetworkConfig {
-  return 'url' in config;
 }
 
 async function main() {
