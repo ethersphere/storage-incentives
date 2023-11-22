@@ -55,13 +55,7 @@ async function main() {
   await deleteFiles(filesToDelete);
   await deleteDirectory(directoryToDelete);
 
-  let forkId: string;
-
-  if (isHttpNetworkConfig(network.config)) {
-    forkId = network.config.url.split('/').slice(-2).join('/');
-  } else {
-    throw new Error('Network configuration does not include a URL');
-  }
+  const forkId = (network.config as HttpNetworkConfig).url.split('/').slice(-2).join('/');
 
   // Give ADMIN role to deployer on deployed Staking, then it can set roles to new contracts
   // On Tenderly we can fake FROM with this API call
