@@ -1,0 +1,68 @@
+{
+    "batches": [
+        {
+            "batchid": "0x01b987460ebd8cc6ef87725230f67444f2f0b99988d833698c28048bbcba5dc8",
+            "owner": "0x9bf808296e0c257caa032f45f29e3fe1c41b2ad1",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 5085313
+        },
+        {
+            "batchid": "0x575b609f8a26c4599741061f61699864ed99cbcfefb638c5cd6f6a0336000327",
+            "owner": "0x9bf808296e0c257caa032f45f29e3fe1c41b2ad1",
+            "depth": 24,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 21198848
+        },
+        {
+            "batchid": "0x29e18228fb41580880f0d0fa9ca9a6d3b75f7182b6834c3b1cd6ed6323a749d7",
+            "owner": "0x248404eaf73c0d823ad919c4b2826a2088b15ee5",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 30886017
+        },
+        {
+            "batchid": "0xf97bd40b1e0ed10945cc8ab32be451c1fa04c4ceb43ebf93a4631bb8d821da29",
+            "owner": "0x248404eaf73c0d823ad919c4b2826a2088b15ee5",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 30895233
+        },
+        {
+            "batchid": "0x6b13faacefbc8aa310b399f8f393d286a44dc79d7d819ff328d8b19691d490fd",
+            "owner": "0x248404eaf73c0d823ad919c4b2826a2088b15ee5",
+            "depth": 20,
+            "bucketDepth": 16,
+            "immutable": true,
+            "remainingBalance": 30900353
+        },
+        {
+            "batchid": "0x5e6ba3f83edbe26e587ae00fb7433c9beb4f78f4069f7699a1100ab13f671906",
+            "owner": "0x248404eaf73c0d823ad919c4b2826a2088b15ee5",
+            "depth": 24,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 26930176
+        },
+        {
+            "batchid": "0xe23d4c1c00446fa0d6564fc186d76e989134c22dc969883296a76de30b986506",
+            "owner": "0x248404eaf73c0d823ad919c4b2826a2088b15ee5",
+            "depth": 24,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 26933248
+        },
+        {
+            "batchid": "0xcb3ef0fec8b5261477255a80327ee3248596d427410652bb4348692923491e33",
+            "owner": "0x248404eaf73c0d823ad919c4b2826a2088b15ee5",
+            "depth": 24,
+            "bucketDepth": 16,
+            "immutable": false,
+            "remainingBalance": 26936320
+        }
+    ]
+}
