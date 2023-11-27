@@ -131,6 +131,11 @@ contract PostageStamp is AccessControl, Pausable {
      */
     event PriceUpdate(uint256 price);
 
+    /**
+     *@dev Emitted on every batch failed
+     */
+    event BatchCopyFailed(uint index, address owner);
+
     // ----------------------------- Errors ------------------------------
 
     error ZeroAddress(); // Owner cannot be the zero address
@@ -302,14 +307,21 @@ contract PostageStamp is AccessControl, Pausable {
     function copyBatchBulk(ImportBatch[] calldata bulkBatches) external {
         for (uint i = 0; i < bulkBatches.length; i++) {
             ImportBatch memory _batch = bulkBatches[i];
-            copyBatch(
-                _batch.owner,
-                _batch.remainingBalance,
-                _batch.depth,
-                _batch.bucketDepth,
-                _batch.batchId,
-                _batch.immutableFlag
-            );
+            try
+                this.copyBatch(
+                    _batch.owner,
+                    _batch.remainingBalance,
+                    _batch.depth,
+                    _batch.bucketDepth,
+                    _batch.batchId,
+                    _batch.immutableFlag
+                )
+            {
+                // Successful copyBatch call
+            } catch {
+                // copyBatch failed, handle error
+                emit BatchCopyFailed(i, _batch.owner);
+            }
         }
     }
 
