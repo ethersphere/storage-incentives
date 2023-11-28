@@ -19,7 +19,7 @@ async function main() {
   // When using size of 80, each trx will use around 14M of gas
   // When using size of 90, each trx will use around 21M of gas
   // Block total gas limit is around 20M
-  const chunkSize = 90;
+  const chunkSize = 80;
   // Assuming you have the contract deployed and have its address
   const contractAddress = '0x3a235fd10563fdd954c3199c08f4da132284287d';
 

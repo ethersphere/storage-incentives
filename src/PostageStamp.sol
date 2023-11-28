@@ -132,9 +132,9 @@ contract PostageStamp is AccessControl, Pausable {
     event PriceUpdate(uint256 price);
 
     /**
-     *@dev Emitted on every batch failed
+     *@dev Emitted on every batch failed in bulk batch creation
      */
-    event BatchCopyFailed(uint index, bytes32 batchId);
+    event CopyBatchFailed(uint index, bytes32 batchId);
 
     // ----------------------------- Errors ------------------------------
 
@@ -320,7 +320,7 @@ contract PostageStamp is AccessControl, Pausable {
                 // Successful copyBatch call
             } catch {
                 // copyBatch failed, handle error
-                emit BatchCopyFailed(i, _batch.batchId);
+                emit CopyBatchFailed(i, _batch.batchId);
             }
         }
     }
