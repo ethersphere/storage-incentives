@@ -12,7 +12,7 @@ interface Batch {
 
 async function main() {
   // Read the JSON file with the batches
-  const batchesData = JSON.parse(fs.readFileSync('./migration/batches.json', 'utf8'));
+  const batchesData = JSON.parse(fs.readFileSync('./scripts/migration/batches.json', 'utf8'));
   const batches: Batch[] = batchesData.batches;
 
   // Group the batches into chunks

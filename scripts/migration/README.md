@@ -21,7 +21,7 @@ When all this is done we go and withdraw funds to new postageStamp contract.
 
 ### Step 3 - Legacy
 
-Use script stamp.sh in this folder. It will use the JSON from step 1 and using HardHat task copybatch
+Use script migration.sh in this folder. It will use the JSON from step 1 and using HardHat task copybatch
 it will create new batches on new PostageStamp contract. BEFORE doing that we MUST change in the script postagestamp contract address
 to currently active one and also which network we are using for imports.
 
@@ -29,7 +29,7 @@ to currently active one and also which network we are using for imports.
 
 ### Step 3 - Recommended
 
-Use script in scripts folder that is called migration.ts, it will plug in into hardhat framework and use network you passed it to
+Use TS script in this folder that is called migration.ts, it will plug in into hardhat framework and use network you passed it to
 So what you should be calling is, also set the contract name and batch size in the script
 
 `npm hardhat run scripts/migration.ts --network mainnet `
