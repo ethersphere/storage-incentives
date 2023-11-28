@@ -134,7 +134,7 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      *@dev Emitted on every batch failed
      */
-    event BatchCopyFailed(uint index, address owner);
+    event BatchCopyFailed(uint index, bytes32 batchId);
 
     // ----------------------------- Errors ------------------------------
 
@@ -320,7 +320,7 @@ contract PostageStamp is AccessControl, Pausable {
                 // Successful copyBatch call
             } catch {
                 // copyBatch failed, handle error
-                emit BatchCopyFailed(i, _batch.owner);
+                emit BatchCopyFailed(i, _batch.batchId);
             }
         }
     }
