@@ -22,13 +22,16 @@ async function main() {
   const chunkSize = 70;
   // Assuming you have the contract deployed and have its address
   const contractAddress = '0xAdD62a816B30c48F7323568A643c553B2d3bc1fF';
-
-  const batchGroups: Batch[][] = chunkArray(batches, chunkSize);
   const contract = await ethers.getContractAt('PostageStamp', contractAddress);
+
+  // Add Admin Role to the contract address itself as it is calling itself with this.copyBatch function
+  const adminRole = await contract.DEFAULT_ADMIN_ROLE();
+  const tx0 = await contract.grantRole(adminRole, contractAddress);
+  console.log('Added Admin Role to contract itself : ', tx0.hash);
 
   // A numerator to keep track of the batch group number
   let groupNumber = 0;
-
+  const batchGroups: Batch[][] = chunkArray(batches, chunkSize);
   // Iterate over the chunks and send them to the smart contract
   for (const group of batchGroups) {
     groupNumber++; // Increment the group number for each batch group sent
@@ -49,12 +52,12 @@ async function main() {
     const bufferedGasLimit = estimatedGasLimit.add(estimatedGasLimit.mul(20).div(100)); // Adding 20% buffer
 
     // Step 3: Send transaction with estimated gas limit
-    const tx = await contract.copyBatchBulk(batchStructs, {
+    const tx1 = await contract.copyBatchBulk(batchStructs, {
       gasLimit: bufferedGasLimit,
     });
 
-    console.log(`Batch group #${groupNumber} sent with transaction: ${tx.hash}`);
-    await tx.wait();
+    console.log(`Batch group #${groupNumber} sent with transaction: ${tx1.hash}`);
+    await tx1.wait();
   }
 }
 
