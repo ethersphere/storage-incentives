@@ -29,7 +29,7 @@ task('copy', 'Use copyBatch function from postageStamp contract')
     const stamp = await hre.ethers.getContractAt('PostageStamp', currentPostage);
 
     // Step 1: Estimate Gas
-    const estimatedGasLimit = await stamp.estimateGas.copyBatch(...argsArray, txOptions);
+    const estimatedGasLimit = await stamp.estimateGas.copyBatch(...argsArray);
 
     // Step 2: Add a buffer to the estimated gas (e.g., 20% buffer)
     const bufferPercent = 20;
