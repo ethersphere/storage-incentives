@@ -14,9 +14,7 @@ async function decodeTransactionInput(transactionHash, provider) {
       return null;
     }
 
-    const contractABI =
-      await require("../../artifacts/src/PostageStamp.sol/PostageStamp.json");
-
+    const contractABI = await require("../../artifacts/src/PostageStamp.sol/PostageStamp.json");
 
     // Create an interface from the ABI to decode the data
     const contractInterface = new ethers.utils.Interface(contractABI.abi);
@@ -26,14 +24,26 @@ async function decodeTransactionInput(transactionHash, provider) {
       data: transaction.data,
     });
 
-    // Convert decoded data to a more readable format
-    // Return only the args
-    return decodedInput.args;
+    // TODO create additional transaction to get remainingBalance
+    // Transform decoded data to the desired format
+    let batches = decodedInput.args.map(batch => {
+      return {
+        batchid: batch[0],
+        owner: batch[3],
+        depth: parseInt(batch[4]),
+        bucketDepth: parseInt(batch[5]),
+        immutable: batch[6],
+        remainingBalance: parseInt(batch[2])
+      };
+    });
+
+    return { batches };
   } catch (error) {
     console.error("Error decoding transaction input:", error);
     return null;
   }
 }
+
 
 // Custom replacer function to handle BigInt serialization
 function replacer(key, value) {
@@ -47,7 +57,7 @@ async function main() {
   const provider = ethers.provider;
 
   // Specify the starting block
-  const startBlock = 30193660; // Replace with the block number from where you want to start
+  const startBlock = 25527076; // Replace with the block number from where you want to start
 
   const contractAddress = "0x30d155478eF27Ab32A1D578BE7b84BC5988aF381";
   const myContract = await ethers.getContractAt(
