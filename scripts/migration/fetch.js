@@ -19,7 +19,7 @@ async function decodeTransactionInput(transactionHash, provider) {
 
 
     // Create an interface from the ABI to decode the data
-    const contractInterface = ethers.utils.Interface(contractABI.abi);
+    const contractInterface = new ethers.utils.Interface(contractABI.abi);
 
     // Decode the transaction input data
     const decodedInput = contractInterface.parseTransaction({
