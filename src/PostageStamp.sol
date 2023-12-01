@@ -305,6 +305,9 @@ contract PostageStamp is AccessControl, Pausable {
      * @param bulkBatches array of batches
      */
     function copyBatchBulk(ImportBatch[] calldata bulkBatches) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert AdministratorOnly();
+        }
         for (uint i = 0; i < bulkBatches.length; i++) {
             ImportBatch memory _batch = bulkBatches[i];
             try
