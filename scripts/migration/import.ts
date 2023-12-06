@@ -16,12 +16,11 @@ async function main() {
   const batches: Batch[] = batchesData.batches;
 
   // Group the batches into chunks
-  // When using size of 80, each trx will use around 14M of gas
-  // When using size of 90, each trx will use around 21M of gas
-  // Block total gas limit is around 20M
-  const chunkSize = 70;
+  // When using size of 40, each trx will use around 15M of gas
+  // Block total gas limit is around 20M so bigger chunk sizes will be rejected
+  const chunkSize = 40;
   // Assuming you have the contract deployed and have its address
-  const contractAddress = '0xAdD62a816B30c48F7323568A643c553B2d3bc1fF';
+  const contractAddress = '0x45a1502382541Cd610CC9068e88727426b696293';
   const contract = await ethers.getContractAt('PostageStamp', contractAddress);
 
   // Add Admin Role to the contract address itself as it is calling itself with this.copyBatch function
@@ -54,6 +53,8 @@ async function main() {
     // Step 3: Send transaction with estimated gas limit
     const tx1 = await contract.copyBatchBulk(batchStructs, {
       gasLimit: bufferedGasLimit,
+      gasPrice: ethers.utils.parseUnits('30', 'gwei'), // use 30 so its first in line to get picked up
+      //  nonce: 6914,
     });
 
     console.log(`Batch group #${groupNumber} sent with transaction: ${tx1.hash}`);

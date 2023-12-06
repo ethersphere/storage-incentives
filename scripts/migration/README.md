@@ -32,4 +32,4 @@ to currently active one and also which network we are using for imports.
 Use TS script in this folder that is called import.ts, it will plug in into hardhat framework and use network you passed it to
 So what you should be calling is, also set the contract name and batch size in the script
 
-`npm hardhat run scripts/migration/import.ts --network mainnet `
+`hardhat run scripts/migration/import.ts --network mainnet `
