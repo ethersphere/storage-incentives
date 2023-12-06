@@ -17,14 +17,14 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     await execute('Redistribution', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
 
     // REMOVE Roles from deployer
-    await execute('PostageStamp', { from: deployer }, 'renounceRole', adminRole, deployer);
-    await execute('PriceOracle', { from: deployer }, 'renounceRole', adminRole, deployer);
-    await execute('StakeRegistry', { from: deployer }, 'renounceRole', adminRole, deployer);
-    await execute('Redistribution', { from: deployer }, 'renounceRole', adminRole, deployer);
+    // await execute('PostageStamp', { from: deployer }, 'renounceRole', adminRole, deployer);
+    // await execute('PriceOracle', { from: deployer }, 'renounceRole', adminRole, deployer);
+    // await execute('StakeRegistry', { from: deployer }, 'renounceRole', adminRole, deployer);
+    // await execute('Redistribution', { from: deployer }, 'renounceRole', adminRole, deployer);
 
     log('----------------------------------------------------');
   }
 };
 
 export default func;
-func.tags = ['state_changes'];
+func.tags = ['multisig', 'roles'];

@@ -87,6 +87,15 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 lastUpdatedBlockNumber;
     }
 
+    struct ImportBatch {
+        bytes32 batchId;
+        address owner;
+        uint8 depth;
+        uint8 bucketDepth;
+        bool immutableFlag;
+        uint256 remainingBalance;
+    }
+
     // ----------------------------- Events ------------------------------
 
     /**
@@ -121,6 +130,11 @@ contract PostageStamp is AccessControl, Pausable {
      *@dev Emitted on every price update.
      */
     event PriceUpdate(uint256 price);
+
+    /**
+     *@dev Emitted on every batch failed in bulk batch creation
+     */
+    event CopyBatchFailed(uint index, bytes32 batchId);
 
     // ----------------------------- Errors ------------------------------
 
@@ -242,7 +256,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint8 _bucketDepth,
         bytes32 _batchId,
         bool _immutable
-    ) external whenNotPaused {
+    ) public whenNotPaused {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
         }
@@ -260,10 +274,6 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount)) {
-            revert TransferFailed();
-        }
-
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
         if (normalisedBalance == 0) {
             revert ZeroBalance();
@@ -286,6 +296,36 @@ contract PostageStamp is AccessControl, Pausable {
         tree.insert(_batchId, normalisedBalance);
 
         emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+    }
+
+    /**
+     * @notice Import batches in bulk
+     * @dev Import batches in bulk to lower the number of transactions needed,
+     * @dev becase of block limitations 90 batches per trx is ceiling, 60 to 70 sweetspot
+     * @param bulkBatches array of batches
+     */
+    function copyBatchBulk(ImportBatch[] calldata bulkBatches) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert AdministratorOnly();
+        }
+        for (uint i = 0; i < bulkBatches.length; i++) {
+            ImportBatch memory _batch = bulkBatches[i];
+            try
+                this.copyBatch(
+                    _batch.owner,
+                    _batch.remainingBalance,
+                    _batch.depth,
+                    _batch.bucketDepth,
+                    _batch.batchId,
+                    _batch.immutableFlag
+                )
+            {
+                // Successful copyBatch call
+            } catch {
+                // copyBatch failed, handle error
+                emit CopyBatchFailed(i, _batch.batchId);
+            }
+        }
     }
 
     /**

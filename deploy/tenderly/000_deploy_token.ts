@@ -1,11 +1,13 @@
+// BEFORE running the deployment reset the environment with this command/script
+//  hh run scripts/tenderly_reset.ts --network tenderly
+
 import { DeployFunction } from 'hardhat-deploy/types';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers, network }) {
   const { log, get } = deployments;
-  const { deployer } = await getNamedAccounts();
   let token = null;
 
-  // We ONLY use already deployed token for MAINNET
+  // We ONLY use already deployed token for MAINNET FORKS
   if (!(token = await get('Token'))) {
     // we have problem as there is not token, error out
   } else {
@@ -16,4 +18,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
 };
 
 export default func;
-func.tags = ['token', 'contracts'];
+func.tags = ['token', 'preparation'];
