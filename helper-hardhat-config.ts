@@ -32,7 +32,7 @@ export const networkConfig: networkConfigInfo = {
   },
   mainnet: {
     blockConfirmations: 6,
-    swarmNetworkId: 100,
+    swarmNetworkId: 1,
     multisig: '0xD5C070FEb5EA883063c183eDFF10BA6836cf9816',
   },
 };
