@@ -100,4 +100,4 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
 };
 
 export default func;
-func.tags = ['data'];
+func.tags = ['local'];

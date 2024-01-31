@@ -11,7 +11,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   const redisAddress = (await get('Redistribution')).address;
   const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
 
-  if (await read('StakeRegistry', { from: deployer }, 'hasRole', adminRole)) {
+  if (await read('StakeRegistry', { from: deployer }, 'hasRole', adminRole, deployer)) {
     const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
   } else {

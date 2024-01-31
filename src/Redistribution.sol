@@ -137,7 +137,7 @@ contract Redistribution is AccessControl, Pausable {
     uint8 private penaltyMultiplierNonRevealed = 2;
 
     // alpha=0.097612 beta=0.0716570 k=16
-    uint256 private sampleMaxValue = 3500000000000000000000000000000000000000000000000000000000000000000000000;
+    uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // The reveal of the winner of the last round.
     Reveal public winner;

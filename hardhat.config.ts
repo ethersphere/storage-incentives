@@ -10,6 +10,10 @@ import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import './tasks';
 
+// Tenderly config breaks tests for some reason, so its commented out
+// import * as tdly from '@tenderly/hardhat-tenderly';
+// tdly.setup({ automaticVerifications: true });
+
 // Set Private RPCs if added, otherwise use Public that are hardcoded in this config
 
 const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? undefined : process.env.PRIVATE_RPC_MAINNET;
@@ -163,11 +167,11 @@ const config: HardhatUserConfig = {
       chainId: 11155111,
       deploy: ['deploy/test/'],
     },
-    mainfork: {
-      url: 'https://rpc.tenderly.co/fork/0ce88d9f-0a77-4cac-927b-84da71e97648',
+    tenderly: {
+      url: 'https://rpc.tenderly.co/fork/7ccb24d3-e1fa-43fd-8b71-02da55c9170e',
       accounts,
       chainId: 100,
-      deploy: ['deploy/main/'],
+      deploy: ['deploy/tenderly/'],
     },
     mainnet: {
       url: PRIVATE_RPC_MAINNET ? PRIVATE_RPC_MAINNET : 'https://rpc.gnosischain.com',
@@ -203,7 +207,7 @@ const config: HardhatUserConfig = {
         network: 'mainnet',
         chainId: 100,
         urls: {
-          apiURL: 'https://api.gnosisscan.io/',
+          apiURL: 'https://api.gnosisscan.io/api',
           browserURL: 'https://gnosisscan.io/address/',
         },
       },
@@ -226,6 +230,11 @@ const config: HardhatUserConfig = {
     // gasPrice: 40,
     coinmarketcap: process.env.CMC_KEY,
   },
+  // tenderly: {
+  //   username: 'SwarmDebug',
+  //   project: 'Swarm',
+  //   privateVerification: false,
+  // },
 };
 
 export default config;

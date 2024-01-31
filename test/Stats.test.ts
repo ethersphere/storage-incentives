@@ -142,6 +142,9 @@ describe('Stats', async function () {
 
     const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
+
+    const priceOracle = await ethers.getContract('PriceOracle', deployer);
+    await priceOracle.pause(); // TODO: remove when price oracle is not paused by default.
   });
 
   describe('two player game', async function () {

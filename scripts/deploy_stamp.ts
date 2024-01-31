@@ -85,15 +85,15 @@ async function main() {
   let currentOracle = '';
   if (network.name == 'mainnet') {
     // BZZ Token address, minimumBucketDepth, multisig
-    args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '16', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe', '16'];
     currentRedis = '';
     currentOracle = '';
   } else if (network.name == 'testnet') {
-    args = ['0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335', '16', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
+    args = ['0x2ac3c1d3e24b45c6c310534bc2dd84b5ed576335', '16'];
     currentRedis = '0x9e3BDb0c69838CC06D85409d4AD6245e54F70F1d';
     currentOracle = '0xefC5Ead3188402eCC951DB45827F6e0F99B67a25';
   } else if (network.name == 'localhost') {
-    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', '16', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
+    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', '16'];
     currentRedis = '0xDF64aed195102E644ad6A0204eD5377589b29618';
     currentOracle = '0xF52458e65b8e3B69d93DD3803d8ef934c75E0022';
     waitTime = 1;
@@ -104,7 +104,6 @@ async function main() {
   console.log('Deploying contract...');
   const stamp = await stampFactory.deploy(...args);
   await stamp.deployed();
-  console.log(`Deployed contract to: ${stamp.address}`);
   const deploymentReceipt = await stamp.deployTransaction.wait(waitTime);
 
   // Add metadata for Bee Node
