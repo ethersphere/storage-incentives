@@ -42,7 +42,7 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
 
     if (fileName.length == 0 || !fs.existsSync(fileName)) {
       fileName = network.name + '_deployed.json';
-      if (network.name == 'pretestnet' || network.name == 'sepolia') {
+      if (network.name == 'pretestnet' || network.name == 'testnet') {
         fileName = 'testnet_deployed.json';
       }
     }
