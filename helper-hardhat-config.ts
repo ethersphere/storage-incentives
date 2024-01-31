@@ -15,11 +15,6 @@ export const networkConfig: networkConfigInfo = {
     swarmNetworkId: 333,
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
-  sepolia: {
-    blockConfirmations: 6,
-    swarmNetworkId: 10,
-    multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
-  },
   testnet: {
     blockConfirmations: 6,
     swarmNetworkId: 10,
