@@ -12,7 +12,7 @@ export const networkConfig: networkConfigInfo = {
   hardhat: { swarmNetworkId: 0, multisig: '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8' },
   pretestnet: {
     blockConfirmations: 6,
-    swarmNetworkId: 444,
+    swarmNetworkId: 333,
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
   },
   sepolia: {
