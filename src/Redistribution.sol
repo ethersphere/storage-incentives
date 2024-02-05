@@ -530,7 +530,7 @@ contract Redistribution is AccessControl, Pausable {
             if (
                 currentCommit.revealed &&
                 (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth) &&
-                ((uint256(seed) % 100) < 20)
+                (block.prevrandao % 100 < 20)
             ) {
                 Stakes.freezeDeposit(
                     currentReveal.overlay,
