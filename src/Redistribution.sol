@@ -526,10 +526,11 @@ contract Redistribution is AccessControl, Pausable {
                 redundancyCount++;
             }
 
-            // Freeze deposit if any truth is false
+            // Freeze deposit if any truth is false with added randomness of 20%
             if (
                 currentCommit.revealed &&
-                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth)
+                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth) &&
+                (uint256(seed) % 100 < 20)
             ) {
                 Stakes.freezeDeposit(
                     currentReveal.overlay,
