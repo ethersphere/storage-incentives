@@ -135,6 +135,7 @@ contract Redistribution is AccessControl, Pausable {
     // Settings for slashing and freezing
     uint8 private penaltyMultiplierDisagreement = 1;
     uint8 private penaltyMultiplierNonRevealed = 2;
+    uint8 private penaltyRandomFactor = 20;
 
     // alpha=0.097612 beta=0.0716570 k=16
     uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
@@ -526,10 +527,11 @@ contract Redistribution is AccessControl, Pausable {
                 redundancyCount++;
             }
 
-            // Freeze deposit if any truth is false
+            // Freeze deposit if any truth is false, make it a penaltyRandomFactor chance for this to happen
             if (
                 currentCommit.revealed &&
-                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth)
+                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth) &&
+                (block.prevrandao % 100 < penaltyRandomFactor)
             ) {
                 Stakes.freezeDeposit(
                     currentReveal.overlay,
@@ -617,13 +619,19 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @notice Set freezing parameters
      */
-    function setFreezingParams(uint8 _penaltyMultiplierDisagreement, uint8 _penaltyMultiplierNonRevealed) external {
+    function setFreezingParams(
+        uint8 _penaltyMultiplierDisagreement,
+        uint8 _penaltyMultiplierNonRevealed,
+        uint8 _penaltyRandomFactor
+    ) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert NotAdmin();
         }
 
         penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
         penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
+        // Use 100 as value to ignore random factor in freezing penalty
+        penaltyRandomFactor = _penaltyRandomFactor;
     }
 
     /**
