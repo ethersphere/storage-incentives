@@ -13,13 +13,15 @@ const func: DeployFunction = async function ({ deployments }) {
 
   // Generate content for the environment file
   let content: string = '';
+
+  content += `echo "----- USE THE COMMANDS BELOW TO SETUP YOUR TERMINALS -----" >&2\n\n`;
   content += `export BEE_TOKEN_ADDRESS=${Token.address}\n`;
   content += `export BEE_POSTAGE_STAMP_ADDRESS=${PostageStamp.address}\n`;
   content += `export BEE_INCENTIVES_PRICE_ORACLE_ADDRESS=${PriceOracle.address}\n`;
   content += `export BEE_STAKING_ADDRESS=${StakeRegistry.address}\n`;
   content += `export BEE_REDISTRIBUTION_ADDRESS=${Redistribution.address}\n`;
 
-  const envFilePath: string = path.join(__dirname, 'deployedContracts.sh');
+  const envFilePath: string = path.join(__dirname, '../../deployedContracts.sh');
 
   // Write the content to the file
   fs.writeFileSync(envFilePath, content, { flag: 'a' });
