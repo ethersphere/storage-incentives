@@ -12,7 +12,7 @@ const func: DeployFunction = async function ({ deployments }) {
   const Redistribution = await get('Redistribution');
 
   // Generate content for the environment file
-  let content: string = '';
+  let content = '';
 
   content += `echo "----- USE THE COMMANDS BELOW TO SETUP YOUR TERMINALS -----" >&2\n\n`;
   content += `export BEE_TOKEN_ADDRESS=${Token.address}\n`;
