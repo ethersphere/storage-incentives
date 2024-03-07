@@ -21,11 +21,9 @@ const func: DeployFunction = async function ({ deployments }) {
   content += `export BEE_STAKING_ADDRESS=${StakeRegistry.address}\n`;
   content += `export BEE_REDISTRIBUTION_ADDRESS=${Redistribution.address}\n`;
 
-  const envFilePath: string = path.join(__dirname, '../../deployedContracts.sh');
-
-  // Write the content to the file
-  fs.writeFileSync(envFilePath, content, { flag: 'a' });
-  console.log(`Exported contract addresses to ${envFilePath}`);
+  // Output the content to the terminal
+  console.log(content);
+  log(`Exported contract addresses to console`);
 
   log('----------------------------------------------------');
 };
