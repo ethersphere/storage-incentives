@@ -4,21 +4,18 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   const { get, log, execute } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  // Access the command line arguments
-  const args = process.argv.slice(2); // Adjust based on where your args are
-  const addressesArg = args.find((arg) => arg.startsWith('--addresses='));
-  const addresses = addressesArg ? addressesArg.split('=')[1].split(',') : [];
-
-  console.log(addresses);
+  // Access the BZZACCOUNTS environment variable
+  const bzzAccountsRaw = process.env.BZZACCOUNTS;
+  const bzzAccounts = bzzAccountsRaw
+    ? bzzAccountsRaw.split(',')
+    : ['0xbf4f9637c281ddfb1fbd3be5a1dae6531d408f11', '0xc45d64d8f9642a604db93c59fd38492b262391ca'];
 
   // Transfer tokens to accounts used in cluster deployment
-  const bzzAccounts = ['0xbf4f9637c281ddfb1fbd3be5a1dae6531d408f11', '0xc45d64d8f9642a604db93c59fd38492b262391ca'];
-
   const amount = ethers.utils.parseUnits('10', 18); // "10" is the token amount; adjust the decimal accordingly
   await execute('TestToken', { from: deployer }, 'transfer', bzzAccounts[0], amount);
   await execute('TestToken', { from: deployer }, 'transfer', bzzAccounts[1], amount);
 
-  log(`Sent BZZ tokens to 0xbf4f9637c281ddfb1fbd3be5a1dae6531d408f11 and 0xc45d64d8f9642a604db93c59fd38492b262391ca`);
+  log(`Sent BZZ tokens to ` + bzzAccountsRaw);
   log('----------------------------------------------------');
 
   const Token = await get('TestToken');
