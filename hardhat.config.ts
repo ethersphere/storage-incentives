@@ -1,10 +1,8 @@
 import 'dotenv/config';
 import { HardhatUserConfig } from 'hardhat/types';
-import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
-import 'hardhat-tracer';
-import '@nomiclabs/hardhat-etherscan';
+import '@nomicfoundation/hardhat-verify';
 import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
 import { removeConsoleLog } from 'hardhat-preprocessor';

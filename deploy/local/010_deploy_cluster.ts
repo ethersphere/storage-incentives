@@ -4,6 +4,13 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   const { get, log, execute } = deployments;
   const { deployer } = await getNamedAccounts();
 
+  // Access the command line arguments
+  const args = process.argv.slice(2); // Adjust based on where your args are
+  const addressesArg = args.find((arg) => arg.startsWith('--addresses='));
+  const addresses = addressesArg ? addressesArg.split('=')[1].split(',') : [];
+
+  console.log(addresses);
+
   // Transfer tokens to accounts used in cluster deployment
   const bzzAccounts = ['0xbf4f9637c281ddfb1fbd3be5a1dae6531d408f11', '0xc45d64d8f9642a604db93c59fd38492b262391ca'];
 
