@@ -36,7 +36,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   content += `export BEE_REDISTRIBUTION_ADDRESS=${Redistribution.address}\n`;
 
   // Output the content to the terminal
-  console.log(content);
+  log(content);
   log(`Exported contract addresses to console`);
 
   log('----------------------------------------------------');

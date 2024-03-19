@@ -62,6 +62,7 @@ const config: HardhatUserConfig = {
   defaultNetwork: 'hardhat',
   networks: {
     hardhat: {
+      chainId: 12345,
       initialBaseFeePerGas: 0,
       accounts: [
         // deployer 0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8
