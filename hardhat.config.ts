@@ -151,6 +151,7 @@ const config: HardhatUserConfig = {
     },
     localhost: {
       url: 'http://localhost:8545',
+      // accounts,  if not defined uses the same as above hardhat
       chainId: 12345,
       deploy: ['deploy/local/'],
     },
