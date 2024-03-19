@@ -25,13 +25,13 @@
     "hardhat-contract-sizer": "^2.8.0",
     "hardhat-preprocessor": "^0.1.5",
     "typescript": "^4.0.5",
-    "ts-node": "^10.8.1"
+    "ts-node": "^10.8.1",
+    "solidity-coverage": "^0.8.2"
   },
   "devDependencies": {
     "@ethereum-waffle/chai": "^4.0.10",
     "@ethersproject/wallet": "^5.0.7",
     "@fairdatasociety/bmt-js": "^2.1.0",
-    "solidity-coverage": "^0.8.2",
     "@tenderly/hardhat-tenderly": "^1.7.7",
     "ethereum-waffle": "^4.0.10",
     "ethereumjs-abi": "^0.6.8",
