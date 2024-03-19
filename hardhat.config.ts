@@ -5,6 +5,7 @@ import 'hardhat-deploy-ethers';
 import '@nomicfoundation/hardhat-verify';
 import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
+import 'solidity-coverage';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import './tasks';
 
