@@ -1,9 +1,13 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers, network }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
   const { log, get } = deployments;
   const { deployer } = await getNamedAccounts();
   let token = null;
+
+  log('----------------------------------------------------');
+  log('Deployer address at ', deployer);
+  log('----------------------------------------------------');
 
   // We ONLY use already deployed token for MAINNET
   if (!(token = await get('Token'))) {

@@ -5,6 +5,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, log, getOrNull } = deployments;
   const { deployer } = await getNamedAccounts();
 
+  log('----------------------------------------------------');
+  log('Deployer address at ', deployer);
+  log('----------------------------------------------------');
+
   let token = null;
 
   // We deploy new token if there is no token
