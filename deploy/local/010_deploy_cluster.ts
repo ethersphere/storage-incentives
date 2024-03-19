@@ -11,15 +11,18 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   const bzzAccounts = bzzAccountsRaw.split(',');
 
   // Transfer tokens to accounts used in cluster deployment
+  const Token = await get('TestToken');
   const amount = ethers.utils.parseUnits('10', 18); // "10" is the token amount; adjust the decimal accordingly
   for (const account of bzzAccounts) {
-    await execute('TestToken', { from: deployer }, 'transfer', account, amount);
+    const tokenContract = await ethers.getContractAt('TestToken', Token.address);
+
+    const transactionResponse = await tokenContract.transfer(account, amount);
+    await transactionResponse.wait(); // Wait for the transaction to be mined
   }
 
   log(`Sent BZZ tokens to ` + bzzAccountsRaw);
   log('----------------------------------------------------');
 
-  const Token = await get('TestToken');
   const StakeRegistry = await get('StakeRegistry');
   const PostageStamp = await get('PostageStamp');
   const PriceOracle = await get('PriceOracle');
