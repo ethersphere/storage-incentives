@@ -1,12 +1,11 @@
 import 'dotenv/config';
 import { HardhatUserConfig } from 'hardhat/types';
-import 'solidity-coverage';
 import 'hardhat-deploy';
 import 'hardhat-deploy-ethers';
-import 'hardhat-tracer';
-import '@nomiclabs/hardhat-etherscan';
+import '@nomicfoundation/hardhat-verify';
 import 'hardhat-contract-sizer';
 import 'hardhat-gas-reporter';
+import 'solidity-coverage';
 import { removeConsoleLog } from 'hardhat-preprocessor';
 import './tasks';
 
@@ -64,6 +63,7 @@ const config: HardhatUserConfig = {
   defaultNetwork: 'hardhat',
   networks: {
     hardhat: {
+      chainId: 12345,
       initialBaseFeePerGas: 0,
       accounts: [
         // deployer 0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8
@@ -136,7 +136,7 @@ const config: HardhatUserConfig = {
           privateKey: '0x9d715c14789abdc4c97fd775cf620196bebe991c60c614ba00fedbac943a5e67',
           balance: '10000000000000000000000',
         },
-        // other_1
+        // other_1 0x626178434A88c3c8809D136d500b9707D749EA9B
         {
           privateKey: 'f09baf4a06da707abeb96568a1419b4eec094774eaa85ef85517457ffe25b515',
           balance: '10000000000000000000000',
@@ -147,12 +147,12 @@ const config: HardhatUserConfig = {
           balance: '10000000000000000000000',
         },
       ],
-      hardfork: 'merge',
       deploy: ['deploy/local/'],
     },
     localhost: {
       url: 'http://localhost:8545',
-      chainId: 31337,
+      // accounts,  if not defined uses the same as above hardhat
+      chainId: 12345,
       deploy: ['deploy/local/'],
     },
     pretestnet: {

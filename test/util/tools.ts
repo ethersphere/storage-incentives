@@ -2,7 +2,7 @@ import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
 import { ContractTransaction } from 'ethers';
 import { arrayify, hexlify } from '@ethersproject/bytes';
-import { BigNumber, Wallet } from 'ethers';
+import { Wallet } from 'ethers';
 import { Utils as BmtUtils } from '@fairdatasociety/bmt-js';
 
 export const equalBytes = BmtUtils.equalBytes;
@@ -52,9 +52,9 @@ export function proximity(hexA: string, hexB: string): number {
 }
 
 function computeBatchId(sender: string, nonce: string): string {
-  const abi = new ethers.utils.AbiCoder();
+  const abi = new ethers.AbiCoder();
   const encoded = abi.encode(['address', 'bytes32'], [sender, nonce]);
-  return ethers.utils.keccak256(encoded);
+  return ethers.keccak256(encoded);
 }
 
 async function mineNBlocks(n: number): Promise<undefined> {
@@ -193,8 +193,9 @@ export async function startRoundFixture(txNo = 0) {
 }
 
 export function calculateStakeDensity(stake: string, depth: number): string {
-  return ethers.BigNumber.from(stake)
-    .mul(ethers.BigNumber.from(2).pow(ethers.BigNumber.from(depth)))
+  return ethers
+    .BigInt(stake)
+    .mul(ethers.BigInt(2).pow(ethers.BigInt(depth)))
     .toString();
 }
 
@@ -232,7 +233,7 @@ export async function copyBatchForClaim(
   await postageAdmin.setMinimumValidityBlocks(0);
   const initialBalance = 100_000_000;
   const postageDepth = 27;
-  const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
+  const bzzFund = BigInt(initialBalance).mul(BigInt(2).pow(postageDepth));
   await mintAndApprove(deployer, deployer, postageAdmin.address, bzzFund.toString());
   const batchOwner = getWalletOfFdpPlayQueen();
 
@@ -256,8 +257,8 @@ export async function copyBatchForClaim(
 }
 export function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): string {
   const differenceString = '0x' + (difference - 1).toString(16).padStart(64, '0');
-  const currentAnchor = ethers.utils.keccak256(
-    new Uint8Array([...ethers.utils.arrayify(previousAnchor), ...ethers.utils.arrayify(differenceString)])
+  const currentAnchor = ethers.keccak256(
+    new Uint8Array([...ethers.arrayify(previousAnchor), ...ethers.arrayify(differenceString)])
   );
 
   return currentAnchor;

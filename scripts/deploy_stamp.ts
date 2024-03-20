@@ -119,11 +119,11 @@ async function main() {
   // After that we can add here redis role
 
   // Change roles on current staking contract
-  const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
+  const redistributorRole = ethers.keccak256(ethers.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
   const tx2 = await stamp.grantRole(redistributorRole, currentRedis);
   console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
 
-  const oracleRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_ORACLE_ROLE'));
+  const oracleRole = ethers.keccak256(ethers.toUtf8Bytes('PRICE_ORACLE_ROLE'));
   const tx3 = await stamp.grantRole(oracleRole, currentOracle);
   console.log('Changed ORACLE ROLE at : ', tx3.hash);
 

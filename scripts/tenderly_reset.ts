@@ -85,7 +85,7 @@ async function main() {
   await ethers.provider.send('tenderly_setBalance', [
     WALLETS,
     // Amount in wei will be set for all wallets
-    ethers.utils.hexValue(ethers.utils.parseUnits('100', 'ether').toHexString()),
+    ethers.toQuantity(ethers.parseUnits('100', 'ether')),
   ]);
 }
 

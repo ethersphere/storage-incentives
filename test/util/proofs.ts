@@ -1,6 +1,6 @@
 import { Chunk, getSpanValue, makeChunk, Utils as BmtUtils } from '@fairdatasociety/bmt-js';
-import { BigNumber, Wallet } from 'ethers';
-import { arrayify, hexlify } from 'ethers/lib/utils';
+import { Wallet } from 'ethers';
+import { getBytes, hexlify } from 'ethers';
 import { constructPostageStamp } from './postage';
 import { equalBytes, SEGMENT_BYTE_LENGTH, SEGMENT_COUNT_IN_CHUNK, WITNESS_COUNT } from './tools';
 import fs from 'fs';
@@ -11,7 +11,7 @@ import { randomBytes } from 'crypto';
 const { keccak256Hash } = BmtUtils;
 
 /** Reserve estimation: max value for witnesses */
-const SAMPLE_MAX_VALUE = BigNumber.from('1284401000000000000000000000000000000000000000000000000000000000000000000');
+const SAMPLE_MAX_VALUE = BigInt('1284401000000000000000000000000000000000000000000000000000000000000000000');
 type Message = BmtUtils.Message;
 type WitnessData = {
   nonce: number;
@@ -63,7 +63,7 @@ type SocProofAttachmentStore = {
  * @returns indices of the witnesses for proving
  */
 function witnessProofRequired(anchor: string | Uint8Array): number[] {
-  const randomness = BigNumber.from(anchor);
+  const randomness = BigInt(anchor);
   // rand(14)
   const x = randomness.mod(15);
   // rand(13)
@@ -97,7 +97,7 @@ export async function getClaimProofs(
   postageWallet: Wallet,
   postageBatchId: string
 ) {
-  const postageBatchIdBuffer = Buffer.from(arrayify(postageBatchId));
+  const postageBatchIdBuffer = Buffer.from(getBytes(postageBatchId));
   const witnessIndices = witnessProofRequired(anchor2);
   const witnessesForProof = [
     witnesses[witnessIndices[0]],
@@ -105,7 +105,7 @@ export async function getClaimProofs(
     witnesses[witnesses.length - 1],
   ];
   const proofWitnessChunks = getChunkObjectsForClaim(anchor1, witnessesForProof);
-  const randomChunkSegmentIndex = BigNumber.from(anchor2).mod(SEGMENT_COUNT_IN_CHUNK).toNumber();
+  const randomChunkSegmentIndex = BigInt(anchor2).mod(SEGMENT_COUNT_IN_CHUNK).toNumber();
   const proof1 = await getClaimProof(
     proofWitnessChunks[0],
     witnessIndices[0],
@@ -155,7 +155,7 @@ export async function getClaimProof(
   const ogAddress = proofWitnessChunk.socProofAttached
     ? calculateSocAddress(
         proofWitnessChunk.socProofAttached.identifier,
-        arrayify(proofWitnessChunk.socProofAttached.signer)
+        getBytes(proofWitnessChunk.socProofAttached.signer)
       )
     : proofWitnessChunk.ogChunk.address();
   // sanity checks
@@ -216,7 +216,7 @@ export async function getSocProofAttachment(
 ): Promise<SocProof> {
   let identifier: Uint8Array;
   const randomWallet = ethers.Wallet.createRandom();
-  const owner = arrayify(randomWallet.address);
+  const owner = getBytes(randomWallet.address);
 
   // mine SOC address until neighbourhood
   while (true) {
@@ -262,7 +262,7 @@ export function mineCacWitness(anchor: Uint8Array, depth: number, startNonce = 0
 
 export async function mineSocWitness(anchor: Uint8Array, depth: number, startNonce = 0): Promise<WitnessData> {
   const randomWallet = ethers.Wallet.createRandom();
-  const owner = arrayify(randomWallet.address);
+  const owner = getBytes(randomWallet.address);
   let j = startNonce;
   let socAddress, identifier: Uint8Array;
   // mine SOC address until neighbourhood
@@ -319,7 +319,7 @@ function tAddressAcceptance(
 }
 
 function reserveSizeEstimationAcceptance(transformedAddress: Uint8Array) {
-  return BigNumber.from(transformedAddress).lt(SAMPLE_MAX_VALUE);
+  return BigInt(transformedAddress).lt(SAMPLE_MAX_VALUE);
 }
 
 /**
@@ -329,8 +329,8 @@ function reserveSizeEstimationAcceptance(transformedAddress: Uint8Array) {
  */
 function sortWitnesses(witnesses: WitnessData[]): WitnessData[] {
   witnesses = witnesses.sort((a, b) => {
-    const aBn = BigNumber.from(a.transformedAddress);
-    const bBn = BigNumber.from(b.transformedAddress);
+    const aBn = BigInt(a.transformedAddress);
+    const bBn = BigInt(b.transformedAddress);
     if (aBn.lt(bBn)) {
       return -1;
     }
@@ -372,13 +372,13 @@ export function loadWitnesses(filename: string): WitnessData[] {
 
   const witnessData: WitnessData[] = witnessDataStore.map((e) => {
     const witnessData: WitnessData = {
-      transformedAddress: arrayify(e.transformedAddress),
+      transformedAddress: getBytes(e.transformedAddress),
       nonce: e.nonce,
     };
     if (e.socProofAttached) {
       witnessData.socProofAttached = {
-        chunkAddr: arrayify(e.socProofAttached.chunkAddr),
-        identifier: arrayify(e.socProofAttached.identifier),
+        chunkAddr: getBytes(e.socProofAttached.chunkAddr),
+        identifier: getBytes(e.socProofAttached.identifier),
         signature: e.socProofAttached.signature,
         signer: e.socProofAttached.signer,
       };
@@ -443,7 +443,7 @@ export function makeSample(witnesses: WitnessData[]): Chunk {
     const originalChunk = makeChunk(numberToArray(witness.nonce));
     const payloadOffset = i * SEGMENT_BYTE_LENGTH * 2;
     const originalAddress = witness.socProofAttached
-      ? calculateSocAddress(witness.socProofAttached.identifier, arrayify(witness.socProofAttached.signer))
+      ? calculateSocAddress(witness.socProofAttached.identifier, getBytes(witness.socProofAttached.signer))
       : originalChunk.address();
     payload.set(originalAddress, payloadOffset);
     payload.set(witness.transformedAddress, payloadOffset + SEGMENT_BYTE_LENGTH);

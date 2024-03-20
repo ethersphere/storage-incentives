@@ -11,7 +11,7 @@ import {
   mineToRevealPhase,
 } from './util/tools';
 import { BigNumber } from 'ethers';
-import { arrayify, hexlify } from 'ethers/lib/utils';
+import { getBytes, hexlify } from 'ethers';
 import { getClaimProofs, makeSample, setWitnesses } from './util/proofs';
 
 const { read, execute } = deployments;
@@ -50,8 +50,8 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f'
   );
 
-  const batchSize = BigNumber.from(2).pow(BigNumber.from(postageDepth));
-  const transferAmount = BigNumber.from(2).mul(BigNumber.from(initialBalance)).mul(batchSize);
+  const batchSize = BigInt(2).pow(BigInt(postageDepth));
+  const transferAmount = BigInt(2).mul(BigInt(initialBalance)).mul(batchSize);
 
   const postage = await ethers.getContract('PostageStamp', stamper);
 
@@ -77,7 +77,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   await mineNBlocks(ROUND_LENGTH * 2); // anyway reverted with panic code 0x11 (Arithmetic operation underflowed or overflowed outside of an unchecked block
 
   for (let i = 0; i < trials; i++) {
-    const anchor1 = arrayify(await r_node.currentSeed());
+    const anchor1 = getBytes(await r_node.currentSeed());
 
     // mine new witness chunks because of new anchor and reserve estimation
     const numbering = String(i).padStart(3, '0');

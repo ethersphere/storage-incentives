@@ -53,7 +53,7 @@ async function main() {
     // Step 3: Send transaction with estimated gas limit
     const tx1 = await contract.copyBatchBulk(batchStructs, {
       gasLimit: bufferedGasLimit,
-      gasPrice: ethers.utils.parseUnits('30', 'gwei'), // use 30 so its first in line to get picked up
+      gasPrice: ethers.parseUnits('30', 'gwei'), // use 30 so its first in line to get picked up
       //  nonce: 6914,
     });
 

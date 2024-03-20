@@ -119,7 +119,7 @@ async function main() {
   deployed['contracts']['staking']['url'] = config.url + stake.address;
 
   // Change roles on current staking contract
-  const redistributorRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
+  const redistributorRole = ethers.keccak256(ethers.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
   const tx2 = await stake.grantRole(redistributorRole, currentRedis);
   console.log('Changed REDISTRIBUTOR ROLE at : ', tx2.hash);
 
