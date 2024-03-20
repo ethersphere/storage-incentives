@@ -52,9 +52,9 @@ export function proximity(hexA: string, hexB: string): number {
 }
 
 function computeBatchId(sender: string, nonce: string): string {
-  const abi = new ethers.utils.AbiCoder();
+  const abi = new ethers.AbiCoder();
   const encoded = abi.encode(['address', 'bytes32'], [sender, nonce]);
-  return ethers.utils.keccak256(encoded);
+  return ethers.keccak256(encoded);
 }
 
 async function mineNBlocks(n: number): Promise<undefined> {
@@ -256,8 +256,8 @@ export async function copyBatchForClaim(
 }
 export function nextAnchorIfNoReveal(previousAnchor: string, difference = 1): string {
   const differenceString = '0x' + (difference - 1).toString(16).padStart(64, '0');
-  const currentAnchor = ethers.utils.keccak256(
-    new Uint8Array([...ethers.utils.arrayify(previousAnchor), ...ethers.utils.arrayify(differenceString)])
+  const currentAnchor = ethers.keccak256(
+    new Uint8Array([...ethers.arrayify(previousAnchor), ...ethers.arrayify(differenceString)])
   );
 
   return currentAnchor;

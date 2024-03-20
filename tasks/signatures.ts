@@ -12,7 +12,7 @@ task('sigs', 'Generate ABI signatures for errors and functions')
 
     const prepareData = (e: { name: string; inputs: { type: string }[] }) =>
       `${e.name}(${e.inputs.map((param) => param.type)})`;
-    const encodeSelector = (f: string) => ethers.utils.id(f).slice(0, 10);
+    const encodeSelector = (f: string) => ethers.id(f).slice(0, 10);
 
     // Parse ABI
     const output = ABI.filter((e: any) => ['function', 'error'].includes(e.type)).flatMap(

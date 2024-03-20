@@ -113,7 +113,7 @@ async function main() {
   deployed['contracts']['priceOracle']['url'] = config.url + oracle.address;
 
   // Change roles on current oracle contract
-  const updaterRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_UPDATER_ROLE'));
+  const updaterRole = ethers.keccak256(ethers.toUtf8Bytes('PRICE_UPDATER_ROLE'));
   const tx2 = await oracle.grantRole(updaterRole, currentRedis);
   console.log('Changed PRICE UPDATER ROLE at : ', tx2.hash);
 
