@@ -147,7 +147,6 @@ const config: HardhatUserConfig = {
           balance: '10000000000000000000000',
         },
       ],
-      hardfork: 'merge',
       deploy: ['deploy/local/'],
     },
     localhost: {
