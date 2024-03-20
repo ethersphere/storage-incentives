@@ -1,7 +1,7 @@
 // Based on: https://github.com/Cafe137/swarm-chunked-upload/blob/feat/zero-bee-upload-proof/src/signature.ts
 
-import { Wallet, utils } from 'ethers';
-import { keccak256 } from 'ethers/lib/utils';
+import { Wallet } from 'ethers';
+import { keccak256 } from 'ethers';
 
 export function swarmAddressToBucketIndex(depth: number, address: Buffer): number {
   if (address.length !== 32) {

@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
-import { BigNumber, Contract, ContractTransaction } from 'ethers';
+import { Contract, ContractTransaction } from 'ethers';
 import {
   mineNBlocks,
   getBlockNumber,
@@ -29,7 +29,7 @@ import {
   setWitnesses,
   getSocProofAttachment,
 } from './util/proofs';
-import { arrayify, hexlify } from 'ethers/lib/utils';
+import { getBytes, hexlify } from 'ethers';
 import { makeChunk } from '@fairdatasociety/bmt-js';
 import { randomBytes } from 'crypto';
 import { constructPostageStamp } from './util/postage';
@@ -703,7 +703,7 @@ describe('Redistribution', function () {
         let copyBatch: Awaited<ReturnType<typeof copyBatchForClaim>>, currentSeed: string, r_node_5: Contract;
         const depth = 1;
         const generatedSampling = async (socAttachment = false) => {
-          const anchor1 = arrayify(currentSeed);
+          const anchor1 = getBytes(currentSeed);
           const witnessChunks = socAttachment
             ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
             : await setWitnesses('claim-pot', anchor1, depth);
@@ -799,7 +799,7 @@ describe('Redistribution', function () {
           expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
           expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
           expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-            BigNumber.from(stakeAmount_0).mul(BigNumber.from(2).pow(parseInt(sanityDepth)))
+            BigInt(stakeAmount_0).mul(BigInt(2).pow(parseInt(sanityDepth)))
           ); //stakedensity?
           expect(WinnerSelectedEvent.args[0].hash).to.be.eq(sanityHash);
           expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(sanityDepth));
@@ -910,7 +910,7 @@ describe('Redistribution', function () {
         });
 
         it('should not claim pot because of wrong witness order', async () => {
-          const anchor1 = arrayify(currentSeed);
+          const anchor1 = getBytes(currentSeed);
 
           let witnessChunks = loadWitnesses('claim-pot');
           witnessChunks = witnessChunks.reverse();
@@ -949,7 +949,7 @@ describe('Redistribution', function () {
         });
 
         it('should not claim pot because of a witness is not in depth', async () => {
-          const anchor1 = arrayify(currentSeed);
+          const anchor1 = getBytes(currentSeed);
 
           // create witnesses
           let witnessChunks: ReturnType<typeof mineCacWitness>[] = [];
@@ -963,8 +963,8 @@ describe('Redistribution', function () {
           }
           // sort witness chunks to be descendant because of the
           witnessChunks = witnessChunks.sort((a, b) => {
-            const aBn = BigNumber.from(a.transformedAddress);
-            const bBn = BigNumber.from(b.transformedAddress);
+            const aBn = BigInt(a.transformedAddress);
+            const bBn = BigInt(b.transformedAddress);
             if (aBn.lt(bBn)) {
               return -1;
             }
@@ -1008,7 +1008,7 @@ describe('Redistribution', function () {
         });
 
         it('should not claim pot because of estimation check', async () => {
-          const anchor1 = arrayify(currentSeed);
+          const anchor1 = getBytes(currentSeed);
 
           // create witnesses
           let witnessChunks: ReturnType<typeof mineCacWitness>[] = [];
@@ -1029,8 +1029,8 @@ describe('Redistribution', function () {
           }
           // sort witness chunks to be descendant because of the order check
           witnessChunks = witnessChunks.sort((a, b) => {
-            const aBn = BigNumber.from(a.transformedAddress);
-            const bBn = BigNumber.from(b.transformedAddress);
+            const aBn = BigInt(a.transformedAddress);
+            const bBn = BigInt(b.transformedAddress);
             if (aBn.lt(bBn)) {
               return -1;
             }
@@ -1136,7 +1136,7 @@ describe('Redistribution', function () {
             await postage.expireLimited(1); // remove batch
             const batchReceipt = await batchTx.wait();
             const batchCreatedEvent = batchReceipt.events.filter((e: { event: string }) => e.event === 'BatchCreated');
-            const batchId = Buffer.from(arrayify(batchCreatedEvent[0].args[0]));
+            const batchId = Buffer.from(getBytes(batchCreatedEvent[0].args[0]));
             const chunkAddr = Buffer.from(proofParams.proof1.proveSegment);
             const { index, signature, timeStamp } = await constructPostageStamp(batchId, chunkAddr, wallet);
 

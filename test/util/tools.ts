@@ -2,7 +2,7 @@ import { ethers } from 'hardhat';
 import { keccak256 } from '@ethersproject/keccak256';
 import { ContractTransaction } from 'ethers';
 import { arrayify, hexlify } from '@ethersproject/bytes';
-import { BigNumber, Wallet } from 'ethers';
+import { Wallet } from 'ethers';
 import { Utils as BmtUtils } from '@fairdatasociety/bmt-js';
 
 export const equalBytes = BmtUtils.equalBytes;
@@ -193,8 +193,9 @@ export async function startRoundFixture(txNo = 0) {
 }
 
 export function calculateStakeDensity(stake: string, depth: number): string {
-  return ethers.BigNumber.from(stake)
-    .mul(ethers.BigNumber.from(2).pow(ethers.BigNumber.from(depth)))
+  return ethers
+    .BigInt(stake)
+    .mul(ethers.BigInt(2).pow(ethers.BigInt(depth)))
     .toString();
 }
 
@@ -232,7 +233,7 @@ export async function copyBatchForClaim(
   await postageAdmin.setMinimumValidityBlocks(0);
   const initialBalance = 100_000_000;
   const postageDepth = 27;
-  const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
+  const bzzFund = BigInt(initialBalance).mul(BigInt(2).pow(postageDepth));
   await mintAndApprove(deployer, deployer, postageAdmin.address, bzzFund.toString());
   const batchOwner = getWalletOfFdpPlayQueen();
 
