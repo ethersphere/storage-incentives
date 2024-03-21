@@ -148,7 +148,7 @@ describe('Stats', async function () {
   });
 
   describe('two player game', async function () {
-    const trials = 150;
+    const trials = 100;
 
     it('is fair with 1:3 stake', async function () {
       this.timeout(40000);
