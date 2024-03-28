@@ -96,7 +96,7 @@ async function main() {
     currentRedis = '0x264079eeF0CE42D790e3FA7DF8D0cfA675ef6504';
   } else if (network.name == 'localhost') {
     swarmNetworkID = '0';
-    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', swarmNetworkID, '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
+    args = ['0x942C6684eB9874C63d4ed26Ab0623F951D253081', swarmNetworkID, '0x62cab2b3b55f341f10348720ca18063cdb779ad5'];
     waitTime = 1;
     currentRedis = '0xDF64aed195102E644ad6A0204eD5377589b29618';
   }

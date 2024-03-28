@@ -5,6 +5,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
 
+  log('----------------------------------------------------');
+  log('Deployer address at ', deployer);
+  log('----------------------------------------------------');
+
   const token = await get('TestToken');
 
   const argsStamp = [token.address, 16];

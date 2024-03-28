@@ -101,7 +101,7 @@ async function main() {
       '0xFC402f08a61Ebfc4e30e1DB6Cfb38b79578709C1',
       '0x9A2F29598CB0787Aa806Bbfb65B82A9e558945E7',
       '0xF52458e65b8e3B69d93DD3803d8ef934c75E0022',
-      '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8',
+      '0x62cab2b3b55f341f10348720ca18063cdb779ad5',
     ];
     waitTime = 1;
   }

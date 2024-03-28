@@ -90,7 +90,7 @@ async function main() {
     args = ['0xf86b48B65355D292dDE7da8B4ad1913a72ad45C9', '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe'];
     currentRedis = '0x9e3BDb0c69838CC06D85409d4AD6245e54F70F1d';
   } else if (network.name == 'localhost') {
-    args = ['0x9A2F29598CB0787Aa806Bbfb65B82A9e558945E7', '0x3c8F39EE625fCF97cB6ee22bCe25BE1F1E5A5dE8'];
+    args = ['0x9A2F29598CB0787Aa806Bbfb65B82A9e558945E7', '0x62cab2b3b55f341f10348720ca18063cdb779ad5'];
     waitTime = 1;
     currentRedis = '0xDF64aed195102E644ad6A0204eD5377589b29618';
   }
