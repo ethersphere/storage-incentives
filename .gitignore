@@ -22,6 +22,7 @@ node_modules/
 # hardhat-deploy
 deployments/hardhat
 deployments/localhost
+deployments/localcluster
 deployedContracts.sh
 
 # deployment files for mainnet and testnet and an example file

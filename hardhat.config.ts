@@ -42,7 +42,9 @@ const config: HardhatUserConfig = {
     timeout: Number.MAX_SAFE_INTEGER,
   },
   preprocess: {
-    eachLine: removeConsoleLog((hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost'),
+    eachLine: removeConsoleLog(
+      (hre) => hre.network.name !== 'hardhat' && hre.network.name !== 'localhost' && hre.network.name !== 'localcluster'
+    ),
   },
   namedAccounts: {
     deployer: 0,
@@ -151,6 +153,12 @@ const config: HardhatUserConfig = {
     },
     localhost: {
       url: 'http://localhost:8545',
+      // accounts,  if not defined uses the same as above hardhat
+      chainId: 12345,
+      deploy: ['deploy/local/'],
+    },
+    localcluster: {
+      url: 'http://geth-swap:8545',
       // accounts,  if not defined uses the same as above hardhat
       chainId: 12345,
       deploy: ['deploy/local/'],
