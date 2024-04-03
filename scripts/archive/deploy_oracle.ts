@@ -1,7 +1,7 @@
 import 'hardhat-deploy-ethers';
 import '@nomiclabs/hardhat-etherscan';
 import { ethers, network } from 'hardhat';
-import verify from '../utils/verify';
+import verify from '../../utils/verify';
 import hre from 'hardhat';
 import * as fs from 'fs';
 
