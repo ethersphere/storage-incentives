@@ -7,8 +7,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   // Access the BZZACCOUNTS environment variable
   const bzzAccountsRaw = process.env.BZZACCOUNTS
     ? process.env.BZZACCOUNTS
-    : '0xbf4f9637c281ddfb1fbd3be5a1dae6531d408f11,0xc45d64d8f9642a604db93c59fd38492b262391ca';
-  const bzzAccounts = bzzAccountsRaw.split(',');
+    : '0xbf4f9637c281ddfb1fbd3be5a1dae6531d408f11 0xc45d64d8f9642a604db93c59fd38492b262391ca';
+  const bzzAccounts = bzzAccountsRaw.split(' ');
 
   // Transfer tokens to accounts used in cluster deployment
   const amount = ethers.utils.parseUnits('10', 18); // "10" is the token amount; adjust the decimal accordingly
