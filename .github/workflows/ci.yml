@@ -8,7 +8,7 @@ on:
     branches:
       - '**'
 env:
-  NODEJS_VERSION: '16'
+  NODEJS_VERSION: '20'
 jobs:
   check:
     runs-on: ubuntu-latest

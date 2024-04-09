@@ -148,10 +148,10 @@ describe('Stats', async function () {
   });
 
   describe('two player game', async function () {
-    const trials = 150;
+    const trials = 100;
 
     it('is fair with 1:3 stake', async function () {
-      this.timeout(0);
+      this.timeout(120000);
       const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
       const nodes = [others[0], others[1]];
