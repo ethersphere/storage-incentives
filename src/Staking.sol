@@ -62,12 +62,11 @@ contract StakeRegistry is AccessControl, Pausable {
 
     // ----------------------------- Errors ------------------------------
 
-    error Unauthorized(); // Used where only the owner can perform the action
     error TransferFailed(); // Used when token transfers fail
     error Frozen(); // Used when an action cannot proceed because the overlay is frozen
+    error Unauthorized(); // Used where only the owner can perform the action
     error OnlyRedistributor(); // Used when only the redistributor role is allowed
     error OnlyPauser(); // Used when only the pauser role is allowed
-    error WithdrawFailed(); // Used when a withdrawal fails
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -134,7 +133,7 @@ contract StakeRegistry is AccessControl, Pausable {
             stakes[overlay].lastUpdatedBlockNumber = block.number;
         }
 
-        if (!ERC20(bzzToken).transfer(msg.sender, withDrawLimit)) revert WithdrawFailed();
+        if (!ERC20(bzzToken).transfer(msg.sender, withDrawLimit)) revert TransferFailed();
     }
 
     /**
