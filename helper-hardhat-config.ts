@@ -8,8 +8,9 @@ export interface networkConfigInfo {
 }
 
 export const networkConfig: networkConfigInfo = {
-  localhost: { swarmNetworkId: 0, multisig: '0x62cab2b3b55f341f10348720ca18063cdb779ad5' },
-  hardhat: { swarmNetworkId: 0, multisig: '0x62cab2b3b55f341f10348720ca18063cdb779ad5' },
+  // Redis and staing tests are made to work with swarmNetworkId 0
+  localhost: { swarmNetworkId: 12345, multisig: '0x62cab2b3b55f341f10348720ca18063cdb779ad5' },
+  hardhat: { swarmNetworkId: 12345, multisig: '0x62cab2b3b55f341f10348720ca18063cdb779ad5' },
   localcluster: { swarmNetworkId: 12345, multisig: '0x62cab2b3b55f341f10348720ca18063cdb779ad5' },
   pretestnet: {
     blockConfirmations: 6,

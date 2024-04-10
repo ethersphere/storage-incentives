@@ -36,7 +36,7 @@ const errors = {
 };
 
 let staker_0: string;
-const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
+const overlay_0 = '0xd45c7474c9153840e166744553f299fa233e6997360bcbdb23f9c29a2878a578';
 const stakeAmount_0 = '10000000000000000';
 const updateStakeAmount = '633633';
 const updatedStakeAmount = '10000000000633633';
