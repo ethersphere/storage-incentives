@@ -41,7 +41,7 @@ contract StakeRegistry is AccessControl, Pausable {
     uint64 NetworkId;
 
     // Address of the staked ERC20 token
-    address public bzzToken;
+    address public immutable bzzToken;
 
     // ----------------------------- Events ------------------------------
 
@@ -98,8 +98,6 @@ contract StakeRegistry is AccessControl, Pausable {
 
         require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
 
-        emit StakeUpdated(overlay, updatedAmount, _owner, block.number);
-
         stakes[overlay] = Stake({
             owner: _owner,
             overlay: overlay,
@@ -107,6 +105,8 @@ contract StakeRegistry is AccessControl, Pausable {
             lastUpdatedBlockNumber: block.number,
             isValue: true
         });
+
+        emit StakeUpdated(overlay, updatedAmount, _owner, block.number);
     }
 
     /**
@@ -117,21 +117,19 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function withdrawFromStake(bytes32 overlay, uint256 amount) external whenPaused {
         Stake memory stake = stakes[overlay];
-
         require(stake.owner == msg.sender, "only owner can withdraw stake");
-        uint256 withDrawLimit = amount;
-        if (amount > stake.stakeAmount) {
-            withDrawLimit = stake.stakeAmount;
+
+        // We cap the limit to not be over what is possible
+        uint256 withDrawLimit = (amount > stake.stakeAmount) ? stake.stakeAmount : amount;
+        stake.stakeAmount -= withDrawLimit;
+
+        if (stake.stakeAmount == 0) {
+            delete stakes[overlay];
+        } else {
+            stakes[overlay].lastUpdatedBlockNumber = block.number;
         }
 
-        if (withDrawLimit < stake.stakeAmount) {
-            stakes[overlay].stakeAmount -= withDrawLimit;
-            stakes[overlay].lastUpdatedBlockNumber = block.number;
-            require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
-        } else {
-            delete stakes[overlay];
-            require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
-        }
+        require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
     }
 
     /**
@@ -143,8 +141,8 @@ contract StakeRegistry is AccessControl, Pausable {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can freeze stake");
 
         if (stakes[overlay].isValue) {
-            emit StakeFrozen(overlay, time);
             stakes[overlay].lastUpdatedBlockNumber = block.number + time;
+            emit StakeFrozen(overlay, time);
         }
     }
 
@@ -155,7 +153,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function slashDeposit(bytes32 overlay, uint256 amount) external {
         require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can slash stake");
-        emit StakeSlashed(overlay, amount);
+
         if (stakes[overlay].isValue) {
             if (stakes[overlay].stakeAmount > amount) {
                 stakes[overlay].stakeAmount -= amount;
@@ -164,6 +162,7 @@ contract StakeRegistry is AccessControl, Pausable {
                 delete stakes[overlay];
             }
         }
+        emit StakeSlashed(overlay, amount);
     }
 
     function changeNetworkId(uint64 _NetworkId) external {
