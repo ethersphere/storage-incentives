@@ -18,20 +18,20 @@ const errors = {
     noBalance: 'ERC20: insufficient allowance',
     noZeroAddress: 'owner cannot be the zero address',
     belowMinimum: 'cannot be below the minimum stake value',
-    onlyOwner: 'only owner can update stake',
+    onlyOwner: 'Unauthorized()',
   },
   slash: {
-    noRole: 'only redistributor can slash stake',
+    noRole: 'OnlyRedistributor()',
   },
   freeze: {
-    noRole: 'only redistributor can freeze stake',
-    currentlyFrozen: 'overlay currently frozen',
+    noRole: 'OnlyRedistributor()',
+    currentlyFrozen: 'Frozen()',
   },
   pause: {
-    noRole: 'only pauser can pause',
+    noRole: 'OnlyPauser()',
     currentlyPaused: 'Pausable: paused',
     notCurrentlyPaused: 'Pausable: not paused',
-    onlyPauseCanUnPause: 'only pauser can unpause',
+    onlyPauseCanUnPause: 'OnlyPauser()',
   },
 };
 
