@@ -60,6 +60,15 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     event StakeFrozen(bytes32 slashed, uint256 time);
 
+    // ----------------------------- Errors ------------------------------
+
+    error Unauthorized(); // Used where only the owner can perform the action
+    error TransferFailed(); // Used when token transfers fail
+    error Frozen(); // Used when an action cannot proceed because the overlay is frozen
+    error OnlyRedistributor(); // Used when only the redistributor role is allowed
+    error OnlyPauser(); // Used when only the pauser role is allowed
+    error WithdrawFailed(); // Used when a withdrawal fails
+
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
@@ -85,18 +94,14 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param amount Deposited amount of ERC20 tokens.
      */
     function depositStake(address _owner, bytes32 nonce, uint256 amount) external whenNotPaused {
-        require(_owner == msg.sender, "only owner can update stake");
+        if (_owner != msg.sender) revert Unauthorized();
 
         bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));
 
-        uint256 updatedAmount = amount;
+        if (stakes[overlay].isValue && !overlayNotFrozen(overlay)) revert Frozen();
+        uint256 updatedAmount = stakes[overlay].isValue ? amount + stakes[overlay].stakeAmount : amount;
 
-        if (stakes[overlay].isValue) {
-            require(overlayNotFrozen(overlay), "overlay currently frozen");
-            updatedAmount = amount + stakes[overlay].stakeAmount;
-        }
-
-        require(ERC20(bzzToken).transferFrom(msg.sender, address(this), amount), "failed transfer");
+        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
 
         stakes[overlay] = Stake({
             owner: _owner,
@@ -117,7 +122,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function withdrawFromStake(bytes32 overlay, uint256 amount) external whenPaused {
         Stake memory stake = stakes[overlay];
-        require(stake.owner == msg.sender, "only owner can withdraw stake");
+        if (stake.owner != msg.sender) revert Unauthorized();
 
         // We cap the limit to not be over what is possible
         uint256 withDrawLimit = (amount > stake.stakeAmount) ? stake.stakeAmount : amount;
@@ -129,7 +134,7 @@ contract StakeRegistry is AccessControl, Pausable {
             stakes[overlay].lastUpdatedBlockNumber = block.number;
         }
 
-        require(ERC20(bzzToken).transfer(msg.sender, withDrawLimit), "failed withdrawal");
+        if (!ERC20(bzzToken).transfer(msg.sender, withDrawLimit)) revert WithdrawFailed();
     }
 
     /**
@@ -138,7 +143,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param time penalty length in blocknumbers
      */
     function freezeDeposit(bytes32 overlay, uint256 time) external {
-        require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can freeze stake");
+        if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
         if (stakes[overlay].isValue) {
             stakes[overlay].lastUpdatedBlockNumber = block.number + time;
@@ -152,7 +157,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param amount the amount to be slashed
      */
     function slashDeposit(bytes32 overlay, uint256 amount) external {
-        require(hasRole(REDISTRIBUTOR_ROLE, msg.sender), "only redistributor can slash stake");
+        if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
         if (stakes[overlay].isValue) {
             if (stakes[overlay].stakeAmount > amount) {
@@ -166,7 +171,7 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     function changeNetworkId(uint64 _NetworkId) external {
-        require(hasRole(DEFAULT_ADMIN_ROLE, msg.sender), "only admin can change Network ID");
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
         NetworkId = _NetworkId;
     }
 
@@ -175,7 +180,7 @@ contract StakeRegistry is AccessControl, Pausable {
      the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can pause");
+        if (!hasRole(PAUSER_ROLE, msg.sender)) revert OnlyPauser();
         _pause();
     }
 
@@ -183,7 +188,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
-        require(hasRole(PAUSER_ROLE, msg.sender), "only pauser can unpause");
+        if (!hasRole(PAUSER_ROLE, msg.sender)) revert OnlyPauser();
         _unpause();
     }
 
