@@ -1,6 +1,6 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers, network }) {
   const { get, log, execute } = deployments;
   const { deployer } = await getNamedAccounts();
 
@@ -47,6 +47,11 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   log(`Exported contract addresses to console`);
 
   log('----------------------------------------------------');
+  if (network.name == 'localcluster') {
+    await network.provider.send('evm_setIntervalMining', [5000]);
+    log('Mining blocks in localcluster config, 5 second delay for each block');
+    log('----------------------------------------------------');
+  }
 };
 
 export default func;
