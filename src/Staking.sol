@@ -8,8 +8,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
  * @dev Allows users to stake tokens in order to be eligible for the Redistribution Schelling co-ordination game.
- * Stakes are not withdrawable unless the contract is paused, e.g. in the event of migration to a new staking
- * contract. Stakes are frozen or slashed by the Redistribution contract in response to violations of the
+ * Stakes are frozen or slashed by the Redistribution contract in response to violations of the
  * protocol.
  */
 
@@ -23,14 +22,14 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 stakeAmount;
         // Block height the stake was updated
         uint256 lastUpdatedBlockNumber;
-        // Owner of `overlay`
+        // Owner of stake, we need to store owner again to be retrievable
         address owner;
         // Used to indicate presents in stakes struct
         bool isValue;
     }
 
-    // Associate every stake id with overlay data.
-    mapping(bytes32 => Stake) public stakes;
+    // Associate every stake id with node address data.
+    mapping(address => Stake) public stakes;
 
     // Role allowed to pause
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
@@ -48,17 +47,17 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `stakeamount`, during `lastUpdatedBlock`.
      */
-    event StakeUpdated(bytes32 indexed overlay, uint256 stakeAmount, address owner, uint256 lastUpdatedBlock);
+    event StakeUpdated(address indexed owner, uint256 stakeAmount, bytes32 overlay, uint256 lastUpdatedBlock);
 
     /**
-     * @dev Emitted when a stake for overlay `slashed` is slashed by `amount`.
+     * @dev Emitted when a stake for address `slashed` is slashed by `amount`.
      */
-    event StakeSlashed(bytes32 slashed, uint256 amount);
+    event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
 
     /**
-     * @dev Emitted when a stake for overlay `frozen` for `time` blocks.
+     * @dev Emitted when a stake for address `frozen` is frozen for `time` blocks.
      */
-    event StakeFrozen(bytes32 slashed, uint256 time);
+    event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
 
     // ----------------------------- Errors ------------------------------
 
@@ -89,20 +88,21 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Create a new stake or update an existing one.
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
      * @param _owner Eth address used for overlay calculation.
-     * @param nonce Nonce that was used for overlay calculation.
-     * @param amount Deposited amount of ERC20 tokens.
+     * @param _nonce Nonce that was used for overlay calculation.
+     * @param _amount Deposited amount of ERC20 tokens.
      */
-    function depositStake(address _owner, bytes32 nonce, uint256 amount) external whenNotPaused {
+    function depositStake(address _owner, bytes32 _nonce, uint256 _amount) external whenNotPaused {
         if (_owner != msg.sender) revert Unauthorized();
 
-        bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));
+        // TODO maybe ask for nodes to submit directly overlay values?
+        bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), _nonce));
 
-        if (stakes[overlay].isValue && !overlayNotFrozen(overlay)) revert Frozen();
-        uint256 updatedAmount = stakes[overlay].isValue ? amount + stakes[overlay].stakeAmount : amount;
+        if (stakes[_owner].isValue && !addressNotFrozen(_owner)) revert Frozen();
+        uint256 updatedAmount = stakes[_owner].isValue ? _amount + stakes[_owner].stakeAmount : _amount;
 
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
 
-        stakes[overlay] = Stake({
+        stakes[_owner] = Stake({
             owner: _owner,
             overlay: overlay,
             stakeAmount: updatedAmount,
@@ -110,27 +110,27 @@ contract StakeRegistry is AccessControl, Pausable {
             isValue: true
         });
 
-        emit StakeUpdated(overlay, updatedAmount, _owner, block.number);
+        emit StakeUpdated(_owner, updatedAmount, stakes[_owner].overlay, block.number);
     }
 
     /**
      * @dev Withdraw stake only when the staking contract is paused,
      * can only be called by the owner specific to the associated `overlay`
-     * @param overlay The overlay to withdraw from
-     * @param amount The amount of ERC20 tokens to be withdrawn
+     * @param _owner The _owner address to withdraw from
+     * @param _amount The amount of ERC20 tokens to be withdrawn
      */
-    function withdrawFromStake(bytes32 overlay, uint256 amount) external whenPaused {
-        Stake memory stake = stakes[overlay];
+    function withdrawFromStake(address _owner, uint256 _amount) external whenPaused {
+        Stake memory stake = stakes[_owner];
         if (stake.owner != msg.sender) revert Unauthorized();
 
         // We cap the limit to not be over what is possible
-        uint256 withDrawLimit = (amount > stake.stakeAmount) ? stake.stakeAmount : amount;
+        uint256 withDrawLimit = (_amount > stake.stakeAmount) ? stake.stakeAmount : _amount;
         stake.stakeAmount -= withDrawLimit;
 
         if (stake.stakeAmount == 0) {
-            delete stakes[overlay];
+            delete stakes[_owner];
         } else {
-            stakes[overlay].lastUpdatedBlockNumber = block.number;
+            stakes[_owner].lastUpdatedBlockNumber = block.number;
         }
 
         if (!ERC20(bzzToken).transfer(msg.sender, withDrawLimit)) revert TransferFailed();
@@ -138,35 +138,35 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @dev Freeze an existing stake, can only be called by the redistributor
-     * @param overlay the overlay selected
-     * @param time penalty length in blocknumbers
+     * @param _owner the addres selected
+     * @param _time penalty length in blocknumbers
      */
-    function freezeDeposit(bytes32 overlay, uint256 time) external {
+    function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[overlay].isValue) {
-            stakes[overlay].lastUpdatedBlockNumber = block.number + time;
-            emit StakeFrozen(overlay, time);
+        if (stakes[_owner].isValue) {
+            stakes[_owner].lastUpdatedBlockNumber = block.number + _time;
+            emit StakeFrozen(_owner, stakes[_owner].overlay, _time);
         }
     }
 
     /**
      * @dev Slash an existing stake, can only be called by the `redistributor`
-     * @param overlay the overlay selected
-     * @param amount the amount to be slashed
+     * @param _owner the _owner adress selected
+     * @param _amount the amount to be slashed
      */
-    function slashDeposit(bytes32 overlay, uint256 amount) external {
+    function slashDeposit(address _owner, uint256 _amount) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[overlay].isValue) {
-            if (stakes[overlay].stakeAmount > amount) {
-                stakes[overlay].stakeAmount -= amount;
-                stakes[overlay].lastUpdatedBlockNumber = block.number;
+        if (stakes[_owner].isValue) {
+            if (stakes[_owner].stakeAmount > _amount) {
+                stakes[_owner].stakeAmount -= _amount;
+                stakes[_owner].lastUpdatedBlockNumber = block.number;
             } else {
-                delete stakes[overlay];
+                delete stakes[_owner];
             }
         }
-        emit StakeSlashed(overlay, amount);
+        emit StakeSlashed(_owner, stakes[_owner].overlay, _amount);
     }
 
     function changeNetworkId(uint64 _NetworkId) external {
@@ -196,45 +196,45 @@ contract StakeRegistry is AccessControl, Pausable {
     ////////////////////////////////////////
 
     /**
-     * @dev Checks to see if `overlay` is frozen.
-     * @param overlay Overlay of staked overlay
+     * @dev Checks to see if `address` is frozen.
+     * @param _owner owner of staked address
      *
      * Returns a boolean value indicating whether the operation succeeded.
      */
-    function overlayNotFrozen(bytes32 overlay) internal view returns (bool) {
-        return stakes[overlay].lastUpdatedBlockNumber < block.number;
+    function addressNotFrozen(address _owner) internal view returns (bool) {
+        return stakes[_owner].lastUpdatedBlockNumber < block.number;
     }
 
     /**
-     * @dev Returns the current `stakeAmount` of `overlay`.
-     * @param overlay Overlay of node
+     * @dev Returns the current `stakeAmount` of `address`.
+     * @param _owner _owner of node
      */
-    function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return stakes[overlay].stakeAmount;
+    function stakeOfAddress(address _owner) public view returns (uint256) {
+        return stakes[_owner].stakeAmount;
     }
 
     /**
-     * @dev Returns the current usable `stakeAmount` of `overlay`.
+     * @dev Returns the current usable `stakeAmount` of `address`.
      * Checks whether the stake is currently frozen.
-     * @param overlay Overlay of node
+     * @param _owner owner of node
      */
-    function usableStakeOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
+    function usableStakeOfAddress(address _owner) public view returns (uint256) {
+        return addressNotFrozen(_owner) ? stakes[_owner].stakeAmount : 0;
     }
 
     /**
-     * @dev Returns the `lastUpdatedBlockNumber` of `overlay`.
+     * @dev Returns the `lastUpdatedBlockNumber` of `address`.
      */
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return stakes[overlay].lastUpdatedBlockNumber;
+    function lastUpdatedBlockNumberOfOverlay(address _owner) public view returns (uint256) {
+        return stakes[_owner].lastUpdatedBlockNumber;
     }
 
     /**
-     * @dev Returns the eth address of the owner of `overlay`.
-     * @param overlay Overlay of node
+     * @dev Returns the currently used overlay of the address.
+     * @param _owner address of node
      */
-    function ownerOfOverlay(bytes32 overlay) public view returns (address) {
-        return stakes[overlay].owner;
+    function overlayOfAddress(address _owner) public view returns (bytes32) {
+        return stakes[_owner].overlay;
     }
 
     /**
