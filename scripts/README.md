@@ -18,3 +18,12 @@
 yarn install
 npx hardhat run scripts/cluster/changePrice.ts --network localcluster
 ```
+
+### 4. Change script to match other contract that you might need to use
+
+```
+const redis = await ethers.getContractAt('Redistribution', currentRedis);
+const curentPhase = await redis.currentPhaseClaim()
+console.log('Curent redistribution phase ', curentPhase)
+...
+```
