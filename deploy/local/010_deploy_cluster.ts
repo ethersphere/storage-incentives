@@ -12,11 +12,18 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
 
   // Transfer tokens to accounts used in cluster deployment
   const amount = ethers.utils.parseUnits('10', 18); // "10" is the token amount; adjust the decimal accordingly
+  const amountEth = ethers.utils.parseEther('1'); // 1 ETH
   for (const account of bzzAccounts) {
     await execute('TestToken', { from: deployer }, 'transfer', ethers.utils.getAddress(account), amount);
+    await deployments.rawTx({
+      from: deployer,
+      to: ethers.utils.getAddress(account),
+      value: amountEth,
+    });
   }
 
   log(`Sent BZZ tokens to ` + bzzAccountsRaw);
+  log(`Sent ETH to ` + bzzAccountsRaw);
   log('----------------------------------------------------');
 
   const Token = await get('TestToken');
