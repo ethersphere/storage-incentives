@@ -1,6 +1,10 @@
 import 'hardhat-deploy-ethers';
 import { ethers, network } from 'hardhat';
 
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 async function main() {
   // CLUSTER contract addresses
   const currentPostage = '0x657241f4494A2F15Ba75346E691d753A978C72Df';
@@ -13,7 +17,8 @@ async function main() {
 
   const curentPrice = await oracle.currentPrice();
   console.log('Curent oracle price ', curentPrice);
-  await oracle.setPrice(24011);
+  await oracle.setPrice(24021);
+  await delay(5000);
 
   const newPrice = await oracle.currentPrice();
   console.log('Changed oracle price ', newPrice);
