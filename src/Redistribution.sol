@@ -12,13 +12,13 @@ interface IPriceOracle {
 }
 
 interface IStakeRegistry {
-    function freezeDeposit(bytes32 overlay, uint256 time) external;
+    function freezeDeposit(address _owner, uint256 _time) external;
 
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
+    function lastUpdatedBlockNumberOfOverlay(address _owner) external view returns (uint256);
 
-    function ownerOfOverlay(bytes32 overlay) external view returns (address);
+    function overlayOfAddress(address _owner) external view returns (bytes32);
 
-    function stakeOfOverlay(bytes32 overlay) external view returns (uint256);
+    function stakeOfAddress(address _owner) external view returns (uint256);
 }
 
 /**
@@ -216,7 +216,6 @@ contract Redistribution is AccessControl, Pausable {
     error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
     error CommitRoundOver(); // Commit phase in this round is over
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
-    error NotMatchingOwner(); // Sender of commit is not matching the overlay address
     error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommited(); // Node already commited in this round
@@ -279,7 +278,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
-        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
+        uint256 nstake = Stakes.stakeOfAddress(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -300,11 +299,7 @@ contract Redistribution is AccessControl, Pausable {
             revert BelowMinimumStake();
         }
 
-        if (Stakes.ownerOfOverlay(_overlay) != msg.sender) {
-            revert NotMatchingOwner();
-        }
-
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfOverlay(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
@@ -532,7 +527,7 @@ contract Redistribution is AccessControl, Pausable {
                 (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth)
             ) {
                 Stakes.freezeDeposit(
-                    currentReveal.overlay,
+                    currentReveal.owner,
                     penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
@@ -542,7 +537,7 @@ contract Redistribution is AccessControl, Pausable {
                 // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
-                    currentCommit.overlay,
+                    currentCommit.owner,
                     penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
@@ -793,23 +788,23 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
-     * @param overlay The overlay address of the applicant.
-     * @param depth The storage depth the applicant intends to report.
+     * @param _owner The address of the applicant from.
+     * @param _depth The storage depth the applicant intends to report.
      */
-    function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
+    function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(overlay) >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfOverlay(_owner) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
-        if (Stakes.stakeOfOverlay(overlay) < MIN_STAKE) {
+        if (Stakes.stakeOfAddress(_owner) < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        return inProximity(overlay, currentRoundAnchor(), depth);
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);
     }
 
     // ----------------------------- Reveal ------------------------------

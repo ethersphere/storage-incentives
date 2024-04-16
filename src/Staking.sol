@@ -238,6 +238,14 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
+     * @dev Returns the currently used overlay of the address.
+     * @param _owner address of node
+     */
+    function ownerOfAddress(address _owner) public view returns (address) {
+        return stakes[_owner].owner;
+    }
+
+    /**
      * @dev Please both Endians 🥚.
      * @param input Eth address used for overlay calculation.
      */
