@@ -228,7 +228,7 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(r_node_0.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.revertedWith(
+      await expect(r_node_0.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.revertedWith(
         errors.commit.stakedRecently
       );
     });
@@ -241,7 +241,7 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(r_node_0.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.revertedWith(
+      await expect(r_node_0.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.revertedWith(
         errors.commit.stakedRecently
       );
     });
@@ -385,13 +385,13 @@ describe('Redistribution', function () {
         expect(await redistribution.inProximity(roundAnchorBase, overlay_4, depth_4)).to.be.false;
 
         // 0x00...
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.true;
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_1, depth_1)).to.be.true;
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_2, depth_2)).to.be.true;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.true;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_1, depth_1)).to.be.true;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_2, depth_2)).to.be.true;
 
         // 0xa6...
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_3, depth_3)).to.be.false;
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_4, depth_4)).to.be.false;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_3, depth_3)).to.be.false;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_4, depth_4)).to.be.false;
 
         await mineNBlocks(roundLength);
 
@@ -411,12 +411,12 @@ describe('Redistribution', function () {
         expect(await redistribution.inProximity(nextAnchor2, overlay_3, depth_3)).to.be.true;
         expect(await redistribution.inProximity(nextAnchor2, overlay_4, depth_4)).to.be.true;
 
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_0, depth_0)).to.be.false;
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_1, depth_1)).to.be.false;
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_2, depth_2)).to.be.false;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.false;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_1, depth_1)).to.be.false;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_2, depth_2)).to.be.false;
 
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_3, depth_3)).to.be.true;
-        expect(await redistribution.isParticipatingInUpcomingRound(overlay_4, depth_4)).to.be.true;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_3, depth_3)).to.be.true;
+        expect(await redistribution.isParticipatingInUpcomingRound(node_4, depth_4)).to.be.true;
       });
     });
 
@@ -1326,10 +1326,10 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_2 stake is preserved and not frozen
-            expect(await sr.usableStakeOfOverlay(overlay_2)).to.be.eq(stakeAmount_2);
+            expect(await sr.usableStakeOfAddress(node_2)).to.be.eq(stakeAmount_2);
 
             //node_1 is frozen but not slashed
-            expect(await sr.usableStakeOfOverlay(overlay_1_n_25)).to.be.eq(0);
+            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(0);
           });
 
           it('if both reveal, should select correct winner', async function () {
@@ -1393,10 +1393,10 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_1 stake is preserved and not frozen
-            expect(await sr.usableStakeOfOverlay(overlay_1_n_25)).to.be.eq(stakeAmount_1);
+            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1);
 
             //node_2 stake is preserved and not frozen
-            expect(await sr.usableStakeOfOverlay(overlay_5)).to.be.eq(stakeAmount_5);
+            expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
 
             await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
           });
@@ -1418,9 +1418,9 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_1 stake is preserved and not frozen
-            expect(await sr.usableStakeOfOverlay(overlay_5)).to.be.eq(stakeAmount_5);
+            expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
             //node_2 stake is preserved and not frozen
-            expect(await sr.usableStakeOfOverlay(overlay_1)).to.be.eq(stakeAmount_1);
+            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1);
           });
 
           // describe('testing skipped rounds and price changes', async function () {
