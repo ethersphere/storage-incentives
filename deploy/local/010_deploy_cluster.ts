@@ -1,6 +1,6 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers, network }) {
   const { get, log, execute } = deployments;
   const { deployer } = await getNamedAccounts();
 
@@ -12,11 +12,18 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
 
   // Transfer tokens to accounts used in cluster deployment
   const amount = ethers.utils.parseUnits('10', 18); // "10" is the token amount; adjust the decimal accordingly
+  const amountEth = ethers.utils.parseEther('1'); // 1 ETH
   for (const account of bzzAccounts) {
     await execute('TestToken', { from: deployer }, 'transfer', ethers.utils.getAddress(account), amount);
+    await deployments.rawTx({
+      from: deployer,
+      to: ethers.utils.getAddress(account),
+      value: amountEth,
+    });
   }
 
   log(`Sent BZZ tokens to ` + bzzAccountsRaw);
+  log(`Sent ETH to ` + bzzAccountsRaw);
   log('----------------------------------------------------');
 
   const Token = await get('TestToken');
@@ -40,6 +47,11 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   log(`Exported contract addresses to console`);
 
   log('----------------------------------------------------');
+  if (network.name == 'localcluster') {
+    await network.provider.send('evm_setIntervalMining', [5000]);
+    log('Mining blocks in localcluster config, 5 second delay for each block');
+    log('----------------------------------------------------');
+  }
 };
 
 export default func;
