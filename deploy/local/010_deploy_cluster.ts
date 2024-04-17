@@ -54,7 +54,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
     await deployments.rawTx({
       from: ethers.utils.getAddress(deployer),
       to: ethers.utils.getAddress(admin),
-      value: amountEth,
+      value: amountEth2,
     });
     log('Sent ETH to S3 deployer from SI deployer');
     log('----------------------------------------------------');
