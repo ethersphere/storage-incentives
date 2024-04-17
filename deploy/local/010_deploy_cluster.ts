@@ -48,6 +48,18 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
 
   log('----------------------------------------------------');
 
+  // Send ETH to S3 deployer if using localcluster and geth
+  const amountEth2 = ethers.utils.parseEther('10'); // 10 ETH
+  if (network.name == 'localcluster') {
+    await deployments.rawTx({
+      from: ethers.utils.getAddress(deployer),
+      to: ethers.utils.getAddress('0x7E71bA1aB8AF3454a01CFafe358BEbb7691d02f8'),
+      value: amountEth2,
+    });
+    log('Sent ETH to S3 deployer from SI deployer');
+    log('----------------------------------------------------');
+  }
+
   if (network.name == 'hardhat') {
     await network.provider.send('evm_setIntervalMining', [5000]);
     log('Mining blocks in localcluster config, 5 second delay for each block');
