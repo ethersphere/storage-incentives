@@ -47,7 +47,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   log(`Exported contract addresses to console`);
 
   log('----------------------------------------------------');
-  if (network.name == 'localhost') {
+
+  if (network.name == 'hardhat') {
     await network.provider.send('evm_setIntervalMining', [5000]);
     log('Mining blocks in localcluster config, 5 second delay for each block');
     log('----------------------------------------------------');
