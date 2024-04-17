@@ -2,7 +2,7 @@ import { DeployFunction } from 'hardhat-deploy/types';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers, network }) {
   const { get, log, execute } = deployments;
-  const { deployer } = await getNamedAccounts();
+  const { deployer, admin } = await getNamedAccounts();
 
   // Access the BZZACCOUNTS environment variable
   const bzzAccountsRaw = process.env.BZZACCOUNTS
@@ -47,6 +47,18 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   log(`Exported contract addresses to console`);
 
   log('----------------------------------------------------');
+
+  // Send ETH to S3 deployer if using localcluster and geth
+  const amountEth2 = ethers.utils.parseEther('10'); // 10 ETH
+  if (network.name == 'localcluster') {
+    await deployments.rawTx({
+      from: ethers.utils.getAddress(deployer),
+      to: ethers.utils.getAddress(admin),
+      value: amountEth,
+    });
+    log('Sent ETH to S3 deployer from SI deployer');
+    log('----------------------------------------------------');
+  }
 
   if (network.name == 'hardhat') {
     await network.provider.send('evm_setIntervalMining', [5000]);
