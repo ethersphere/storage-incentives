@@ -40,5 +40,8 @@ jobs:
       - name: Test
         run: yarn test
 
+      - name: Coverage
+        run: yarn test:coverage
+
       - name: Formatting
         run: yarn format:check

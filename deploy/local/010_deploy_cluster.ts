@@ -2,7 +2,7 @@ import { DeployFunction } from 'hardhat-deploy/types';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, ethers, network }) {
   const { get, log, execute } = deployments;
-  const { deployer, admin } = await getNamedAccounts();
+  const { deployer } = await getNamedAccounts();
 
   // Access the BZZACCOUNTS environment variable
   const bzzAccountsRaw = process.env.BZZACCOUNTS
@@ -53,7 +53,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   if (network.name == 'localcluster') {
     await deployments.rawTx({
       from: ethers.utils.getAddress(deployer),
-      to: ethers.utils.getAddress(admin),
+      to: ethers.utils.getAddress('0x7E71bA1aB8AF3454a01CFafe358BEbb7691d02f8'),
       value: amountEth2,
     });
     log('Sent ETH to S3 deployer from SI deployer');
