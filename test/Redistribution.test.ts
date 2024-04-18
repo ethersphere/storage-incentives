@@ -72,6 +72,7 @@ const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc9
 const stakeAmount_1 = '100000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
+const stakeAmount_1_n_25 = '200000000000000000';
 const depth_1 = '0x06';
 const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -1393,9 +1394,9 @@ describe('Redistribution', function () {
 
             const sr = await ethers.getContract('StakeRegistry');
 
-            //node_1 stake is preserved and not frozen
-            // TODO error
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1);
+            // node_1 stake is preserved and not frozen
+            // stake is double the size as it has been deposited 2 times
+            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1_n_25);
 
             //node_2 stake is preserved and not frozen
             expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
@@ -1419,11 +1420,11 @@ describe('Redistribution', function () {
 
             const sr = await ethers.getContract('StakeRegistry');
 
-            //node_1 stake is preserved and not frozen
+            // node_1 stake is preserved and not frozen
             expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
-            //node_2 stake is preserved and not frozen
-            // TODO error
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1);
+            // node_2 stake is preserved and not frozen
+            // amount is double the size on node_1 as deposit has been made twice
+            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1_n_25);
           });
 
           // describe('testing skipped rounds and price changes', async function () {

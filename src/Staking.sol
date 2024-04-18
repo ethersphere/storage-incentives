@@ -59,6 +59,11 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
 
+    /**
+     * @dev Emitted when a address changes overlay it uses
+     */
+    event ChangedOverlay(address owner, bytes32 overlay);
+
     // ----------------------------- Errors ------------------------------
 
     error TransferFailed(); // Used when token transfers fail
@@ -94,7 +99,6 @@ contract StakeRegistry is AccessControl, Pausable {
     function depositStake(address _owner, bytes32 _nonce, uint256 _amount) external whenNotPaused {
         if (_owner != msg.sender) revert Unauthorized();
 
-        // TODO maybe ask for nodes to submit directly overlay values?
         bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), _nonce));
 
         if (stakes[_owner].isValue && !addressNotFrozen(_owner)) revert Frozen();
@@ -167,6 +171,22 @@ contract StakeRegistry is AccessControl, Pausable {
             }
         }
         emit StakeSlashed(_owner, stakes[_owner].overlay, _amount);
+    }
+
+    /**
+     * @dev Change overlay of address to new one for neighbourhood hopping
+     * @param _owner the _owner adress selected
+     * @param _nonce the new nonce that will produce overlay
+     */
+    function changeOverlay(address _owner, bytes32 _nonce) external {
+        if (_owner != msg.sender) revert Unauthorized();
+        bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), _nonce));
+
+        if (stakes[_owner].isValue) {
+            stakes[_owner].overlay = overlay;
+            stakes[_owner].lastUpdatedBlockNumber = block.number;
+        }
+        emit ChangedOverlay(_owner, overlay);
     }
 
     function changeNetworkId(uint64 _NetworkId) external {

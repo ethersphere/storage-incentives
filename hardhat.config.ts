@@ -228,7 +228,7 @@ const config: HardhatUserConfig = {
     runOnCompile: false,
   },
   gasReporter: {
-    enabled: true,
+    enabled: false,
     currency: 'USD',
     gasPriceApi: 'https://api.gnosisscan.io/api?module=proxy&action=eth_gasPrice', // https://docs.gnosischain.com/tools/oracles/gas-price
     token: 'GNO',

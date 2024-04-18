@@ -43,6 +43,14 @@ const updatedStakeAmount = '10000000000633633';
 const twice_stakeAmount_0 = '20000000000000000';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
+let staker_1: string;
+const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
+const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc99f9f91e915';
+const stakeAmount_1 = '100000000000000000';
+const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
+const stakeAmount_1_n_25 = '200000000000000000';
+
 const zeroStake = '0';
 const zeroAmount = '0';
 
@@ -53,6 +61,7 @@ before(async function () {
   redistributor = namedAccounts.redistributor;
   pauser = namedAccounts.pauser;
   staker_0 = namedAccounts.node_0;
+  staker_1 = namedAccounts.node_1;
 });
 
 let stakeRegistry: Contract;
@@ -406,6 +415,34 @@ describe('Staking', function () {
       expect(staked_after.lastUpdatedBlockNumber).to.be.eq(0);
 
       await stakeRegistryPauser.unPause();
+    });
+  });
+
+  describe('change overlay hex', function () {
+    let sr_staker_1: Contract;
+
+    beforeEach(async function () {
+      await deployments.fixture();
+      token = await ethers.getContract('TestToken', deployer);
+      stakeRegistry = await ethers.getContract('StakeRegistry');
+
+      sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
+
+      await mintAndApprove(staker_1, stakeRegistry.address, stakeAmount_1);
+      await sr_staker_1.depositStake(staker_1, nonce_1, stakeAmount_1);
+    });
+
+    it('should change overlay hex', async function () {
+      const current_overlay = await sr_staker_1.overlayOfAddress(staker_1);
+      await sr_staker_1.changeOverlay(staker_1, nonce_1_n_25);
+      const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
+      expect(new_overlay).to.not.eq(current_overlay);
+    });
+
+    it('should match specific overlay hex', async function () {
+      await sr_staker_1.changeOverlay(staker_1, nonce_1_n_25);
+      const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
+      expect(new_overlay).to.be.eq(overlay_1_n_25);
     });
   });
 });
