@@ -193,6 +193,7 @@ const config: HardhatUserConfig = {
       mainnet: mainnetEtherscanKey || '',
       sepolia: mainnetEtherscanKey || '',
       testnet: testnetEtherscanKey || '',
+      pretestnet: testnetEtherscanKey || '',
     },
     customChains: [
       {
