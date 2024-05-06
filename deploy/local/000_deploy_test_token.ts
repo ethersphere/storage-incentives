@@ -1,11 +1,12 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  if ((networkConfig[network.name] ?? '').toLowerCase() !== deployer.toLowerCase()) {
+  const multisig = networkConfig[network.name];
+  if (typeof multisig === 'string' && ethers.utils.getAddress(multisig) !== ethers.utils.getAddress(deployer)) {
     throw new Error('Multisig is not the same as deployer');
   }
 
