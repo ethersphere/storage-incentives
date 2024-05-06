@@ -15,6 +15,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   // We ONLY use already deployed token for MAINNET FORKS
   if (!(token = await get('Token'))) {
     // we have problem as there is not token, error out
+    throw new Error('Token not available');
   } else {
     log('Using already deployed Token at', token.address);
   }

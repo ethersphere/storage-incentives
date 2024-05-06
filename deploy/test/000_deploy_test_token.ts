@@ -5,6 +5,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, log, getOrNull } = deployments;
   const { deployer } = await getNamedAccounts();
 
+  if ((networkConfig[network.name] ?? '').toLowerCase() !== deployer.toLowerCase()) {
+    throw new Error('Multisig is not the same as deployer');
+  }
+
   log('----------------------------------------------------');
   log('Deployer address at ', deployer);
   log('----------------------------------------------------');
