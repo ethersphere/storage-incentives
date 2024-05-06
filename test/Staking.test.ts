@@ -49,7 +49,6 @@ const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc9
 const stakeAmount_1 = '100000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
-const stakeAmount_1_n_25 = '200000000000000000';
 
 const zeroStake = '0';
 const zeroAmount = '0';
@@ -144,7 +143,6 @@ describe('Staking', function () {
 
       const staked = await sr_staker_0.stakes(staker_0);
       expect(staked.overlay).to.be.eq(overlay_0);
-      expect(staked.owner).to.be.eq(staker_0);
       expect(staked.stakeAmount).to.be.eq(stakeAmount_0);
       expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
@@ -170,7 +168,6 @@ describe('Staking', function () {
 
       const staked = await stakeRegistry.stakes(staker_0);
       expect(staked.overlay).to.be.eq(overlay_0);
-      expect(staked.owner).to.be.eq(staker_0);
       expect(staked.stakeAmount).to.be.eq(updatedStakeAmount);
       expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber + 1);
 
@@ -206,7 +203,6 @@ describe('Staking', function () {
 
       const staked = await stakeRegistry.stakes(staker_0);
       expect(staked.overlay).to.be.eq(zeroBytes32);
-      expect(staked.owner).to.be.eq(zeroAddress);
       expect(staked.stakeAmount).to.be.eq(0);
       expect(staked.lastUpdatedBlockNumber).to.be.eq(0);
     });
@@ -224,7 +220,7 @@ describe('Staking', function () {
       const lastUpdatedBlockNumber = await getBlockNumber();
       const staked = await stakeRegistry.stakes(staker_0);
       expect(staked.overlay).to.be.eq(overlay_0);
-      expect(staked.owner).to.be.eq(staker_0);
+
       expect(staked.stakeAmount).to.be.eq(stakeAmount_0);
       expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
     });
@@ -394,7 +390,6 @@ describe('Staking', function () {
       const staked_before = await sr_staker_0.stakes(staker_0);
 
       expect(staked_before.overlay).to.be.eq(overlay_0);
-      expect(staked_before.owner).to.be.eq(staker_0);
       expect(staked_before.stakeAmount).to.be.eq(stakeAmount_0);
       expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
@@ -410,7 +405,6 @@ describe('Staking', function () {
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
       expect(staked_after.overlay).to.be.eq(zeroBytes32);
-      expect(staked_after.owner).to.be.eq(zeroAddress);
       expect(staked_after.stakeAmount).to.be.eq(zeroStake);
       expect(staked_after.lastUpdatedBlockNumber).to.be.eq(0);
 
@@ -439,10 +433,20 @@ describe('Staking', function () {
       expect(new_overlay).to.not.eq(current_overlay);
     });
 
-    it('should match specific overlay hex', async function () {
+    it('should match new overlay hex', async function () {
       await sr_staker_1.changeOverlay(staker_1, nonce_1_n_25);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.be.eq(overlay_1_n_25);
+    });
+
+    it('should match old overlay hex after double change', async function () {
+      await sr_staker_1.changeOverlay(staker_1, nonce_1_n_25);
+      const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
+      expect(new_overlay).to.be.eq(overlay_1_n_25);
+
+      await sr_staker_1.changeOverlay(staker_1, nonce_1);
+      const old_overlay = await sr_staker_1.overlayOfAddress(staker_1);
+      expect(old_overlay).to.be.eq(overlay_1);
     });
   });
 });

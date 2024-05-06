@@ -22,8 +22,6 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 stakeAmount;
         // Block height the stake was updated
         uint256 lastUpdatedBlockNumber;
-        // Owner of stake, we need to store owner again to be retrievable
-        address owner;
         // Used to indicate presents in stakes struct
         bool isValue;
     }
@@ -107,14 +105,13 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
 
         stakes[_owner] = Stake({
-            owner: _owner,
             overlay: overlay,
             stakeAmount: updatedAmount,
             lastUpdatedBlockNumber: block.number,
             isValue: true
         });
 
-        emit StakeUpdated(_owner, updatedAmount, stakes[_owner].overlay, block.number);
+        emit StakeUpdated(_owner, updatedAmount, overlay, block.number);
     }
 
     /**
@@ -125,7 +122,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function withdrawFromStake(address _owner, uint256 _amount) external whenPaused {
         Stake memory stake = stakes[_owner];
-        if (stake.owner != msg.sender) revert Unauthorized();
+        if (_owner != msg.sender) revert Unauthorized();
 
         // We cap the limit to not be over what is possible
         uint256 withDrawLimit = (_amount > stake.stakeAmount) ? stake.stakeAmount : _amount;
@@ -185,8 +182,8 @@ contract StakeRegistry is AccessControl, Pausable {
         if (stakes[_owner].isValue) {
             stakes[_owner].overlay = overlay;
             stakes[_owner].lastUpdatedBlockNumber = block.number;
+            emit ChangedOverlay(_owner, overlay);
         }
-        emit ChangedOverlay(_owner, overlay);
     }
 
     function changeNetworkId(uint64 _NetworkId) external {
@@ -255,14 +252,6 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function overlayOfAddress(address _owner) public view returns (bytes32) {
         return stakes[_owner].overlay;
-    }
-
-    /**
-     * @dev Returns the currently used overlay of the address.
-     * @param _owner address of node
-     */
-    function ownerOfAddress(address _owner) public view returns (address) {
-        return stakes[_owner].owner;
     }
 
     /**
