@@ -418,11 +418,9 @@ describe('Staking', function () {
     beforeEach(async function () {
       await deployments.fixture();
       token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry');
-
       sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
 
-      await mintAndApprove(staker_1, stakeRegistry.address, stakeAmount_1);
+      await mintAndApprove(staker_1, sr_staker_1.address, stakeAmount_1);
       await sr_staker_1.depositStake(staker_1, nonce_1, stakeAmount_1);
     });
 
