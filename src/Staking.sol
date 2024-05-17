@@ -234,7 +234,7 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @dev Returns the `lastUpdatedBlockNumber` of `address`.
      */
-    function lastUpdatedBlockNumberOfOverlay(address _owner) public view returns (uint256) {
+    function lastUpdatedBlockNumberOfAddress(address _owner) public view returns (uint256) {
         return stakes[_owner].lastUpdatedBlockNumber;
     }
 

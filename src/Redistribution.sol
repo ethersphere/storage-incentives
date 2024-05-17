@@ -14,7 +14,7 @@ interface IPriceOracle {
 interface IStakeRegistry {
     function freezeDeposit(address _owner, uint256 _time) external;
 
-    function lastUpdatedBlockNumberOfOverlay(address _owner) external view returns (uint256);
+    function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
 
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
@@ -304,7 +304,7 @@ contract Redistribution is AccessControl, Pausable {
             revert NotMatchingOwner();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
@@ -801,7 +801,7 @@ contract Redistribution is AccessControl, Pausable {
             revert WrongPhase();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(_owner) >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(_owner) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
