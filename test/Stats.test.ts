@@ -64,7 +64,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   for (let i = 0; i < nodes.length; i++) {
     const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
     await mintAndApprove(deployer, nodes[i], sr_node.address, stakes[i]);
-    await sr_node.depositStake(nodes[i], nonce, stakes[i]);
+    await sr_node.depositStake(nonce, stakes[i]);
   }
 
   const winDist: Outcome[] = [];

@@ -224,7 +224,7 @@ describe('Redistribution', function () {
     it('should not create a commit with recently staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
+      await sr_node_0.depositStake(nonce_0, stakeAmount_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -237,7 +237,7 @@ describe('Redistribution', function () {
     it('should create a commit with staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
+      await sr_node_0.depositStake(nonce_0, stakeAmount_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -296,32 +296,32 @@ describe('Redistribution', function () {
 
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.depositStake(node_0, nonce_0, stakeAmount_0);
+      await sr_node_0.depositStake(nonce_0, stakeAmount_0);
 
       const sr_node_1 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1.address, stakeAmount_1);
-      await sr_node_1.depositStake(node_1, nonce_1, stakeAmount_1);
+      await sr_node_1.depositStake(nonce_1, stakeAmount_1);
 
       // 16 depth neighbourhood with node_5
       const sr_node_1_n_25 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1_n_25.address, stakeAmount_1);
-      await sr_node_1.depositStake(node_1, nonce_1_n_25, stakeAmount_1);
+      await sr_node_1.depositStake(nonce_1_n_25, stakeAmount_1);
 
       const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
       await mintAndApprove(deployer, node_2, sr_node_2.address, stakeAmount_2);
-      await sr_node_2.depositStake(node_2, nonce_2, stakeAmount_2);
+      await sr_node_2.depositStake(nonce_2, stakeAmount_2);
 
       const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
       await mintAndApprove(deployer, node_3, sr_node_3.address, stakeAmount_3);
-      await sr_node_3.depositStake(node_3, nonce_3, stakeAmount_3);
+      await sr_node_3.depositStake(nonce_3, stakeAmount_3);
 
       const sr_node_4 = await ethers.getContract('StakeRegistry', node_4);
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
-      await sr_node_4.depositStake(node_4, nonce_4, stakeAmount_3);
+      await sr_node_4.depositStake(nonce_4, stakeAmount_3);
 
       const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
-      await sr_node_5.depositStake(node_5, nonce_5, stakeAmount_5);
+      await sr_node_5.depositStake(nonce_5, stakeAmount_5);
 
       // We need to mine 2 rounds to make the staking possible
       // as this is the minimum time between staking and committing
