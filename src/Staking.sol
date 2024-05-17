@@ -60,7 +60,7 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @dev Emitted when a address changes overlay it uses
      */
-    event ChangedOverlay(address owner, bytes32 overlay);
+    event OverlayChanged(address owner, bytes32 overlay);
 
     // ----------------------------- Errors ------------------------------
 
@@ -182,7 +182,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (stakes[_owner].isValue) {
             stakes[_owner].overlay = overlay;
             stakes[_owner].lastUpdatedBlockNumber = block.number;
-            emit ChangedOverlay(_owner, overlay);
+            emit OverlayChanged(_owner, overlay);
         }
     }
 
