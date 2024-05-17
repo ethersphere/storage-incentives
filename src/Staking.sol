@@ -116,22 +116,19 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @dev Withdraw stake only when the staking contract is paused,
-     * can only be called by the owner specific to the associated `overlay`
-     * @param _owner The _owner address to withdraw from
      * @param _amount The amount of ERC20 tokens to be withdrawn
      */
-    function withdrawFromStake(address _owner, uint256 _amount) external whenPaused {
-        Stake memory stake = stakes[_owner];
-        if (_owner != msg.sender) revert Unauthorized();
+    function withdrawFromStake(uint256 _amount) external whenPaused {
+        Stake memory stake = stakes[msg.sender];
 
         // We cap the limit to not be over what is possible
         uint256 withDrawLimit = (_amount > stake.stakeAmount) ? stake.stakeAmount : _amount;
         stake.stakeAmount -= withDrawLimit;
 
         if (stake.stakeAmount == 0) {
-            delete stakes[_owner];
+            delete stakes[msg.sender];
         } else {
-            stakes[_owner].lastUpdatedBlockNumber = block.number;
+            stakes[msg.sender].lastUpdatedBlockNumber = block.number;
         }
 
         if (!ERC20(bzzToken).transfer(msg.sender, withDrawLimit)) revert TransferFailed();
