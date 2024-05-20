@@ -117,13 +117,6 @@ contract Redistribution is AccessControl, Pausable {
         // bytes32 chunkAddr; it equals to the proveSegment argument
     }
 
-    struct StakeRedis {
-        bytes32 overlay;
-        uint256 stakeAmount;
-        uint256 lastUpdatedBlockNumber;
-        bool isValue;
-    }
-
     // The address of the linked PostageStamp contract.
     IPostageStamp public PostageContract;
     // The address of the linked PriceOracle contract.
@@ -294,7 +287,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
-        IStakeRegistry.Stake memory nStakeStruct = Stakes.getStakeStruct(msg.sender);
+        IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -311,11 +304,11 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (nStakeStruct.stakeAmount < MIN_STAKE) {
+        if (nodeStake.stakeAmount < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        if (nStakeStruct.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
+        if (nodeStake.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
@@ -329,7 +322,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
-            if (currentCommits[i].overlay == nStakeStruct.overlay) {
+            if (currentCommits[i].overlay == nodeStake.overlay) {
                 revert AlreadyCommited();
             }
 
@@ -340,27 +333,27 @@ contract Redistribution is AccessControl, Pausable {
 
         currentCommits.push(
             Commit({
-                overlay: nStakeStruct.overlay,
+                overlay: nodeStake.overlay,
                 owner: msg.sender,
                 revealed: false,
-                stake: nStakeStruct.stakeAmount,
+                stake: nodeStake.stakeAmount,
                 obfuscatedHash: _obfuscatedHash,
                 revealIndex: 0
             })
         );
 
-        emit Committed(_roundNumber, nStakeStruct.overlay);
+        emit Committed(_roundNumber, nodeStake.overlay);
     }
 
     /**
      * @notice Reveal the pre-image values used to generate commit provided during this round's commit phase.
-     * @param _overlay The overlay address of the applicant.
      * @param _depth The reported depth.
      * @param _hash The reserve commitment hash.
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
-    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
+    function reveal(uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         uint64 cr = currentRound();
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
@@ -808,19 +801,20 @@ contract Redistribution is AccessControl, Pausable {
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(uint8 _depth) public view returns (bool) {
+        IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(msg.sender);
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
+        if (nodeStake.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
-        if (Stakes.stakeOfAddress(msg.sender) < MIN_STAKE) {
+        if (nodeStake.stakeAmount < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        return inProximity(Stakes.overlayOfAddress(msg.sender), currentRoundAnchor(), _depth);
+        return inProximity(nodeStake.overlay, currentRoundAnchor(), _depth);
     }
 
     /**
@@ -830,19 +824,20 @@ contract Redistribution is AccessControl, Pausable {
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
+        IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(_owner);
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfAddress(_owner) >= block.number - 2 * ROUND_LENGTH) {
+        if (nodeStake.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
-        if (Stakes.stakeOfAddress(_owner) < MIN_STAKE) {
+        if (nodeStake.stakeAmount < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);
+        return inProximity(nodeStake.overlay, currentRoundAnchor(), _depth);
     }
 
     // ----------------------------- Reveal ------------------------------

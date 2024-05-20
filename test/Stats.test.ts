@@ -99,7 +99,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
       const overlay = createOverlay(nodes[i], depth, nonce);
-      await r_node.reveal(overlay, depth, sampleHashString, reveal_nonce);
+      await r_node.reveal(depth, sampleHashString, reveal_nonce);
     }
 
     const anchor2 = await r_node.currentSeed(); // for creating proofs
