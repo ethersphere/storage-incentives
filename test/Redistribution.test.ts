@@ -216,9 +216,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       const currentRound = await r_node_0.currentRound();
-      await expect(r_node_0.commit(obfuscatedHash_0, overlay_0, currentRound)).to.be.revertedWith(
-        errors.commit.notStaked
-      );
+      await expect(r_node_0.commit(obfuscatedHash_0, currentRound)).to.be.revertedWith(errors.commit.notStaked);
     });
 
     it('should not create a commit with recently staked node', async function () {
@@ -454,7 +452,7 @@ describe('Redistribution', function () {
         expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
 
         const currentRound = await r_node_3.currentRound();
-        await r_node_3.commit(obfuscatedHash, overlay_3, currentRound);
+        await r_node_3.commit(obfuscatedHash, currentRound);
 
         expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
@@ -475,7 +473,7 @@ describe('Redistribution', function () {
 
         const currentRound = await r_node_2.currentRound();
 
-        await expect(r_node_2.commit(obfuscatedHash, overlay_2, currentRound))
+        await expect(r_node_2.commit(obfuscatedHash, currentRound))
           .to.emit(redistribution, 'Committed')
           .withArgs(currentRound, overlay_2);
 
@@ -498,7 +496,7 @@ describe('Redistribution', function () {
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
         const currentRound = await r_node_0.currentRound();
-        await r_node_0.commit(obfuscatedHash_0, overlay_0, currentRound);
+        await r_node_0.commit(obfuscatedHash_0, currentRound);
 
         const commit_0 = await r_node_0.currentCommits(0);
         expect(commit_0.overlay).to.be.eq(overlay_0);
@@ -516,19 +514,6 @@ describe('Redistribution', function () {
         );
       });
 
-      it('should not allow non owners to commit', async function () {
-        expect(await redistribution.currentPhaseCommit()).to.be.true;
-
-        const r_node_0 = await ethers.getContract('Redistribution', node_0);
-
-        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
-
-        const currentRound = await r_node_0.currentRound();
-        await expect(r_node_0.commit(obfuscatedHash, overlay_2, currentRound)).to.be.revertedWith(
-          errors.commit.notOwner
-        );
-      });
-
       it('should not allow duplicate commits', async function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -538,13 +523,11 @@ describe('Redistribution', function () {
 
         const currentRound = await r_node_2.currentRound();
 
-        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, currentRound);
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
-        await expect(r_node_2.commit(obfuscatedHash, overlay_2, currentRound)).to.be.revertedWith(
-          errors.commit.alreadyCommited
-        );
+        await expect(r_node_2.commit(obfuscatedHash, currentRound)).to.be.revertedWith(errors.commit.alreadyCommited);
       });
     });
 
@@ -601,7 +584,7 @@ describe('Redistribution', function () {
         const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -620,7 +603,7 @@ describe('Redistribution', function () {
         const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -639,7 +622,7 @@ describe('Redistribution', function () {
         const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obfuscatedHash, overlay_2, currentRound);
+        await r_node_2.commit(obfuscatedHash, currentRound);
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -687,7 +670,7 @@ describe('Redistribution', function () {
         const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
-        await r_node_2.commit(obfuscatedHash, overlay_2, parseInt(currentRound));
+        await r_node_2.commit(obfuscatedHash, parseInt(currentRound));
 
         await mineNBlocks(phaseLength);
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
@@ -717,7 +700,7 @@ describe('Redistribution', function () {
           const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, currentRound);
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
@@ -829,7 +812,7 @@ describe('Redistribution', function () {
           const obfuscatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, currentRound);
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
@@ -864,7 +847,7 @@ describe('Redistribution', function () {
           const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obsfucatedHash, currentRound);
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
 
@@ -924,7 +907,7 @@ describe('Redistribution', function () {
           const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, currentRound);
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
@@ -983,7 +966,7 @@ describe('Redistribution', function () {
           const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, currentRound);
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
@@ -1049,7 +1032,7 @@ describe('Redistribution', function () {
           const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
 
           const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, overlay_5, currentRound);
+          await r_node_5.commit(obfuscatedHash, currentRound);
 
           expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
@@ -1246,10 +1229,10 @@ describe('Redistribution', function () {
             currentPriceUpScaled = await priceOracle.currentPriceUpScaled();
 
             const obfuscatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
-            await r_node_1.commit(obfuscatedHash_1, overlay_1_n_25, currentRound);
+            await r_node_1.commit(obfuscatedHash_1, currentRound);
 
             const obfuscatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
-            await r_node_5.commit(obfuscatedHash_5, overlay_5, currentRound);
+            await r_node_5.commit(obfuscatedHash_5, currentRound);
 
             proof1 = node5_proof1.proof1;
             proof2 = node5_proof1.proof2;
@@ -1461,10 +1444,10 @@ describe('Redistribution', function () {
           //     currentRound = await r_node_5.currentRound();
 
           //     const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
-          //     await r_node_5.commit(obsfucatedHash_5, overlay_5, currentRound);
+          //     await r_node_5.commit(obsfucatedHash_5, currentRound);
 
           //     const obsfucatedHash_6 = encodeAndHash(overlay_6, depth_6, hash_6, reveal_nonce_6);
-          //     await r_node_6.commit(obsfucatedHash_6, overlay_6, currentRound);
+          //     await r_node_6.commit(obsfucatedHash_6, currentRound);
 
           //     await mineNBlocks(phaseLength);
 

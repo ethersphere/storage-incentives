@@ -12,6 +12,13 @@ interface IPriceOracle {
 }
 
 interface IStakeRegistry {
+    struct Stake {
+        bytes32 overlay;
+        uint256 stakeAmount;
+        uint256 lastUpdatedBlockNumber;
+        bool isValue;
+    }
+
     function freezeDeposit(address _owner, uint256 _time) external;
 
     function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
@@ -19,6 +26,8 @@ interface IStakeRegistry {
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
     function stakeOfAddress(address _owner) external view returns (uint256);
+
+    function getStakeStruct(address _owner) external view returns (Stake memory);
 }
 
 /**
@@ -106,6 +115,13 @@ contract Redistribution is AccessControl, Pausable {
         uint64 timeStamp;
         // address signer; it is provided by the postage stamp contract
         // bytes32 chunkAddr; it equals to the proveSegment argument
+    }
+
+    struct StakeRedis {
+        bytes32 overlay;
+        uint256 stakeAmount;
+        uint256 lastUpdatedBlockNumber;
+        bool isValue;
     }
 
     // The address of the linked PostageStamp contract.
@@ -274,12 +290,11 @@ contract Redistribution is AccessControl, Pausable {
      * _obfuscatedHash_ by providing their _overlay_, reported storage _depth_, reserve commitment _hash_ and a
      * randomly generated, and secret _revealNonce_ to the _wrapCommit_ method.
      * @param _obfuscatedHash The calculated hash resultant of the required pre-image values.
-     * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
      * and be derived from the same key pair as the message sender.
      */
-    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint64 _roundNumber) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
-        uint256 nstake = Stakes.stakeOfAddress(msg.sender);
+        IStakeRegistry.Stake memory nStakeStruct = Stakes.getStakeStruct(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -296,15 +311,11 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (nstake < MIN_STAKE) {
+        if (nStakeStruct.stakeAmount < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        if (Stakes.overlayOfAddress(msg.sender) != _overlay) {
-            revert NotMatchingOwner();
-        }
-
-        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
+        if (nStakeStruct.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
@@ -318,7 +329,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
-            if (currentCommits[i].overlay == _overlay) {
+            if (currentCommits[i].overlay == nStakeStruct.overlay) {
                 revert AlreadyCommited();
             }
 
@@ -329,16 +340,16 @@ contract Redistribution is AccessControl, Pausable {
 
         currentCommits.push(
             Commit({
-                overlay: _overlay,
+                overlay: nStakeStruct.overlay,
                 owner: msg.sender,
                 revealed: false,
-                stake: nstake,
+                stake: nStakeStruct.stakeAmount,
                 obfuscatedHash: _obfuscatedHash,
                 revealIndex: 0
             })
         );
 
-        emit Committed(_roundNumber, _overlay);
+        emit Committed(_roundNumber, nStakeStruct.overlay);
     }
 
     /**

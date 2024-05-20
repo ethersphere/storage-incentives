@@ -91,7 +91,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
       const overlay = createOverlay(nodes[i], depth, nonce);
       const obfuscatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
       const currentRound = await r_node.currentRound();
-      await r_node.commit(obfuscatedHash, overlay, currentRound);
+      await r_node.commit(obfuscatedHash, currentRound);
     }
 
     await mineToRevealPhase();
