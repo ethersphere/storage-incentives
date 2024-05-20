@@ -229,7 +229,7 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(r_node_0.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.revertedWith(
+      await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
         errors.commit.stakedRecently
       );
     });
@@ -242,7 +242,7 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(r_node_0.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.revertedWith(
+      await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
         errors.commit.stakedRecently
       );
     });
@@ -386,14 +386,14 @@ describe('Redistribution', function () {
         expect(await redistribution.inProximity(roundAnchorBase, overlay_4, depth_4)).to.be.false;
 
         // 0x00...
-        expect(await redistribution.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.true;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.true;
         // TODO why is node1 not in depth after changes
-        // expect(await redistribution.isParticipatingInUpcomingRound(node_1, depth_1)).to.be.true;
-        expect(await redistribution.isParticipatingInUpcomingRound(node_2, depth_2)).to.be.true;
+        // expect(await redistribution["isParticipatingInUpcomingRound(address,uint8)"](node_1, depth_1)).to.be.true;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_2, depth_2)).to.be.true;
 
         // 0xa6...
-        expect(await redistribution.isParticipatingInUpcomingRound(node_3, depth_3)).to.be.false;
-        expect(await redistribution.isParticipatingInUpcomingRound(node_4, depth_4)).to.be.false;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_3, depth_3)).to.be.false;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_4, depth_4)).to.be.false;
 
         await mineNBlocks(roundLength);
 
@@ -413,12 +413,12 @@ describe('Redistribution', function () {
         expect(await redistribution.inProximity(nextAnchor2, overlay_3, depth_3)).to.be.true;
         expect(await redistribution.inProximity(nextAnchor2, overlay_4, depth_4)).to.be.true;
 
-        expect(await redistribution.isParticipatingInUpcomingRound(node_0, depth_0)).to.be.false;
-        expect(await redistribution.isParticipatingInUpcomingRound(node_1, depth_1)).to.be.false;
-        expect(await redistribution.isParticipatingInUpcomingRound(node_2, depth_2)).to.be.false;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.false;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_1, depth_1)).to.be.false;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_2, depth_2)).to.be.false;
 
-        expect(await redistribution.isParticipatingInUpcomingRound(node_3, depth_3)).to.be.true;
-        expect(await redistribution.isParticipatingInUpcomingRound(node_4, depth_4)).to.be.true;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_3, depth_3)).to.be.true;
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_4, depth_4)).to.be.true;
       });
     });
 
