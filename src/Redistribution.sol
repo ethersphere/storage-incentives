@@ -287,7 +287,9 @@ contract Redistribution is AccessControl, Pausable {
      */
     function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
-        IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(msg.sender);
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
+        uint256 _stake = Stakes.stakeOfAddress(msg.sender);
+        // IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -304,11 +306,11 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (nodeStake.stakeAmount < MIN_STAKE) {
+        if (_stake < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        if (nodeStake.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
@@ -322,7 +324,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
-            if (currentCommits[i].overlay == nodeStake.overlay) {
+            if (currentCommits[i].overlay == _overlay) {
                 revert AlreadyCommited();
             }
 
@@ -333,16 +335,16 @@ contract Redistribution is AccessControl, Pausable {
 
         currentCommits.push(
             Commit({
-                overlay: nodeStake.overlay,
+                overlay: _overlay,
                 owner: msg.sender,
                 revealed: false,
-                stake: nodeStake.stakeAmount,
+                stake: _stake,
                 obfuscatedHash: _obfuscatedHash,
                 revealIndex: 0
             })
         );
 
-        emit Committed(_roundNumber, nodeStake.overlay);
+        emit Committed(_roundNumber, _overlay);
     }
 
     /**
