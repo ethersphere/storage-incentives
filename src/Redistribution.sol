@@ -289,7 +289,6 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.stakeOfAddress(msg.sender);
-        // IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
