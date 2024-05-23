@@ -802,20 +802,19 @@ contract Redistribution is AccessControl, Pausable {
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(uint8 _depth) public view returns (bool) {
-        IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(msg.sender);
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (nodeStake.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
-        if (nodeStake.stakeAmount < MIN_STAKE) {
+        if (Stakes.stakeOfAddress(msg.sender) < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        return inProximity(nodeStake.overlay, currentRoundAnchor(), _depth);
+        return inProximity(Stakes.overlayOfAddress(msg.sender), currentRoundAnchor(), _depth);
     }
 
     /**
@@ -825,20 +824,19 @@ contract Redistribution is AccessControl, Pausable {
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
-        IStakeRegistry.Stake memory nodeStake = Stakes.getStakeStruct(_owner);
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (nodeStake.lastUpdatedBlockNumber >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(_owner) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
-        if (nodeStake.stakeAmount < MIN_STAKE) {
+        if (Stakes.stakeOfAddress(_owner) < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        return inProximity(nodeStake.overlay, currentRoundAnchor(), _depth);
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);
     }
 
     // ----------------------------- Reveal ------------------------------
