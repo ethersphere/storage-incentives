@@ -6,7 +6,6 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
-import "hardhat/console.sol";
 
 interface IPriceOracle {
     function adjustPrice(uint16 redundancy) external;
