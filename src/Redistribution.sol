@@ -6,6 +6,7 @@ import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
+import "hardhat/console.sol";
 
 interface IPriceOracle {
     function adjustPrice(uint16 redundancy) external;
@@ -290,6 +291,9 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.stakeOfAddress(msg.sender);
 
+        console.logBytes32(_overlay);
+        console.log(msg.sender);
+
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
         }
@@ -356,6 +360,10 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
+        console.log("----------");
+        console.logBytes32(_overlay);
+        console.log(msg.sender);
+
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
         }
@@ -378,6 +386,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
+
         uint256 id = findCommit(_overlay, obfuscatedHash);
         Commit memory revealedCommit = currentCommits[id];
 
@@ -392,6 +401,7 @@ contract Redistribution is AccessControl, Pausable {
 
         currentCommits[id].revealed = true;
         currentCommits[id].revealIndex = currentReveals.length;
+        console.logBytes32(revealedCommit.overlay);
 
         currentReveals.push(
             Reveal({
