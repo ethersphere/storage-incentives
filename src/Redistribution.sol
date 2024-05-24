@@ -291,9 +291,6 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.stakeOfAddress(msg.sender);
 
-        console.logBytes32(_overlay);
-        console.log(msg.sender);
-
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
         }
@@ -360,10 +357,6 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
-        console.log("----------");
-        console.logBytes32(_overlay);
-        console.log(msg.sender);
-
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
         }
@@ -401,7 +394,6 @@ contract Redistribution is AccessControl, Pausable {
 
         currentCommits[id].revealed = true;
         currentCommits[id].revealIndex = currentReveals.length;
-        console.logBytes32(revealedCommit.overlay);
 
         currentReveals.push(
             Reveal({
@@ -784,6 +776,7 @@ contract Redistribution is AccessControl, Pausable {
         if (minimum == 0) {
             return true;
         }
+
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 

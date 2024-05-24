@@ -303,7 +303,7 @@ describe('Redistribution', function () {
       // 16 depth neighbourhood with node_5
       const sr_node_1_n_25 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1_n_25.address, stakeAmount_1);
-      await sr_node_1.depositStake(nonce_1_n_25, stakeAmount_1);
+      await sr_node_1_n_25.depositStake(nonce_1_n_25, stakeAmount_1);
 
       const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
       await mintAndApprove(deployer, node_2, sr_node_2.address, stakeAmount_2);
@@ -385,8 +385,8 @@ describe('Redistribution', function () {
 
         // 0x00...
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.true;
-        // TODO why is node1 not in depth after changes
-        // expect(await redistribution["isParticipatingInUpcomingRound(address,uint8)"](node_1, depth_1)).to.be.true;
+        // Should be false as we are using different nhood then anchor via node_1_25
+        expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_1, depth_1)).to.be.false;
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_2, depth_2)).to.be.true;
 
         // 0xa6...
@@ -1193,7 +1193,6 @@ describe('Redistribution', function () {
             await mineToNode(redistribution, 5);
 
             priceOracle = await ethers.getContract('PriceOracle', deployer);
-            await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
             r_node_1 = await ethers.getContract('Redistribution', node_1);
             r_node_5 = await ethers.getContract('Redistribution', node_5);
@@ -1403,7 +1402,6 @@ describe('Redistribution', function () {
           //     await sr_node_6.depositStake(node_6, nonce_6, stakeAmount_6);
 
           //     priceOracle = await ethers.getContract('PriceOracle', deployer);
-          //     await priceOracle.unPause(); // TODO: remove when price oracle is not paused by default.
 
           //     // Set price base
           //     basePrice = await priceOracle.priceBase();
