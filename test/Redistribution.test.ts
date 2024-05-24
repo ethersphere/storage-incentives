@@ -815,7 +815,6 @@ describe('Redistribution', function () {
             deployer,
             '0x6cccd65a68bc5f7c19a273e9567ebf4b968a13c9be74fc99ad90159730eff219'
           );
-          // console.log('anchor1', await redistribution.currentSeed());
 
           const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_soc_proof1;
 
@@ -831,7 +830,6 @@ describe('Redistribution', function () {
           await r_node_5.reveal(sanityDepth, sanityHash, reveal_nonce_5);
 
           currentSeed = await redistribution.currentSeed();
-          // console.log('anchor2', currentSeed);
 
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
