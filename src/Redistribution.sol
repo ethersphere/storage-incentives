@@ -135,7 +135,7 @@ contract Redistribution is AccessControl, Pausable {
     // Settings for slashing and freezing
     uint8 private penaltyMultiplierDisagreement = 1;
     uint8 private penaltyMultiplierNonRevealed = 2;
-    uint8 private penaltyRandomFactor = 20;
+    uint8 private penaltyRandomFactor = 100; // Use 100 as value to ignore random factor in freezing penalty
 
     // alpha=0.097612 beta=0.0716570 k=16
     uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
@@ -630,7 +630,6 @@ contract Redistribution is AccessControl, Pausable {
 
         penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
         penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
-        // Use 100 as value to ignore random factor in freezing penalty
         penaltyRandomFactor = _penaltyRandomFactor;
     }
 
