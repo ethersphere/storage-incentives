@@ -6,10 +6,16 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 
   log('Setting Oracles roles');
 
-  const redisAddress = (await get('Redistribution')).address;
+  const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
 
-  const updaterRole = await read('PriceOracle', 'PRICE_UPDATER_ROLE');
-  await execute('PriceOracle', { from: deployer }, 'grantRole', updaterRole, redisAddress);
+  if (await read('StakeRegistry', { from: deployer }, 'hasRole', adminRole)) {
+    const redisAddress = (await get('Redistribution')).address;
+    const updaterRole = await read('PriceOracle', 'PRICE_UPDATER_ROLE');
+    await execute('PriceOracle', { from: deployer }, 'grantRole', updaterRole, redisAddress);
+  } else {
+    log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN THE REDISTRIBUTION ROLE, PLEASE ASSIGN IT OR GRANT ROLE MANUALLY');
+  }
+
   log('----------------------------------------------------');
 };
 
