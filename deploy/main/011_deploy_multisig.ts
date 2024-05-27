@@ -11,16 +11,16 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
     // ADD Roles to Multisig
     const adminRole = await read('PostageStamp', 'DEFAULT_ADMIN_ROLE');
-    await execute('PostageStamp', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
-    await execute('PriceOracle', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
-    await execute('StakeRegistry', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
+    // await execute('PostageStamp', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
+    // await execute('PriceOracle', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
+    // await execute('StakeRegistry', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
     await execute('Redistribution', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
 
     // REMOVE Roles from deployer
     // await execute('PostageStamp', { from: deployer }, 'renounceRole', adminRole, deployer);
     // await execute('PriceOracle', { from: deployer }, 'renounceRole', adminRole, deployer);
     // await execute('StakeRegistry', { from: deployer }, 'renounceRole', adminRole, deployer);
-    // await execute('Redistribution', { from: deployer }, 'renounceRole', adminRole, deployer);
+    await execute('Redistribution', { from: deployer }, 'renounceRole', adminRole, deployer);
 
     log('----------------------------------------------------');
   }
