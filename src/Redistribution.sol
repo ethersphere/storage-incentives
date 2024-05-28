@@ -284,6 +284,7 @@ contract Redistribution is AccessControl, Pausable {
      * randomly generated, and secret _revealNonce_ to the _wrapCommit_ method.
      * @param _obfuscatedHash The calculated hash resultant of the required pre-image values.
      * and be derived from the same key pair as the message sender.
+     * @param _roundNumber Node needs to provide round number for which commit is valid
      */
     function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
@@ -378,7 +379,6 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
-
         uint256 id = findCommit(_overlay, obfuscatedHash);
         Commit memory revealedCommit = currentCommits[id];
 
