@@ -247,14 +247,6 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev Returns the stake struct of current address
-     * @param _owner address of node
-     */
-    function getStakeStruct(address _owner) public view returns (Stake memory) {
-        return stakes[_owner];
-    }
-
-    /**
      * @dev Please both Endians 🥚.
      * @param input Eth address used for overlay calculation.
      */
