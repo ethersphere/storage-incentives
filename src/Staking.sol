@@ -4,6 +4,10 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
+interface IPriceOracle {
+    function currentPrice() external view returns (uint32);
+}
+
 /**
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
@@ -20,6 +24,8 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 overlay;
         // Amount of tokens staked
         uint256 commitedStake;
+        // Amount of tokens staked as potential stake
+        uint256 potentialStake;
         // Block height the stake was updated
         uint256 lastUpdatedBlockNumber;
         // Used to indicate presents in stakes struct
@@ -40,12 +46,15 @@ contract StakeRegistry is AccessControl, Pausable {
     // Address of the staked ERC20 token
     address public immutable bzzToken;
 
+    // The address of the linked PriceOracle contract.
+    IPriceOracle public OracleContract;
+
     // ----------------------------- Events ------------------------------
 
     /**
-     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `stakeamount`, during `lastUpdatedBlock`.
+     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `commitedStake`, during `lastUpdatedBlock`.
      */
-    event StakeUpdated(address indexed owner, uint256 stakeAmount, bytes32 overlay, uint256 lastUpdatedBlock);
+    event StakeUpdated(address indexed owner, uint256 commitedStake, bytes32 overlay, uint256 lastUpdatedBlock);
 
     /**
      * @dev Emitted when a stake for address `slashed` is slashed by `amount`.
@@ -76,9 +85,10 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _bzzToken Address of the staked ERC20 token
      * @param _NetworkId Swarm network ID
      */
-    constructor(address _bzzToken, uint64 _NetworkId) {
+    constructor(address _bzzToken, uint64 _NetworkId, address _oracleContract) {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
+        OracleContract = IPriceOracle(_oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }
@@ -97,18 +107,25 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 overlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _nonce));
 
         if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedAmount = stakes[msg.sender].isValue ? _amount + stakes[msg.sender].stakeAmount : _amount;
+        uint256 updatedCommitedStake = stakes[msg.sender].isValue
+            ? _amount + stakes[msg.sender].commitedStake
+            : _amount;
+
+        uint256 updatePotentialStake = stakes[msg.sender].isValue
+            ? OracleContract.currentPrice() * _amount + stakes[msg.sender].potentialStake
+            : OracleContract.currentPrice() * _amount;
 
         if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
 
         stakes[msg.sender] = Stake({
             overlay: overlay,
-            stakeAmount: updatedAmount,
+            commitedStake: updatedCommitedStake,
+            potentialStake: updatePotentialStake,
             lastUpdatedBlockNumber: block.number,
             isValue: true
         });
 
-        emit StakeUpdated(msg.sender, updatedAmount, overlay, block.number);
+        emit StakeUpdated(msg.sender, updatedCommitedStake, overlay, block.number);
     }
 
     /**
@@ -119,10 +136,10 @@ contract StakeRegistry is AccessControl, Pausable {
         Stake memory stake = stakes[msg.sender];
 
         // We cap the limit to not be over what is possible
-        uint256 withDrawLimit = (_amount > stake.stakeAmount) ? stake.stakeAmount : _amount;
-        stake.stakeAmount -= withDrawLimit;
+        uint256 withDrawLimit = (_amount > stake.commitedStake) ? stake.commitedStake : _amount;
+        stake.commitedStake -= withDrawLimit;
 
-        if (stake.stakeAmount == 0) {
+        if (stake.commitedStake == 0) {
             delete stakes[msg.sender];
         } else {
             stakes[msg.sender].lastUpdatedBlockNumber = block.number;
@@ -154,8 +171,8 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
         if (stakes[_owner].isValue) {
-            if (stakes[_owner].stakeAmount > _amount) {
-                stakes[_owner].stakeAmount -= _amount;
+            if (stakes[_owner].commitedStake > _amount) {
+                stakes[_owner].commitedStake -= _amount;
                 stakes[_owner].lastUpdatedBlockNumber = block.number;
             } else {
                 delete stakes[_owner];
@@ -215,20 +232,20 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev Returns the current `stakeAmount` of `address`.
+     * @dev Returns the current `commitedStake` of `address`.
      * @param _owner _owner of node
      */
     function stakeOfAddress(address _owner) public view returns (uint256) {
-        return stakes[_owner].stakeAmount;
+        return stakes[_owner].commitedStake;
     }
 
     /**
-     * @dev Returns the current usable `stakeAmount` of `address`.
+     * @dev Returns the current usable `commitedStake` of `address`.
      * Checks whether the stake is currently frozen.
      * @param _owner owner of node
      */
     function usableStakeOfAddress(address _owner) public view returns (uint256) {
-        return addressNotFrozen(_owner) ? stakes[_owner].stakeAmount : 0;
+        return addressNotFrozen(_owner) ? stakes[_owner].commitedStake : 0;
     }
 
     /**
