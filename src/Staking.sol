@@ -19,7 +19,7 @@ contract StakeRegistry is AccessControl, Pausable {
         // Overlay of the node that is being staked
         bytes32 overlay;
         // Amount of tokens staked
-        uint256 stakeAmount;
+        uint256 commitedStake;
         // Block height the stake was updated
         uint256 lastUpdatedBlockNumber;
         // Used to indicate presents in stakes struct
