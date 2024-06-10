@@ -140,6 +140,7 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
 
 - Run `yarn hardhat deploy` to deploy all contracts on hardhat environment(network).
 - To deploy on Ganache (or other networks):
+
   - Add network configuration in your [hardhat.config.ts](./hardhat.config.ts).
     ```
     ganache: {
@@ -148,6 +149,25 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
     },
     ```
   - To run: `yarn hardhat deploy --network ganache`
+
+#### Light Testnet
+
+- Make a new RC tag and commit to generate new ABI for Bee Node creation
+- Make a cluster with minimal required number of nodes (10) all point to that tag
+- Latest tag should have all new contracts deployed for SI
+- We reuse and share testnet token sBZZ with proper testnet and S3, easier for setup and config
+- To have that we need to copy from deployments/testnet directory TestToken.json so "hardhat deploy" reuses it and
+  doesn't create new contract, with this it will insert this address in all other contract deployments
+- We use swarm network 333 ID
+- This testnet will probably not be continuosly running
+
+#### Testnet
+
+- Regullar RC tagging for testent
+- We have continuos running testnet with deployed contracts on sepolia
+- We just deploy changes/new contracts that will go to mainet
+- We use swarm net id 10
+- As we already have running nodes there, we need to upgrade few/half of those to new node with latest contracts tag so we can have simulation of node upgrades and network working with different node versions
 
 #### Additional commands and flags:
 

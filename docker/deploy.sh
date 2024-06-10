@@ -1,13 +1,7 @@
 #!/usr/bin/env sh
 
 set -x
-while ! curl -m 1 http://geth-swap:8545; do sleep 1; done
-echo connected to geth >&2
-sleep 2
 
-npx hardhat deploy --network localcluster
+cd ./s3 && while ! curl -m 1 -H "Content-Type: application/json" --data "{\"jsonrpc\":\"2.0\",\"method\":\"net_version\",\"params\":[],\"id\":67}" http://localhost:8545; do sleep 1; done && npx hardhat deploy --network localhost &
 
-cd ./s3
-npx hardhat deploy --network localcluster
-
-echo deployed
+yarn hardhat node --hostname 0.0.0.0

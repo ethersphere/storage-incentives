@@ -25,6 +25,4 @@ WORKDIR /app
 
 COPY --from=build /app .
 
-RUN ln -s /app/docker/deploy.sh /app/deploy.sh
-
 CMD ["sh", "-c", "/app/docker/deploy.sh"]

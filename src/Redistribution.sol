@@ -12,13 +12,22 @@ interface IPriceOracle {
 }
 
 interface IStakeRegistry {
-    function freezeDeposit(bytes32 overlay, uint256 time) external;
+    struct Stake {
+        bytes32 overlay;
+        uint256 stakeAmount;
+        uint256 lastUpdatedBlockNumber;
+        bool isValue;
+    }
 
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
+    function freezeDeposit(address _owner, uint256 _time) external;
 
-    function ownerOfOverlay(bytes32 overlay) external view returns (address);
+    function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
 
-    function stakeOfOverlay(bytes32 overlay) external view returns (uint256);
+    function overlayOfAddress(address _owner) external view returns (bytes32);
+
+    function stakeOfAddress(address _owner) external view returns (uint256);
+
+    function getStakeStruct(address _owner) external view returns (Stake memory);
 }
 
 /**
@@ -135,6 +144,7 @@ contract Redistribution is AccessControl, Pausable {
     // Settings for slashing and freezing
     uint8 private penaltyMultiplierDisagreement = 1;
     uint8 private penaltyMultiplierNonRevealed = 2;
+    uint8 private penaltyRandomFactor = 100; // Use 100 as value to ignore random factor in freezing penalty
 
     // alpha=0.097612 beta=0.0716570 k=16
     uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
@@ -274,12 +284,13 @@ contract Redistribution is AccessControl, Pausable {
      * _obfuscatedHash_ by providing their _overlay_, reported storage _depth_, reserve commitment _hash_ and a
      * randomly generated, and secret _revealNonce_ to the _wrapCommit_ method.
      * @param _obfuscatedHash The calculated hash resultant of the required pre-image values.
-     * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
      * and be derived from the same key pair as the message sender.
+     * @param _roundNumber Node needs to provide round number for which commit is valid
      */
-    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint64 _roundNumber) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
-        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
+        uint256 _stake = Stakes.stakeOfAddress(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -296,15 +307,11 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (nstake < MIN_STAKE) {
+        if (_stake < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        if (Stakes.ownerOfOverlay(_overlay) != msg.sender) {
-            revert NotMatchingOwner();
-        }
-
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
@@ -332,7 +339,7 @@ contract Redistribution is AccessControl, Pausable {
                 overlay: _overlay,
                 owner: msg.sender,
                 revealed: false,
-                stake: nstake,
+                stake: _stake,
                 obfuscatedHash: _obfuscatedHash,
                 revealIndex: 0
             })
@@ -343,13 +350,13 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Reveal the pre-image values used to generate commit provided during this round's commit phase.
-     * @param _overlay The overlay address of the applicant.
      * @param _depth The reported depth.
      * @param _hash The reserve commitment hash.
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
-    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
+    function reveal(uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         uint64 cr = currentRound();
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
@@ -526,13 +533,14 @@ contract Redistribution is AccessControl, Pausable {
                 redundancyCount++;
             }
 
-            // Freeze deposit if any truth is false
+            // Freeze deposit if any truth is false, make it a penaltyRandomFactor chance for this to happen
             if (
                 currentCommit.revealed &&
-                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth)
+                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth) &&
+                (block.prevrandao % 100 < penaltyRandomFactor)
             ) {
                 Stakes.freezeDeposit(
-                    currentReveal.overlay,
+                    currentReveal.owner,
                     penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
@@ -542,7 +550,7 @@ contract Redistribution is AccessControl, Pausable {
                 // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
-                    currentCommit.overlay,
+                    currentCommit.owner,
                     penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
@@ -617,13 +625,18 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @notice Set freezing parameters
      */
-    function setFreezingParams(uint8 _penaltyMultiplierDisagreement, uint8 _penaltyMultiplierNonRevealed) external {
+    function setFreezingParams(
+        uint8 _penaltyMultiplierDisagreement,
+        uint8 _penaltyMultiplierNonRevealed,
+        uint8 _penaltyRandomFactor
+    ) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert NotAdmin();
         }
 
         penaltyMultiplierDisagreement = _penaltyMultiplierDisagreement;
         penaltyMultiplierNonRevealed = _penaltyMultiplierNonRevealed;
+        penaltyRandomFactor = _penaltyRandomFactor;
     }
 
     /**
@@ -769,6 +782,7 @@ contract Redistribution is AccessControl, Pausable {
         if (minimum == 0) {
             return true;
         }
+
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 
@@ -793,23 +807,23 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
-     * @param overlay The overlay address of the applicant.
-     * @param depth The storage depth the applicant intends to report.
+     * @param _owner The address of the applicant from.
+     * @param _depth The storage depth the applicant intends to report.
      */
-    function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
+    function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(overlay) >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(_owner) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
-        if (Stakes.stakeOfOverlay(overlay) < MIN_STAKE) {
+        if (Stakes.stakeOfAddress(_owner) < MIN_STAKE) {
             revert BelowMinimumStake();
         }
 
-        return inProximity(overlay, currentRoundAnchor(), depth);
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);
     }
 
     // ----------------------------- Reveal ------------------------------
