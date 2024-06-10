@@ -88,27 +88,35 @@ contract StakeRegistry is AccessControl, Pausable {
     ////////////////////////////////////////
 
     /**
-     * @notice Create a new stake or update an existing one.
+     * @notice Create a new stake or update an existing one, change overlay of node
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
-     * @param _nonce Nonce that was used for overlay calculation.
-     * @param _amount Deposited amount of ERC20 tokens.
+     * @param _setNonce Nonce that was used for overlay calculation.
+     * @param _addAmount Deposited amount of ERC20 tokens.
      */
-    function depositStake(bytes32 _nonce, uint256 _amount) external whenNotPaused {
-        bytes32 overlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _nonce));
+    function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
+        bytes32 _previousOverlay = stakes[msg.sender].overlay;
+        bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
 
         if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedAmount = stakes[msg.sender].isValue ? _amount + stakes[msg.sender].stakeAmount : _amount;
-
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
+        uint256 updatedAmount = stakes[msg.sender].isValue ? _addAmount + stakes[msg.sender].stakeAmount : _addAmount;
 
         stakes[msg.sender] = Stake({
-            overlay: overlay,
+            overlay: _newOverlay,
             stakeAmount: updatedAmount,
             lastUpdatedBlockNumber: block.number,
             isValue: true
         });
 
-        emit StakeUpdated(msg.sender, updatedAmount, overlay, block.number);
+        // Transfer tokens and emit event that stake has been updated
+        if (_addAmount > 0) {
+            if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
+            emit StakeUpdated(msg.sender, updatedAmount, _newOverlay, block.number);
+        }
+
+        // Emit overlay change event
+        if (_previousOverlay != _newOverlay) {
+            emit OverlayChanged(msg.sender, _newOverlay);
+        }
     }
 
     /**
@@ -162,20 +170,6 @@ contract StakeRegistry is AccessControl, Pausable {
             }
         }
         emit StakeSlashed(_owner, stakes[_owner].overlay, _amount);
-    }
-
-    /**
-     * @dev Change overlay of address to new one for neighbourhood hopping
-     * disable hopping if frozen, as it would reset frozen value of lastUpdatedBlockNumber that is future
-     * @param _nonce the new nonce that will produce overlay
-     */
-    function changeOverlay(bytes32 _nonce) external whenNotPaused {
-        if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        bytes32 overlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _nonce));
-
-        stakes[msg.sender].overlay = overlay;
-        stakes[msg.sender].lastUpdatedBlockNumber = block.number;
-        emit OverlayChanged(msg.sender, overlay);
     }
 
     function changeNetworkId(uint64 _NetworkId) external {
