@@ -237,13 +237,16 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev Returns the current `potentialStake` of `address`.
+     * @dev Returns the current `effectiveStake` of `address`.
      * @param _owner _owner of node
      */
     function stakeOfAddress(address _owner) public view returns (uint256) {
-        return stakes[_owner].potentialStake;
+        Stake memory stake = stakes[_owner];
+
+        return calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
     }
 
+    // TODO should we change this to effective stake?
     /**
      * @dev Returns the current usable `potentialStake` of `address`.
      * Checks whether the stake is currently frozen.

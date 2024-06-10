@@ -819,6 +819,7 @@ contract Redistribution is AccessControl, Pausable {
             revert MustStake2Rounds();
         }
 
+        // TODO remove and apply on  deposit?
         if (Stakes.stakeOfAddress(_owner) < MIN_STAKE) {
             revert BelowMinimumStake();
         }
