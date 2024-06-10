@@ -22,8 +22,6 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 stakeAmount;
         // Block height the stake was updated
         uint256 lastUpdatedBlockNumber;
-        // Used to indicate presents in stakes struct
-        bool isValue;
     }
 
     // Associate every stake id with node address data.
@@ -96,16 +94,17 @@ contract StakeRegistry is AccessControl, Pausable {
     function depositStake(bytes32 _nonce, uint256 _amount) external whenNotPaused {
         bytes32 overlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _nonce));
 
-        if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedAmount = stakes[msg.sender].isValue ? _amount + stakes[msg.sender].stakeAmount : _amount;
+        if (stakes[msg.sender].lastUpdatedBlockNumber != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
+        uint256 updatedAmount = stakes[msg.sender].lastUpdatedBlockNumber != 0
+            ? _amount + stakes[msg.sender].stakeAmount
+            : _amount;
 
         if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
 
         stakes[msg.sender] = Stake({
             overlay: overlay,
             stakeAmount: updatedAmount,
-            lastUpdatedBlockNumber: block.number,
-            isValue: true
+            lastUpdatedBlockNumber: block.number
         });
 
         emit StakeUpdated(msg.sender, updatedAmount, overlay, block.number);
@@ -139,7 +138,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[_owner].isValue) {
+        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
             stakes[_owner].lastUpdatedBlockNumber = block.number + _time;
             emit StakeFrozen(_owner, stakes[_owner].overlay, _time);
         }
@@ -153,7 +152,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function slashDeposit(address _owner, uint256 _amount) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[_owner].isValue) {
+        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
             if (stakes[_owner].stakeAmount > _amount) {
                 stakes[_owner].stakeAmount -= _amount;
                 stakes[_owner].lastUpdatedBlockNumber = block.number;
@@ -170,7 +169,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _nonce the new nonce that will produce overlay
      */
     function changeOverlay(bytes32 _nonce) external whenNotPaused {
-        if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
+        if (stakes[msg.sender].lastUpdatedBlockNumber != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
         bytes32 overlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _nonce));
 
         stakes[msg.sender].overlay = overlay;
