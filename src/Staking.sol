@@ -52,9 +52,15 @@ contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- Events ------------------------------
 
     /**
-     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `commitedStake`, during `lastUpdatedBlock`.
+     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `commitedStake`, and `potentialStake` during `lastUpdatedBlock`.
      */
-    event StakeUpdated(address indexed owner, uint256 commitedStake, bytes32 overlay, uint256 lastUpdatedBlock);
+    event StakeUpdated(
+        address indexed owner,
+        uint256 commitedStake,
+        uint256 potentialStake,
+        bytes32 overlay,
+        uint256 lastUpdatedBlock
+    );
 
     /**
      * @dev Emitted when a stake for address `slashed` is slashed by `amount`.
@@ -102,17 +108,25 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
      * @param _setNonce Nonce that was used for overlay calculation.
      * @param _addAmount Deposited amount of ERC20 tokens.
+     * @param _addCommitedStake The committed stake is interpreted as the stake that the staker commits to stake
      */
-    function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
+    function manageStake(bytes32 _setNonce, uint256 _addAmount, uint256 _addCommitedStake) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
 
         if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedAmount = stakes[msg.sender].isValue ? _addAmount + stakes[msg.sender].stakeAmount : _addAmount;
+        uint256 updatedAmount = stakes[msg.sender].isValue
+            ? _addAmount + stakes[msg.sender].potentialStake
+            : _addAmount;
+
+        uint256 updatedCommitedStake = stakes[msg.sender].isValue
+            ? _addCommitedStake + stakes[msg.sender].commitedStake
+            : _addCommitedStake;
 
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
-            stakeAmount: updatedAmount,
+            commitedStake: updatedCommitedStake,
+            potentialStake: updatedAmount,
             lastUpdatedBlockNumber: block.number,
             isValue: true
         });
@@ -120,7 +134,7 @@ contract StakeRegistry is AccessControl, Pausable {
         // Transfer tokens and emit event that stake has been updated
         if (_addAmount > 0) {
             if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
-            emit StakeUpdated(msg.sender, updatedAmount, _newOverlay, block.number);
+            emit StakeUpdated(msg.sender, updatedCommitedStake, updatedAmount, _newOverlay, block.number);
         }
 
         // Emit overlay change event
