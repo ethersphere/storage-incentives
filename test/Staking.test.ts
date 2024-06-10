@@ -404,23 +404,23 @@ describe('Staking', function () {
 
     it('should change overlay hex', async function () {
       const current_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      await sr_staker_1.changeOverlay(nonce_1_n_25);
+      await sr_staker_1.manageStake(nonce_1_n_25, 0);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.not.eq(current_overlay);
     });
 
     it('should match new overlay hex', async function () {
-      await sr_staker_1.changeOverlay(nonce_1_n_25);
+      await sr_staker_1.manageStake(nonce_1_n_25, 0);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.be.eq(overlay_1_n_25);
     });
 
     it('should match old overlay hex after double change', async function () {
-      await sr_staker_1.changeOverlay(nonce_1_n_25);
+      await sr_staker_1.manageStake(nonce_1_n_25, 0);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.be.eq(overlay_1_n_25);
 
-      await sr_staker_1.changeOverlay(nonce_1);
+      await sr_staker_1.manageStake(nonce_1, 0);
       const old_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(old_overlay).to.be.eq(overlay_1);
     });
