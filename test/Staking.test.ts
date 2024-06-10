@@ -112,7 +112,7 @@ describe('Staking', function () {
     });
 
     it('should not deposit stake if funds are unavailable', async function () {
-      await expect(stakeRegistry.depositStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.deposit.noBalance);
+      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.deposit.noBalance);
     });
 
     it('should deposit stake correctly if funds are available', async function () {
@@ -123,7 +123,7 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      await expect(sr_staker_0.depositStake(nonce_0, stakeAmount_0))
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(staker_0, stakeAmount_0, overlay_0, updatedBlockNumber);
 
@@ -143,14 +143,14 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      sr_staker_0.depositStake(nonce_0, stakeAmount_0);
+      sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       const lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
 
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount);
 
-      await expect(sr_staker_0.depositStake(nonce_0, updateStakeAmount))
+      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(staker_0, updatedStakeAmount, overlay_0, lastUpdatedBlockNumber + 1);
 
@@ -172,7 +172,7 @@ describe('Staking', function () {
       const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.depositStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
@@ -203,7 +203,7 @@ describe('Staking', function () {
       const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.depositStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       const lastUpdatedBlockNumber = await getBlockNumber();
       const staked = await stakeRegistry.stakes(staker_0);
@@ -225,7 +225,7 @@ describe('Staking', function () {
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.depositStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
@@ -260,12 +260,12 @@ describe('Staking', function () {
       expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(sr_staker_0.depositStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.freeze.currentlyFrozen);
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.freeze.currentlyFrozen);
 
       mineNBlocks(3);
 
       const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
-      await expect(sr_staker_0.depositStake(nonce_0, stakeAmount_0))
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(staker_0, twice_stakeAmount_0, overlay_0, newUpdatedBlockNumber);
     });
@@ -282,7 +282,7 @@ describe('Staking', function () {
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.depositStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const pauserRole = await stakeRegistryDeployer.PAUSER_ROLE();
@@ -299,7 +299,7 @@ describe('Staking', function () {
       await stakeRegistryPauser.pause();
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.depositStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
+      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
     });
 
     it('should not unpause contract without pauser role', async function () {
@@ -315,7 +315,7 @@ describe('Staking', function () {
       await stakeRegistryPauser.pause();
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.depositStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
+      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
     });
 
     it('should allow staking once unpaused', async function () {
@@ -324,13 +324,13 @@ describe('Staking', function () {
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
 
-      await expect(sr_staker_0.depositStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
 
       await stakeRegistryPauser.unPause();
 
       const newUpdatedBlockNumber = (await getBlockNumber()) + 3;
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount);
-      await expect(sr_staker_0.depositStake(nonce_0, updateStakeAmount))
+      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(staker_0, updatedStakeAmount, overlay_0, newUpdatedBlockNumber);
     });
@@ -348,7 +348,7 @@ describe('Staking', function () {
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.depositStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       updatedBlockNumber = await getBlockNumber();
 
@@ -359,7 +359,7 @@ describe('Staking', function () {
 
     it('should not allow stake withdrawal while unpaused', async function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.depositStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       await expect(sr_staker_0.withdrawFromStake(stakeAmount_0)).to.be.revertedWith(errors.pause.notCurrentlyPaused);
     });
@@ -399,28 +399,28 @@ describe('Staking', function () {
       sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
 
       await mintAndApprove(staker_1, sr_staker_1.address, stakeAmount_1);
-      await sr_staker_1.depositStake(nonce_1, stakeAmount_1);
+      await sr_staker_1.manageStake(nonce_1, stakeAmount_1);
     });
 
     it('should change overlay hex', async function () {
       const current_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      await sr_staker_1.changeOverlay(nonce_1_n_25);
+      await sr_staker_1.manageStake(nonce_1_n_25, 0);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.not.eq(current_overlay);
     });
 
     it('should match new overlay hex', async function () {
-      await sr_staker_1.changeOverlay(nonce_1_n_25);
+      await sr_staker_1.manageStake(nonce_1_n_25, 0);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.be.eq(overlay_1_n_25);
     });
 
     it('should match old overlay hex after double change', async function () {
-      await sr_staker_1.changeOverlay(nonce_1_n_25);
+      await sr_staker_1.manageStake(nonce_1_n_25, 0);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.be.eq(overlay_1_n_25);
 
-      await sr_staker_1.changeOverlay(nonce_1);
+      await sr_staker_1.manageStake(nonce_1, 0);
       const old_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(old_overlay).to.be.eq(overlay_1);
     });

@@ -807,28 +807,6 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
-     * use msg.sender as default parametar to check value
-     * @param _depth The storage depth the applicant intends to report.
-     */
-    function isParticipatingInUpcomingRound(uint8 _depth) public view returns (bool) {
-        if (currentPhaseReveal()) {
-            revert WrongPhase();
-        }
-
-        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
-            revert MustStake2Rounds();
-        }
-
-        if (Stakes.stakeOfAddress(msg.sender) < MIN_STAKE) {
-            revert BelowMinimumStake();
-        }
-
-        return inProximity(Stakes.overlayOfAddress(msg.sender), currentRoundAnchor(), _depth);
-    }
-
-    /**
-     * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
-     * overloading function for default one with msg.sender
      * @param _owner The address of the applicant from.
      * @param _depth The storage depth the applicant intends to report.
      */
