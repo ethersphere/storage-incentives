@@ -77,6 +77,11 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     event OverlayChanged(address owner, bytes32 overlay);
 
+    /**
+     * @dev Emitted when a stake for address is withdrawn
+     */
+    event StakeWithdrawn(address node, uint256 amount);
+
     // ----------------------------- Errors ------------------------------
 
     error TransferFailed(); // Used when token transfers fail
@@ -144,23 +149,22 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev Withdraw stake only when the staking contract is paused,
-     * @param _amount The amount of ERC20 tokens to be withdrawn
+     * @dev Withdraw node stake surplus
      */
-    function withdrawFromStake(uint256 _amount) external whenPaused {
+    function withdrawFromStake() external whenNotPaused {
         Stake memory stake = stakes[msg.sender];
 
-        // We cap the limit to not be over what is possible
-        uint256 withDrawLimit = (_amount > stake.commitedStake) ? stake.commitedStake : _amount;
-        stake.commitedStake -= withDrawLimit;
+        uint256 _surplusStake = stake.potentialStake -
+            calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
 
-        if (stake.commitedStake == 0) {
-            delete stakes[msg.sender];
-        } else {
+        if (_surplusStake > 0) {
+            // TODO Do we reset node from playing 2 rounds?
             stakes[msg.sender].lastUpdatedBlockNumber = block.number;
+            if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
+            emit StakeWithdrawn(msg.sender, _surplusStake);
         }
 
-        if (!ERC20(bzzToken).transfer(msg.sender, withDrawLimit)) revert TransferFailed();
+        // TODO do we need do delete stake? commited stake cant be lowered
     }
 
     /**
@@ -186,8 +190,8 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
         if (stakes[_owner].isValue) {
-            if (stakes[_owner].commitedStake > _amount) {
-                stakes[_owner].commitedStake -= _amount;
+            if (stakes[_owner].potentialStake > _amount) {
+                stakes[_owner].potentialStake -= _amount;
                 stakes[_owner].lastUpdatedBlockNumber = block.number;
             } else {
                 delete stakes[_owner];
@@ -233,20 +237,20 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev Returns the current `commitedStake` of `address`.
+     * @dev Returns the current `potentialStake` of `address`.
      * @param _owner _owner of node
      */
     function stakeOfAddress(address _owner) public view returns (uint256) {
-        return stakes[_owner].commitedStake;
+        return stakes[_owner].potentialStake;
     }
 
     /**
-     * @dev Returns the current usable `commitedStake` of `address`.
+     * @dev Returns the current usable `potentialStake` of `address`.
      * Checks whether the stake is currently frozen.
      * @param _owner owner of node
      */
     function usableStakeOfAddress(address _owner) public view returns (uint256) {
-        return addressNotFrozen(_owner) ? stakes[_owner].commitedStake : 0;
+        return addressNotFrozen(_owner) ? stakes[_owner].potentialStake : 0;
     }
 
     /**
@@ -262,6 +266,21 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function overlayOfAddress(address _owner) public view returns (bytes32) {
         return stakes[_owner].overlay;
+    }
+
+    function calculateEffectiveStake(
+        uint256 committedStake,
+        uint256 potentialStakeBalance
+    ) internal view returns (uint256) {
+        // Calculate the product of committedStake and unitPrice
+        uint256 calculatedStake = committedStake * OracleContract.currentPrice();
+
+        // Return the minimum value between calculatedStake and potentialStakeBalance
+        if (calculatedStake < potentialStakeBalance) {
+            return calculatedStake;
+        } else {
+            return potentialStakeBalance;
+        }
     }
 
     /**
