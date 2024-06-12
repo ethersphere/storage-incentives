@@ -155,9 +155,6 @@ contract Redistribution is AccessControl, Pausable {
     // The length of a round in blocks.
     uint256 private constant ROUND_LENGTH = 152;
 
-    // The miniumum stake allowed to be staked using the Staking contract.
-    uint64 private constant MIN_STAKE = 100000000000000000;
-
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
 
@@ -223,7 +220,6 @@ contract Redistribution is AccessControl, Pausable {
     error NotCommitPhase(); // Game is not in commit phase
     error NoCommitsReceived(); // Round didn't receive any commits
     error PhaseLastBlock(); // We don't permit commits in last block of the phase
-    error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
     error CommitRoundOver(); // Commit phase in this round is over
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
     error NotMatchingOwner(); // Sender of commit is not matching the overlay address
@@ -305,10 +301,6 @@ contract Redistribution is AccessControl, Pausable {
 
         if (cr < _roundNumber) {
             revert CommitRoundNotStarted();
-        }
-
-        if (_stake < MIN_STAKE) {
-            revert BelowMinimumStake();
         }
 
         if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
@@ -817,11 +809,6 @@ contract Redistribution is AccessControl, Pausable {
 
         if (Stakes.lastUpdatedBlockNumberOfAddress(_owner) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
-        }
-
-        // TODO remove and apply on  deposit?
-        if (Stakes.stakeOfAddress(_owner) < MIN_STAKE) {
-            revert BelowMinimumStake();
         }
 
         return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);

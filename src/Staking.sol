@@ -43,6 +43,9 @@ contract StakeRegistry is AccessControl, Pausable {
     // Swarm network ID
     uint64 NetworkId;
 
+    // The miniumum stake allowed to be staked using the Staking contract.
+    uint64 private constant MIN_STAKE = 100000000000000000;
+
     // Address of the staked ERC20 token
     address public immutable bzzToken;
 
@@ -89,6 +92,7 @@ contract StakeRegistry is AccessControl, Pausable {
     error Unauthorized(); // Used where only the owner can perform the action
     error OnlyRedistributor(); // Used when only the redistributor role is allowed
     error OnlyPauser(); // Used when only the pauser role is allowed
+    error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -112,17 +116,26 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Create a new stake or update an existing one, change overlay of node
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
      * @param _setNonce Nonce that was used for overlay calculation.
-     * @param _addAmount Deposited amount of ERC20 tokens.
+     * @param _addPotentialStake Deposited amount of ERC20 tokens as potentialStake
      * @param _addCommitedStake The committed stake is interpreted as the stake that the staker commits to stake
      */
-    function manageStake(bytes32 _setNonce, uint256 _addAmount, uint256 _addCommitedStake) external whenNotPaused {
+    function manageStake(
+        bytes32 _setNonce,
+        uint256 _addPotentialStake,
+        uint256 _addCommitedStake
+    ) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
 
+        // First time adding stake, check the minimum is added
+        if (stakes[msg.sender].potentialStake < MIN_STAKE && !stakes[msg.sender].isValue) {
+            revert BelowMinimumStake();
+        }
+
         if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedAmount = stakes[msg.sender].isValue
-            ? _addAmount + stakes[msg.sender].potentialStake
-            : _addAmount;
+        uint256 updatedPotentialStake = stakes[msg.sender].isValue
+            ? _addPotentialStake + stakes[msg.sender].potentialStake
+            : _addPotentialStake;
 
         uint256 updatedCommitedStake = stakes[msg.sender].isValue
             ? _addCommitedStake + stakes[msg.sender].commitedStake
@@ -131,15 +144,15 @@ contract StakeRegistry is AccessControl, Pausable {
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
             commitedStake: updatedCommitedStake,
-            potentialStake: updatedAmount,
+            potentialStake: updatedPotentialStake,
             lastUpdatedBlockNumber: block.number,
             isValue: true
         });
 
         // Transfer tokens and emit event that stake has been updated
-        if (_addAmount > 0) {
-            if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
-            emit StakeUpdated(msg.sender, updatedCommitedStake, updatedAmount, _newOverlay, block.number);
+        if (_addPotentialStake > 0) {
+            if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addPotentialStake)) revert TransferFailed();
+            emit StakeUpdated(msg.sender, updatedCommitedStake, updatedPotentialStake, _newOverlay, block.number);
         }
 
         // Emit overlay change event
