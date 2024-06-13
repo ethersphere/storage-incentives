@@ -169,6 +169,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
         if (_surplusStake > 0) {
             stake.potentialStake -= _surplusStake;
+            stake.commitedStake -= _surplusStake / OracleContract.currentPrice();
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
         }
@@ -282,12 +283,12 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 committedStake,
         uint256 potentialStakeBalance
     ) internal view returns (uint256) {
-        // Calculate the product of committedStake and unitPrice
-        uint256 calculatedStake = committedStake * OracleContract.currentPrice();
+        // Calculate the product of committedStake and unitPrice to get price in BZZ
+        uint256 committedStakeBzz = committedStake * OracleContract.currentPrice();
 
-        // Return the minimum value between calculatedStake and potentialStakeBalance
-        if (calculatedStake < potentialStakeBalance) {
-            return calculatedStake;
+        // Return the minimum value between committedStakeBzz and potentialStakeBalance
+        if (committedStakeBzz < potentialStakeBalance) {
+            return committedStakeBzz;
         } else {
             return potentialStakeBalance;
         }
