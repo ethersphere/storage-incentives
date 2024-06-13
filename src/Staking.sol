@@ -116,19 +116,16 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Create a new stake or update an existing one, change overlay of node
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
      * @param _setNonce Nonce that was used for overlay calculation.
-     * @param _addPotentialStake Deposited amount of ERC20 tokens as potentialStake
-     * @param _addCommitedStake The committed stake is interpreted as the stake that the staker commits to stake
+     * @param _addAmount Deposited amount of ERC20 tokens.
      */
-    function manageStake(
-        bytes32 _setNonce,
-        uint256 _addPotentialStake,
-        uint256 _addCommitedStake
-    ) external whenNotPaused {
+    function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
+        uint256 _addPotentialStake = _addAmount;
+        uint256 _addCommitedStake = _addAmount / OracleContract.currentPrice();
 
         // First time adding stake, check the minimum is added
-        if (stakes[msg.sender].potentialStake < MIN_STAKE && !stakes[msg.sender].isValue) {
+        if (_addPotentialStake < MIN_STAKE && !stakes[msg.sender].isValue) {
             revert BelowMinimumStake();
         }
 
@@ -171,13 +168,10 @@ contract StakeRegistry is AccessControl, Pausable {
             calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
 
         if (_surplusStake > 0) {
-            // TODO Do we reset node from playing 2 rounds?
-            stakes[msg.sender].lastUpdatedBlockNumber = block.number;
+            stake.potentialStake -= _surplusStake;
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
         }
-
-        // TODO do we need do delete stake? commited stake cant be lowered
     }
 
     /**
