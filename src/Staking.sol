@@ -3,7 +3,6 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "hardhat/console.sol";
 
 interface IPriceOracle {
     function currentPrice() external view returns (uint32);
@@ -125,8 +124,6 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 _addPotentialStake = _addAmount;
         uint256 _addCommitedStake = _addAmount / OracleContract.currentPrice();
 
-        console.log(_addPotentialStake);
-        console.log(MIN_STAKE);
         // First time adding stake, check the minimum is added
         if (_addPotentialStake < MIN_STAKE && !stakes[msg.sender].isValue) {
             revert BelowMinimumStake();
@@ -269,8 +266,6 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
         Stake memory stake = stakes[_owner];
-        console.log(stake.commitedStake);
-        console.log(stake.potentialStake);
         return calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
     }
 
