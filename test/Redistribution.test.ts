@@ -158,7 +158,7 @@ before(async function () {
 const errors = {
   commit: {
     notOwner: 'NotMatchingOwner()',
-    notStaked: 'BelowMinimumStake()',
+    notStaked: 'NotStaked()',
     stakedRecently: 'MustStake2Rounds()',
     alreadyCommited: 'AlreadyCommited()',
   },

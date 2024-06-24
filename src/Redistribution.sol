@@ -224,6 +224,7 @@ contract Redistribution is AccessControl, Pausable {
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
     error NotMatchingOwner(); // Sender of commit is not matching the overlay address
     error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
+    error NotStaked(); // Node didn't add any staking
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommited(); // Node already commited in this round
     error NotRevealPhase(); // Game is not in reveal phase
@@ -301,6 +302,10 @@ contract Redistribution is AccessControl, Pausable {
 
         if (cr < _roundNumber) {
             revert CommitRoundNotStarted();
+        }
+
+        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) == 0) {
+            revert NotStaked();
         }
 
         if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
