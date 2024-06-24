@@ -125,6 +125,8 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 _addPotentialStake = _addAmount;
         uint256 _addCommitedStake = _addAmount / OracleContract.currentPrice();
 
+        console.log(_addPotentialStake);
+        console.log(MIN_STAKE);
         // First time adding stake, check the minimum is added
         if (_addPotentialStake < MIN_STAKE && !stakes[msg.sender].isValue) {
             revert BelowMinimumStake();
@@ -159,10 +161,12 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    // TODO WE ARE MISSING FULL Withdrawl for migrations?
+
     /**
      * @dev Withdraw node stake surplus
      */
-    function withdrawFromStake() external whenNotPaused {
+    function withdrawFromStake() external {
         Stake memory stake = stakes[msg.sender];
 
         uint256 _surplusStake = stake.potentialStake -
@@ -173,6 +177,20 @@ contract StakeRegistry is AccessControl, Pausable {
             stake.commitedStake -= _surplusStake / OracleContract.currentPrice();
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
+        }
+    }
+
+    /**
+     * @dev Migrate stake only when the staking contract is paused,
+     * can only be called by the owner of the stake
+     */
+    function migrateStake() external whenPaused {
+        Stake memory stake = stakes[msg.sender];
+
+        // We take out all the stake so user can migrate stake to other contract
+        if (stake.lastUpdatedBlockNumber != 0) {
+            if (!ERC20(bzzToken).transfer(msg.sender, stake.potentialStake)) revert TransferFailed();
+            delete stakes[msg.sender];
         }
     }
 
