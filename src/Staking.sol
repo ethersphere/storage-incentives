@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "hardhat/console.sol";
 
 interface IPriceOracle {
     function currentPrice() external view returns (uint32);
@@ -248,9 +249,10 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Returns the current `effectiveStake` of `address`.
      * @param _owner _owner of node
      */
-    function stakeOfAddress(address _owner) public view returns (uint256) {
+    function nodeEffectiveStake(address _owner) public view returns (uint256) {
         Stake memory stake = stakes[_owner];
-
+        console.log(stake.commitedStake);
+        console.log(stake.potentialStake);
         return calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
     }
 

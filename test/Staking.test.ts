@@ -17,8 +17,8 @@ const errors = {
   deposit: {
     noBalance: 'ERC20: insufficient allowance',
     noZeroAddress: 'owner cannot be the zero address',
-    belowMinimum: 'cannot be below the minimum stake value',
     onlyOwner: 'Unauthorized()',
+    belowMinimum: 'BelowMinimumStake()',
   },
   slash: {
     noRole: 'OnlyRedistributor()',

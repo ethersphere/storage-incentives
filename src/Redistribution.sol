@@ -25,7 +25,7 @@ interface IStakeRegistry {
 
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
-    function stakeOfAddress(address _owner) external view returns (uint256);
+    function nodeEffectiveStake(address _owner) external view returns (uint256);
 
     function getStakeStruct(address _owner) external view returns (Stake memory);
 }
@@ -287,7 +287,7 @@ contract Redistribution is AccessControl, Pausable {
     function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
-        uint256 _stake = Stakes.stakeOfAddress(msg.sender);
+        uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
