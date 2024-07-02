@@ -349,9 +349,11 @@ describe('Staking', function () {
       await deployments.fixture();
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry');
-
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+      const priceOracle = await ethers.getContract('PriceOracle', deployer);
 
+      // Bump up the price so we can test surplus withdrawls
+      await priceOracle.setPrice(32000);
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
@@ -393,45 +395,24 @@ describe('Staking', function () {
       await stakeRegistryPauser.unPause();
     });
 
-    it('should allow stake withdrawal', async function () {
+    it('should make stake surplus withdrawal', async function () {
       const staked_before = await sr_staker_0.stakes(staker_0);
+      const priceOracle = await ethers.getContract('PriceOracle', deployer);
 
       expect(staked_before.overlay).to.be.eq(overlay_0);
       expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
       expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
-      // const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
-      // await stakeRegistryPauser.pause();
-
+      // Check that balance of wallet is 0 in the begining and lower the price
       expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-
-      const staked_after2 = await sr_staker_0.stakes(staker_0);
-
-      console.log(await sr_staker_0.nodeEffectiveStake(staker_0));
-
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
-      console.log(await sr_staker_0.nodeEffectiveStake(staker_0));
-
-      console.log(await priceOracle.currentPrice());
-
-      await priceOracle.setPrice(12000);
-      await mineNBlocks(roundLength * 10);
+      await priceOracle.setPrice(24000);
 
       await sr_staker_0.withdrawFromStake();
-
-      console.log(await priceOracle.currentPrice());
-
       const staked_after = await sr_staker_0.stakes(staker_0);
 
-      console.log(await sr_staker_0.nodeEffectiveStake(staker_0));
-
-      //      expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
-
-      // expect(staked_after.overlay).to.be.eq(zeroBytes32);
-      // expect(staked_after.potentialStake).to.be.eq(zeroStake);
-      // expect(staked_after.lastUpdatedBlockNumber).to.be.eq(0);
-
-      // await stakeRegistryPauser.unPause();
+      expect(staked_before.potentialStake.gt(staked_after.potentialStake)).to.be.true;
+      expect(staked_after.potentialStake.toString()).to.be.eq('75000000000000000');
+      expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
     });
   });
 
