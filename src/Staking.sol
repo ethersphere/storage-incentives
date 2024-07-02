@@ -29,8 +29,6 @@ contract StakeRegistry is AccessControl, Pausable {
     // Associate every stake id with node address data.
     mapping(address => Stake) public stakes;
 
-    // Role allowed to pause
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     // Role allowed to freeze and slash entries
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
@@ -80,7 +78,6 @@ contract StakeRegistry is AccessControl, Pausable {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(PAUSER_ROLE, msg.sender);
     }
 
     ////////////////////////////////////////
@@ -182,7 +179,7 @@ contract StakeRegistry is AccessControl, Pausable {
      the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) revert OnlyPauser();
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _pause();
     }
 
@@ -190,7 +187,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) revert OnlyPauser();
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _unpause();
     }
 
