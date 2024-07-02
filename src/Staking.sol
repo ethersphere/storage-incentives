@@ -158,8 +158,6 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
-    // TODO WE ARE MISSING FULL Withdrawl for migrations?
-
     /**
      * @dev Withdraw node stake surplus
      */

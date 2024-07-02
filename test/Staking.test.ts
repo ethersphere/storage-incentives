@@ -341,7 +341,7 @@ describe('Staking', function () {
     });
   });
 
-  describe('withdraw from contract', function () {
+  describe('withdraw and migrate from contract', function () {
     let sr_staker_0: Contract;
     let updatedBlockNumber: number;
 
@@ -362,7 +362,38 @@ describe('Staking', function () {
       await stakeRegistryDeployer.grantRole(pauserRole, pauser);
     });
 
-    it('should allow stake withdrawal while paused', async function () {
+    it('should not allow stake migration while unpaused', async function () {
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      await expect(sr_staker_0.migrateStake()).to.be.revertedWith(errors.pause.notCurrentlyPaused);
+    });
+
+    it('should allow stake migration while paused', async function () {
+      const staked_before = await sr_staker_0.stakes(staker_0);
+
+      expect(staked_before.overlay).to.be.eq(overlay_0);
+      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
+      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+
+      const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+      await stakeRegistryPauser.pause();
+
+      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
+
+      await sr_staker_0.migrateStake();
+
+      const staked_after = await sr_staker_0.stakes(staker_0);
+
+      expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+
+      expect(staked_after.overlay).to.be.eq(zeroBytes32);
+      expect(staked_after.potentialStake).to.be.eq(zeroStake);
+      expect(staked_after.lastUpdatedBlockNumber).to.be.eq(0);
+
+      await stakeRegistryPauser.unPause();
+    });
+
+    it('should allow stake withdrawal', async function () {
       const staked_before = await sr_staker_0.stakes(staker_0);
 
       expect(staked_before.overlay).to.be.eq(overlay_0);
