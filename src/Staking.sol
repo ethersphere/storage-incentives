@@ -3,7 +3,6 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "hardhat/console.sol";
 
 interface IPriceOracle {
     function currentPrice() external view returns (uint32);
@@ -167,8 +166,6 @@ contract StakeRegistry is AccessControl, Pausable {
 
         uint256 _surplusStake = stake.potentialStake -
             calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
-
-        console.log(_surplusStake);
 
         if (_surplusStake > 0) {
             stakes[msg.sender].potentialStake -= _surplusStake;

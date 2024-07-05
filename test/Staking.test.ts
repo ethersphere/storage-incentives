@@ -414,6 +414,43 @@ describe('Staking', function () {
       expect(staked_after.potentialStake.toString()).to.be.eq('75000000000000000');
       expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
     });
+
+    it('should not make stake surplus withdrawal when price from oracle stays the same', async function () {
+      const staked_before = await sr_staker_0.stakes(staker_0);
+      const priceOracle = await ethers.getContract('PriceOracle', deployer);
+
+      expect(staked_before.overlay).to.be.eq(overlay_0);
+      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
+      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+
+      // Check that balance of wallet is 0 in the begining and lower the price
+      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
+
+      await sr_staker_0.withdrawFromStake();
+      const staked_after = await sr_staker_0.stakes(staker_0);
+
+      expect(staked_before.potentialStake).to.be.eq(staked_after.potentialStake);
+      expect(await token.balanceOf(staker_0)).to.eq(zeroAmount);
+    });
+
+    it('should not make stake surplus withdrawal when price from oracle is higher', async function () {
+      const staked_before = await sr_staker_0.stakes(staker_0);
+      const priceOracle = await ethers.getContract('PriceOracle', deployer);
+
+      expect(staked_before.overlay).to.be.eq(overlay_0);
+      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
+      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+
+      // Check that balance of wallet is 0 in the begining and lower the price
+      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
+      await priceOracle.setPrice(44000);
+
+      await sr_staker_0.withdrawFromStake();
+      const staked_after = await sr_staker_0.stakes(staker_0);
+
+      expect(staked_before.potentialStake).to.be.eq(staked_after.potentialStake);
+      expect(await token.balanceOf(staker_0)).to.eq(zeroAmount);
+    });
   });
 
   describe('change overlay hex', function () {
