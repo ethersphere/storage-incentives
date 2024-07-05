@@ -51,6 +51,7 @@ let staker_1: string;
 const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
 const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc99f9f91e915';
 const stakeAmount_1 = '100000000000000000';
+const stakeAmount_1_n = '10000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
 
@@ -341,7 +342,7 @@ describe('Staking', function () {
     });
   });
 
-  describe('withdraw and migrate from contract', function () {
+  describe('stake surplus withdrawl and stake migrate', function () {
     let sr_staker_0: Contract;
     let updatedBlockNumber: number;
 
@@ -393,6 +394,12 @@ describe('Staking', function () {
       expect(staked_after.lastUpdatedBlockNumber).to.be.eq(0);
 
       await stakeRegistryPauser.unPause();
+    });
+
+    it('should not allow deposit stake below minimum', async function () {
+      const sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
+      await mintAndApprove(staker_1, stakeRegistry.address, stakeAmount_1_n);
+      await expect(sr_staker_1.manageStake(nonce_1, stakeAmount_1_n)).to.be.revertedWith(errors.deposit.belowMinimum);
     });
 
     it('should make stake surplus withdrawal', async function () {
