@@ -156,10 +156,8 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Withdraw node stake surplus
      */
     function withdrawFromStake() external {
-        Stake memory stake = stakes[msg.sender];
-
-        uint256 _surplusStake = stake.potentialStake -
-            calculateEffectiveStake(stake.committedStake, stake.potentialStake);
+        uint256 _surplusStake = stakes[msg.sender].potentialStake -
+            calculateEffectiveStake(stakes[msg.sender].committedStake, stakes[msg.sender].potentialStake);
 
         if (_surplusStake > 0) {
             stakes[msg.sender].potentialStake -= _surplusStake;
@@ -174,11 +172,9 @@ contract StakeRegistry is AccessControl, Pausable {
      * can only be called by the owner of the stake
      */
     function migrateStake() external whenPaused {
-        Stake memory stake = stakes[msg.sender];
-
         // We take out all the stake so user can migrate stake to other contract
-        if (stake.lastUpdatedBlockNumber != 0) {
-            if (!ERC20(bzzToken).transfer(msg.sender, stake.potentialStake)) revert TransferFailed();
+        if (lastUpdatedBlockNumberOfAddress(msg.sender) != 0) {
+            if (!ERC20(bzzToken).transfer(msg.sender, stakes[msg.sender].potentialStake)) revert TransferFailed();
             delete stakes[msg.sender];
         }
     }
@@ -257,8 +253,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _owner _owner of node
      */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
-        Stake memory stake = stakes[_owner];
-        return calculateEffectiveStake(stake.committedStake, stake.potentialStake);
+        return calculateEffectiveStake(stakes[_owner].committedStake, stakes[_owner].potentialStake);
     }
 
     // TODO should we change this to effective stake?
