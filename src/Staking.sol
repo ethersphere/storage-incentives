@@ -22,9 +22,9 @@ contract StakeRegistry is AccessControl, Pausable {
     struct Stake {
         // Overlay of the node that is being staked
         bytes32 overlay;
-        // Amount of tokens staked
+        // Stake balance expressed through price oracle
         uint256 committedStake;
-        // Amount of tokens staked as potential stake
+        // Stake balance expressed in BZZ
         uint256 potentialStake;
         // Block height the stake was updated
         uint256 lastUpdatedBlockNumber;
