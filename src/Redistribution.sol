@@ -288,6 +288,7 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
+        uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -304,11 +305,11 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) == 0) {
+        if (_lastUpdate == 0) {
             revert NotStaked();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfAddress(msg.sender) >= block.number - 2 * ROUND_LENGTH) {
+        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
