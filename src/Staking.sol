@@ -130,13 +130,8 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedPotentialStake = stakes[msg.sender].isValue
-            ? _addPotentialStake + stakes[msg.sender].potentialStake
-            : _addPotentialStake;
-
-        uint256 updatedCommittedStake = stakes[msg.sender].isValue
-            ? _addCommittedStake + stakes[msg.sender].committedStake
-            : _addCommittedStake;
+        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addPotentialStake;
+        uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
 
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
