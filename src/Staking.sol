@@ -116,21 +116,20 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Create a new stake or update an existing one, change overlay of node
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
      * @param _setNonce Nonce that was used for overlay calculation.
-     * @param _addAmount Deposited amount of ERC20 tokens.
+     * @param _addAmount Deposited amount of ERC20 tokens, equals to added Potential stake value
      */
     function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
-        uint256 _addPotentialStake = _addAmount;
         uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 is 99999999999984000
 
         // First time adding stake, check the minimum is added
-        if (_addPotentialStake < MIN_STAKE && !stakes[msg.sender].isValue) {
+        if (_addAmount < MIN_STAKE && !stakes[msg.sender].isValue) {
             revert BelowMinimumStake();
         }
 
         if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addPotentialStake;
+        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
         uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
 
         stakes[msg.sender] = Stake({
@@ -142,8 +141,8 @@ contract StakeRegistry is AccessControl, Pausable {
         });
 
         // Transfer tokens and emit event that stake has been updated
-        if (_addPotentialStake > 0) {
-            if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addPotentialStake)) revert TransferFailed();
+        if (_addAmount > 0) {
+            if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
             emit StakeUpdated(msg.sender, updatedCommittedStake, updatedPotentialStake, _newOverlay, block.number);
         }
 
