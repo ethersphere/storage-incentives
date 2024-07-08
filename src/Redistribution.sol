@@ -45,7 +45,7 @@ interface IStakeRegistry {
  *
  * Once the _commit_ round has elapsed, participating nodes must provide the values used to calculate their obsfucated
  * _commit_ hash, which, once verified for correctness and proximity to the anchor are retained in the _currentReveals_.
- * Nodes that have commited but do not reveal the correct values used to create the pre-image will have their stake
+ * Nodes that have committed but do not reveal the correct values used to create the pre-image will have their stake
  * "frozen" for a period of rounds proportional to their reported depth.
  *
  * During the _reveal_ round, randomness is updated after every successful reveal. Once the reveal round is concluded,
@@ -226,7 +226,7 @@ contract Redistribution is AccessControl, Pausable {
     error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
     error NotStaked(); // Node didn't add any staking
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
-    error AlreadyCommited(); // Node already commited in this round
+    error AlreadyCommitted(); // Node already committed in this round
     error NotRevealPhase(); // Game is not in reveal phase
     error OutOfDepthReveal(bytes32); // Anchor is out of reported depth in Reveal phase, anchor data available as argument
     error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index is argument
@@ -323,7 +323,7 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
             if (currentCommits[i].overlay == _overlay) {
-                revert AlreadyCommited();
+                revert AlreadyCommitted();
             }
 
             unchecked {

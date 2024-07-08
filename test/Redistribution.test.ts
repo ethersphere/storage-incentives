@@ -164,7 +164,7 @@ const errors = {
     notOwner: 'NotMatchingOwner()',
     notStaked: 'NotStaked()',
     stakedRecently: 'MustStake2Rounds()',
-    alreadyCommited: 'AlreadyCommited()',
+    alreadyCommitted: 'AlreadyCommitted()',
   },
   reveal: {
     noCommits: 'NoCommitsReceived()',
@@ -529,7 +529,7 @@ describe('Redistribution', function () {
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
-        await expect(r_node_2.commit(obfuscatedHash, currentRound)).to.be.revertedWith(errors.commit.alreadyCommited);
+        await expect(r_node_2.commit(obfuscatedHash, currentRound)).to.be.revertedWith(errors.commit.alreadyCommitted);
       });
     });
 

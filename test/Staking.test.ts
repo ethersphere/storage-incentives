@@ -41,10 +41,10 @@ const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a54
 const stakeAmount_0 = '100000000000000000';
 const updateStakeAmount_0 = '633633';
 const updatedStakeAmount_0 = '100000000000633633';
-const commitedStakeAmount_0 = '4166666666666';
-const updatedCommitedStakeAmount_0 = '4166666666692';
+const committedStakeAmount_0 = '4166666666666';
+const updatedCommittedStakeAmount_0 = '4166666666692';
 const twice_stakeAmount_0 = '200000000000000000';
-const twice_commitedStakeAmount_0 = '8333333333332';
+const twice_committedStakeAmount_0 = '8333333333332';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let staker_1: string;
@@ -130,7 +130,7 @@ describe('Staking', function () {
 
       await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, commitedStakeAmount_0, stakeAmount_0, overlay_0, updatedBlockNumber);
+        .withArgs(staker_0, committedStakeAmount_0, stakeAmount_0, overlay_0, updatedBlockNumber);
 
       expect(await token.balanceOf(staker_0)).to.be.eq(0);
 
@@ -138,7 +138,7 @@ describe('Staking', function () {
 
       expect(staked.overlay).to.be.eq(overlay_0);
       expect(staked.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked.commitedStake).to.be.eq(commitedStakeAmount_0);
+      expect(staked.committedStake).to.be.eq(committedStakeAmount_0);
       expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
       expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(stakeAmount_0);
@@ -159,7 +159,7 @@ describe('Staking', function () {
 
       await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, updatedCommitedStakeAmount_0, updatedStakeAmount_0, overlay_0, lastUpdatedBlockNumber + 1);
+        .withArgs(staker_0, updatedCommittedStakeAmount_0, updatedStakeAmount_0, overlay_0, lastUpdatedBlockNumber + 1);
 
       const staked = await stakeRegistry.stakes(staker_0);
       expect(staked.overlay).to.be.eq(overlay_0);
@@ -273,7 +273,7 @@ describe('Staking', function () {
       const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
       await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, twice_commitedStakeAmount_0, twice_stakeAmount_0, overlay_0, newUpdatedBlockNumber);
+        .withArgs(staker_0, twice_committedStakeAmount_0, twice_stakeAmount_0, overlay_0, newUpdatedBlockNumber);
     });
   });
 
@@ -338,7 +338,7 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
       await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, updatedCommitedStakeAmount_0, updatedStakeAmount_0, overlay_0, newUpdatedBlockNumber);
+        .withArgs(staker_0, updatedCommittedStakeAmount_0, updatedStakeAmount_0, overlay_0, newUpdatedBlockNumber);
     });
   });
 

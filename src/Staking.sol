@@ -23,7 +23,7 @@ contract StakeRegistry is AccessControl, Pausable {
         // Overlay of the node that is being staked
         bytes32 overlay;
         // Amount of tokens staked
-        uint256 commitedStake;
+        uint256 committedStake;
         // Amount of tokens staked as potential stake
         uint256 potentialStake;
         // Block height the stake was updated
@@ -55,11 +55,11 @@ contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- Events ------------------------------
 
     /**
-     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `commitedStake`, and `potentialStake` during `lastUpdatedBlock`.
+     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `committedStake`, and `potentialStake` during `lastUpdatedBlock`.
      */
     event StakeUpdated(
         address indexed owner,
-        uint256 commitedStake,
+        uint256 committedStake,
         uint256 potentialStake,
         bytes32 overlay,
         uint256 lastUpdatedBlock
@@ -122,7 +122,7 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
         uint256 _addPotentialStake = _addAmount;
-        uint256 _addCommitedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 is 99999999999984000
+        uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 is 99999999999984000
 
         // First time adding stake, check the minimum is added
         if (_addPotentialStake < MIN_STAKE && !stakes[msg.sender].isValue) {
@@ -134,13 +134,13 @@ contract StakeRegistry is AccessControl, Pausable {
             ? _addPotentialStake + stakes[msg.sender].potentialStake
             : _addPotentialStake;
 
-        uint256 updatedCommitedStake = stakes[msg.sender].isValue
-            ? _addCommitedStake + stakes[msg.sender].commitedStake
-            : _addCommitedStake;
+        uint256 updatedCommittedStake = stakes[msg.sender].isValue
+            ? _addCommittedStake + stakes[msg.sender].committedStake
+            : _addCommittedStake;
 
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
-            commitedStake: updatedCommitedStake,
+            committedStake: updatedCommittedStake,
             potentialStake: updatedPotentialStake,
             lastUpdatedBlockNumber: block.number,
             isValue: true
@@ -149,7 +149,7 @@ contract StakeRegistry is AccessControl, Pausable {
         // Transfer tokens and emit event that stake has been updated
         if (_addPotentialStake > 0) {
             if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addPotentialStake)) revert TransferFailed();
-            emit StakeUpdated(msg.sender, updatedCommitedStake, updatedPotentialStake, _newOverlay, block.number);
+            emit StakeUpdated(msg.sender, updatedCommittedStake, updatedPotentialStake, _newOverlay, block.number);
         }
 
         // Emit overlay change event
@@ -165,11 +165,11 @@ contract StakeRegistry is AccessControl, Pausable {
         Stake memory stake = stakes[msg.sender];
 
         uint256 _surplusStake = stake.potentialStake -
-            calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
+            calculateEffectiveStake(stake.committedStake, stake.potentialStake);
 
         if (_surplusStake > 0) {
             stakes[msg.sender].potentialStake -= _surplusStake;
-            stakes[msg.sender].commitedStake -= _surplusStake / OracleContract.currentPrice();
+            stakes[msg.sender].committedStake -= _surplusStake / OracleContract.currentPrice();
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
         }
@@ -264,7 +264,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
         Stake memory stake = stakes[_owner];
-        return calculateEffectiveStake(stake.commitedStake, stake.potentialStake);
+        return calculateEffectiveStake(stake.committedStake, stake.potentialStake);
     }
 
     // TODO should we change this to effective stake?
