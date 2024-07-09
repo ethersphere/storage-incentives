@@ -8,10 +8,7 @@ let deployer: string;
 let redistributor: string;
 let pauser: string;
 
-const zeroAddress = '0x0000000000000000000000000000000000000000';
 const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
-const roundLength = 152;
-
 const freezeTime = 3;
 
 const errors = {
@@ -43,8 +40,8 @@ const updateStakeAmount_0 = '633633';
 const updatedStakeAmount_0 = '100000000000633633';
 const committedStakeAmount_0 = '4166666666666';
 const updatedCommittedStakeAmount_0 = '4166666666692';
-const twice_stakeAmount_0 = '200000000000000000';
-const twice_committedStakeAmount_0 = '8333333333332';
+const doubled_stakeAmount_0 = '200000000000000000';
+const doubled_committedStakeAmount_0 = '8333333333332';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 let staker_1: string;
@@ -273,7 +270,7 @@ describe('Staking', function () {
       const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
       await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, twice_committedStakeAmount_0, twice_stakeAmount_0, overlay_0, newUpdatedBlockNumber);
+        .withArgs(staker_0, doubled_committedStakeAmount_0, doubled_stakeAmount_0, overlay_0, newUpdatedBlockNumber);
     });
   });
 
@@ -424,7 +421,6 @@ describe('Staking', function () {
 
     it('should not make stake surplus withdrawal when price from oracle stays the same', async function () {
       const staked_before = await sr_staker_0.stakes(staker_0);
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
 
       expect(staked_before.overlay).to.be.eq(overlay_0);
       expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
