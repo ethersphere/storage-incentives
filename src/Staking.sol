@@ -121,7 +121,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
-        uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 is 99999999999984000
+        uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 becomes 99999999999984000
 
         // First time adding stake, check the minimum is added
         if (_addAmount < MIN_STAKE && !stakes[msg.sender].isValue) {
@@ -254,6 +254,15 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
         return calculateEffectiveStake(stakes[_owner].committedStake, stakes[_owner].potentialStake);
+    }
+
+    /**
+     * @dev Check the amount that is possible to withdraw as surplus
+     */
+    function withdrawableStake() public view returns (uint256) {
+        return
+            stakes[msg.sender].potentialStake -
+            calculateEffectiveStake(stakes[msg.sender].committedStake, stakes[msg.sender].potentialStake);
     }
 
     // TODO should we change this to effective stake?
