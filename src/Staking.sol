@@ -249,11 +249,14 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev Returns the current `effectiveStake` of `address`.
+     * @dev Returns the current `effectiveStake` of `address`. previously usable stake
      * @param _owner _owner of node
      */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
-        return calculateEffectiveStake(stakes[_owner].committedStake, stakes[_owner].potentialStake);
+        return
+            addressNotFrozen(_owner)
+                ? calculateEffectiveStake(stakes[_owner].committedStake, stakes[_owner].potentialStake)
+                : 0;
     }
 
     /**
@@ -263,16 +266,6 @@ contract StakeRegistry is AccessControl, Pausable {
         return
             stakes[msg.sender].potentialStake -
             calculateEffectiveStake(stakes[msg.sender].committedStake, stakes[msg.sender].potentialStake);
-    }
-
-    // TODO should we change this to effective stake?
-    /**
-     * @dev Returns the current usable `potentialStake` of `address`.
-     * Checks whether the stake is currently frozen.
-     * @param _owner owner of node
-     */
-    function usableStakeOfAddress(address _owner) public view returns (uint256) {
-        return addressNotFrozen(_owner) ? stakes[_owner].potentialStake : 0;
     }
 
     /**

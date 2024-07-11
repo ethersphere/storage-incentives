@@ -1287,10 +1287,10 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_2 stake is preserved and not frozen
-            expect(await sr.usableStakeOfAddress(node_2)).to.be.eq(stakeAmount_2);
+            expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(stakeAmount_2);
 
             //node_1 is frozen but not slashed
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(0);
+            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(0);
           });
 
           it('if both reveal, should select correct winner', async function () {
@@ -1355,10 +1355,10 @@ describe('Redistribution', function () {
 
             // node_1 stake is preserved and not frozen
             // stake is double the size as it has been deposited 2 times
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1_n_25);
+            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(stakeAmount_1_n_25);
 
             //node_2 stake is preserved and not frozen
-            expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
+            expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
 
             await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
           });
@@ -1380,10 +1380,10 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             // node_1 stake is preserved and not frozen
-            expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
+            expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
             // node_2 stake is preserved and not frozen
             // amount is double the size on node_1 as deposit has been made twice
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1_n_25);
+            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(stakeAmount_1_n_25);
           });
 
           // describe('testing skipped rounds and price changes', async function () {
