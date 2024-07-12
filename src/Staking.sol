@@ -162,12 +162,11 @@ contract StakeRegistry is AccessControl, Pausable {
 
         if (_surplusStake > 0) {
             stakes[msg.sender].potentialStake -= _surplusStake;
-            stakes[msg.sender].committedStake -= _surplusStake / OracleContract.currentPrice();
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
         }
 
-        console.log(stakes[msg.sender].potentialStake);
+        console.log(_surplusStake);
         console.log(stakes[msg.sender].committedStake * OracleContract.currentPrice());
         console.log(calculateEffectiveStake(stakes[msg.sender].committedStake, stakes[msg.sender].potentialStake));
     }
