@@ -441,6 +441,8 @@ describe('Staking', function () {
       console.log('balance ' + (await token.balanceOf(staker_0)).toString());
       await sr_staker_0.withdrawFromStake();
 
+      expect(await token.balanceOf(staker_0)).to.eq('25000000000000000');
+
       console.log('balance ' + (await token.balanceOf(staker_0)).toString());
       await sr_staker_0.withdrawFromStake();
       console.log('balance ' + (await token.balanceOf(staker_0)).toString());
