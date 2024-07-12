@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "hardhat/console.sol";
 
 interface IPriceOracle {
     function currentPrice() external view returns (uint32);
@@ -129,8 +130,8 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
         uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
+        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
 
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
@@ -165,6 +166,10 @@ contract StakeRegistry is AccessControl, Pausable {
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
         }
+
+        console.log(stakes[msg.sender].potentialStake);
+        console.log(stakes[msg.sender].committedStake * OracleContract.currentPrice());
+        console.log(calculateEffectiveStake(stakes[msg.sender].committedStake, stakes[msg.sender].potentialStake));
     }
 
     /**

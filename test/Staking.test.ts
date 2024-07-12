@@ -419,6 +419,33 @@ describe('Staking', function () {
       expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
     });
 
+    it('should make stake surplus withdrawal and not withdraw again after', async function () {
+      const staked_before = await sr_staker_0.stakes(staker_0);
+      const priceOracle = await ethers.getContract('PriceOracle', deployer);
+
+      expect(staked_before.overlay).to.be.eq(overlay_0);
+      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
+      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+
+      // Check that balance of wallet is 0 in the begining and lower the price
+      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
+      await priceOracle.setPrice(24000);
+
+      await sr_staker_0.withdrawFromStake();
+      const staked_after = await sr_staker_0.stakes(staker_0);
+
+      expect(staked_before.potentialStake.gt(staked_after.potentialStake)).to.be.true;
+      expect(staked_after.potentialStake.toString()).to.be.eq('75000000000000000');
+      expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
+
+      console.log('balance ' + (await token.balanceOf(staker_0)).toString());
+      await sr_staker_0.withdrawFromStake();
+
+      console.log('balance ' + (await token.balanceOf(staker_0)).toString());
+      await sr_staker_0.withdrawFromStake();
+      console.log('balance ' + (await token.balanceOf(staker_0)).toString());
+    });
+
     it('should not make stake surplus withdrawal when price from oracle stays the same', async function () {
       const staked_before = await sr_staker_0.stakes(staker_0);
 
