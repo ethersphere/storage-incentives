@@ -413,9 +413,10 @@ describe('Staking', function () {
 
       await sr_staker_0.withdrawFromStake();
       const staked_after = await sr_staker_0.stakes(staker_0);
+      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
 
       expect(staked_before.potentialStake.gt(staked_after.potentialStake)).to.be.true;
-      expect(staked_after.potentialStake.toString()).to.be.eq('75000000000000000');
+      expect(staked_after.potentialStake.toString()).to.be.eq(effectiveStake);
       expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
     });
 
@@ -433,19 +434,20 @@ describe('Staking', function () {
 
       await sr_staker_0.withdrawFromStake();
       const staked_after = await sr_staker_0.stakes(staker_0);
+      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
 
       expect(staked_before.potentialStake.gt(staked_after.potentialStake)).to.be.true;
-      expect(staked_after.potentialStake.toString()).to.be.eq('75000000000000000');
+      expect(staked_after.potentialStake.toString()).to.be.eq(effectiveStake);
       expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
 
-      console.log('balance ' + (await token.balanceOf(staker_0)).toString());
+      // Check repeated withdrawl and that it stays the same
       await sr_staker_0.withdrawFromStake();
-
+      await sr_staker_0.withdrawFromStake();
       expect(await token.balanceOf(staker_0)).to.eq('25000000000000000');
 
-      console.log('balance ' + (await token.balanceOf(staker_0)).toString());
-      await sr_staker_0.withdrawFromStake();
-      console.log('balance ' + (await token.balanceOf(staker_0)).toString());
+      const effectiveStakeRepeated = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
+      const staked_repeated = await sr_staker_0.stakes(staker_0);
+      expect(staked_repeated.potentialStake.toString()).to.be.eq(effectiveStakeRepeated);
     });
 
     it('should not make stake surplus withdrawal when price from oracle stays the same', async function () {
