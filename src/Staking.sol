@@ -162,7 +162,7 @@ contract StakeRegistry is AccessControl, Pausable {
             calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
 
         if (_surplusStake > 0) {
-            _potentialStake -= _surplusStake;
+            stakes[msg.sender].potentialStake -= _surplusStake;
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
         }
