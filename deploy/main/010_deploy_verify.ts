@@ -27,7 +27,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
     // Verify staking
     const staking = await get('StakeRegistry');
-    const argStaking = [token.address, swarmNetworkID];
+    const argStaking = [token.address, swarmNetworkID, priceOracle.address];
 
     log('Verifying...');
     await verify(staking.address, argStaking);
