@@ -157,11 +157,12 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Withdraw node stake surplus
      */
     function withdrawFromStake() external {
-        uint256 _surplusStake = stakes[msg.sender].potentialStake -
-            calculateEffectiveStake(stakes[msg.sender].committedStake, stakes[msg.sender].potentialStake);
+        uint256 _potentialStake = stakes[msg.sender].potentialStake;
+        uint256 _surplusStake = _potentialStake -
+            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
 
         if (_surplusStake > 0) {
-            stakes[msg.sender].potentialStake -= _surplusStake;
+            _potentialStake -= _surplusStake;
             if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
             emit StakeWithdrawn(msg.sender, _surplusStake);
         }
