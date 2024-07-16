@@ -120,15 +120,16 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
+        bool _stakingSet = stakes[msg.sender].isValue;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
         uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 becomes 99999999999984000
 
         // First time adding stake, check the minimum is added
-        if (_addAmount < MIN_STAKE && !stakes[msg.sender].isValue) {
+        if (_addAmount < MIN_STAKE && !_stakingSet) {
             revert BelowMinimumStake();
         }
 
-        if (stakes[msg.sender].isValue && !addressNotFrozen(msg.sender)) revert Frozen();
+        if (_stakingSet && !addressNotFrozen(msg.sender)) revert Frozen();
         uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
         uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
 
@@ -262,9 +263,8 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Check the amount that is possible to withdraw as surplus
      */
     function withdrawableStake() public view returns (uint256) {
-        return
-            stakes[msg.sender].potentialStake -
-            calculateEffectiveStake(stakes[msg.sender].committedStake, stakes[msg.sender].potentialStake);
+        uint256 _potentialStake = stakes[msg.sender].potentialStake;
+        return _potentialStake - calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
     }
 
     /**
