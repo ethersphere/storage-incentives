@@ -26,7 +26,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 committedStake;
         // Stake balance expressed in BZZ
         uint256 potentialStake;
-        // Block height the stake was updated, also used as flag if the stake is set
+        // Block height the stake was updated, also used as flag to check if the stake is set
         uint256 lastUpdatedBlockNumber;
     }
 
