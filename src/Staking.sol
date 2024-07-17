@@ -26,10 +26,8 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 committedStake;
         // Stake balance expressed in BZZ
         uint256 potentialStake;
-        // Block height the stake was updated
+        // Block height the stake was updated, also used as flag if the stake is set
         uint256 lastUpdatedBlockNumber;
-        // Used to indicate presents in stakes struct
-        bool isValue;
     }
 
     // Associate every stake id with node address data.
@@ -120,16 +118,16 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
-        bool _stakingSet = stakes[msg.sender].isValue;
+        uint256 _stakingSet = stakes[msg.sender].lastUpdatedBlockNumber;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
         uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 becomes 99999999999984000
 
         // First time adding stake, check the minimum is added
-        if (_addAmount < MIN_STAKE && !_stakingSet) {
+        if (_addAmount < MIN_STAKE && _stakingSet == 0) {
             revert BelowMinimumStake();
         }
 
-        if (_stakingSet && !addressNotFrozen(msg.sender)) revert Frozen();
+        if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
         uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
         uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
 
@@ -137,8 +135,7 @@ contract StakeRegistry is AccessControl, Pausable {
             overlay: _newOverlay,
             committedStake: updatedCommittedStake,
             potentialStake: updatedPotentialStake,
-            lastUpdatedBlockNumber: block.number,
-            isValue: true
+            lastUpdatedBlockNumber: block.number
         });
 
         // Transfer tokens and emit event that stake has been updated
@@ -188,7 +185,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[_owner].isValue) {
+        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
             stakes[_owner].lastUpdatedBlockNumber = block.number + _time;
             emit StakeFrozen(_owner, stakes[_owner].overlay, _time);
         }
@@ -202,7 +199,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function slashDeposit(address _owner, uint256 _amount) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[_owner].isValue) {
+        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
             if (stakes[_owner].potentialStake > _amount) {
                 stakes[_owner].potentialStake -= _amount;
                 stakes[_owner].lastUpdatedBlockNumber = block.number;
