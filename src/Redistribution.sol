@@ -26,8 +26,6 @@ interface IStakeRegistry {
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
     function nodeEffectiveStake(address _owner) external view returns (uint256);
-
-    function getStakeStruct(address _owner) external view returns (Stake memory);
 }
 
 /**
