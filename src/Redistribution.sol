@@ -156,9 +156,6 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
 
-    // Role allowed to pause.
-    bytes32 private immutable PAUSER_ROLE;
-
     // ----------------------------- Events ------------------------------
 
     /**
@@ -263,9 +260,7 @@ contract Redistribution is AccessControl, Pausable {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
-        PAUSER_ROLE = keccak256("PAUSER_ROLE");
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(PAUSER_ROLE, msg.sender);
     }
 
     ////////////////////////////////////////
@@ -659,7 +654,7 @@ contract Redistribution is AccessControl, Pausable {
      the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert OnlyPauser();
         }
 
@@ -670,7 +665,7 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert OnlyPauser();
         }
         _unpause();

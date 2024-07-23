@@ -81,7 +81,7 @@ describe('Staking', function () {
       await deployments.fixture();
       stakeRegistry = await ethers.getContract('StakeRegistry');
 
-      const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+      const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
       await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
     });
 
@@ -90,7 +90,7 @@ describe('Staking', function () {
     });
 
     it('should set the pauser role', async function () {
-      const pauserRole = await stakeRegistry.PAUSER_ROLE();
+      const pauserRole = await stakeRegistry.DEFAULT_ADMIN_ROLE();
       expect(await stakeRegistry.hasRole(pauserRole, pauser)).to.be.true;
     });
 
@@ -288,7 +288,7 @@ describe('Staking', function () {
       await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-      const pauserRole = await stakeRegistryDeployer.PAUSER_ROLE();
+      const pauserRole = await stakeRegistryDeployer.DEFAULT_ADMIN_ROLE();
       await stakeRegistryDeployer.grantRole(pauserRole, pauser);
     });
 
@@ -358,7 +358,7 @@ describe('Staking', function () {
       updatedBlockNumber = await getBlockNumber();
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-      const pauserRole = await stakeRegistryDeployer.PAUSER_ROLE();
+      const pauserRole = await stakeRegistryDeployer.DEFAULT_ADMIN_ROLE();
       await stakeRegistryDeployer.grantRole(pauserRole, pauser);
     });
 

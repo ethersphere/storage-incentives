@@ -82,7 +82,7 @@ describe('PostageStamp', function () {
 
     it('should assign the pauser role', async function () {
       const postageStamp = await ethers.getContract('PostageStamp');
-      const pauserRole = await postageStamp.PAUSER_ROLE();
+      const pauserRole = await postageStamp.DEFAULT_ADMIN_ROLE();
       expect(await postageStamp.hasRole(pauserRole, deployer)).to.be.true;
     });
   });

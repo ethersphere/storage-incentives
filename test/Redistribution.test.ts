@@ -270,7 +270,7 @@ describe('Redistribution', function () {
       redistribution = await ethers.getContract('Redistribution');
       token = await ethers.getContract('TestToken', deployer);
 
-      const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+      const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
       await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
 
       //initialise, set minimum price, todo: move to deployment
