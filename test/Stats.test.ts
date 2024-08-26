@@ -140,7 +140,7 @@ describe('Stats', async function () {
     const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
     await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
 
-    const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+    const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
 
     const priceOracle = await ethers.getContract('PriceOracle', deployer);
