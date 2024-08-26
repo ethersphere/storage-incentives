@@ -58,6 +58,7 @@ const hash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 const depth_0 = '0x06';
 const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
+const effectiveStakeAmount_0 = '99999999999984000';
 
 const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
@@ -79,6 +80,7 @@ const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 let node_2: string;
 const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
 const stakeAmount_2 = '100000000000000000';
+const effectiveStakeAmount_2 = '99999999999984000';
 const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_2 = '0x06';
@@ -101,6 +103,7 @@ const depth_4 = '0x06';
 let node_5: string;
 const overlay_5 = '0x676720d79d609ed462fadf6f14eb1bf9ec1a90999dd45a671d79a89c7b5ac9d8';
 const stakeAmount_5 = '100000000000000000';
+const effectiveStakeAmount_5 = '99999999999984000';
 const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003ba6';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const { depth: depth_5, hash: hash_5 } = node5_proof1;
@@ -108,6 +111,7 @@ const { depth: depth_5, hash: hash_5 } = node5_proof1;
 let node_6: string;
 const overlay_6 = '0x141680b0d9c7ab250672fd4603ac13e39e47de6e2c93d71bbdc66459a6c5e39f';
 const stakeAmount_6 = '100000000000000000';
+
 const nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_6 = '0x06';
@@ -158,9 +162,9 @@ before(async function () {
 const errors = {
   commit: {
     notOwner: 'NotMatchingOwner()',
-    notStaked: 'BelowMinimumStake()',
+    notStaked: 'NotStaked()',
     stakedRecently: 'MustStake2Rounds()',
-    alreadyCommited: 'AlreadyCommited()',
+    alreadyCommitted: 'AlreadyCommitted()',
   },
   reveal: {
     noCommits: 'NoCommitsReceived()',
@@ -266,7 +270,7 @@ describe('Redistribution', function () {
       redistribution = await ethers.getContract('Redistribution');
       token = await ethers.getContract('TestToken', deployer);
 
-      const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+      const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
       await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
 
       //initialise, set minimum price, todo: move to deployment
@@ -484,7 +488,7 @@ describe('Redistribution', function () {
         expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
         expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
         expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
-        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(stakeAmount_2);
+        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_2);
         expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
       });
 
@@ -525,7 +529,7 @@ describe('Redistribution', function () {
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
-        await expect(r_node_2.commit(obfuscatedHash, currentRound)).to.be.revertedWith(errors.commit.alreadyCommited);
+        await expect(r_node_2.commit(obfuscatedHash, currentRound)).to.be.revertedWith(errors.commit.alreadyCommitted);
       });
     });
 
@@ -653,7 +657,7 @@ describe('Redistribution', function () {
 
         await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_2))
           .to.emit(redistribution, 'Revealed')
-          .withArgs(currentRound, overlay_2, stakeAmount_2, '6400000000000000000', hash_2, parseInt(depth_2));
+          .withArgs(currentRound, overlay_2, effectiveStakeAmount_2, '6399999999998976000', hash_2, parseInt(depth_2));
       });
     });
 
@@ -697,7 +701,7 @@ describe('Redistribution', function () {
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sampleHashString);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
           expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
           expect((await r_node_5.currentReveals(0)).depth).to.be.eq(depth);
 
           await mineNBlocks(phaseLength);
@@ -757,10 +761,10 @@ describe('Redistribution', function () {
 
           expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
           expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
-          expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+          expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
           expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-            BigNumber.from(stakeAmount_0).mul(BigNumber.from(2).pow(parseInt(sanityDepth)))
-          ); //stakedensity?
+            BigNumber.from(effectiveStakeAmount_0).mul(BigNumber.from(2).pow(parseInt(sanityDepth)))
+          );
           expect(WinnerSelectedEvent.args[0].hash).to.be.eq(sanityHash);
           expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(sanityDepth));
 
@@ -800,7 +804,7 @@ describe('Redistribution', function () {
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
           expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
           expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
 
           await mineNBlocks(phaseLength);
@@ -834,7 +838,7 @@ describe('Redistribution', function () {
           expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
           expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
           expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
           expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
 
           await mineNBlocks(phaseLength);
@@ -1222,7 +1226,7 @@ describe('Redistribution', function () {
             expect((await r_node_5.currentReveals(0)).hash).to.be.eq(hash_5);
             expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
             expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-            expect((await r_node_5.currentReveals(0)).stake).to.be.eq(stakeAmount_5);
+            expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
             expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(depth_5));
 
             await mineNBlocks(phaseLength);
@@ -1260,10 +1264,10 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
             expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
 
             expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-              calculateStakeDensity(stakeAmount_5, Number(depth_5))
+              calculateStakeDensity(effectiveStakeAmount_5, Number(depth_5))
             );
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
@@ -1283,10 +1287,10 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             //node_2 stake is preserved and not frozen
-            expect(await sr.usableStakeOfAddress(node_2)).to.be.eq(stakeAmount_2);
+            expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(stakeAmount_2);
 
             //node_1 is frozen but not slashed
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(0);
+            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(0);
           });
 
           it('if both reveal, should select correct winner', async function () {
@@ -1330,9 +1334,9 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
             expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(stakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
             expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-              calculateStakeDensity(stakeAmount_5, Number(depth_5))
+              calculateStakeDensity(effectiveStakeAmount_5, Number(depth_5))
             );
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
@@ -1351,10 +1355,10 @@ describe('Redistribution', function () {
 
             // node_1 stake is preserved and not frozen
             // stake is double the size as it has been deposited 2 times
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1_n_25);
+            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(stakeAmount_1_n_25);
 
             //node_2 stake is preserved and not frozen
-            expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
+            expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
 
             await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
           });
@@ -1376,10 +1380,10 @@ describe('Redistribution', function () {
             const sr = await ethers.getContract('StakeRegistry');
 
             // node_1 stake is preserved and not frozen
-            expect(await sr.usableStakeOfAddress(node_5)).to.be.eq(stakeAmount_5);
+            expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
             // node_2 stake is preserved and not frozen
             // amount is double the size on node_1 as deposit has been made twice
-            expect(await sr.usableStakeOfAddress(node_1)).to.be.eq(stakeAmount_1_n_25);
+            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(stakeAmount_1_n_25);
           });
 
           // describe('testing skipped rounds and price changes', async function () {
