@@ -4,12 +4,15 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
+interface IPriceOracle {
+    function currentPrice() external view returns (uint32);
+}
+
 /**
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
  * @dev Allows users to stake tokens in order to be eligible for the Redistribution Schelling co-ordination game.
- * Stakes are not withdrawable unless the contract is paused, e.g. in the event of migration to a new staking
- * contract. Stakes are frozen or slashed by the Redistribution contract in response to violations of the
+ * Stakes are frozen or slashed by the Redistribution contract in response to violations of the
  * protocol.
  */
 
@@ -19,46 +22,64 @@ contract StakeRegistry is AccessControl, Pausable {
     struct Stake {
         // Overlay of the node that is being staked
         bytes32 overlay;
-        // Amount of tokens staked
-        uint256 stakeAmount;
-        // Block height the stake was updated
+        // Stake balance expressed through price oracle
+        uint256 committedStake;
+        // Stake balance expressed in BZZ
+        uint256 potentialStake;
+        // Block height the stake was updated, also used as flag to check if the stake is set
         uint256 lastUpdatedBlockNumber;
-        // Owner of `overlay`
-        address owner;
-        // Used to indicate presents in stakes struct
-        bool isValue;
     }
 
-    // Associate every stake id with overlay data.
-    mapping(bytes32 => Stake) public stakes;
+    // Associate every stake id with node address data.
+    mapping(address => Stake) public stakes;
 
-    // Role allowed to pause
-    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     // Role allowed to freeze and slash entries
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
     // Swarm network ID
     uint64 NetworkId;
 
+    // The miniumum stake allowed to be staked using the Staking contract.
+    uint64 private constant MIN_STAKE = 100000000000000000;
+
     // Address of the staked ERC20 token
     address public immutable bzzToken;
+
+    // The address of the linked PriceOracle contract.
+    IPriceOracle public OracleContract;
 
     // ----------------------------- Events ------------------------------
 
     /**
-     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `stakeamount`, during `lastUpdatedBlock`.
+     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `committedStake`, and `potentialStake` during `lastUpdatedBlock`.
      */
-    event StakeUpdated(bytes32 indexed overlay, uint256 stakeAmount, address owner, uint256 lastUpdatedBlock);
+    event StakeUpdated(
+        address indexed owner,
+        uint256 committedStake,
+        uint256 potentialStake,
+        bytes32 overlay,
+        uint256 lastUpdatedBlock
+    );
 
     /**
-     * @dev Emitted when a stake for overlay `slashed` is slashed by `amount`.
+     * @dev Emitted when a stake for address `slashed` is slashed by `amount`.
      */
-    event StakeSlashed(bytes32 slashed, uint256 amount);
+    event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
 
     /**
-     * @dev Emitted when a stake for overlay `frozen` for `time` blocks.
+     * @dev Emitted when a stake for address `frozen` is frozen for `time` blocks.
      */
-    event StakeFrozen(bytes32 slashed, uint256 time);
+    event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
+
+    /**
+     * @dev Emitted when a address changes overlay it uses
+     */
+    event OverlayChanged(address owner, bytes32 overlay);
+
+    /**
+     * @dev Emitted when a stake for address is withdrawn
+     */
+    event StakeWithdrawn(address node, uint256 amount);
 
     // ----------------------------- Errors ------------------------------
 
@@ -67,6 +88,7 @@ contract StakeRegistry is AccessControl, Pausable {
     error Unauthorized(); // Used where only the owner can perform the action
     error OnlyRedistributor(); // Used when only the redistributor role is allowed
     error OnlyPauser(); // Used when only the pauser role is allowed
+    error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -74,11 +96,11 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _bzzToken Address of the staked ERC20 token
      * @param _NetworkId Swarm network ID
      */
-    constructor(address _bzzToken, uint64 _NetworkId) {
+    constructor(address _bzzToken, uint64 _NetworkId, address _oracleContract) {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
+        OracleContract = IPriceOracle(_oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(PAUSER_ROLE, msg.sender);
     }
 
     ////////////////////////////////////////
@@ -86,87 +108,103 @@ contract StakeRegistry is AccessControl, Pausable {
     ////////////////////////////////////////
 
     /**
-     * @notice Create a new stake or update an existing one.
+     * @notice Create a new stake or update an existing one, change overlay of node
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
-     * @param _owner Eth address used for overlay calculation.
-     * @param nonce Nonce that was used for overlay calculation.
-     * @param amount Deposited amount of ERC20 tokens.
+     * @param _setNonce Nonce that was used for overlay calculation.
+     * @param _addAmount Deposited amount of ERC20 tokens, equals to added Potential stake value
      */
-    function depositStake(address _owner, bytes32 nonce, uint256 amount) external whenNotPaused {
-        if (_owner != msg.sender) revert Unauthorized();
+    function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
+        bytes32 _previousOverlay = stakes[msg.sender].overlay;
+        uint256 _stakingSet = stakes[msg.sender].lastUpdatedBlockNumber;
+        bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
+        uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 becomes 99999999999984000
 
-        bytes32 overlay = keccak256(abi.encodePacked(_owner, reverse(NetworkId), nonce));
+        // First time adding stake, check the minimum is added
+        if (_addAmount < MIN_STAKE && _stakingSet == 0) {
+            revert BelowMinimumStake();
+        }
 
-        if (stakes[overlay].isValue && !overlayNotFrozen(overlay)) revert Frozen();
-        uint256 updatedAmount = stakes[overlay].isValue ? amount + stakes[overlay].stakeAmount : amount;
+        if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
+        uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
+        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
 
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
-
-        stakes[overlay] = Stake({
-            owner: _owner,
-            overlay: overlay,
-            stakeAmount: updatedAmount,
-            lastUpdatedBlockNumber: block.number,
-            isValue: true
+        stakes[msg.sender] = Stake({
+            overlay: _newOverlay,
+            committedStake: updatedCommittedStake,
+            potentialStake: updatedPotentialStake,
+            lastUpdatedBlockNumber: block.number
         });
 
-        emit StakeUpdated(overlay, updatedAmount, _owner, block.number);
+        // Transfer tokens and emit event that stake has been updated
+        if (_addAmount > 0) {
+            if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
+            emit StakeUpdated(msg.sender, updatedCommittedStake, updatedPotentialStake, _newOverlay, block.number);
+        }
+
+        // Emit overlay change event
+        if (_previousOverlay != _newOverlay) {
+            emit OverlayChanged(msg.sender, _newOverlay);
+        }
     }
 
     /**
-     * @dev Withdraw stake only when the staking contract is paused,
-     * can only be called by the owner specific to the associated `overlay`
-     * @param overlay The overlay to withdraw from
-     * @param amount The amount of ERC20 tokens to be withdrawn
+     * @dev Withdraw node stake surplus
      */
-    function withdrawFromStake(bytes32 overlay, uint256 amount) external whenPaused {
-        Stake memory stake = stakes[overlay];
-        if (stake.owner != msg.sender) revert Unauthorized();
+    function withdrawFromStake() external {
+        uint256 _potentialStake = stakes[msg.sender].potentialStake;
+        uint256 _surplusStake = _potentialStake -
+            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
 
-        // We cap the limit to not be over what is possible
-        uint256 withDrawLimit = (amount > stake.stakeAmount) ? stake.stakeAmount : amount;
-        stake.stakeAmount -= withDrawLimit;
-
-        if (stake.stakeAmount == 0) {
-            delete stakes[overlay];
-        } else {
-            stakes[overlay].lastUpdatedBlockNumber = block.number;
+        if (_surplusStake > 0) {
+            stakes[msg.sender].potentialStake -= _surplusStake;
+            if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
+            emit StakeWithdrawn(msg.sender, _surplusStake);
         }
+    }
 
-        if (!ERC20(bzzToken).transfer(msg.sender, withDrawLimit)) revert TransferFailed();
+    /**
+     * @dev Migrate stake only when the staking contract is paused,
+     * can only be called by the owner of the stake
+     */
+    function migrateStake() external whenPaused {
+        // We take out all the stake so user can migrate stake to other contract
+        if (lastUpdatedBlockNumberOfAddress(msg.sender) != 0) {
+            if (!ERC20(bzzToken).transfer(msg.sender, stakes[msg.sender].potentialStake)) revert TransferFailed();
+            delete stakes[msg.sender];
+        }
     }
 
     /**
      * @dev Freeze an existing stake, can only be called by the redistributor
-     * @param overlay the overlay selected
-     * @param time penalty length in blocknumbers
+     * @param _owner the addres selected
+     * @param _time penalty length in blocknumbers
      */
-    function freezeDeposit(bytes32 overlay, uint256 time) external {
+    function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[overlay].isValue) {
-            stakes[overlay].lastUpdatedBlockNumber = block.number + time;
-            emit StakeFrozen(overlay, time);
+        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
+            stakes[_owner].lastUpdatedBlockNumber = block.number + _time;
+            emit StakeFrozen(_owner, stakes[_owner].overlay, _time);
         }
     }
 
     /**
      * @dev Slash an existing stake, can only be called by the `redistributor`
-     * @param overlay the overlay selected
-     * @param amount the amount to be slashed
+     * @param _owner the _owner adress selected
+     * @param _amount the amount to be slashed
      */
-    function slashDeposit(bytes32 overlay, uint256 amount) external {
+    function slashDeposit(address _owner, uint256 _amount) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[overlay].isValue) {
-            if (stakes[overlay].stakeAmount > amount) {
-                stakes[overlay].stakeAmount -= amount;
-                stakes[overlay].lastUpdatedBlockNumber = block.number;
+        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
+            if (stakes[_owner].potentialStake > _amount) {
+                stakes[_owner].potentialStake -= _amount;
+                stakes[_owner].lastUpdatedBlockNumber = block.number;
             } else {
-                delete stakes[overlay];
+                delete stakes[_owner];
             }
         }
-        emit StakeSlashed(overlay, amount);
+        emit StakeSlashed(_owner, stakes[_owner].overlay, _amount);
     }
 
     function changeNetworkId(uint64 _NetworkId) external {
@@ -179,7 +217,7 @@ contract StakeRegistry is AccessControl, Pausable {
      the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) revert OnlyPauser();
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _pause();
     }
 
@@ -187,7 +225,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) revert OnlyPauser();
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _unpause();
     }
 
@@ -196,45 +234,62 @@ contract StakeRegistry is AccessControl, Pausable {
     ////////////////////////////////////////
 
     /**
-     * @dev Checks to see if `overlay` is frozen.
-     * @param overlay Overlay of staked overlay
+     * @dev Checks to see if `address` is frozen.
+     * @param _owner owner of staked address
      *
      * Returns a boolean value indicating whether the operation succeeded.
      */
-    function overlayNotFrozen(bytes32 overlay) internal view returns (bool) {
-        return stakes[overlay].lastUpdatedBlockNumber < block.number;
+    function addressNotFrozen(address _owner) internal view returns (bool) {
+        return stakes[_owner].lastUpdatedBlockNumber < block.number;
     }
 
     /**
-     * @dev Returns the current `stakeAmount` of `overlay`.
-     * @param overlay Overlay of node
+     * @dev Returns the current `effectiveStake` of `address`. previously usable stake
+     * @param _owner _owner of node
      */
-    function stakeOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return stakes[overlay].stakeAmount;
+    function nodeEffectiveStake(address _owner) public view returns (uint256) {
+        return
+            addressNotFrozen(_owner)
+                ? calculateEffectiveStake(stakes[_owner].committedStake, stakes[_owner].potentialStake)
+                : 0;
     }
 
     /**
-     * @dev Returns the current usable `stakeAmount` of `overlay`.
-     * Checks whether the stake is currently frozen.
-     * @param overlay Overlay of node
+     * @dev Check the amount that is possible to withdraw as surplus
      */
-    function usableStakeOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return overlayNotFrozen(overlay) ? stakes[overlay].stakeAmount : 0;
+    function withdrawableStake() public view returns (uint256) {
+        uint256 _potentialStake = stakes[msg.sender].potentialStake;
+        return _potentialStake - calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
     }
 
     /**
-     * @dev Returns the `lastUpdatedBlockNumber` of `overlay`.
+     * @dev Returns the `lastUpdatedBlockNumber` of `address`.
      */
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) public view returns (uint256) {
-        return stakes[overlay].lastUpdatedBlockNumber;
+    function lastUpdatedBlockNumberOfAddress(address _owner) public view returns (uint256) {
+        return stakes[_owner].lastUpdatedBlockNumber;
     }
 
     /**
-     * @dev Returns the eth address of the owner of `overlay`.
-     * @param overlay Overlay of node
+     * @dev Returns the currently used overlay of the address.
+     * @param _owner address of node
      */
-    function ownerOfOverlay(bytes32 overlay) public view returns (address) {
-        return stakes[overlay].owner;
+    function overlayOfAddress(address _owner) public view returns (bytes32) {
+        return stakes[_owner].overlay;
+    }
+
+    function calculateEffectiveStake(
+        uint256 committedStake,
+        uint256 potentialStakeBalance
+    ) internal view returns (uint256) {
+        // Calculate the product of committedStake and unitPrice to get price in BZZ
+        uint256 committedStakeBzz = committedStake * OracleContract.currentPrice();
+
+        // Return the minimum value between committedStakeBzz and potentialStakeBalance
+        if (committedStakeBzz < potentialStakeBalance) {
+            return committedStakeBzz;
+        } else {
+            return potentialStakeBalance;
+        }
     }
 
     /**

@@ -12,13 +12,20 @@ interface IPriceOracle {
 }
 
 interface IStakeRegistry {
-    function freezeDeposit(bytes32 overlay, uint256 time) external;
+    struct Stake {
+        bytes32 overlay;
+        uint256 stakeAmount;
+        uint256 lastUpdatedBlockNumber;
+        bool isValue;
+    }
 
-    function lastUpdatedBlockNumberOfOverlay(bytes32 overlay) external view returns (uint256);
+    function freezeDeposit(address _owner, uint256 _time) external;
 
-    function ownerOfOverlay(bytes32 overlay) external view returns (address);
+    function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
 
-    function stakeOfOverlay(bytes32 overlay) external view returns (uint256);
+    function overlayOfAddress(address _owner) external view returns (bytes32);
+
+    function nodeEffectiveStake(address _owner) external view returns (uint256);
 }
 
 /**
@@ -36,7 +43,7 @@ interface IStakeRegistry {
  *
  * Once the _commit_ round has elapsed, participating nodes must provide the values used to calculate their obsfucated
  * _commit_ hash, which, once verified for correctness and proximity to the anchor are retained in the _currentReveals_.
- * Nodes that have commited but do not reveal the correct values used to create the pre-image will have their stake
+ * Nodes that have committed but do not reveal the correct values used to create the pre-image will have their stake
  * "frozen" for a period of rounds proportional to their reported depth.
  *
  * During the _reveal_ round, randomness is updated after every successful reveal. Once the reveal round is concluded,
@@ -146,14 +153,8 @@ contract Redistribution is AccessControl, Pausable {
     // The length of a round in blocks.
     uint256 private constant ROUND_LENGTH = 152;
 
-    // The miniumum stake allowed to be staked using the Staking contract.
-    uint64 private constant MIN_STAKE = 100000000000000000;
-
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
-
-    // Role allowed to pause.
-    bytes32 private immutable PAUSER_ROLE;
 
     // ----------------------------- Events ------------------------------
 
@@ -214,13 +215,13 @@ contract Redistribution is AccessControl, Pausable {
     error NotCommitPhase(); // Game is not in commit phase
     error NoCommitsReceived(); // Round didn't receive any commits
     error PhaseLastBlock(); // We don't permit commits in last block of the phase
-    error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
     error CommitRoundOver(); // Commit phase in this round is over
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
     error NotMatchingOwner(); // Sender of commit is not matching the overlay address
     error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
+    error NotStaked(); // Node didn't add any staking
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
-    error AlreadyCommited(); // Node already commited in this round
+    error AlreadyCommitted(); // Node already committed in this round
     error NotRevealPhase(); // Game is not in reveal phase
     error OutOfDepthReveal(bytes32); // Anchor is out of reported depth in Reveal phase, anchor data available as argument
     error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index is argument
@@ -259,9 +260,7 @@ contract Redistribution is AccessControl, Pausable {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
-        PAUSER_ROLE = keccak256("PAUSER_ROLE");
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _setupRole(PAUSER_ROLE, msg.sender);
     }
 
     ////////////////////////////////////////
@@ -275,12 +274,14 @@ contract Redistribution is AccessControl, Pausable {
      * _obfuscatedHash_ by providing their _overlay_, reported storage _depth_, reserve commitment _hash_ and a
      * randomly generated, and secret _revealNonce_ to the _wrapCommit_ method.
      * @param _obfuscatedHash The calculated hash resultant of the required pre-image values.
-     * @param _overlay The overlay referenced in the pre-image. Must be staked by at least the minimum value,
      * and be derived from the same key pair as the message sender.
+     * @param _roundNumber Node needs to provide round number for which commit is valid
      */
-    function commit(bytes32 _obfuscatedHash, bytes32 _overlay, uint64 _roundNumber) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
         uint64 cr = currentRound();
-        uint256 nstake = Stakes.stakeOfOverlay(_overlay);
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
+        uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
+        uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -297,15 +298,11 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (nstake < MIN_STAKE) {
-            revert BelowMinimumStake();
+        if (_lastUpdate == 0) {
+            revert NotStaked();
         }
 
-        if (Stakes.ownerOfOverlay(_overlay) != msg.sender) {
-            revert NotMatchingOwner();
-        }
-
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(_overlay) >= block.number - 2 * ROUND_LENGTH) {
+        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
@@ -320,7 +317,7 @@ contract Redistribution is AccessControl, Pausable {
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
             if (currentCommits[i].overlay == _overlay) {
-                revert AlreadyCommited();
+                revert AlreadyCommitted();
             }
 
             unchecked {
@@ -333,7 +330,7 @@ contract Redistribution is AccessControl, Pausable {
                 overlay: _overlay,
                 owner: msg.sender,
                 revealed: false,
-                stake: nstake,
+                stake: _stake,
                 obfuscatedHash: _obfuscatedHash,
                 revealIndex: 0
             })
@@ -344,13 +341,13 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Reveal the pre-image values used to generate commit provided during this round's commit phase.
-     * @param _overlay The overlay address of the applicant.
      * @param _depth The reported depth.
      * @param _hash The reserve commitment hash.
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
-    function reveal(bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
+    function reveal(uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
         uint64 cr = currentRound();
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
         if (_depth < currentMinimumDepth()) {
             revert OutOfDepth();
@@ -534,7 +531,7 @@ contract Redistribution is AccessControl, Pausable {
                 (block.prevrandao % 100 < penaltyRandomFactor)
             ) {
                 Stakes.freezeDeposit(
-                    currentReveal.overlay,
+                    currentReveal.owner,
                     penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
@@ -544,7 +541,7 @@ contract Redistribution is AccessControl, Pausable {
                 // slash in later phase (ph5)
                 // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
-                    currentCommit.overlay,
+                    currentCommit.owner,
                     penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
                 );
             }
@@ -657,7 +654,7 @@ contract Redistribution is AccessControl, Pausable {
      the pauser role and the admin role after pausing, can only be called by the `PAUSER`
      */
     function pause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert OnlyPauser();
         }
 
@@ -668,7 +665,7 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Unpause the contract, can only be called by the pauser when paused
      */
     function unPause() public {
-        if (!hasRole(PAUSER_ROLE, msg.sender)) {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert OnlyPauser();
         }
         _unpause();
@@ -776,6 +773,7 @@ contract Redistribution is AccessControl, Pausable {
         if (minimum == 0) {
             return true;
         }
+
         return uint256(A ^ B) < uint256(2 ** (256 - minimum));
     }
 
@@ -800,23 +798,19 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
-     * @param overlay The overlay address of the applicant.
-     * @param depth The storage depth the applicant intends to report.
+     * @param _owner The address of the applicant from.
+     * @param _depth The storage depth the applicant intends to report.
      */
-    function isParticipatingInUpcomingRound(bytes32 overlay, uint8 depth) public view returns (bool) {
+    function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfOverlay(overlay) >= block.number - 2 * ROUND_LENGTH) {
+        if (Stakes.lastUpdatedBlockNumberOfAddress(_owner) >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
-        if (Stakes.stakeOfOverlay(overlay) < MIN_STAKE) {
-            revert BelowMinimumStake();
-        }
-
-        return inProximity(overlay, currentRoundAnchor(), depth);
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);
     }
 
     // ----------------------------- Reveal ------------------------------

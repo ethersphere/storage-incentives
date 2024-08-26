@@ -36,7 +36,7 @@ before(async function () {
   others = await getUnnamedAccounts();
 });
 
-async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
+async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: string[], trials: number) {
   const price1 = 100;
 
   const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
@@ -64,7 +64,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
   for (let i = 0; i < nodes.length; i++) {
     const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
     await mintAndApprove(deployer, nodes[i], sr_node.address, stakes[i]);
-    await sr_node.depositStake(nodes[i], nonce, stakes[i]);
+    await sr_node.manageStake(nonce, stakes[i]);
   }
 
   const winDist: Outcome[] = [];
@@ -91,7 +91,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
       const overlay = createOverlay(nodes[i], depth, nonce);
       const obfuscatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
       const currentRound = await r_node.currentRound();
-      await r_node.commit(obfuscatedHash, overlay, currentRound);
+      await r_node.commit(obfuscatedHash, currentRound);
     }
 
     await mineToRevealPhase();
@@ -99,7 +99,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
       const overlay = createOverlay(nodes[i], depth, nonce);
-      await r_node.reveal(overlay, depth, sampleHashString, reveal_nonce);
+      await r_node.reveal(depth, sampleHashString, reveal_nonce);
     }
 
     const anchor2 = await r_node.currentSeed(); // for creating proofs
@@ -123,9 +123,9 @@ async function nPlayerGames(nodes: string[], stakes: string[], trials: number) {
     const sr = await ethers.getContract('StakeRegistry');
 
     //stakes are preserved
+
     for (let i = 0; i < nodes.length; i++) {
-      const overlay = createOverlay(nodes[i], '0x00', nonce);
-      expect(await sr.usableStakeOfOverlay(overlay)).to.be.eq(stakes[i]);
+      expect(await sr.nodeEffectiveStake(nodes[i])).to.be.eq(effectiveStakes[i]);
     }
 
     await mineNBlocks(PHASE_LENGTH * 2 - nodes.length);
@@ -140,7 +140,7 @@ describe('Stats', async function () {
     const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
     await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
 
-    const pauserRole = await read('StakeRegistry', 'PAUSER_ROLE');
+    const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
 
     const priceOracle = await ethers.getContract('PriceOracle', deployer);
@@ -154,9 +154,10 @@ describe('Stats', async function () {
       this.timeout(120000);
       const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
+      const effectiveStakes = ['99999999999984000', '300000000000000000'];
       const nodes = [others[0], others[1]];
 
-      const dist = await nPlayerGames(nodes, stakes, trials);
+      const dist = await nPlayerGames(nodes, stakes, effectiveStakes, trials);
       let sumStakes = BigInt(0);
       for (let i = 0; i < stakes.length; i++) {
         sumStakes += BigInt(stakes[i]);
