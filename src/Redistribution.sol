@@ -16,7 +16,6 @@ interface IStakeRegistry {
         bytes32 overlay;
         uint256 stakeAmount;
         uint256 lastUpdatedBlockNumber;
-        bool isValue;
     }
 
     function freezeDeposit(address _owner, uint256 _time) external;
