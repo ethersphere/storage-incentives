@@ -12,15 +12,15 @@ interface Batch {
 
 async function main() {
   // Read the JSON file with the batches
-  const batchesData = JSON.parse(fs.readFileSync('./scripts/migration/batches.json', 'utf8'));
+  const batchesData = JSON.parse(fs.readFileSync('./scripts/migration/batches2.json', 'utf8'));
   const batches: Batch[] = batchesData.batches;
 
   // Group the batches into chunks
   // When using size of 40, each trx will use around 15M of gas
   // Block total gas limit is around 20M so bigger chunk sizes will be rejected
-  const chunkSize = 40;
+  const chunkSize = 20;
   // Assuming you have the contract deployed and have its address
-  const contractAddress = '0x45a1502382541Cd610CC9068e88727426b696293';
+  const contractAddress = '0xcdfdC3752caaA826fE62531E0000C40546eC56A6';
   const contract = await ethers.getContractAt('PostageStamp', contractAddress);
 
   // Add Admin Role to the contract address itself as it is calling itself with this.copyBatch function
