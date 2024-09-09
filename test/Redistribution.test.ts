@@ -223,6 +223,16 @@ describe('Redistribution', function () {
       await expect(r_node_0.commit(obfuscatedHash_0, currentRound)).to.be.revertedWith(errors.commit.notStaked);
     });
 
+    it('should not participation with unstaked node', async function () {
+      expect(await redistribution.currentPhaseCommit()).to.be.true;
+
+      const r_node_0 = await ethers.getContract('Redistribution', node_0);
+      const currentRound = await r_node_0.currentRound();
+      await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
+        errors.commit.notStaked
+      );
+    });
+
     it('should not create a commit with recently staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);

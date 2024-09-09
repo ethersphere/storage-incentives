@@ -801,11 +801,17 @@ contract Redistribution is AccessControl, Pausable {
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
+        uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(_owner);
+
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (Stakes.lastUpdatedBlockNumberOfAddress(_owner) >= block.number - 2 * ROUND_LENGTH) {
+        if (_lastUpdate == 0) {
+            revert NotStaked();
+        }
+
+        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
