@@ -807,7 +807,11 @@ contract Redistribution is AccessControl, Pausable {
             revert WrongPhase();
         }
 
-        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH || _lastUpdate == 0) {
+        if (_lastUpdate == 0) {
+            revert NotStaked();
+        }
+
+        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
             revert MustStake2Rounds();
         }
 
