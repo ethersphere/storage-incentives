@@ -180,12 +180,12 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
 ## Releasing
 
 To release a new rc version, tag the commit with the `-rcX` suffix, where `X` is the release candidate number.
-For example, to release `v0.4.0-rc1`, execute the following command: `git tag v0.4.0-rc1 && git push origin v0.4.0-rc1`.
+For example, to release `v0.9.1-rc1`, execute the following command: `git tag v0.9.1-rc1 && git push origin v0.9.1-rc1`.
 This will generate Golang source code for the smart contracts and publish it to the [`ethersphere/go-storage-incentives-abi`](https://github.com/ethersphere/go-storage-incentives-abi) repository.
 It'll also generate .env file with the bytecodes and publish it to the [`ethersphere/docker-setup-contracts`](https://github.com/ethersphere/docker-setup-contracts) repository.
 The values for the Golang source code and .env file are taken from the [testnet_deployed.json](testnet_deployed.json) file, (see the [Deployment](#deployment) section).
 
 To release a new stable version, tag the commit without the `-rcX` suffix.
-For example, to release `v0.4.0`, execute the following command: `git tag v0.4.0 && git push origin v0.4.0`.
+For example, to release `v0.9.1`, execute the following command: `git tag v0.9.1 && git push origin v0.9.1`.
 This will generate Golang source code for the smart contracts and publish it to the [`ethersphere/go-storage-incentives-abi`](https://github.com/ethersphere/go-storage-incentives-abi) repository.
 The values for the Golang source code file are taken from the [mainnet_deployed.json](mainnet_deployed.json) file (see the [Deployment](#deployment) section).
