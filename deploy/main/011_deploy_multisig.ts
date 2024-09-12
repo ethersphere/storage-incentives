@@ -7,7 +7,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer } = await getNamedAccounts();
 
   if (network.name == 'mainnet') {
-    log('Deploy multisig to all contracts, remove deployer');
+    log('Deploy multisig to all contracts');
 
     // ADD Roles to Multisig
     // TODO should uniform roles on contracts, recommend to just use DEFAULT_ADMIN_ROLE also for postagestamp contract
