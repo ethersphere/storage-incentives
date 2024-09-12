@@ -7,7 +7,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   log('Setting PostageStamps roles');
   const adminRole = await read('PostageStamp', 'DEFAULT_ADMIN_ROLE');
 
-  if (await read('PostageStamp', { from: deployer }, 'hasRole', adminRole)) {
+  if (await read('PostageStamp', 'hasRole', adminRole, deployer)) {
     const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
     await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, (await get('PriceOracle')).address);
 

@@ -6,9 +6,9 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 
   log('Setting Oracles roles');
 
-  const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
+  const adminRole = await read('PriceOracle', 'DEFAULT_ADMIN_ROLE');
 
-  if (await read('StakeRegistry', { from: deployer }, 'hasRole', adminRole)) {
+  if (await read('PriceOracle', 'hasRole', adminRole, deployer)) {
     const redisAddress = (await get('Redistribution')).address;
     const updaterRole = await read('PriceOracle', 'PRICE_UPDATER_ROLE');
     // We need to do this here and not in constructor as oracle is deployed before redis in order of deployment so it would be old
@@ -23,4 +23,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 };
 
 export default func;
-func.tags = ['staking_roles', 'roles'];
+func.tags = ['oracle_roles', 'roles'];
