@@ -28,6 +28,8 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 potentialStake;
         // Block height the stake was updated, also used as flag to check if the stake is set
         uint256 lastUpdatedBlockNumber;
+        // Node indicating its increased reserve
+        uint8 height;
     }
 
     // Associate every stake id with node address data.
@@ -58,7 +60,8 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 committedStake,
         uint256 potentialStake,
         bytes32 overlay,
-        uint256 lastUpdatedBlock
+        uint256 lastUpdatedBlock,
+        uint8 height
     );
 
     /**
@@ -113,7 +116,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _setNonce Nonce that was used for overlay calculation.
      * @param _addAmount Deposited amount of ERC20 tokens, equals to added Potential stake value
      */
-    function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
+    function manageStake(bytes32 _setNonce, uint256 _addAmount, uint8 _height) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         uint256 _stakingSet = stakes[msg.sender].lastUpdatedBlockNumber;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
@@ -132,13 +135,21 @@ contract StakeRegistry is AccessControl, Pausable {
             overlay: _newOverlay,
             committedStake: updatedCommittedStake,
             potentialStake: updatedPotentialStake,
-            lastUpdatedBlockNumber: block.number
+            lastUpdatedBlockNumber: block.number,
+            height: _height
         });
 
         // Transfer tokens and emit event that stake has been updated
         if (_addAmount > 0) {
             if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
-            emit StakeUpdated(msg.sender, updatedCommittedStake, updatedPotentialStake, _newOverlay, block.number);
+            emit StakeUpdated(
+                msg.sender,
+                updatedCommittedStake,
+                updatedPotentialStake,
+                _newOverlay,
+                block.number,
+                _height
+            );
         }
 
         // Emit overlay change event
