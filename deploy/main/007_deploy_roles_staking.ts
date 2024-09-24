@@ -7,9 +7,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   log('Setting Staking roles');
   const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
 
-  if (await read('StakeRegistry', { from: deployer }, 'hasRole', adminRole)) {
+  if (await read('StakeRegistry', 'hasRole', adminRole, deployer)) {
     const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
     const redisAddress = (await get('Redistribution')).address;
+
     await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
   } else {
     log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN THE REDISTRIBUTION ROLE, PLEASE ASSIGN IT OR GRANT ROLE MANUALLY');
