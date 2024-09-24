@@ -288,6 +288,14 @@ contract StakeRegistry is AccessControl, Pausable {
         return stakes[_owner].overlay;
     }
 
+    /**
+     * @dev Returns the currently height of the address.
+     * @param _owner address of node
+     */
+    function heightOfAddress(address _owner) public view returns (uint8) {
+        return stakes[_owner].height;
+    }
+
     function calculateEffectiveStake(
         uint256 committedStake,
         uint256 potentialStakeBalance

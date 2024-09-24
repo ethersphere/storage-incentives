@@ -24,6 +24,8 @@ interface IStakeRegistry {
 
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
+    function heightOfAddress(address _owner) external view returns (uint8);
+
     function nodeEffectiveStake(address _owner) external view returns (uint256);
 }
 
@@ -64,6 +66,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 overlay;
         address owner;
         bool revealed;
+        uint8 height;
         uint256 stake;
         bytes32 obfuscatedHash;
         uint256 revealIndex;
@@ -281,6 +284,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
+        uint8 _height = Stakes.heightOfAddress(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -329,6 +333,7 @@ contract Redistribution is AccessControl, Pausable {
                 overlay: _overlay,
                 owner: msg.sender,
                 revealed: false,
+                height: _height,
                 stake: _stake,
                 obfuscatedHash: _obfuscatedHash,
                 revealIndex: 0
@@ -372,9 +377,10 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
         uint256 id = findCommit(_overlay, obfuscatedHash);
         Commit memory revealedCommit = currentCommits[id];
+        uint8 _modDepth = _depth - revealedCommit.height;
 
         // Check that commit is in proximity of the current anchor
-        if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _depth)) {
+        if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _modDepth)) {
             revert OutOfDepthReveal(currentRevealRoundAnchor);
         }
         // Check that the commit has not already been revealed
@@ -391,7 +397,7 @@ contract Redistribution is AccessControl, Pausable {
                 owner: revealedCommit.owner,
                 depth: _depth,
                 stake: revealedCommit.stake,
-                stakeDensity: revealedCommit.stake * uint256(2 ** _depth),
+                stakeDensity: revealedCommit.stake * uint256(2 ** _modDepth),
                 hash: _hash
             })
         );
@@ -802,6 +808,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(_owner);
+        uint8 _modDepth = _depth - Stakes.heightOfAddress(_owner);
 
         if (currentPhaseReveal()) {
             revert WrongPhase();
@@ -815,7 +822,7 @@ contract Redistribution is AccessControl, Pausable {
             revert MustStake2Rounds();
         }
 
-        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _modDepth);
     }
 
     // ----------------------------- Reveal ------------------------------
