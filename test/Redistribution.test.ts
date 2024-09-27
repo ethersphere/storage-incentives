@@ -59,8 +59,8 @@ const depth_0 = '0x06';
 const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
 const effectiveStakeAmount_0 = '99999999999984000';
-
 const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const height_0 = 0;
 
 //fake
 const overlay_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
@@ -76,6 +76,7 @@ const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000
 const stakeAmount_1_n_25 = '200000000000000000';
 const depth_1 = '0x06';
 const reveal_nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const height_1 = 0;
 
 let node_2: string;
 const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
@@ -85,6 +86,7 @@ const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_2 = '0x06';
 const reveal_nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const height_2 = 0;
 
 let node_3: string;
 const overlay_3 = '0xaf217eb0d652baf39ec9464a350c7afc812743fd75ccadf4fcceb6d19a1f190c';
@@ -93,11 +95,13 @@ const nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555
 const hash_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_3 = '0x06';
 const reveal_nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const height_3 = 0;
 
 let node_4: string;
 const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb02efb';
 const nonce_4 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_4 = '0x06';
+const height_4 = 0;
 // FDP Play node keys - claim data
 // queen node
 let node_5: string;
@@ -107,6 +111,7 @@ const effectiveStakeAmount_5 = '99999999999984000';
 const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003ba6';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const { depth: depth_5, hash: hash_5 } = node5_proof1;
+const height_5 = 0;
 
 let node_6: string;
 const overlay_6 = '0x141680b0d9c7ab250672fd4603ac13e39e47de6e2c93d71bbdc66459a6c5e39f';
@@ -236,7 +241,7 @@ describe('Redistribution', function () {
     it('should not create a commit with recently staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -249,7 +254,7 @@ describe('Redistribution', function () {
     it('should create a commit with staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -308,32 +313,32 @@ describe('Redistribution', function () {
 
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       const sr_node_1 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1.address, stakeAmount_1);
-      await sr_node_1.manageStake(nonce_1, stakeAmount_1);
+      await sr_node_1.manageStake(nonce_1, stakeAmount_1, height_1);
 
       // 16 depth neighbourhood with node_5
       const sr_node_1_n_25 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1_n_25.address, stakeAmount_1);
-      await sr_node_1_n_25.manageStake(nonce_1_n_25, stakeAmount_1);
+      await sr_node_1_n_25.manageStake(nonce_1_n_25, stakeAmount_1, height_1);
 
       const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
       await mintAndApprove(deployer, node_2, sr_node_2.address, stakeAmount_2);
-      await sr_node_2.manageStake(nonce_2, stakeAmount_2);
+      await sr_node_2.manageStake(nonce_2, stakeAmount_2, height_2);
 
       const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
       await mintAndApprove(deployer, node_3, sr_node_3.address, stakeAmount_3);
-      await sr_node_3.manageStake(nonce_3, stakeAmount_3);
+      await sr_node_3.manageStake(nonce_3, stakeAmount_3, height_4);
 
       const sr_node_4 = await ethers.getContract('StakeRegistry', node_4);
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
-      await sr_node_4.manageStake(nonce_4, stakeAmount_3);
+      await sr_node_4.manageStake(nonce_4, stakeAmount_3, height_4);
 
       const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
-      await sr_node_5.manageStake(nonce_5, stakeAmount_5);
+      await sr_node_5.manageStake(nonce_5, stakeAmount_5, height_5);
 
       // We need to mine 2 rounds to make the staking possible
       // as this is the minimum time between staking and committing
