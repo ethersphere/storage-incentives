@@ -61,6 +61,7 @@ const stakeAmount_0 = '100000000000000000';
 const effectiveStakeAmount_0 = '99999999999984000';
 const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_0 = 0;
+const height_0_n_2 = 2;
 
 //fake
 const overlay_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
@@ -87,6 +88,7 @@ const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 const depth_2 = '0x06';
 const reveal_nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_2 = 0;
+const height_2_n_2 = 2;
 
 let node_3: string;
 const overlay_3 = '0xaf217eb0d652baf39ec9464a350c7afc812743fd75ccadf4fcceb6d19a1f190c';
@@ -255,6 +257,19 @@ describe('Redistribution', function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
       await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
+
+      expect(await redistribution.currentPhaseCommit()).to.be.true;
+
+      const r_node_0 = await ethers.getContract('Redistribution', node_0);
+      await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
+        errors.commit.stakedRecently
+      );
+    });
+
+    it('should create a commit with staked node and height 2', async function () {
+      const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
+      await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
+      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0_n_2);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -481,10 +496,39 @@ describe('Redistribution', function () {
       });
 
       it('should create a commit with successful reveal if the overlay is within the reported depth', async function () {
+        const r_node_2 = await ethers.getContract('Redistribution', node_2);
+
         await mineToNode(redistribution, 2);
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
+        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+
+        const currentRound = await r_node_2.currentRound();
+
+        await expect(r_node_2.commit(obfuscatedHash, currentRound))
+          .to.emit(redistribution, 'Committed')
+          .withArgs(currentRound, overlay_2);
+
+        expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
+
+        await mineNBlocks(phaseLength);
+
+        await r_node_2.reveal(depth_2, hash_2, reveal_nonce_2);
+
+        expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
+        expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
+        expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
+        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_2);
+        expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
+      });
+
+      it('should create a commit with successful reveal if the overlay is within the reported depth with height 2', async function () {
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
+        const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
+        await sr_node_2.manageStake(nonce_2, 0, height_2_n_2);
+
+        await mineToNode(redistribution, 2);
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
