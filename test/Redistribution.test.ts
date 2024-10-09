@@ -83,6 +83,7 @@ let node_2: string;
 const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
 const stakeAmount_2 = '100000000000000000';
 const effectiveStakeAmount_2 = '99999999999984000';
+const effectiveStakeAmount_2_n_2 = '100000000000000000';
 const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_2 = '0x06';
@@ -547,7 +548,7 @@ describe('Redistribution', function () {
         expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
         expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
         expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
-        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_2);
+        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_2_n_2);
         expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
       });
 
