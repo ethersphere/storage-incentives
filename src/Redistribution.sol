@@ -377,10 +377,10 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
         uint256 id = findCommit(_overlay, obfuscatedHash);
         Commit memory revealedCommit = currentCommits[id];
-        uint8 _modDepth = _depth - revealedCommit.height;
+        uint8 depthResponsibility = _depth - revealedCommit.height;
 
         // Check that commit is in proximity of the current anchor
-        if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _modDepth)) {
+        if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, depthResponsibility)) {
             revert OutOfDepthReveal(currentRevealRoundAnchor);
         }
         // Check that the commit has not already been revealed
@@ -397,7 +397,7 @@ contract Redistribution is AccessControl, Pausable {
                 owner: revealedCommit.owner,
                 depth: _depth,
                 stake: revealedCommit.stake,
-                stakeDensity: revealedCommit.stake * uint256(2 ** _modDepth),
+                stakeDensity: revealedCommit.stake * uint256(2 ** depthResponsibility),
                 hash: _hash
             })
         );
@@ -808,7 +808,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(_owner);
-        uint8 _modDepth = _depth - Stakes.heightOfAddress(_owner);
+        uint8 _depthResponsibility = _depth - Stakes.heightOfAddress(_owner);
 
         if (currentPhaseReveal()) {
             revert WrongPhase();
@@ -822,7 +822,7 @@ contract Redistribution is AccessControl, Pausable {
             revert MustStake2Rounds();
         }
 
-        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _modDepth);
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depthResponsibility);
     }
 
     // ----------------------------- Reveal ------------------------------

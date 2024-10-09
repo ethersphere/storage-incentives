@@ -308,7 +308,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint8 height
     ) internal view returns (uint256) {
         // Calculate the product of committedStake and unitPrice to get price in BZZ
-        uint256 committedStakeBzz = (uint256(1) << height) * committedStake * OracleContract.currentPrice();
+        uint256 committedStakeBzz = (2 ** height) * committedStake * OracleContract.currentPrice();
 
         // Return the minimum value between committedStakeBzz and potentialStakeBalance
         if (committedStakeBzz < potentialStakeBalance) {
