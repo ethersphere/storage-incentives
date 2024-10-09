@@ -164,7 +164,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function withdrawFromStake() external {
         uint256 _potentialStake = stakes[msg.sender].potentialStake;
         uint256 _surplusStake = _potentialStake -
-            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
+            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake, stakes[msg.sender].height);
 
         if (_surplusStake > 0) {
             stakes[msg.sender].potentialStake -= _surplusStake;
@@ -261,7 +261,11 @@ contract StakeRegistry is AccessControl, Pausable {
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
         return
             addressNotFrozen(_owner)
-                ? calculateEffectiveStake(stakes[_owner].committedStake, stakes[_owner].potentialStake)
+                ? calculateEffectiveStake(
+                    stakes[_owner].committedStake,
+                    stakes[_owner].potentialStake,
+                    stakes[_owner].height
+                )
                 : 0;
     }
 
@@ -270,7 +274,9 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function withdrawableStake() public view returns (uint256) {
         uint256 _potentialStake = stakes[msg.sender].potentialStake;
-        return _potentialStake - calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
+        return
+            _potentialStake -
+            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake, stakes[msg.sender].height);
     }
 
     /**
@@ -298,10 +304,11 @@ contract StakeRegistry is AccessControl, Pausable {
 
     function calculateEffectiveStake(
         uint256 committedStake,
-        uint256 potentialStakeBalance
+        uint256 potentialStakeBalance,
+        uint8 height
     ) internal view returns (uint256) {
         // Calculate the product of committedStake and unitPrice to get price in BZZ
-        uint256 committedStakeBzz = committedStake * OracleContract.currentPrice();
+        uint256 committedStakeBzz = (uint256(1) << height) * committedStake * OracleContract.currentPrice();
 
         // Return the minimum value between committedStakeBzz and potentialStakeBalance
         if (committedStakeBzz < potentialStakeBalance) {
