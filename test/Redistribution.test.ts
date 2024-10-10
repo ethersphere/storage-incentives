@@ -38,7 +38,7 @@ const { read, execute } = deployments;
 const phaseLength = 38;
 const roundLength = 152;
 
-const increaseRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
+const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
 // round anchor after startRoundFixture()
 const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
