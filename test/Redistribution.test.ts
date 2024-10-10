@@ -172,7 +172,7 @@ const errors = {
   commit: {
     notOwner: 'NotMatchingOwner()',
     notStaked: 'NotStaked()',
-    stakedRecently: 'MustStake2Rounds()',
+    mustStake2Rounds: 'MustStake2Rounds()',
     alreadyCommitted: 'AlreadyCommitted()',
   },
   reveal: {
@@ -252,7 +252,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.stakedRecently
+        errors.commit.mustStake2Rounds
       );
     });
 
@@ -265,7 +265,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.stakedRecently
+        errors.commit.mustStake2Rounds
       );
     });
 
@@ -278,7 +278,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.stakedRecently
+        errors.commit.mustStake2Rounds
       );
     });
   });
