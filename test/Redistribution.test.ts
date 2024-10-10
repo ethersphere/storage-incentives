@@ -98,6 +98,8 @@ const nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555
 const hash_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_3 = '0x06';
 const reveal_nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const height_3_n_2 = 3;
+const effectiveStakeAmount_3 = '100000000000000000';
 
 let node_4: string;
 const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb02efb';
@@ -177,6 +179,7 @@ const errors = {
     noCommits: 'NoCommitsReceived()',
     doNotMatch: 'NoMatchingCommit()',
     outOfDepth: 'OutOfDepth()',
+    outOfDepthReveal: 'OutOfDepthReveal()',
     notInReveal: 'NotRevealPhase()',
   },
   claim: {
@@ -476,23 +479,61 @@ describe('Redistribution', function () {
 
       it('should create a commit with failed reveal if the overlay is out of reported depth', async function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
-
         const r_node_3 = await ethers.getContract('Redistribution', node_3);
-
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
         const obfuscatedHash = encodeAndHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
-
         expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
-
         const currentRound = await r_node_3.currentRound();
         await r_node_3.commit(obfuscatedHash, currentRound);
 
         expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
+        await mineNBlocks(phaseLength);
+        await expect(r_node_3.reveal('0x08', hash_3, reveal_nonce_3)).to.be.revertedWith(
+          errors.reveal.outOfDepthReveal
+        );
+      });
+
+      it('should create a commit with failed reveal if the overlay is out of reported depth but good reveal if height is changed', async function () {
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
+        const r_node_3 = await ethers.getContract('Redistribution', node_3);
+        expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
+
+        const obfuscatedHash = encodeAndHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
+        expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
+        const currentRound = await r_node_3.currentRound();
+        await r_node_3.commit(obfuscatedHash, currentRound);
+
+        expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
+        await mineNBlocks(phaseLength);
+        await expect(r_node_3.reveal('0x08', hash_3, reveal_nonce_3)).to.be.revertedWith(
+          errors.reveal.outOfDepthReveal
+        );
+
+        // Change height and check if node is playing
+        const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
+        await sr_node_3.manageStake(nonce_3, 0, height_3_n_2);
+        await mineNBlocks(3 * phaseLength);
+        await mineToNode(redistribution, 3);
+
+        expect(await redistribution.currentPhaseCommit()).to.be.true;
+        const obfuscatedHash2 = encodeAndHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
+        const currentRound2 = await r_node_3.currentRound();
+
+        await expect(r_node_3.commit(obfuscatedHash2, currentRound2))
+          .to.emit(redistribution, 'Committed')
+          .withArgs(currentRound2, overlay_3);
+
+        expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash2);
 
         await mineNBlocks(phaseLength);
+        await r_node_3.reveal(depth_3, hash_3, reveal_nonce_3);
 
-        await expect(r_node_3.reveal('0x08', hash_3, reveal_nonce_3)).to.be.revertedWith(errors.reveal.outOfDepth);
+        expect((await r_node_3.currentReveals(0)).hash).to.be.eq(hash_3);
+        expect((await r_node_3.currentReveals(0)).overlay).to.be.eq(overlay_3);
+        expect((await r_node_3.currentReveals(0)).owner).to.be.eq(node_3);
+        expect((await r_node_3.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_3);
+        expect((await r_node_3.currentReveals(0)).depth).to.be.eq(parseInt(depth_3));
       });
 
       it('should create a commit with successful reveal if the overlay is within the reported depth', async function () {
