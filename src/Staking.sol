@@ -115,6 +115,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
      * @param _setNonce Nonce that was used for overlay calculation.
      * @param _addAmount Deposited amount of ERC20 tokens, equals to added Potential stake value
+     * @param _height increased reserve by registering the number of doublings
      */
     function manageStake(bytes32 _setNonce, uint256 _addAmount, uint8 _height) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
