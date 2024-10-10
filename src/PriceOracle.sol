@@ -61,6 +61,7 @@ contract PriceOracle is AccessControl {
         postageStamp = IPostageStamp(_postageStamp);
         lastAdjustedRound = currentRound();
         PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER_ROLE");
+        emit PriceUpdate(currentPrice());
     }
 
     ////////////////////////////////////////
