@@ -28,12 +28,12 @@ contract PriceOracle is AccessControl {
     uint32 public minimumPriceUpscaled = 24000 << 10; // we upscale it by 2^10
 
     // The priceBase to modulate the price
-    uint32 public priceBase = 524288;
+    uint32 public priceBase = 1048576;
 
     uint64 public currentPriceUpScaled = minimumPriceUpscaled;
 
     // Constants used to modulate the price, see below usage
-    uint32[9] public changeRate = [524324, 524315, 524306, 524297, 524288, 524279, 524270, 524261, 524252];
+    uint32[9] public changeRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
     // Role allowed to update price
     bytes32 public immutable PRICE_UPDATER_ROLE;
