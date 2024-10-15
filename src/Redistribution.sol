@@ -406,7 +406,7 @@ contract Redistribution is AccessControl, Pausable {
             cr,
             revealedCommit.overlay,
             revealedCommit.stake,
-            revealedCommit.stake * uint256(2 ** _depth),
+            revealedCommit.stake * uint256(2 ** depthResponsibility),
             _hash,
             _depth
         );
