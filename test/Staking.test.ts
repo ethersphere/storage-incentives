@@ -43,6 +43,7 @@ const updatedCommittedStakeAmount_0 = '4166666666692';
 const doubled_stakeAmount_0 = '200000000000000000';
 const doubled_committedStakeAmount_0 = '8333333333332';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const height_0 = 0;
 
 let staker_1: string;
 const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
@@ -51,6 +52,7 @@ const stakeAmount_1 = '100000000000000000';
 const stakeAmount_1_n = '10000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
+const height_1 = 0;
 
 const zeroStake = '0';
 const zeroAmount = '0';
@@ -114,7 +116,9 @@ describe('Staking', function () {
     });
 
     it('should not deposit stake if funds are unavailable', async function () {
-      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.deposit.noBalance);
+      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
+        errors.deposit.noBalance
+      );
     });
 
     it('should deposit stake correctly if funds are available', async function () {
@@ -125,9 +129,9 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0))
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, committedStakeAmount_0, stakeAmount_0, overlay_0, updatedBlockNumber);
+        .withArgs(staker_0, committedStakeAmount_0, stakeAmount_0, overlay_0, updatedBlockNumber, height_0);
 
       expect(await token.balanceOf(staker_0)).to.be.eq(0);
 
@@ -147,16 +151,23 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       const lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
 
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount_0);
 
-      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0))
+      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, zeroAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, updatedCommittedStakeAmount_0, updatedStakeAmount_0, overlay_0, lastUpdatedBlockNumber + 1);
+        .withArgs(
+          staker_0,
+          updatedCommittedStakeAmount_0,
+          updatedStakeAmount_0,
+          overlay_0,
+          lastUpdatedBlockNumber + 1,
+          height_0
+        );
 
       const staked = await stakeRegistry.stakes(staker_0);
       expect(staked.overlay).to.be.eq(overlay_0);
@@ -175,7 +186,7 @@ describe('Staking', function () {
       const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
@@ -206,7 +217,7 @@ describe('Staking', function () {
       const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       const lastUpdatedBlockNumber = await getBlockNumber();
       const staked = await stakeRegistry.stakes(staker_0);
@@ -228,7 +239,7 @@ describe('Staking', function () {
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
@@ -263,14 +274,23 @@ describe('Staking', function () {
       expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.freeze.currentlyFrozen);
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
+        errors.freeze.currentlyFrozen
+      );
 
       mineNBlocks(3);
 
       const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0))
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, doubled_committedStakeAmount_0, doubled_stakeAmount_0, overlay_0, newUpdatedBlockNumber);
+        .withArgs(
+          staker_0,
+          doubled_committedStakeAmount_0,
+          doubled_stakeAmount_0,
+          overlay_0,
+          newUpdatedBlockNumber,
+          height_0
+        );
     });
   });
 
@@ -285,7 +305,7 @@ describe('Staking', function () {
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
       const pauserRole = await stakeRegistryDeployer.DEFAULT_ADMIN_ROLE();
@@ -302,7 +322,9 @@ describe('Staking', function () {
       await stakeRegistryPauser.pause();
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
+      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
+        errors.pause.currentlyPaused
+      );
     });
 
     it('should not unpause contract without pauser role', async function () {
@@ -318,7 +340,9 @@ describe('Staking', function () {
       await stakeRegistryPauser.pause();
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
+      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
+        errors.pause.currentlyPaused
+      );
     });
 
     it('should allow staking once unpaused', async function () {
@@ -327,15 +351,24 @@ describe('Staking', function () {
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
 
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0)).to.be.revertedWith(errors.pause.currentlyPaused);
+      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
+        errors.pause.currentlyPaused
+      );
 
       await stakeRegistryPauser.unPause();
 
       const newUpdatedBlockNumber = (await getBlockNumber()) + 3;
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
-      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0))
+      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, height_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, updatedCommittedStakeAmount_0, updatedStakeAmount_0, overlay_0, newUpdatedBlockNumber);
+        .withArgs(
+          staker_0,
+          updatedCommittedStakeAmount_0,
+          updatedStakeAmount_0,
+          overlay_0,
+          newUpdatedBlockNumber,
+          height_0
+        );
     });
   });
 
@@ -353,7 +386,7 @@ describe('Staking', function () {
       // Bump up the price so we can test surplus withdrawls
       await priceOracle.setPrice(32000);
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       updatedBlockNumber = await getBlockNumber();
 
@@ -364,7 +397,7 @@ describe('Staking', function () {
 
     it('should not allow stake migration while unpaused', async function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
       await expect(sr_staker_0.migrateStake()).to.be.revertedWith(errors.pause.notCurrentlyPaused);
     });
 
@@ -396,7 +429,9 @@ describe('Staking', function () {
     it('should not allow deposit stake below minimum', async function () {
       const sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
       await mintAndApprove(staker_1, stakeRegistry.address, stakeAmount_1_n);
-      await expect(sr_staker_1.manageStake(nonce_1, stakeAmount_1_n)).to.be.revertedWith(errors.deposit.belowMinimum);
+      await expect(sr_staker_1.manageStake(nonce_1, stakeAmount_1_n, height_1)).to.be.revertedWith(
+        errors.deposit.belowMinimum
+      );
     });
 
     it('should make stake surplus withdrawal', async function () {
@@ -496,28 +531,28 @@ describe('Staking', function () {
       sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
 
       await mintAndApprove(staker_1, sr_staker_1.address, stakeAmount_1);
-      await sr_staker_1.manageStake(nonce_1, stakeAmount_1);
+      await sr_staker_1.manageStake(nonce_1, stakeAmount_1, height_1);
     });
 
     it('should change overlay hex', async function () {
       const current_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      await sr_staker_1.manageStake(nonce_1_n_25, 0);
+      await sr_staker_1.manageStake(nonce_1_n_25, 0, 0);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.not.eq(current_overlay);
     });
 
     it('should match new overlay hex', async function () {
-      await sr_staker_1.manageStake(nonce_1_n_25, 0);
+      await sr_staker_1.manageStake(nonce_1_n_25, zeroStake, height_1);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.be.eq(overlay_1_n_25);
     });
 
     it('should match old overlay hex after double change', async function () {
-      await sr_staker_1.manageStake(nonce_1_n_25, 0);
+      await sr_staker_1.manageStake(nonce_1_n_25, zeroStake, height_1);
       const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(new_overlay).to.be.eq(overlay_1_n_25);
 
-      await sr_staker_1.manageStake(nonce_1, 0);
+      await sr_staker_1.manageStake(nonce_1, zeroStake, height_1);
       const old_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(old_overlay).to.be.eq(overlay_1);
     });
