@@ -123,8 +123,8 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
         uint256 _addCommittedStake = _addAmount / (OracleContract.currentPrice() * 2 ** _height); // losing some decimals from start 10n16 becomes 99999999999984000
 
-        // First time adding stake, check the minimum is added
-        if (_addAmount < MIN_STAKE && _stakingSet == 0) {
+        // First time adding stake, check the minimum is added, take into account height
+        if (_addAmount < MIN_STAKE * 2 ** _height && _stakingSet == 0) {
             revert BelowMinimumStake();
         }
 
