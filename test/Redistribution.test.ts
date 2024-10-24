@@ -58,6 +58,7 @@ const hash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 const depth_0 = '0x06';
 const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
+const stakeAmount_0_n_2 = '400000000000000000';
 const effectiveStakeAmount_0 = '99999999999984000';
 const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_0 = 0;
@@ -199,6 +200,12 @@ const errors = {
     socVerificationFailed: 'SocVerificationFailed()',
     socCalcNotMatching: 'SocCalcNotMatching()',
   },
+  deposit: {
+    noBalance: 'ERC20: insufficient allowance',
+    noZeroAddress: 'owner cannot be the zero address',
+    onlyOwner: 'Unauthorized()',
+    belowMinimum: 'BelowMinimumStake()',
+  },
   general: {
     onlyPauser: 'OnlyPauser()',
   },
@@ -269,10 +276,19 @@ describe('Redistribution', function () {
       );
     });
 
-    it('should create a commit with staked node and height 2', async function () {
+    it('should create a commit with staked node and height 2 and not have enough funds', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0_n_2);
+
+      await expect(sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0_n_2)).to.be.revertedWith(
+        errors.deposit.belowMinimum
+      );
+    });
+
+    it('should create a commit with staked node and height 2', async function () {
+      const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
+      await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0_n_2);
+      await sr_node_0.manageStake(nonce_0, stakeAmount_0_n_2, height_0_n_2);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
