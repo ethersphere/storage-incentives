@@ -20,6 +20,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
     ).address
   );
 
+  // Set default price for postageStamp
+  const currentPrice = await read('PriceOracle', 'currentPrice');
+  await execute('PriceOracle', { from: deployer }, 'setPrice', currentPrice);
+
   log('----------------------------------------------------');
 };
 
