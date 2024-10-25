@@ -91,7 +91,7 @@ contract PriceOracle is AccessControl {
         emit PriceUpdate(currentPrice());
     }
 
-    function adjustPrice(uint16 redundancy) external {
+    function adjustPrice(uint16 redundancy) external returns (bool) {
         if (isPaused == false) {
             if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
                 revert CallerNotPriceUpdater();
@@ -143,7 +143,9 @@ contract PriceOracle is AccessControl {
             lastAdjustedRound = currentRoundNumber;
             postageStamp.setPrice(uint256(currentPrice()));
             emit PriceUpdate(currentPrice());
+            return true;
         }
+        return false;
     }
 
     function pause() external {

@@ -8,7 +8,7 @@ import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
 
 interface IPriceOracle {
-    function adjustPrice(uint16 redundancy) external;
+    function adjustPrice(uint16 redundancy) external returns (bool);
 }
 
 interface IStakeRegistry {
@@ -194,6 +194,11 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Bytes32 anhor of current reveal round
      */
     event CurrentRevealAnchor(uint256 roundNumber, bytes32 anchor);
+
+    /**
+     * @dev Output external call status
+     */
+    event PriceAdjustmentSkipped(uint16 redundancyCount);
 
     /**
      * @dev Logs that an overlay has revealed
@@ -555,7 +560,10 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        OracleContract.adjustPrice(uint16(redundancyCount));
+        bool success = OracleContract.adjustPrice(uint16(redundancyCount));
+        if (!success) {
+            emit PriceAdjustmentSkipped(uint16(redundancyCount));
+        }
         currentClaimRound = cr;
     }
 
