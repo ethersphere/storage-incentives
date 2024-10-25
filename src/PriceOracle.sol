@@ -87,8 +87,7 @@ contract PriceOracle is AccessControl {
         }
         currentPriceUpScaled = _currentPriceUpScaled;
 
-        // Price in postagestamp is set at 256 so we need to upcast it
-        // Check if the price set in postagestamp succeded
+        // Check if the setting of price in postagestamp succeded
         (bool success, ) = address(postageStamp).call(
             abi.encodeWithSignature("setPrice(uint256)", uint256(currentPrice()))
         );
