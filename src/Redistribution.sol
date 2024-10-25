@@ -201,6 +201,11 @@ contract Redistribution is AccessControl, Pausable {
     event PriceAdjustmentSkipped(uint16 redundancyCount);
 
     /**
+     * @dev Withdraw not successful in claim
+     */
+    event WithdrawFailed(address owner);
+
+    /**
      * @dev Logs that an overlay has revealed
      */
     event Revealed(
@@ -476,7 +481,14 @@ contract Redistribution is AccessControl, Pausable {
 
         estimateSize(entryProofLast.proofSegments[0]);
 
-        PostageContract.withdraw(winnerSelected.owner);
+        // Do the check if the withdraw was success
+        (bool success, ) = address(PostageContract).call(
+            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
+        );
+        if (!success) {
+            emit WithdrawFailed(winnerSelected.owner);
+        }
+
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
     }
