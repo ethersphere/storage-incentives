@@ -39,9 +39,9 @@ const stakeAmount_0 = '100000000000000000';
 const updateStakeAmount_0 = '633633';
 const updatedStakeAmount_0 = '100000000000633633';
 const committedStakeAmount_0 = '4166666666666';
-const updatedCommittedStakeAmount_0 = '4166666666692';
+const updatedCommittedStakeAmount_0 = '4166666666693';
 const doubled_stakeAmount_0 = '200000000000000000';
-const doubled_committedStakeAmount_0 = '8333333333332';
+const doubled_committedStakeAmount_0 = '8333333333333';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_0 = 0;
 
