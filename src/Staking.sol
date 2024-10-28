@@ -121,7 +121,6 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         uint256 _stakingSet = stakes[msg.sender].lastUpdatedBlockNumber;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
-        uint256 _addCommittedStake = _addAmount / (OracleContract.currentPrice() * 2 ** _height); // losing some decimals from start 10n16 becomes 99999999999984000
 
         // First time adding stake, check the minimum is added, take into account height
         if (_addAmount < MIN_STAKE * 2 ** _height && _stakingSet == 0) {
@@ -129,8 +128,8 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
         uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
+        uint256 updatedCommittedStake = updatedPotentialStake / (OracleContract.currentPrice() * 2 ** _height);
 
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
