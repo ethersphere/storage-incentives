@@ -184,7 +184,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Logs that an overlay has committed
      */
-    event Committed(uint256 roundNumber, bytes32 overlay);
+    event Committed(uint256 roundNumber, bytes32 overlay, uint8 height);
     /**
      * @dev Emit from Postagestamp contract valid chunk count at the end of claim
      */
@@ -350,7 +350,7 @@ contract Redistribution is AccessControl, Pausable {
             })
         );
 
-        emit Committed(_roundNumber, _overlay);
+        emit Committed(_roundNumber, _overlay, _height);
     }
 
     /**

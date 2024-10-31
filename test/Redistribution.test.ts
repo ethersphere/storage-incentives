@@ -538,7 +538,7 @@ describe('Redistribution', function () {
 
         await expect(r_node_3.commit(obfuscatedHash2, currentRound2))
           .to.emit(redistribution, 'Committed')
-          .withArgs(currentRound2, overlay_3);
+          .withArgs(currentRound2, overlay_3, height_3_n_2);
 
         expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash2);
 
@@ -564,7 +564,7 @@ describe('Redistribution', function () {
 
         await expect(r_node_2.commit(obfuscatedHash, currentRound))
           .to.emit(redistribution, 'Committed')
-          .withArgs(currentRound, overlay_2);
+          .withArgs(currentRound, overlay_2, height_2);
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
@@ -593,7 +593,7 @@ describe('Redistribution', function () {
 
         await expect(r_node_2.commit(obfuscatedHash, currentRound))
           .to.emit(redistribution, 'Committed')
-          .withArgs(currentRound, overlay_2);
+          .withArgs(currentRound, overlay_2, height_2_n_2);
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
