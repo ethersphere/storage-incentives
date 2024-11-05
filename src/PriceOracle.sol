@@ -127,7 +127,7 @@ contract PriceOracle is AccessControl {
             uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
             uint32 _priceBase = priceBase;
 
-            // Set the number of rounds that were skipped
+            // Set the number of rounds that were skipped, we substract 1 as lastAdjustedRound is set below and default results is 1
             uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
 
             // We first apply the increase/decrease rate for the current round
