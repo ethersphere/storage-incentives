@@ -44,7 +44,7 @@ const doubled_stakeAmount_0 = '200000000000000000';
 const doubled_committedStakeAmount_0 = '8333333333333';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_0 = 0;
-const height_0_n_1 = 0;
+const height_0_n_1 = 1;
 
 let staker_1: string;
 const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
@@ -462,7 +462,7 @@ describe('Staking', function () {
 
       await priceOracle.setPrice(24000);
 
-      // We dont need double here as we are adding double amount with another stakeAmount_0
+      // We are doubling here as we are adding another "amount" with another stakeAmount_0
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
       const staked_after = await sr_staker_0.stakes(staker_0);
@@ -471,7 +471,7 @@ describe('Staking', function () {
       expect(staked_after.potentialStake).to.be.eq(doubled_stakeAmount_0);
       expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
 
-      // Check that balance of wallet is 0 in the begining and lower the price
+      // Check that balance of wallet is 0 in the begining
       expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
 
       await sr_staker_0.withdrawFromStake();
@@ -483,6 +483,43 @@ describe('Staking', function () {
       expect(staked_after.potentialStake.gt(staked_before.potentialStake)).to.be.true;
       expect(String(potentialStakeBalance - tokenBalance)).to.be.eq(effectiveStake);
       expect(tokenBalance).to.not.eq(zeroAmount);
+    });
+
+    it('should make stake surplus withdrawal when height increases and then decreases', async function () {
+      const staked_before = await sr_staker_0.stakes(staker_0);
+      const priceOracle = await ethers.getContract('PriceOracle', deployer);
+
+      await priceOracle.setPrice(24000);
+
+      // We are doubling here as we are adding another "amount" with another stakeAmount_0
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
+      const staked_after = await sr_staker_0.stakes(staker_0);
+
+      expect(staked_after.overlay).to.be.eq(overlay_0);
+      expect(staked_after.potentialStake).to.be.eq(doubled_stakeAmount_0);
+      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+
+      // Check that balance of wallet is 0 in the begining
+      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
+
+      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
+      const tokenBalance = (await token.balanceOf(staker_0)).toString();
+      const potentialStakeBalance = staked_after.potentialStake.toString();
+
+      const withdrawbleStakeBefore = await await sr_staker_0.withdrawableStake();
+      console.log((await await sr_staker_0.withdrawableStake()).toString());
+      // We are lowering height to 0
+      await sr_staker_0.manageStake(nonce_0, 0, height_0);
+
+      const withdrawbleStakeAfter = await await sr_staker_0.withdrawableStake();
+      console.log((await await sr_staker_0.withdrawableStake()).toString());
+
+      // TO DO  withdrawable shouldnt be lower after height decrease but higher
+      expect(withdrawbleStakeAfter.gt(withdrawbleStakeBefore)).to.be.true;
+      await sr_staker_0.withdrawFromStake();
+      // expect(String(potentialStakeBalance - tokenBalance)).to.be.eq(effectiveStake);
+      // expect(tokenBalance).to.not.eq(zeroAmount);
     });
 
     it('should make stake surplus withdrawal and not withdraw again after', async function () {
