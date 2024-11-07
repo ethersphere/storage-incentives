@@ -7,6 +7,7 @@ const { read, execute } = deployments;
 let deployer: string;
 let redistributor: string;
 let pauser: string;
+const roundLength = 152;
 
 const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
 const freezeTime = 3;
@@ -486,40 +487,44 @@ describe('Staking', function () {
     });
 
     it('should make stake surplus withdrawal when height increases and then decreases', async function () {
-      const staked_before = await sr_staker_0.stakes(staker_0);
       const priceOracle = await ethers.getContract('PriceOracle', deployer);
 
-      await priceOracle.setPrice(24000);
+      await priceOracle.setPrice(26000);
+      const price = await priceOracle.currentPrice();
 
       // We are doubling here as we are adding another "amount" with another stakeAmount_0
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
-      const staked_after = await sr_staker_0.stakes(staker_0);
+      const staked_before = await sr_staker_0.stakes(staker_0);
 
-      expect(staked_after.overlay).to.be.eq(overlay_0);
-      expect(staked_after.potentialStake).to.be.eq(doubled_stakeAmount_0);
-      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      // Check that balance of wallet is 0 in the begining
+      expect(staked_before.overlay).to.be.eq(overlay_0);
+      expect(staked_before.potentialStake).to.be.eq(doubled_stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
 
-      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
-      const tokenBalance = (await token.balanceOf(staker_0)).toString();
-      const potentialStakeBalance = staked_after.potentialStake.toString();
+      // Mine 2 rounds so that values are valid, before that effectiveStake is zero as nodes cant play
+      await mineNBlocks(roundLength * 2);
+      const withdrawbleStakeBefore = await sr_staker_0.withdrawableStake();
+      // console.log('WD', withdrawbleStakeBefore.toString());
+      // console.log('POT', staked_before.potentialStake.toString());
+      // console.log('COM', staked_before.committedStake.toString() * price * 2 ** height_0_n_1);
+      // console.log('EFF', (await sr_staker_0.nodeEffectiveStake(staker_0)).toString());
 
-      const withdrawbleStakeBefore = await await sr_staker_0.withdrawableStake();
-      console.log((await await sr_staker_0.withdrawableStake()).toString());
-      // We are lowering height to 0
+      // We are lowering height to 0 and again mining 2 rounds so values are valid
       await sr_staker_0.manageStake(nonce_0, 0, height_0);
+      await mineNBlocks(roundLength * 2);
+      const staked_after = await sr_staker_0.stakes(staker_0);
+      await priceOracle.setPrice(24000);
 
-      const withdrawbleStakeAfter = await await sr_staker_0.withdrawableStake();
-      console.log((await await sr_staker_0.withdrawableStake()).toString());
-
-      // TO DO  withdrawable shouldnt be lower after height decrease but higher
+      const withdrawbleStakeAfter = await sr_staker_0.withdrawableStake();
       expect(withdrawbleStakeAfter.gt(withdrawbleStakeBefore)).to.be.true;
       await sr_staker_0.withdrawFromStake();
-      // expect(String(potentialStakeBalance - tokenBalance)).to.be.eq(effectiveStake);
-      // expect(tokenBalance).to.not.eq(zeroAmount);
+
+      const potentialStakeBalance = staked_after.potentialStake.toString();
+      const tokenBalance = await token.balanceOf(staker_0);
+      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
+
+      expect(String(potentialStakeBalance - tokenBalance)).to.be.eq(effectiveStake);
+      expect(tokenBalance).to.not.eq(zeroAmount);
     });
 
     it('should make stake surplus withdrawal and not withdraw again after', async function () {
