@@ -128,8 +128,15 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
-        uint256 updatedCommittedStake = updatedPotentialStake / (OracleContract.currentPrice() * 2 ** _height);
+
+        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake;
+        uint256 updatedCommittedStake = stakes[msg.sender].committedStake;
+
+        // Only update stake values if _addAmount is greater than 0
+        if (_addAmount > 0) {
+            updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
+            updatedCommittedStake = updatedPotentialStake / (OracleContract.currentPrice() * 2 ** _height);
+        }
 
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
