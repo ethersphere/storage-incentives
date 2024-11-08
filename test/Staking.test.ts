@@ -489,7 +489,7 @@ describe('Staking', function () {
     it('should make stake surplus withdrawal when height increases and then decreases', async function () {
       const priceOracle = await ethers.getContract('PriceOracle', deployer);
 
-      await priceOracle.setPrice(26000);
+      await priceOracle.setPrice(24000);
       const price = await priceOracle.currentPrice();
 
       // We are doubling here as we are adding another "amount" with another stakeAmount_0
@@ -504,16 +504,12 @@ describe('Staking', function () {
       // Mine 2 rounds so that values are valid, before that effectiveStake is zero as nodes cant play
       await mineNBlocks(roundLength * 2);
       const withdrawbleStakeBefore = await sr_staker_0.withdrawableStake();
-      // console.log('WD', withdrawbleStakeBefore.toString());
-      // console.log('POT', staked_before.potentialStake.toString());
-      // console.log('COM', staked_before.committedStake.toString() * price * 2 ** height_0_n_1);
-      // console.log('EFF', (await sr_staker_0.nodeEffectiveStake(staker_0)).toString());
 
       // We are lowering height to 0 and again mining 2 rounds so values are valid
       await sr_staker_0.manageStake(nonce_0, 0, height_0);
       await mineNBlocks(roundLength * 2);
       const staked_after = await sr_staker_0.stakes(staker_0);
-      await priceOracle.setPrice(24000);
+      // await priceOracle.setPrice(24000);
 
       const withdrawbleStakeAfter = await sr_staker_0.withdrawableStake();
       expect(withdrawbleStakeAfter.gt(withdrawbleStakeBefore)).to.be.true;
