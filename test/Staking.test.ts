@@ -51,10 +51,12 @@ let staker_1: string;
 const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
 const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc99f9f91e915';
 const stakeAmount_1 = '100000000000000000';
-const stakeAmount_1_n = '10000000000000000';
+const stakeAmount_1_n = '100000000000000000';
+const doubled_stakeAmount_1 = '200000000000000000';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
 const height_1 = 0;
+const height_1_n_1 = 1;
 
 const zeroStake = '0';
 const zeroAmount = '0';
@@ -376,6 +378,7 @@ describe('Staking', function () {
 
   describe('stake surplus withdrawl and stake migrate', function () {
     let sr_staker_0: Contract;
+    let sr_staker_1: Contract;
     let updatedBlockNumber: number;
 
     beforeEach(async function () {
@@ -383,6 +386,7 @@ describe('Staking', function () {
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry');
       sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+      sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
       const priceOracle = await ethers.getContract('PriceOracle', deployer);
 
       // Bump up the price so we can test surplus withdrawls
@@ -587,6 +591,43 @@ describe('Staking', function () {
 
       expect(staked_before.potentialStake).to.be.eq(staked_after.potentialStake);
       expect(await token.balanceOf(staker_0)).to.eq(zeroAmount);
+    });
+
+    it('should check effective stakes of node if we increse and decrease height', async function () {
+      // Situation where we have 10 BZZ, then change height to 1 and add 10 more BZZ
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
+      await mineNBlocks(roundLength * 2);
+
+      // We should not be able to withdraw anything
+      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
+      const withdrawableStakeBefore = (await sr_staker_0.withdrawableStake()).toString();
+      expect(withdrawableStakeBefore).to.be.eq('0');
+
+      // We should not be able to withdraw inital stake
+      await sr_staker_0.manageStake(nonce_0, 0, height_0);
+      await mineNBlocks(roundLength * 2);
+      const withdrawableStakeAfter = (await sr_staker_0.withdrawableStake()).toString();
+      expect(withdrawableStakeAfter).to.be.eq(stakeAmount_0);
+
+      // Situation where we have 20 BZZ and 1 height, then change back to 0
+      await mintAndApprove(staker_1, stakeRegistry.address, doubled_stakeAmount_1);
+      await sr_staker_1.manageStake(nonce_1, doubled_stakeAmount_1, height_1_n_1);
+      await mineNBlocks(roundLength * 2);
+      const withdrawableStakeBefore1 = (await sr_staker_1.withdrawableStake()).toString();
+      expect(withdrawableStakeBefore1).to.be.eq('0');
+
+      // // Increase height and check withdrawable stake, should be still 0
+      // await sr_staker_1.manageStake(nonce_1, 0, height_1_n_1);
+
+      // const withdrawableStakeAfter1 = (await sr_staker_1.withdrawableStake()).toString();
+      // expect(withdrawableStakeAfter1).to.be.eq('0');
+
+      // Decrease height and check withdrawable stake, should be 10 BZZ
+      await sr_staker_1.manageStake(nonce_1, 0, height_1);
+      await mineNBlocks(roundLength * 2);
+      const withdrawableStakeAfter2 = (await sr_staker_1.withdrawableStake()).toString();
+      expect(withdrawableStakeAfter2).to.be.eq(stakeAmount_1);
     });
   });
 
