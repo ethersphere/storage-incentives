@@ -433,9 +433,8 @@ describe('Staking', function () {
     });
 
     it('should not allow deposit stake below minimum', async function () {
-      const sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
       await mintAndApprove(staker_1, stakeRegistry.address, stakeAmount_1_n);
-      await expect(sr_staker_1.manageStake(nonce_1, stakeAmount_1_n, height_1)).to.be.revertedWith(
+      await expect(sr_staker_1.manageStake(nonce_1, stakeAmount_1_n, height_1_n_1)).to.be.revertedWith(
         errors.deposit.belowMinimum
       );
     });
@@ -593,8 +592,8 @@ describe('Staking', function () {
       expect(await token.balanceOf(staker_0)).to.eq(zeroAmount);
     });
 
-    it('should check effective stakes of node if we increse and decrease height', async function () {
-      // Situation where we have 10 BZZ, then change height to 1 and add 10 more BZZ
+    it('should check withdrawable stake of node if we increse and decrease height', async function () {
+      // Situation where we have 10 BZZ, then change height to 1 and add 10 more BZZ, then lower height to 0 and withdraw 10
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
       await mineNBlocks(roundLength * 2);
@@ -604,30 +603,46 @@ describe('Staking', function () {
       const withdrawableStakeBefore = (await sr_staker_0.withdrawableStake()).toString();
       expect(withdrawableStakeBefore).to.be.eq('0');
 
-      // We should not be able to withdraw inital stake
+      // We should be able to withdraw inital stake of 10 BZZ
       await sr_staker_0.manageStake(nonce_0, 0, height_0);
       await mineNBlocks(roundLength * 2);
       const withdrawableStakeAfter = (await sr_staker_0.withdrawableStake()).toString();
       expect(withdrawableStakeAfter).to.be.eq(stakeAmount_0);
+    });
 
-      // Situation where we have 20 BZZ and 1 height, then change back to 0
+    it('should check withdrawable stake of node if we decrease height, height starting from 1 ', async function () {
+      // Situation where we have 20 BZZ and 1 height, then change back to 0, and withdrawl should be 10 BZZ
       await mintAndApprove(staker_1, stakeRegistry.address, doubled_stakeAmount_1);
       await sr_staker_1.manageStake(nonce_1, doubled_stakeAmount_1, height_1_n_1);
       await mineNBlocks(roundLength * 2);
       const withdrawableStakeBefore1 = (await sr_staker_1.withdrawableStake()).toString();
       expect(withdrawableStakeBefore1).to.be.eq('0');
 
-      // // Increase height and check withdrawable stake, should be still 0
-      // await sr_staker_1.manageStake(nonce_1, 0, height_1_n_1);
-
-      // const withdrawableStakeAfter1 = (await sr_staker_1.withdrawableStake()).toString();
-      // expect(withdrawableStakeAfter1).to.be.eq('0');
-
       // Decrease height and check withdrawable stake, should be 10 BZZ
       await sr_staker_1.manageStake(nonce_1, 0, height_1);
       await mineNBlocks(roundLength * 2);
       const withdrawableStakeAfter2 = (await sr_staker_1.withdrawableStake()).toString();
       expect(withdrawableStakeAfter2).to.be.eq(stakeAmount_1);
+    });
+
+    it('should check withdrawable stake of node if we increrase then, decrease height, height starting from 0', async function () {
+      // Situation where we have 20 BZZ and 1 height, then change back to 0, and withdrawl should be 10 BZZ
+      await mintAndApprove(staker_1, stakeRegistry.address, doubled_stakeAmount_1);
+      await sr_staker_1.manageStake(nonce_1, doubled_stakeAmount_1, height_1);
+      await mineNBlocks(roundLength * 2);
+      const withdrawableStakeBefore1 = (await sr_staker_1.withdrawableStake()).toString();
+      expect(withdrawableStakeBefore1).to.be.eq('0');
+
+      // Increase height and check withdrawable stake, should be still 0
+      await sr_staker_1.manageStake(nonce_1, 0, height_1_n_1);
+      const withdrawableStakeAfter1 = (await sr_staker_1.withdrawableStake()).toString();
+      expect(withdrawableStakeAfter1).to.be.eq('0');
+
+      // Decrease height and check withdrawable stake, should be 0 BZZ
+      await sr_staker_1.manageStake(nonce_1, 0, height_1);
+      await mineNBlocks(roundLength * 2);
+      const withdrawableStakeAfter2 = (await sr_staker_1.withdrawableStake()).toString();
+      expect(withdrawableStakeAfter2).to.be.eq('0');
     });
   });
 
