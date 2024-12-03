@@ -8,7 +8,7 @@ import "./Util/Signatures.sol";
 import "./interface/IPostageStamp.sol";
 
 interface IPriceOracle {
-    function adjustPrice(uint16 redundancy) external;
+    function adjustPrice(uint16 redundancy) external returns (bool);
 }
 
 interface IStakeRegistry {
@@ -23,6 +23,8 @@ interface IStakeRegistry {
     function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
 
     function overlayOfAddress(address _owner) external view returns (bytes32);
+
+    function heightOfAddress(address _owner) external view returns (uint8);
 
     function nodeEffectiveStake(address _owner) external view returns (uint256);
 }
@@ -64,6 +66,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 overlay;
         address owner;
         bool revealed;
+        uint8 height;
         uint256 stake;
         bytes32 obfuscatedHash;
         uint256 revealIndex;
@@ -181,7 +184,7 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Logs that an overlay has committed
      */
-    event Committed(uint256 roundNumber, bytes32 overlay);
+    event Committed(uint256 roundNumber, bytes32 overlay, uint8 height);
     /**
      * @dev Emit from Postagestamp contract valid chunk count at the end of claim
      */
@@ -191,6 +194,16 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Bytes32 anhor of current reveal round
      */
     event CurrentRevealAnchor(uint256 roundNumber, bytes32 anchor);
+
+    /**
+     * @dev Output external call status
+     */
+    event PriceAdjustmentSkipped(uint16 redundancyCount);
+
+    /**
+     * @dev Withdraw not successful in claim
+     */
+    event WithdrawFailed(address owner);
 
     /**
      * @dev Logs that an overlay has revealed
@@ -281,6 +294,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
+        uint8 _height = Stakes.heightOfAddress(msg.sender);
 
         if (!currentPhaseCommit()) {
             revert NotCommitPhase();
@@ -329,13 +343,14 @@ contract Redistribution is AccessControl, Pausable {
                 overlay: _overlay,
                 owner: msg.sender,
                 revealed: false,
+                height: _height,
                 stake: _stake,
                 obfuscatedHash: _obfuscatedHash,
                 revealIndex: 0
             })
         );
 
-        emit Committed(_roundNumber, _overlay);
+        emit Committed(_roundNumber, _overlay, _height);
     }
 
     /**
@@ -372,9 +387,10 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
         uint256 id = findCommit(_overlay, obfuscatedHash);
         Commit memory revealedCommit = currentCommits[id];
+        uint8 depthResponsibility = _depth - revealedCommit.height;
 
         // Check that commit is in proximity of the current anchor
-        if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, _depth)) {
+        if (!inProximity(revealedCommit.overlay, currentRevealRoundAnchor, depthResponsibility)) {
             revert OutOfDepthReveal(currentRevealRoundAnchor);
         }
         // Check that the commit has not already been revealed
@@ -391,7 +407,7 @@ contract Redistribution is AccessControl, Pausable {
                 owner: revealedCommit.owner,
                 depth: _depth,
                 stake: revealedCommit.stake,
-                stakeDensity: revealedCommit.stake * uint256(2 ** _depth),
+                stakeDensity: revealedCommit.stake * uint256(2 ** depthResponsibility),
                 hash: _hash
             })
         );
@@ -400,7 +416,7 @@ contract Redistribution is AccessControl, Pausable {
             cr,
             revealedCommit.overlay,
             revealedCommit.stake,
-            revealedCommit.stake * uint256(2 ** _depth),
+            revealedCommit.stake * uint256(2 ** depthResponsibility),
             _hash,
             _depth
         );
@@ -465,7 +481,14 @@ contract Redistribution is AccessControl, Pausable {
 
         estimateSize(entryProofLast.proofSegments[0]);
 
-        PostageContract.withdraw(winnerSelected.owner);
+        // Do the check if the withdraw was success
+        (bool success, ) = address(PostageContract).call(
+            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
+        );
+        if (!success) {
+            emit WithdrawFailed(winnerSelected.owner);
+        }
+
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
     }
@@ -549,7 +572,10 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        OracleContract.adjustPrice(uint16(redundancyCount));
+        bool success = OracleContract.adjustPrice(uint16(redundancyCount));
+        if (!success) {
+            emit PriceAdjustmentSkipped(uint16(redundancyCount));
+        }
         currentClaimRound = cr;
     }
 
@@ -802,6 +828,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(_owner);
+        uint8 _depthResponsibility = _depth - Stakes.heightOfAddress(_owner);
 
         if (currentPhaseReveal()) {
             revert WrongPhase();
@@ -815,7 +842,7 @@ contract Redistribution is AccessControl, Pausable {
             revert MustStake2Rounds();
         }
 
-        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth);
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depthResponsibility);
     }
 
     // ----------------------------- Reveal ------------------------------

@@ -28,6 +28,8 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 potentialStake;
         // Block height the stake was updated, also used as flag to check if the stake is set
         uint256 lastUpdatedBlockNumber;
+        // Node indicating its increased reserve
+        uint8 height;
     }
 
     // Associate every stake id with node address data.
@@ -51,14 +53,15 @@ contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- Events ------------------------------
 
     /**
-     * @dev Emitted when a stake is created or updated by `owner` of the `overlay` by `committedStake`, and `potentialStake` during `lastUpdatedBlock`.
+     * @dev Emitted when a stake is created or updated by `owner` of the `overlay`.
      */
     event StakeUpdated(
         address indexed owner,
         uint256 committedStake,
         uint256 potentialStake,
         bytes32 overlay,
-        uint256 lastUpdatedBlock
+        uint256 lastUpdatedBlock,
+        uint8 height
     );
 
     /**
@@ -112,33 +115,48 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
      * @param _setNonce Nonce that was used for overlay calculation.
      * @param _addAmount Deposited amount of ERC20 tokens, equals to added Potential stake value
+     * @param _height increased reserve by registering the number of doublings
      */
-    function manageStake(bytes32 _setNonce, uint256 _addAmount) external whenNotPaused {
+    function manageStake(bytes32 _setNonce, uint256 _addAmount, uint8 _height) external whenNotPaused {
         bytes32 _previousOverlay = stakes[msg.sender].overlay;
         uint256 _stakingSet = stakes[msg.sender].lastUpdatedBlockNumber;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
-        uint256 _addCommittedStake = _addAmount / OracleContract.currentPrice(); // losing some decimals from start 10n16 becomes 99999999999984000
 
-        // First time adding stake, check the minimum is added
-        if (_addAmount < MIN_STAKE && _stakingSet == 0) {
+        // First time adding stake, check the minimum is added, take into account height
+        if (_addAmount < MIN_STAKE * 2 ** _height && _stakingSet == 0) {
             revert BelowMinimumStake();
         }
 
         if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
-        uint256 updatedCommittedStake = stakes[msg.sender].committedStake + _addCommittedStake;
-        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
+
+        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake;
+        uint256 updatedCommittedStake = stakes[msg.sender].committedStake;
+
+        // Only update stake values if _addAmount is greater than 0
+        if (_addAmount > 0) {
+            updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
+            updatedCommittedStake = updatedPotentialStake / (OracleContract.currentPrice() * 2 ** _height);
+        }
 
         stakes[msg.sender] = Stake({
             overlay: _newOverlay,
             committedStake: updatedCommittedStake,
             potentialStake: updatedPotentialStake,
-            lastUpdatedBlockNumber: block.number
+            lastUpdatedBlockNumber: block.number,
+            height: _height
         });
 
         // Transfer tokens and emit event that stake has been updated
         if (_addAmount > 0) {
             if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
-            emit StakeUpdated(msg.sender, updatedCommittedStake, updatedPotentialStake, _newOverlay, block.number);
+            emit StakeUpdated(
+                msg.sender,
+                updatedCommittedStake,
+                updatedPotentialStake,
+                _newOverlay,
+                block.number,
+                _height
+            );
         }
 
         // Emit overlay change event
@@ -153,7 +171,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function withdrawFromStake() external {
         uint256 _potentialStake = stakes[msg.sender].potentialStake;
         uint256 _surplusStake = _potentialStake -
-            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
+            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake, stakes[msg.sender].height);
 
         if (_surplusStake > 0) {
             stakes[msg.sender].potentialStake -= _surplusStake;
@@ -250,7 +268,11 @@ contract StakeRegistry is AccessControl, Pausable {
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
         return
             addressNotFrozen(_owner)
-                ? calculateEffectiveStake(stakes[_owner].committedStake, stakes[_owner].potentialStake)
+                ? calculateEffectiveStake(
+                    stakes[_owner].committedStake,
+                    stakes[_owner].potentialStake,
+                    stakes[_owner].height
+                )
                 : 0;
     }
 
@@ -259,7 +281,9 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function withdrawableStake() public view returns (uint256) {
         uint256 _potentialStake = stakes[msg.sender].potentialStake;
-        return _potentialStake - calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake);
+        return
+            _potentialStake -
+            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake, stakes[msg.sender].height);
     }
 
     /**
@@ -277,12 +301,21 @@ contract StakeRegistry is AccessControl, Pausable {
         return stakes[_owner].overlay;
     }
 
+    /**
+     * @dev Returns the currently height of the address.
+     * @param _owner address of node
+     */
+    function heightOfAddress(address _owner) public view returns (uint8) {
+        return stakes[_owner].height;
+    }
+
     function calculateEffectiveStake(
         uint256 committedStake,
-        uint256 potentialStakeBalance
+        uint256 potentialStakeBalance,
+        uint8 height
     ) internal view returns (uint256) {
         // Calculate the product of committedStake and unitPrice to get price in BZZ
-        uint256 committedStakeBzz = committedStake * OracleContract.currentPrice();
+        uint256 committedStakeBzz = (2 ** height) * committedStake * OracleContract.currentPrice();
 
         // Return the minimum value between committedStakeBzz and potentialStakeBalance
         if (committedStakeBzz < potentialStakeBalance) {
