@@ -15,8 +15,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     const pauserRole = await read('PostageStamp', 'PAUSER_ROLE');
     // await execute('PostageStamp', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
     // await execute('PostageStamp', { from: deployer }, 'grantRole', pauserRole, networkConfig['mainnet'].multisig);
-    // await execute('PriceOracle', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
 
+    await execute('PriceOracle', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
     await execute('StakeRegistry', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
     await execute('Redistribution', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
 
