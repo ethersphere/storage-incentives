@@ -3,28 +3,45 @@ import fs from 'fs';
 import path from 'path';
 
 task('contracts', 'Display contract deployment information')
-  .addParam('target', 'Network type (main or test)')
+  .addParam('target', 'Network type (main, test, local, pretestnet, tenderly)')
   .setAction(async (taskArgs: { target: string }) => {
     const networkType = taskArgs.target.toLowerCase();
 
-    if (networkType !== 'main' && networkType !== 'test') {
-      throw new Error('Network parameter must be either "main" or "test"');
+    const validNetworks = ['main', 'test', 'local', 'pretestnet', 'tenderly'];
+    if (!validNetworks.includes(networkType)) {
+      throw new Error('Network parameter must be one of: ' + validNetworks.join(', '));
     }
 
-    const fileName = networkType === 'main' ? 'mainnet_deployed.json' : 'testnet_deployed.json';
+    const fileNames = {
+      main: 'mainnet_deployed.json',
+      test: 'testnet_deployed.json',
+      local: 'localhost_deployed.json',
+      pretestnet: 'pretestnet_deployed.json',
+      tenderly: 'tenderly_deployed.json',
+    };
+
+    const fileName = fileNames[networkType as keyof typeof fileNames];
 
     // Read JSON file
     const filePath = path.join(__dirname, '..', fileName);
-    const fileContent = fs.readFileSync(filePath, 'utf8');
-    const deploymentData = JSON.parse(fileContent);
 
-    // Extract and display contract information
-    console.log(`\nDeployed Contracts (${networkType})`);
-    console.log('========================');
+    try {
+      const fileContent = fs.readFileSync(filePath, 'utf8');
+      const deploymentData = JSON.parse(fileContent);
 
-    Object.entries(deploymentData.contracts).forEach(([name, data]: [string, any]) => {
-      console.log(`\n${name}:`);
-      console.log(`Address: ${data.address}`);
-      console.log(`Explorer: ${data.url}`);
-    });
+      // Extract and display contract information
+      console.log(`\nDeployed Contracts (${networkType})`);
+      console.log('========================');
+
+      Object.entries(deploymentData.contracts).forEach(([name, data]: [string, any]) => {
+        console.log(`\n${name}:`);
+        console.log(`Address: ${data.address}`);
+        console.log(`Explorer: ${data.url}`);
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        console.error(`Error: Could not read or parse ${fileName}`);
+        console.error(`Details: ${error.message}`);
+      }
+    }
   });

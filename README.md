@@ -177,6 +177,15 @@ Feel free to use public RPCs but if you want extra security and speed, feel free
   - **Network**: Configure network name
   - **Script**: Configure script name and path
 
+#### Tasks
+
+To run hardhat task put in CLI
+
+npx hardhat (hh) contracts --target main
+hh compare --source main --target test
+
+There are 4 tasks currently copyBatch, signatures, contracts and compare
+
 ## Releasing
 
 To release a new rc version, tag the commit with the `-rcX` suffix, where `X` is the release candidate number.
