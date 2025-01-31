@@ -15,7 +15,7 @@ interface NetworkDeployment {
 }
 
 const ETHERSCAN_URLS = {
-  mainnet: 'https://etherscan.io/address/',
+  mainnet: 'https://gnosisscan.io/address/',
   sepolia: 'https://sepolia.etherscan.io/address/',
 };
 

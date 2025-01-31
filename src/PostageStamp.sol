@@ -75,6 +75,8 @@ contract PostageStamp is AccessControl, Pausable {
     struct Batch {
         // Owner of this batch (0 if not valid).
         address owner;
+        // Creator of the batch, node that created the batch.
+        address creator;
         // Current depth of this batch.
         uint8 depth;
         // Bucket depth defined in this batch
@@ -90,6 +92,7 @@ contract PostageStamp is AccessControl, Pausable {
     struct ImportBatch {
         bytes32 batchId;
         address owner;
+        address creator;
         uint8 depth;
         uint8 bucketDepth;
         bool immutableFlag;
@@ -106,6 +109,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 totalAmount,
         uint256 normalisedBalance,
         address owner,
+        address creator,
         uint8 depth,
         uint8 bucketDepth,
         bool immutableFlag
@@ -180,7 +184,8 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Create a new batch.
      * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20 token contract.
-     * @param _owner Owner of the new batch.
+     * @param _owner Owner of the new batch, can be same as creator if node is owner
+     * @param _creator Node that created the new batch.
      * @param _initialBalancePerChunk Initial balance per chunk.
      * @param _depth Initial depth of the new batch.
      * @param _nonce A random value used in the batch id derivation to allow multiple batches per owner.
@@ -188,6 +193,7 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function createBatch(
         address _owner,
+        address _creator,
         uint256 _initialBalancePerChunk,
         uint8 _depth,
         uint8 _bucketDepth,
@@ -202,7 +208,7 @@ contract PostageStamp is AccessControl, Pausable {
             revert InvalidDepth();
         }
 
-        bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
+        bytes32 batchId = keccak256(abi.encode(_owner, _nonce));
         if (batches[batchId].owner != address(0)) {
             revert BatchExists();
         }
@@ -212,6 +218,7 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
+        // We keep msg.sender as tokens can be transfered through smart contract from the owner
         if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount)) {
             revert TransferFailed();
         }
@@ -226,6 +233,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         batches[batchId] = Batch({
             owner: _owner,
+            creator: _creator,
             depth: _depth,
             bucketDepth: _bucketDepth,
             immutableFlag: _immutable,
@@ -235,7 +243,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         tree.insert(batchId, normalisedBalance);
 
-        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _creator, _depth, _bucketDepth, _immutable);
 
         return batchId;
     }
@@ -243,7 +251,8 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Manually create a new batch when facilitating migration, can only be called by the Admin role.
      * @dev At least `_initialBalancePerChunk*2^depth` tokens must be approved in the ERC20 token contract.
-     * @param _owner Owner of the new batch.
+     * @param _owner Owner of the new batch, can be same as creator if node is owner
+     * @param _creator Node that created the new batch.
      * @param _initialBalancePerChunk Initial balance per chunk of the batch.
      * @param _depth Initial depth of the new batch.
      * @param _batchId BatchId being copied (from previous version contract data).
@@ -251,6 +260,7 @@ contract PostageStamp is AccessControl, Pausable {
      */
     function copyBatch(
         address _owner,
+        address _creator,
         uint256 _initialBalancePerChunk,
         uint8 _depth,
         uint8 _bucketDepth,
@@ -286,6 +296,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         batches[_batchId] = Batch({
             owner: _owner,
+            creator: _creator,
             depth: _depth,
             bucketDepth: _bucketDepth,
             immutableFlag: _immutable,
@@ -295,7 +306,7 @@ contract PostageStamp is AccessControl, Pausable {
 
         tree.insert(_batchId, normalisedBalance);
 
-        emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+        emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _creator, _depth, _bucketDepth, _immutable);
     }
 
     /**
@@ -313,6 +324,7 @@ contract PostageStamp is AccessControl, Pausable {
             try
                 this.copyBatch(
                     _batch.owner,
+                    _batch.creator,
                     _batch.remainingBalance,
                     _batch.depth,
                     _batch.bucketDepth,
@@ -618,6 +630,10 @@ contract PostageStamp is AccessControl, Pausable {
 
     function batchOwner(bytes32 _batchId) public view returns (address) {
         return batches[_batchId].owner;
+    }
+
+    function batchCreator(bytes32 _batchId) public view returns (address) {
+        return batches[_batchId].creator;
     }
 
     function batchDepth(bytes32 _batchId) public view returns (uint8) {
