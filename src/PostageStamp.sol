@@ -218,7 +218,7 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
-        // We keep msg.sender as tokens can be transfered through smart contract from the owner
+        // We keep msg.sender as tokens can be transfered through proxy such as LIFI smart contract from the owner
         if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), totalAmount)) {
             revert TransferFailed();
         }
@@ -389,7 +389,7 @@ contract PostageStamp is AccessControl, Pausable {
     function increaseDepth(bytes32 _batchId, uint8 _newDepth) external whenNotPaused {
         Batch memory batch = batches[_batchId];
 
-        if (batch.owner != msg.sender) {
+        if (batch.creator != msg.sender) {
             revert NotBatchOwner();
         }
 
