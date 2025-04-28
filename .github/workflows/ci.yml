@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: ${{env.NODEJS_VERSION}}
 
-      - uses: c-hive/gha-yarn-cache@v1 # Restore the yarn cache.
+      - uses: actions/cache@v4
 
       - name: Yarn install
         run: yarn install
