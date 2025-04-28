@@ -136,10 +136,10 @@ contract StakeRegistry is AccessControl, Pausable {
         // Only update stake values if _addAmount is greater than 0
         if (_addAmount > 0) {
             updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
-            
+
             // Calculate new committed stake
             uint256 newCommittedStake = updatedPotentialStake / (OracleContract.currentPrice() * 2 ** _height);
-            
+
             // Never allow commitment to decrease
             if (newCommittedStake > previousCommittedStake) {
                 updatedCommittedStake = newCommittedStake;
