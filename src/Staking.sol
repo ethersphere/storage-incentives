@@ -92,6 +92,7 @@ contract StakeRegistry is AccessControl, Pausable {
     error OnlyRedistributor(); // Used when only the redistributor role is allowed
     error OnlyPauser(); // Used when only the pauser role is allowed
     error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
+    error DecreasedCommitment(); // When new commitment would be lower than previous one
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -128,7 +129,7 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
-        // Set current values
+        // Set current values, used also when changing overlay
         uint256 updatedPotentialStake = stakes[msg.sender].potentialStake;
         uint256 updatedCommittedStake = stakes[msg.sender].committedStake;
         uint256 previousCommittedStake = updatedCommittedStake;
@@ -141,13 +142,11 @@ contract StakeRegistry is AccessControl, Pausable {
             uint256 newCommittedStake = updatedPotentialStake / (OracleContract.currentPrice() * 2 ** _height);
 
             // Never allow commitment to decrease
-            if (newCommittedStake > previousCommittedStake) {
-                updatedCommittedStake = newCommittedStake;
+            if (newCommittedStake < previousCommittedStake) {
+                revert DecreasedCommitment();
             }
-            // If no previous stake (first time), use new value
-            else if (_stakingSet == 0) {
-                updatedCommittedStake = newCommittedStake;
-            }
+
+            updatedCommittedStake = newCommittedStake;
         }
 
         stakes[msg.sender] = Stake({
