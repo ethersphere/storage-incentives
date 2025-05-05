@@ -690,7 +690,7 @@ describe('Staking', function () {
       await deployments.fixture();
       token = await ethers.getContract('TestToken', deployer);
       stakeRegistry = await ethers.getContract('StakeRegistry', staker_0);
-      
+
       // Set up initial stake with height 0 (lower height)
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0);
@@ -700,10 +700,11 @@ describe('Staking', function () {
       // Try to manipulate the committed stake by increasing the height parameter
       // This will decrease the committedStake value because of the larger divisor
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
-      
+
       // This would decrease the committedStake due to larger height divisor
-      await expect(stakeRegistry.manageStake(nonce_0, updateStakeAmount_0, height_0_n_1))
-        .to.be.revertedWith(errors.commitment.decrease);
+      await expect(stakeRegistry.manageStake(nonce_0, updateStakeAmount_0, height_0_n_1)).to.be.revertedWith(
+        errors.commitment.decrease
+      );
     });
   });
 });
