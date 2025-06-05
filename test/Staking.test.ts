@@ -32,6 +32,9 @@ const errors = {
     notCurrentlyPaused: 'Pausable: not paused',
     onlyPauseCanUnPause: 'OnlyPauser()',
   },
+  commitment: {
+    decrease: 'DecreasedCommitment()',
+  },
 };
 
 let staker_0: string;
@@ -679,6 +682,29 @@ describe('Staking', function () {
       await sr_staker_1.manageStake(nonce_1, zeroStake, height_1);
       const old_overlay = await sr_staker_1.overlayOfAddress(staker_1);
       expect(old_overlay).to.be.eq(overlay_1);
+    });
+  });
+
+  describe('commitment protection', function () {
+    beforeEach(async function () {
+      await deployments.fixture();
+      token = await ethers.getContract('TestToken', deployer);
+      stakeRegistry = await ethers.getContract('StakeRegistry', staker_0);
+
+      // Set up initial stake with height 0 (lower height)
+      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
+      await stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0);
+    });
+
+    it('should prevent decreasing commitment by increasing height', async function () {
+      // Try to manipulate the committed stake by increasing the height parameter
+      // This will decrease the committedStake value because of the larger divisor
+      await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
+
+      // This would decrease the committedStake due to larger height divisor
+      await expect(stakeRegistry.manageStake(nonce_0, updateStakeAmount_0, height_0_n_1)).to.be.revertedWith(
+        errors.commitment.decrease
+      );
     });
   });
 });
