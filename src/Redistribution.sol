@@ -368,16 +368,19 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
-        if (_depth < currentMinimumDepth()) {
-            revert OutOfDepth();
+        // 1. Check round validity first (cheapest)
+        if (cr != currentCommitRound) {
+            revert NoCommitsReceived();
         }
 
+        // 2. Check phase within the round (more expensive)
         if (!currentPhaseReveal()) {
             revert NotRevealPhase();
         }
 
-        if (cr != currentCommitRound) {
-            revert NoCommitsReceived();
+        // 3. Check application-specific requirements (last)
+        if (_depth < currentMinimumDepth()) {
+            revert OutOfDepth();
         }
 
         if (cr != currentRevealRound) {
