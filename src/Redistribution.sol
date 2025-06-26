@@ -296,13 +296,17 @@ contract Redistribution is AccessControl, Pausable {
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
         uint8 _height = Stakes.heightOfAddress(msg.sender);
 
-        if (!currentPhaseCommit()) {
-            revert NotCommitPhase();
-        }
-        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) {
-            revert PhaseLastBlock();
+        // 1. Check basic eligibility first (cheapest check)
+        if (_lastUpdate == 0) {
+            revert NotStaked();
         }
 
+        // 2. Check staking duration requirement (simple arithmetic)
+        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
+            revert MustStake2Rounds();
+        }
+
+        // 3. Check round number validity (simple comparisons)
         if (cr > _roundNumber) {
             revert CommitRoundOver();
         }
@@ -311,12 +315,13 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (_lastUpdate == 0) {
-            revert NotStaked();
+        // 4. Check phase within the round (more expensive modulo operations)
+        if (!currentPhaseCommit()) {
+            revert NotCommitPhase();
         }
 
-        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
-            revert MustStake2Rounds();
+        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) {
+            revert PhaseLastBlock();
         }
 
         // if we are in a new commit phase, reset the array of commits and
