@@ -7,17 +7,27 @@ task('sigs', 'Generate ABI signatures for errors and functions')
     // If 'f' is not defined, use the value of 'c' for it
     const fileName = taskArgs.f || taskArgs.c;
 
-    // Load the contract ABI based on the contract name
-    const ABI = (await import(`../artifacts/src/${fileName}.sol/${taskArgs.c}.json`)).abi;
+    try {
+      // Load the contract ABI based on the contract name
+      const ABI = (await import(`../artifacts/src/${fileName}.sol/${taskArgs.c}.json`)).abi;
 
-    const prepareData = (e: { name: string; inputs: { type: string }[] }) =>
-      `${e.name}(${e.inputs.map((param) => param.type)})`;
-    const encodeSelector = (f: string) => ethers.utils.id(f).slice(0, 10);
+      const prepareData = (e: { name: string; inputs: { type: string }[] }) =>
+        `${e.name}(${e.inputs.map((param) => param.type)})`;
+      const encodeSelector = (f: string) => ethers.utils.id(f).slice(0, 10);
 
-    // Parse ABI
-    const output = ABI.filter((e: any) => ['function', 'error'].includes(e.type)).flatMap(
-      (e: any) => `${encodeSelector(prepareData(e))}: ${prepareData(e)}`
-    );
+      // Parse ABI - show only errors
+      const output = ABI.filter((e: any) => ['error'].includes(e.type)).flatMap(
+        (e: any) => `${encodeSelector(prepareData(e))}: ${prepareData(e)}`
+      );
 
-    console.log(output);
+      if (output.length === 0) {
+        console.log('No errors found in the contract ABI');
+      } else {
+        console.log('Error signatures:');
+        output.forEach((sig: string) => console.log(sig));
+      }
+    } catch (error) {
+      console.error(`Error loading contract ABI: ${error}`);
+      console.log(`Expected path: artifacts/src/${fileName}.sol/${taskArgs.c}.json`);
+    }
   });
