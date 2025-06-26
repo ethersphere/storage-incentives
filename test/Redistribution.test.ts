@@ -669,7 +669,7 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
-        
+
         // First make a commit so we can test phase validation
         const currentRound = await r_node_0.currentRound();
         await r_node_0.commit(obfuscatedHash_0, currentRound);
@@ -687,7 +687,7 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseReveal()).to.be.false;
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
-        
+
         // First make a commit so we can test phase validation
         const currentRound = await r_node_0.currentRound();
         await r_node_0.commit(obfuscatedHash_0, currentRound);
