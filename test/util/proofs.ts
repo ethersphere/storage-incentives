@@ -431,6 +431,7 @@ export async function setWitnesses(
   const anchorHash = hexlify(anchor).slice(2, 10); // Use first 8 chars of anchor hex
   const uniqueSuffix = `${suffix}-${anchorHash}-d${depth}${socType ? '-soc' : ''}`;
   
+  // First try to load with the new naming pattern
   try {
     const witnesses = loadWitnesses(uniqueSuffix);
     // Validate that loaded witnesses are still valid for this anchor and depth
@@ -440,7 +441,19 @@ export async function setWitnesses(
     // If validation fails, regenerate witnesses
     console.log(`Cached witnesses invalid for anchor ${hexlify(anchor)}, regenerating...`);
   } catch (e) {
-    // File doesn't exist, continue to generate new witnesses
+    // File doesn't exist with new naming, try old naming pattern for backward compatibility
+    try {
+      const witnesses = loadWitnesses(suffix);
+      // Validate that loaded witnesses are still valid for this anchor and depth
+      if (validateWitnessesForAnchor(witnesses, anchor, depth)) {
+        console.log(`Using backward compatible cache for ${suffix}`);
+        return witnesses;
+      }
+      // If validation fails, regenerate witnesses
+      console.log(`Legacy cached witnesses invalid for anchor ${hexlify(anchor)}, regenerating...`);
+    } catch (e2) {
+      // Neither new nor old naming pattern exists, continue to generate new witnesses
+    }
   }
   
   const witnessChunks = await mineWitnesses(anchor, Number(depth), socType);
