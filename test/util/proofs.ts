@@ -446,7 +446,6 @@ export async function setWitnesses(
       const witnesses = loadWitnesses(suffix);
       // Validate that loaded witnesses are still valid for this anchor and depth
       if (validateWitnessesForAnchor(witnesses, anchor, depth)) {
-        console.log(`Using backward compatible cache for ${suffix}`);
         return witnesses;
       }
       // If validation fails, regenerate witnesses
