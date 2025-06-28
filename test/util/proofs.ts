@@ -427,13 +427,88 @@ export async function setWitnesses(
   depth: number,
   socType = false
 ): Promise<WitnessData[]> {
+  // Create a unique filename that includes anchor hash to avoid cache conflicts
+  const anchorHash = hexlify(anchor).slice(2, 10); // Use first 8 chars of anchor hex
+  const uniqueSuffix = `${suffix}-${anchorHash}-d${depth}${socType ? '-soc' : ''}`;
+  
   try {
-    return loadWitnesses(suffix);
+    const witnesses = loadWitnesses(uniqueSuffix);
+    // Validate that loaded witnesses are still valid for this anchor and depth
+    if (validateWitnessesForAnchor(witnesses, anchor, depth)) {
+      return witnesses;
+    }
+    // If validation fails, regenerate witnesses
+    console.log(`Cached witnesses invalid for anchor ${hexlify(anchor)}, regenerating...`);
   } catch (e) {
-    const witnessChunks = await mineWitnesses(anchor, Number(depth), socType);
-    saveWitnesses(witnessChunks, suffix);
+    // File doesn't exist, continue to generate new witnesses
+  }
+  
+  const witnessChunks = await mineWitnesses(anchor, Number(depth), socType);
+  saveWitnesses(witnessChunks, uniqueSuffix);
+  
+  // Cleanup old witness files to prevent directory bloat
+  cleanupOldWitnessFiles(suffix);
 
-    return witnessChunks;
+  return witnessChunks;
+}
+
+/**
+ * Validates that cached witnesses are still valid for the given anchor and depth
+ */
+function validateWitnessesForAnchor(witnesses: WitnessData[], anchor: Uint8Array, depth: number): boolean {
+  // Check a few random witnesses to ensure they're valid for this anchor
+  const samplesToCheck = Math.min(3, witnesses.length);
+  for (let i = 0; i < samplesToCheck; i++) {
+    const witness = witnesses[i];
+    const nonceBuf = numberToArray(witness.nonce);
+    const expectedTransformedAddress = calculateTransformedAddress(nonceBuf, anchor);
+    
+    // Check if transformed address matches
+    if (!equalBytes(expectedTransformedAddress, witness.transformedAddress)) {
+      return false;
+    }
+    
+    // Check if witness satisfies the depth requirement
+    const ogChunkAddress = makeChunk(nonceBuf).address();
+    if (!tAddressAcceptance(ogChunkAddress, witness.transformedAddress, anchor, depth)) {
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
+ * Cleanup old witness files to prevent directory bloat
+ * Keeps only the most recent 50 files per prefix
+ */
+function cleanupOldWitnessFiles(prefix: string) {
+  try {
+    const witnessDir = path.join(__dirname, '..', 'mined-witnesses');
+    const files = fs.readdirSync(witnessDir);
+    
+    // Filter files that match the prefix pattern
+    const matchingFiles = files
+      .filter(file => file.startsWith(prefix) && file.endsWith('.json'))
+      .map(file => ({
+        name: file,
+        path: path.join(witnessDir, file),
+        stats: fs.statSync(path.join(witnessDir, file))
+      }))
+      .sort((a, b) => b.stats.mtime.getTime() - a.stats.mtime.getTime()); // Sort by modification time, newest first
+    
+    // Keep only the 50 most recent files, delete the rest
+    const filesToDelete = matchingFiles.slice(50);
+    for (const file of filesToDelete) {
+      try {
+        fs.unlinkSync(file.path);
+        console.log(`Cleaned up old witness file: ${file.name}`);
+      } catch (e) {
+        // Ignore errors during cleanup
+      }
+    }
+  } catch (e) {
+    // Ignore errors during cleanup
   }
 }
 
