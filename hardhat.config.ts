@@ -164,7 +164,7 @@ const config: HardhatUserConfig = {
       deploy: ['deploy/local/'],
     },
     testnetlight: {
-      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://1rpc.io/sepolia',
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://0xrpc.io/sep',
       accounts,
       chainId: 11155111,
       deploy: ['deploy/test/'],

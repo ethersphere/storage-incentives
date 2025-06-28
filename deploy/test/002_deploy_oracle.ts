@@ -2,10 +2,15 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { deploy, get, read, execute, log } = deployments;
+  const { deploy, get, read, execute, log, getOrNull } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const oldOraclePrice = await read('PriceOracle', 'currentPrice');
+  // Check if PriceOracle already exists to preserve its price
+  const existingOracle = await getOrNull('PriceOracle');
+  let oldOraclePrice;
+  if (existingOracle) {
+    oldOraclePrice = await read('PriceOracle', 'currentPrice');
+  }
 
   const args = [(await get('PostageStamp')).address];
   await deploy('PriceOracle', {
@@ -15,7 +20,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
   });
 
-  await execute('PriceOracle', { from: deployer }, 'setPrice', oldOraclePrice);
+  // Only set the old price if there was an existing deployment
+  if (existingOracle && oldOraclePrice) {
+    await execute('PriceOracle', { from: deployer }, 'setPrice', oldOraclePrice);
+  }
 
   log('----------------------------------------------------');
 };
