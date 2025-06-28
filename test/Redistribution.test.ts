@@ -670,6 +670,10 @@ describe('Redistribution', function () {
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
 
+        // First make a commit so we can test phase validation
+        const currentRound = await r_node_0.currentRound();
+        await r_node_0.commit(obfuscatedHash_0, currentRound);
+
         await expect(r_node_0.reveal(depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
           errors.reveal.notInReveal
         );
@@ -683,6 +687,10 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseReveal()).to.be.false;
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
+
+        // First make a commit so we can test phase validation
+        const currentRound = await r_node_0.currentRound();
+        await r_node_0.commit(obfuscatedHash_0, currentRound);
 
         await mineNBlocks(phaseLength * 2);
         expect(await redistribution.currentPhaseClaim()).to.be.true;

@@ -296,11 +296,12 @@ contract Redistribution is AccessControl, Pausable {
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
         uint8 _height = Stakes.heightOfAddress(msg.sender);
 
-        if (!currentPhaseCommit()) {
-            revert NotCommitPhase();
+        if (_lastUpdate == 0) {
+            revert NotStaked();
         }
-        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) {
-            revert PhaseLastBlock();
+
+        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
+            revert MustStake2Rounds();
         }
 
         if (cr > _roundNumber) {
@@ -311,12 +312,12 @@ contract Redistribution is AccessControl, Pausable {
             revert CommitRoundNotStarted();
         }
 
-        if (_lastUpdate == 0) {
-            revert NotStaked();
+        if (!currentPhaseCommit()) {
+            revert NotCommitPhase();
         }
 
-        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
-            revert MustStake2Rounds();
+        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) {
+            revert PhaseLastBlock();
         }
 
         // if we are in a new commit phase, reset the array of commits and
@@ -363,16 +364,16 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
-        if (_depth < currentMinimumDepth()) {
-            revert OutOfDepth();
+        if (cr != currentCommitRound) {
+            revert NoCommitsReceived();
         }
 
         if (!currentPhaseReveal()) {
             revert NotRevealPhase();
         }
 
-        if (cr != currentCommitRound) {
-            revert NoCommitsReceived();
+        if (_depth < currentMinimumDepth()) {
+            revert OutOfDepth();
         }
 
         if (cr != currentRevealRound) {
