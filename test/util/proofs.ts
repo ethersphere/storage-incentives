@@ -391,7 +391,6 @@ export function loadWitnesses(filename: string): WitnessData[] {
 }
 
 export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
-  console.log('save witnesses');
   fs.writeFileSync(
     path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`),
     JSON.stringify(
@@ -427,20 +426,117 @@ export async function setWitnesses(
   depth: number,
   socType = false
 ): Promise<WitnessData[]> {
-  // Always try to use existing cached witnesses first
-  try {
-    const witnesses = loadWitnesses(suffix);
-    // Check if cached witnesses satisfy the requirements for this anchor and depth
-    if (validateWitnessesForCurrentAnchor(witnesses, anchor, depth)) {
-      return witnesses;
+  // For SOC witnesses, try specific SOC files first
+  if (socType) {
+    try {
+      const socWitnesses = loadWitnesses('claim-pot-soc');
+      if (socWitnesses.length >= WITNESS_COUNT) {
+        return socWitnesses.slice(0, WITNESS_COUNT);
+      }
+    } catch (e) {
+      // Fall through to try anchor-specific SOC files
     }
-    // If validation fails, we need to generate new witnesses
-    console.log(`Cached witnesses don't satisfy requirements for current anchor/depth, regenerating...`);
-  } catch (e) {
-    // No cached witnesses exist
+    
+    try {
+      const anchorHash = hexlify(anchor).slice(2, 10);
+      const socWitnesses = loadWitnesses(`claim-pot-soc-${anchorHash}-d${depth}-soc`);
+      if (socWitnesses.length >= WITNESS_COUNT) {
+        return socWitnesses.slice(0, WITNESS_COUNT);
+      }
+    } catch (e) {
+      // Fall through to generation
+    }
   }
+
+  // For regular CAC witnesses, reuse nonces from pre-mined witnesses
+  // The key insight: we can reuse the proven nonces but need to recalculate transformedAddress for current anchor
+  if (!socType) {
+    // Create a pool of candidate nonces from multiple pre-mined files
+    const candidateNonces: number[] = [];
+    
+    // For depth 0, collect nonces from files that work well
+    const sourceFiles = depth === 0 
+      ? [46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65]
+      : Array.from({length: 50}, (_, i) => i); // For other depths, try first 50 files
+    
+    // Collect nonces from multiple files to create a large candidate pool
+    for (const fileIndex of sourceFiles) {
+      try {
+        const preminedWitnesses = loadWitnesses(`stats-${fileIndex.toString().padStart(3, '0')}`);
+        if (preminedWitnesses.length > 0 && !preminedWitnesses[0].socProofAttached) {
+          for (const witness of preminedWitnesses) {
+            candidateNonces.push(witness.nonce);
+          }
+        }
+      } catch (e) {
+        // File doesn't exist, continue
+      }
+    }
+    
+    // Now try to create witnesses from the candidate pool
+    if (candidateNonces.length > 0) {
+      const reusedWitnesses: WitnessData[] = [];
+      
+      for (const nonce of candidateNonces) {
+        if (reusedWitnesses.length >= WITNESS_COUNT) break;
+        
+        const nonceBuf = numberToArray(nonce);
+        const newTransformedAddress = calculateTransformedAddress(nonceBuf, anchor);
+        
+        // Validate that this witness works with current anchor and depth
+        const ogChunk = makeChunk(nonceBuf);
+        const ogAddress = ogChunk.address();
+        
+        if (tAddressAcceptance(ogAddress, newTransformedAddress, anchor, depth) &&
+            reserveSizeEstimationAcceptance(newTransformedAddress)) {
+          reusedWitnesses.push({
+            nonce: nonce,
+            transformedAddress: newTransformedAddress
+          });
+        }
+      }
+      
+      // If we have enough valid witnesses, return them
+      if (reusedWitnesses.length >= WITNESS_COUNT) {
+        return sortWitnesses(reusedWitnesses);
+      }
+    }
+     
+     // Try the specific suffix requested as fallback
+     try {
+       const witnesses = loadWitnesses(suffix);
+       if (witnesses.length >= WITNESS_COUNT && !witnesses[0].socProofAttached) {
+         // Try to reuse these witnesses with current anchor
+         const reusedWitnesses: WitnessData[] = [];
+         
+         for (let j = 0; j < Math.min(WITNESS_COUNT, witnesses.length); j++) {
+           const witness = witnesses[j];
+           const nonceBuf = numberToArray(witness.nonce);
+           const newTransformedAddress = calculateTransformedAddress(nonceBuf, anchor);
+           
+           const ogChunk = makeChunk(nonceBuf);
+           const ogAddress = ogChunk.address();
+           
+           if (tAddressAcceptance(ogAddress, newTransformedAddress, anchor, depth) &&
+               reserveSizeEstimationAcceptance(newTransformedAddress)) {
+             reusedWitnesses.push({
+               nonce: witness.nonce,
+               transformedAddress: newTransformedAddress
+             });
+           }
+         }
+         
+         if (reusedWitnesses.length >= WITNESS_COUNT) {
+           return sortWitnesses(reusedWitnesses);
+         }
+       }
+     } catch (e) {
+       // File doesn't exist
+     }
+   }
   
-  // Generate new witnesses
+  // If no suitable pre-mined witnesses found, generate new ones
+  console.log(`Mining new witnesses for ${socType ? 'SOC' : 'CAC'} type...`);
   const witnessChunks = await mineWitnesses(anchor, Number(depth), socType);
   
   // Save with anchor-aware naming to avoid future conflicts
@@ -452,30 +548,6 @@ export async function setWitnesses(
   cleanupOldWitnessFiles(suffix);
 
   return witnessChunks;
-}
-
-/**
- * Validates that cached witnesses satisfy the requirements for the current anchor and depth
- * This checks the actual requirements (proximity, reserve estimation) rather than exact anchor matching
- */
-function validateWitnessesForCurrentAnchor(witnesses: WitnessData[], anchor: Uint8Array, depth: number): boolean {
-  // Check that we have enough witnesses
-  if (witnesses.length < WITNESS_COUNT) {
-    return false;
-  }
-  
-  // Check that witnesses satisfy the proximity and reserve estimation requirements
-  for (const witness of witnesses) {
-    const nonceBuf = numberToArray(witness.nonce);
-    const ogChunkAddress = makeChunk(nonceBuf).address();
-    
-    // Check if this witness satisfies the requirements for the current anchor and depth
-    if (!tAddressAcceptance(ogChunkAddress, witness.transformedAddress, anchor, depth)) {
-      return false;
-    }
-  }
-  
-  return true;
 }
 
 /**

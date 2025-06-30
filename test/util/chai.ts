@@ -3,4 +3,5 @@ import { chaiEthers } from 'chai-ethers';
 
 chaiModule.use(chaiEthers);
 
-export = chaiModule;
+export const expect = chaiModule.expect;
+export default chaiModule;
