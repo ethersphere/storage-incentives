@@ -106,6 +106,11 @@ contract Redistribution is AccessControl, Pausable {
         bytes signature;
         bytes32 identifier; //
         bytes32 chunkAddr; // wrapped chunk address
+        SOCDispersedParams[] dispersedParams; // either with length 1 or 0
+    }
+
+    struct SOCDispersedParams {
+        uint8 nonce; // hashed with SOC address
     }
 
     struct PostageProof {
@@ -1052,10 +1057,11 @@ contract Redistribution is AccessControl, Pausable {
             revert SocVerificationFailed(entryProof.socProof[0].chunkAddr);
         }
 
-        if (
-            calculateSocAddress(entryProof.socProof[0].identifier, entryProof.socProof[0].signer) !=
-            entryProof.proveSegment
-        ) {
+        socAddress = calculateSocAddress(entryProof.socProof[0].identifier, entryProof.socProof[0].signer);
+        if (entryProof.socProof[0].dispersedParams.length > 0) {
+            socAddress = calculateDispersedSocAddress(socAddress, entryProof.socProof[0].dispersedParams[0]);
+        }
+        if (socAddress != entryProof.proveSegment) {
             revert SocCalcNotMatching(entryProof.socProof[0].chunkAddr);
         }
     }
@@ -1119,6 +1125,10 @@ contract Redistribution is AccessControl, Pausable {
 
     function calculateSocAddress(bytes32 identifier, address signer) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(identifier, signer));
+    }
+
+    function calculateDispersedSocAddress(bytes32 socAddress, uint8 nonce) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(nonce, socAddress));
     }
 
     function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
