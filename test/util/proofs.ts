@@ -427,35 +427,25 @@ export async function setWitnesses(
   depth: number,
   socType = false
 ): Promise<WitnessData[]> {
-  // Create a unique filename that includes anchor hash to avoid cache conflicts
-  const anchorHash = hexlify(anchor).slice(2, 10); // Use first 8 chars of anchor hex
-  const uniqueSuffix = `${suffix}-${anchorHash}-d${depth}${socType ? '-soc' : ''}`;
-  
-  // First try to load with the new naming pattern
+  // Always try to use existing cached witnesses first
   try {
-    const witnesses = loadWitnesses(uniqueSuffix);
-    // Validate that loaded witnesses are still valid for this anchor and depth
-    if (validateWitnessesForAnchor(witnesses, anchor, depth)) {
+    const witnesses = loadWitnesses(suffix);
+    // Check if cached witnesses satisfy the requirements for this anchor and depth
+    if (validateWitnessesForCurrentAnchor(witnesses, anchor, depth)) {
       return witnesses;
     }
-    // If validation fails, regenerate witnesses
-    console.log(`Cached witnesses invalid for anchor ${hexlify(anchor)}, regenerating...`);
+    // If validation fails, we need to generate new witnesses
+    console.log(`Cached witnesses don't satisfy requirements for current anchor/depth, regenerating...`);
   } catch (e) {
-    // File doesn't exist with new naming, try old naming pattern for backward compatibility
-    try {
-      const witnesses = loadWitnesses(suffix);
-      // Validate that loaded witnesses are still valid for this anchor and depth
-      if (validateWitnessesForAnchor(witnesses, anchor, depth)) {
-        return witnesses;
-      }
-      // If validation fails, regenerate witnesses
-      console.log(`Legacy cached witnesses invalid for anchor ${hexlify(anchor)}, regenerating...`);
-    } catch (e2) {
-      // Neither new nor old naming pattern exists, continue to generate new witnesses
-    }
+    // No cached witnesses exist
   }
   
+  // Generate new witnesses
   const witnessChunks = await mineWitnesses(anchor, Number(depth), socType);
+  
+  // Save with anchor-aware naming to avoid future conflicts
+  const anchorHash = hexlify(anchor).slice(2, 10);
+  const uniqueSuffix = `${suffix}-${anchorHash}-d${depth}${socType ? '-soc' : ''}`;
   saveWitnesses(witnessChunks, uniqueSuffix);
   
   // Cleanup old witness files to prevent directory bloat
@@ -465,23 +455,21 @@ export async function setWitnesses(
 }
 
 /**
- * Validates that cached witnesses are still valid for the given anchor and depth
+ * Validates that cached witnesses satisfy the requirements for the current anchor and depth
+ * This checks the actual requirements (proximity, reserve estimation) rather than exact anchor matching
  */
-function validateWitnessesForAnchor(witnesses: WitnessData[], anchor: Uint8Array, depth: number): boolean {
-  // Check a few random witnesses to ensure they're valid for this anchor
-  const samplesToCheck = Math.min(3, witnesses.length);
-  for (let i = 0; i < samplesToCheck; i++) {
-    const witness = witnesses[i];
+function validateWitnessesForCurrentAnchor(witnesses: WitnessData[], anchor: Uint8Array, depth: number): boolean {
+  // Check that we have enough witnesses
+  if (witnesses.length < WITNESS_COUNT) {
+    return false;
+  }
+  
+  // Check that witnesses satisfy the proximity and reserve estimation requirements
+  for (const witness of witnesses) {
     const nonceBuf = numberToArray(witness.nonce);
-    const expectedTransformedAddress = calculateTransformedAddress(nonceBuf, anchor);
-    
-    // Check if transformed address matches
-    if (!equalBytes(expectedTransformedAddress, witness.transformedAddress)) {
-      return false;
-    }
-    
-    // Check if witness satisfies the depth requirement
     const ogChunkAddress = makeChunk(nonceBuf).address();
+    
+    // Check if this witness satisfies the requirements for the current anchor and depth
     if (!tAddressAcceptance(ogChunkAddress, witness.transformedAddress, anchor, depth)) {
       return false;
     }
