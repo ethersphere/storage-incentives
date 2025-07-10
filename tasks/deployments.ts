@@ -19,48 +19,48 @@ const ETHERSCAN_URLS = {
   sepolia: 'https://sepolia.etherscan.io/address/',
 };
 
-task('deployments', 'Display Etherscan links for deployed contracts').setAction(async () => {
+task('deployments', 'Display deployed contracts in copy-paste friendly format').setAction(async () => {
   try {
+    const deployments: { [networkName: string]: NetworkDeployment } = {};
+    
     // Read deployment files
-    const mainnetData: NetworkDeployment = JSON.parse(
-      fs.readFileSync(path.join(__dirname, '..', 'mainnet_deployed.json'), 'utf8')
-    );
-    const testnetData: NetworkDeployment = JSON.parse(
-      fs.readFileSync(path.join(__dirname, '..', 'testnet_deployed.json'), 'utf8')
-    );
+    try {
+      deployments['mainnet'] = JSON.parse(
+        fs.readFileSync(path.join(__dirname, '..', 'mainnet_deployed.json'), 'utf8')
+      );
+    } catch {}
 
-    // Get contracts that exist in both deployments
-    const commonContracts = Object.keys(mainnetData.contracts).filter(
-      (contractName) => testnetData.contracts[contractName]
-    );
+    try {
+      deployments['testnet'] = JSON.parse(
+        fs.readFileSync(path.join(__dirname, '..', 'testnet_deployed.json'), 'utf8')
+      );
+    } catch {}
 
-    if (commonContracts.length === 0) {
-      console.log('\nNo contracts found deployed on both networks.');
+    if (Object.keys(deployments).length === 0) {
+      console.log('No deployment files found.');
       return;
     }
 
-    console.log('\nContracts deployed on both networks:');
-    console.log('=====================================');
+    Object.entries(deployments).forEach(([networkKey, deployment]) => {
+      const networkName = networkKey === 'mainnet' ? 'Mainnet' : 'Testnet (Sepolia)';
+      const explorerUrl = networkKey === 'mainnet' ? ETHERSCAN_URLS.mainnet : ETHERSCAN_URLS.sepolia;
+      
+      console.log(`\n${networkName}:`);
+      
+      const contracts = deployment.contracts;
+      if (Object.keys(contracts).length === 0) {
+        console.log('No contracts deployed');
+        return;
+      }
 
-    commonContracts.forEach((contractName) => {
-      const mainnetContract = mainnetData.contracts[contractName];
-      const testnetContract = testnetData.contracts[contractName];
-
-      console.log(`\n${contractName}:`);
-      console.log('Mainnet:');
-      console.log(`  Address: ${mainnetContract.address}`);
-      console.log(`  Explorer: ${ETHERSCAN_URLS.mainnet}${mainnetContract.address}`);
-
-      console.log('\nTestnet (Sepolia):');
-      console.log(`  Address: ${testnetContract.address}`);
-      console.log(`  Explorer: ${ETHERSCAN_URLS.sepolia}${testnetContract.address}`);
+      Object.entries(contracts).forEach(([name, contract]) => {
+        console.log(`${name}: ${contract.address}`);
+        console.log(`Explorer: ${explorerUrl}${contract.address}`);
+        console.log('');
+      });
     });
 
-    console.log(`\nTotal contracts found: ${commonContracts.length}`);
   } catch (error) {
-    if (error instanceof Error) {
-      console.error('\nError scanning deployments:');
-      console.error(error.message);
-    }
+    console.error('Error reading deployments:', error);
   }
 });
