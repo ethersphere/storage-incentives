@@ -22,18 +22,14 @@ const ETHERSCAN_URLS = {
 task('deployments', 'Display deployed contracts in copy-paste friendly format').setAction(async () => {
   try {
     const deployments: { [networkName: string]: NetworkDeployment } = {};
-    
+
     // Read deployment files
     try {
-      deployments['mainnet'] = JSON.parse(
-        fs.readFileSync(path.join(__dirname, '..', 'mainnet_deployed.json'), 'utf8')
-      );
+      deployments['mainnet'] = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'mainnet_deployed.json'), 'utf8'));
     } catch {}
 
     try {
-      deployments['testnet'] = JSON.parse(
-        fs.readFileSync(path.join(__dirname, '..', 'testnet_deployed.json'), 'utf8')
-      );
+      deployments['testnet'] = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'testnet_deployed.json'), 'utf8'));
     } catch {}
 
     if (Object.keys(deployments).length === 0) {
@@ -44,9 +40,9 @@ task('deployments', 'Display deployed contracts in copy-paste friendly format').
     Object.entries(deployments).forEach(([networkKey, deployment]) => {
       const networkName = networkKey === 'mainnet' ? 'Mainnet' : 'Testnet (Sepolia)';
       const explorerUrl = networkKey === 'mainnet' ? ETHERSCAN_URLS.mainnet : ETHERSCAN_URLS.sepolia;
-      
+
       console.log(`\n${networkName}:`);
-      
+
       const contracts = deployment.contracts;
       if (Object.keys(contracts).length === 0) {
         console.log('No contracts deployed');
@@ -59,7 +55,6 @@ task('deployments', 'Display deployed contracts in copy-paste friendly format').
         console.log('');
       });
     });
-
   } catch (error) {
     console.error('Error reading deployments:', error);
   }
