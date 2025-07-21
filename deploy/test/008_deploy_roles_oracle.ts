@@ -13,7 +13,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 
   // Verify role assignment
   log('Verifying role assignment...');
-  
+
   // Check PRICE_UPDATER_ROLE
   const hasPriceUpdaterRole = await read('PriceOracle', 'hasRole', updaterRole, redisAddress);
   if (hasPriceUpdaterRole) {

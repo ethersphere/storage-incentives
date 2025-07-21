@@ -13,7 +13,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 
   // Verify role assignment
   log('Verifying role assignment...');
-  
+
   // Check REDISTRIBUTOR_ROLE
   const hasRedistributorRole = await read('StakeRegistry', 'hasRole', redisRole, redisAddress);
   if (hasRedistributorRole) {
