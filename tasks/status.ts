@@ -5,6 +5,7 @@ import * as path from 'path';
 
 interface ContractInfo {
   address: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   abi: any[];
   bytecode: string;
   block: number;
@@ -75,6 +76,7 @@ async function getDeploymentInfo(network: string): Promise<DeploymentInfo> {
 async function checkContractStatus(
   contractName: string,
   contractAddress: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   abi: any[],
   provider: ethers.providers.Provider,
   deploymentInfo: DeploymentInfo
@@ -297,7 +299,7 @@ async function checkContractStatus(
   };
 }
 
-function displayStatus(result: StatusResult, network: string) {
+function displayStatus(result: StatusResult) {
   const statusIcon = result.paused ? '🔴' : '🟢';
   const statusText = result.paused ? 'PAUSED' : 'ACTIVE';
 
@@ -350,7 +352,7 @@ function displayStatus(result: StatusResult, network: string) {
 
 task('status', 'Check status of deployed contracts and their roles')
   .addParam('target', 'Network to check (testnet or mainnet)', 'testnet')
-  .setAction(async (taskArgs, hre) => {
+  .setAction(async (taskArgs) => {
     const { target } = taskArgs;
 
     if (!['testnet', 'mainnet'].includes(target)) {
@@ -398,7 +400,7 @@ task('status', 'Check status of deployed contracts and their roles')
       console.log('='.repeat(50));
 
       for (const result of results) {
-        displayStatus(result, target);
+        displayStatus(result);
       }
 
       // Summary

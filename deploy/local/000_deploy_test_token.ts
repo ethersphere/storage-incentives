@@ -10,11 +10,9 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     throw new Error('Multisig is not the same as deployer');
   }
 
-  let token = null;
-
   const argsToken = ['TEST', 'TST', '1249989122910552325012092'];
 
-  token = await deploy('TestToken', {
+  await deploy('TestToken', {
     from: deployer,
     args: argsToken,
     log: true,

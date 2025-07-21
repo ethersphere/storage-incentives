@@ -1,7 +1,6 @@
 import 'hardhat-deploy-ethers';
 import '@nomiclabs/hardhat-etherscan';
-import { ethers, network } from 'hardhat';
-import hre from 'hardhat';
+import { ethers } from 'hardhat';
 
 async function main() {
   // TESTNET

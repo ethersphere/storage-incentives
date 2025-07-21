@@ -23,9 +23,6 @@ task('copy', 'Use copyBatch function from postageStamp contract')
     const argsArray = Object.values(taskArgs);
     const currentPostage: string = argsArray.pop();
 
-    // Define the gas price and gas limit
-    const gasLimit = 550000; // Example gas limit
-
     const stamp = await hre.ethers.getContractAt('PostageStamp', currentPostage);
 
     // Step 1: Estimate Gas

@@ -12,7 +12,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     // ADD Roles to Multisig
     // TODO should uniform roles on contracts, recommend to just use DEFAULT_ADMIN_ROLE also for postagestamp contract
     const adminRole = await read('PostageStamp', 'DEFAULT_ADMIN_ROLE');
-    const pauserRole = await read('PostageStamp', 'PAUSER_ROLE');
+    // const pauserRole = await read('PostageStamp', 'PAUSER_ROLE');
     // await execute('PostageStamp', { from: deployer }, 'grantRole', adminRole, networkConfig['mainnet'].multisig);
     // await execute('PostageStamp', { from: deployer }, 'grantRole', pauserRole, networkConfig['mainnet'].multisig);
 

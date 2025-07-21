@@ -1,10 +1,8 @@
 import { DeployFunction } from 'hardhat-deploy/types';
-import { networkConfig } from '../../helper-hardhat-config';
 
 // Used for setting states in contracts according to the currently working environment
-const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { execute, log, read } = deployments;
-  const { deployer } = await getNamedAccounts();
+const func: DeployFunction = async function ({ deployments }) {
+  const { log } = deployments;
 
   // We want to test the multisig changes so we do that also on forks, but it is the same address that is multisig and deployer by default
   // log('Deploy multisig to all contracts, remove deployer');
