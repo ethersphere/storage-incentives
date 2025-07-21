@@ -216,7 +216,7 @@ async function checkContractStatus(
       const pauserRole = '0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a'; // keccak256("PAUSER_ROLE")
       const adminAddresses = Object.values(ADMIN_ADDRESSES);
       let hasPauserRole = false;
-      let pauserAddresses: string[] = [];
+      const pauserAddresses: string[] = [];
 
       for (const address of adminAddresses) {
         try {
