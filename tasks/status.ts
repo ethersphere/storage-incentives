@@ -214,15 +214,14 @@ async function checkContractStatus(
       const pauserRole = '0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a'; // keccak256("PAUSER_ROLE")
       const adminAddresses = Object.values(ADMIN_ADDRESSES);
       let hasPauserRole = false;
-      let pauserAddress = '';
+      let pauserAddresses: string[] = [];
 
       for (const address of adminAddresses) {
         try {
           const hasRole = await contract.hasRole(pauserRole, address);
           if (hasRole) {
             hasPauserRole = true;
-            pauserAddress = address;
-            break;
+            pauserAddresses.push(address);
           }
         } catch (error) {
           // Continue checking other addresses
@@ -230,7 +229,7 @@ async function checkContractStatus(
       }
 
       roleVerifications['PAUSER_ROLE'] = {
-        expectedAddress: hasPauserRole ? pauserAddress : 'None of admin addresses',
+        expectedAddress: pauserAddresses.length > 0 ? pauserAddresses.join(', ') : 'None of admin addresses',
         hasRole: hasPauserRole,
         status: hasPauserRole ? '✅' : '❌'
       };
@@ -318,7 +317,11 @@ function displayStatus(result: StatusResult, network: string) {
     console.log(`   Role Verifications:`);
     for (const [roleName, verification] of Object.entries(result.roleVerifications)) {
       console.log(`     ${verification.status} ${roleName}:`);
-      console.log(`       Expected: ${verification.expectedAddress}`);
+      if (roleName === 'PAUSER_ROLE') {
+        console.log(`       Addresses with PAUSER_ROLE: ${verification.expectedAddress}`);
+      } else {
+        console.log(`       Expected: ${verification.expectedAddress}`);
+      }
       console.log(`       Has Role: ${verification.hasRole ? 'Yes' : 'No'}`);
     }
   }
