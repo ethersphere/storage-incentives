@@ -359,9 +359,11 @@ task('status', 'Check status of deployed contracts and their roles')
       // Setup provider based on network
       let provider;
       if (target === 'testnet') {
-        provider = new ethers.providers.JsonRpcProvider(process.env.SEPOLIA_RPC_URL || 'https://sepolia.infura.io/v3/your-project-id');
+        const rpcUrl = process.env.SEPOLIA_RPC_URL || 'https://1rpc.io/sepolia';
+        provider = new ethers.providers.JsonRpcProvider(rpcUrl);
       } else {
-        provider = new ethers.providers.JsonRpcProvider(process.env.GNOSIS_RPC_URL || 'https://rpc.gnosischain.com');
+        const rpcUrl = process.env.GNOSIS_RPC_URL || 'https://rpc.gnosischain.com';
+        provider = new ethers.providers.JsonRpcProvider(rpcUrl);
       }
 
       const results: StatusResult[] = [];
