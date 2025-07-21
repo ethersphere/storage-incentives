@@ -37,6 +37,13 @@ interface StatusResult {
     [role: string]: string[];
   };
   hasRoleEnumeration: boolean;
+  roleVerifications?: {
+    [role: string]: {
+      expectedAddress: string;
+      hasRole: boolean;
+      status: '✅' | '❌';
+    };
+  };
 }
 
 const ADMIN_ADDRESSES = {
@@ -69,7 +76,8 @@ async function checkContractStatus(
   contractName: string,
   contractAddress: string,
   abi: any[],
-  provider: ethers.providers.Provider
+  provider: ethers.providers.Provider,
+  deploymentInfo: DeploymentInfo
 ): Promise<StatusResult> {
   const contract = new ethers.Contract(contractAddress, abi, provider);
   
@@ -170,6 +178,112 @@ async function checkContractStatus(
     }
   }
 
+  // Special verification for PostageStamp role assignments
+  let roleVerifications: { [role: string]: { expectedAddress: string; hasRole: boolean; status: '✅' | '❌' } } | undefined;
+  if (contractName === 'postageStamp') {
+    roleVerifications = {};
+    
+    try {
+      // Check PRICE_ORACLE_ROLE assignment
+      const priceOracleRole = '0x1337d7d57528a8879766fdf2d0456253114c66c4fc263c97168bfdb007c64c66';
+      const priceOracleAddress = deploymentInfo.contracts.priceOracle?.address;
+      
+      if (priceOracleAddress) {
+        const hasPriceOracleRole = await contract.hasRole(priceOracleRole, priceOracleAddress);
+        roleVerifications['PRICE_ORACLE_ROLE'] = {
+          expectedAddress: priceOracleAddress,
+          hasRole: hasPriceOracleRole,
+          status: hasPriceOracleRole ? '✅' : '❌'
+        };
+      }
+
+      // Check REDISTRIBUTOR_ROLE assignment
+      const redistributorRole = '0x3e35b14a9f4fef84b59f9bdcd3044fc28783144b7e42bfb2cd075e6a02cb0828';
+      const redistributionAddress = deploymentInfo.contracts.redistribution?.address;
+      
+      if (redistributionAddress) {
+        const hasRedistributorRole = await contract.hasRole(redistributorRole, redistributionAddress);
+        roleVerifications['REDISTRIBUTOR_ROLE'] = {
+          expectedAddress: redistributionAddress,
+          hasRole: hasRedistributorRole,
+          status: hasRedistributorRole ? '✅' : '❌'
+        };
+      }
+
+      // Check PAUSER_ROLE assignment for admin addresses
+      const pauserRole = '0x65d7a28e3265b37a6474929f336521b332c1681b933f6cb9f3376673440d862a'; // keccak256("PAUSER_ROLE")
+      const adminAddresses = Object.values(ADMIN_ADDRESSES);
+      let hasPauserRole = false;
+      let pauserAddress = '';
+
+      for (const address of adminAddresses) {
+        try {
+          const hasRole = await contract.hasRole(pauserRole, address);
+          if (hasRole) {
+            hasPauserRole = true;
+            pauserAddress = address;
+            break;
+          }
+        } catch (error) {
+          // Continue checking other addresses
+        }
+      }
+
+      roleVerifications['PAUSER_ROLE'] = {
+        expectedAddress: hasPauserRole ? pauserAddress : 'None of admin addresses',
+        hasRole: hasPauserRole,
+        status: hasPauserRole ? '✅' : '❌'
+      };
+    } catch (error) {
+      console.log(`⚠️  Error checking PostageStamp role assignments: ${error}`);
+    }
+  }
+
+  // Special verification for StakeRegistry role assignments
+  if (contractName === 'staking') {
+    roleVerifications = {};
+    
+    try {
+      // Check REDISTRIBUTOR_ROLE assignment
+      const redistributorRole = '0x3e35b14a9f4fef84b59f9bdcd3044fc28783144b7e42bfb2cd075e6a02cb0828';
+      const redistributionAddress = deploymentInfo.contracts.redistribution?.address;
+      
+      if (redistributionAddress) {
+        const hasRedistributorRole = await contract.hasRole(redistributorRole, redistributionAddress);
+        roleVerifications['REDISTRIBUTOR_ROLE'] = {
+          expectedAddress: redistributionAddress,
+          hasRole: hasRedistributorRole,
+          status: hasRedistributorRole ? '✅' : '❌'
+        };
+      }
+    } catch (error) {
+      console.log(`⚠️  Error checking StakeRegistry role assignments: ${error}`);
+    }
+  }
+
+  // Special verification for PriceOracle role assignments
+  if (contractName === 'priceOracle') {
+    roleVerifications = {};
+    
+    try {
+      // Check PRICE_UPDATER_ROLE assignment
+      // PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER_ROLE")
+      const priceUpdaterRole = '0xd96ba01d6560c2ab35f2940dd8d70c5f5fe06236c72674237120515918198fb0';
+      const redistributionAddress = deploymentInfo.contracts.redistribution?.address;
+      
+      if (redistributionAddress) {
+        const hasPriceUpdaterRole = await contract.hasRole(priceUpdaterRole, redistributionAddress);
+        roleVerifications['PRICE_UPDATER_ROLE'] = {
+          expectedAddress: redistributionAddress,
+          hasRole: hasPriceUpdaterRole,
+          status: hasPriceUpdaterRole ? '✅' : '❌'
+        };
+      }
+    } catch (error) {
+      console.log(`⚠️  Error checking PriceOracle role assignments: ${error}`);
+    }
+  }
+
   return {
     contract: contractName,
     address: contractAddress,
@@ -177,7 +291,8 @@ async function checkContractStatus(
     adminRoles,
     expectedRoles,
     roleMembers,
-    hasRoleEnumeration
+    hasRoleEnumeration,
+    roleVerifications
   };
 }
 
@@ -196,6 +311,16 @@ function displayStatus(result: StatusResult, network: string) {
                   address === ADMIN_ADDRESSES.mainnet ? 'Main Deployer' :
                   address === ADMIN_ADDRESSES.multisig ? 'Multisig' : 'Unknown';
     console.log(`     ${icon} ${label}: ${address}`);
+  }
+  
+  // Display role verifications for PostageStamp
+  if (result.roleVerifications) {
+    console.log(`   Role Verifications:`);
+    for (const [roleName, verification] of Object.entries(result.roleVerifications)) {
+      console.log(`     ${verification.status} ${roleName}:`);
+      console.log(`       Expected: ${verification.expectedAddress}`);
+      console.log(`       Has Role: ${verification.hasRole ? 'Yes' : 'No'}`);
+    }
   }
   
   // Display expected roles
@@ -243,7 +368,7 @@ task('status', 'Check status of deployed contracts and their roles')
         console.log(`🔍 Checking ${contractName}...`);
         
         try {
-          const result = await checkContractStatus(contractName, contractInfo.address, contractInfo.abi, provider);
+          const result = await checkContractStatus(contractName, contractInfo.address, contractInfo.abi, provider, deploymentInfo);
           results.push(result);
         } catch (error) {
           console.log(`❌ Error checking ${contractName}: ${error}`);
@@ -271,10 +396,27 @@ task('status', 'Check status of deployed contracts and their roles')
         sum + Object.keys(r.expectedRoles).length, 0
       );
 
+      // Count role verifications
+      const roleVerificationsCount = results.reduce((sum, r) => {
+        if (r.roleVerifications) {
+          return sum + Object.values(r.roleVerifications).filter(v => v.hasRole).length;
+        }
+        return sum;
+      }, 0);
+      const totalRoleVerifications = results.reduce((sum, r) => {
+        if (r.roleVerifications) {
+          return sum + Object.keys(r.roleVerifications).length;
+        }
+        return sum;
+      }, 0);
+
       console.log(`\n📈 SUMMARY:`);
       console.log(`   Active Contracts: ${activeContracts}/${totalContracts}`);
       console.log(`   Admin Roles Assigned: ${adminRolesCount}`);
       console.log(`   Correct Role Assignments: ${correctRolesCount}/${totalExpectedRoles}`);
+      if (totalRoleVerifications > 0) {
+        console.log(`   Role Verifications: ${roleVerificationsCount}/${totalRoleVerifications}`);
+      }
 
     } catch (error) {
       console.error(`❌ Error: ${error}`);
