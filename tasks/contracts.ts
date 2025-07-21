@@ -2,6 +2,12 @@ import { task } from 'hardhat/config';
 import fs from 'fs';
 import path from 'path';
 
+interface ContractData {
+  address: string;
+  url: string;
+  [key: string]: unknown;
+}
+
 task('contracts', 'Display contract deployment information')
   .addParam('target', 'Network type (main, test, local, pretestnet, tenderly)')
   .setAction(async (taskArgs: { target: string }) => {
@@ -33,10 +39,11 @@ task('contracts', 'Display contract deployment information')
       console.log(`\nDeployed Contracts (${networkType})`);
       console.log('========================');
 
-      Object.entries(deploymentData.contracts).forEach(([name, data]: [string, any]) => {
+      Object.entries(deploymentData.contracts).forEach(([name, data]) => {
+        const contractData = data as ContractData;
         console.log(`\n${name}:`);
-        console.log(`Address: ${data.address}`);
-        console.log(`Explorer: ${data.url}`);
+        console.log(`Address: ${contractData.address}`);
+        console.log(`Explorer: ${contractData.url}`);
       });
     } catch (error) {
       if (error instanceof Error) {
