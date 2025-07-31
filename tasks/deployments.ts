@@ -1,3 +1,16 @@
+/**
+ * Deployments Task - Display deployed contracts in copy-paste friendly format
+ * 
+ * Usage:
+ *   npx hardhat deployments
+ * 
+ * This task displays:
+ * - All deployed contracts for both mainnet and testnet
+ * - Contract addresses with Etherscan explorer links
+ * - Clean, copy-paste friendly format
+ * - Automatically reads from mainnet_deployed.json and testnet_deployed.json
+ */
+
 import { task } from 'hardhat/config';
 import fs from 'fs';
 import path from 'path';

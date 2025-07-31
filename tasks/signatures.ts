@@ -1,3 +1,21 @@
+/**
+ * Signatures Task - Generate ABI signatures for errors and functions
+ * 
+ * Usage:
+ *   npx hardhat sigs --c PostageStamp              # Generate signatures for PostageStamp contract
+ *   npx hardhat sigs --c PostageStamp --f MyFile   # Use custom Solidity file name
+ * 
+ * Parameters:
+ *   --c: Contract name (required)
+ *   --f: Solidity file name (optional, defaults to contract name)
+ * 
+ * This task:
+ * - Loads contract ABI from artifacts
+ * - Generates error signatures with selectors
+ * - Shows function selectors for debugging
+ * - Useful for error handling and contract interaction
+ */
+
 import { task } from 'hardhat/config';
 
 interface TaskArgs {
