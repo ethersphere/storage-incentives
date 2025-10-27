@@ -1,3 +1,18 @@
+/**
+ * Status Task - Check deployed contract statuses and roles
+ * 
+ * Usage:
+ *   npx hardhat status                    # Check mainnet (default)
+ *   npx hardhat status --target mainnet  # Check mainnet explicitly
+ *   npx hardhat status --target testnet  # Check testnet
+ * 
+ * This task checks:
+ * - Contract pause/active status
+ * - Admin role assignments for specified addresses
+ * - Role verifications (PRICE_ORACLE_ROLE, REDISTRIBUTOR_ROLE, PAUSER_ROLE, etc.)
+ * - Displays results with visual indicators (✅/❌/🟢/🔴)
+ */
+
 import { task } from 'hardhat/config';
 import { ethers } from 'ethers';
 import * as fs from 'fs';
@@ -351,7 +366,7 @@ function displayStatus(result: StatusResult) {
 }
 
 task('status', 'Check status of deployed contracts and their roles')
-  .addParam('target', 'Network to check (testnet or mainnet)', 'testnet')
+  .addParam('target', 'Network to check (testnet or mainnet)', 'mainnet')
   .setAction(async (taskArgs) => {
     const { target } = taskArgs;
 
