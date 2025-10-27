@@ -73,11 +73,151 @@ The task includes robust error handling for:
 - Network connectivity issues
 - Missing deployment files
 
-### Available Tasks
+### Contracts Task
+
+The `contracts` task displays contract deployment information for a specific network.
+
+#### Usage
+
+```bash
+# Show mainnet contracts
+npx hardhat contracts --target main
+
+# Show testnet contracts
+npx hardhat contracts --target test
+
+# Show local contracts
+npx hardhat contracts --target local
+
+# Show pretestnet contracts
+npx hardhat contracts --target pretestnet
+
+# Show tenderly contracts
+npx hardhat contracts --target tenderly
+```
+
+#### What it displays
+
+- Contract addresses for the specified network
+- Explorer URLs for each contract
+- Formatted output for easy copying
+
+---
+
+### Deployments Task
+
+The `deployments` task displays all deployed contracts in a copy-paste friendly format.
+
+#### Usage
+
+```bash
+npx hardhat deployments
+```
+
+#### What it displays
+
+- All deployed contracts for both mainnet and testnet
+- Contract addresses with Etherscan explorer links
+- Clean, copy-paste friendly format
+- Automatically reads from `mainnet_deployed.json` and `testnet_deployed.json`
+
+---
+
+### Compare Task
+
+The `compare` task compares bytecodes between two deployments to verify consistency.
+
+#### Usage
+
+```bash
+# Compare mainnet vs testnet
+npx hardhat compare --source mainnet --target testnet
+
+# Compare testnet vs local
+npx hardhat compare --source testnet --target local
+
+# Compare mainnet vs tenderly
+npx hardhat compare --source mainnet --target tenderly
+```
+
+#### What it does
+
+- Compares bytecodes between deployments on different networks
+- Shows which contracts are identical vs different
+- Identifies missing contracts in either deployment
+- Useful for verifying consistent deployments across networks
+- Color-coded output: ✅ identical, ❌ different, ⚠️ missing
+
+---
+
+### Signatures Task
+
+The `sigs` task generates ABI signatures for errors and functions.
+
+#### Usage
+
+```bash
+# Generate signatures for PostageStamp contract
+npx hardhat sigs --c PostageStamp
+
+# Use custom Solidity file name
+npx hardhat sigs --c PostageStamp --f MyFile
+```
+
+#### Parameters
+
+- `--c`: Contract name (required)
+- `--f`: Solidity file name (optional, defaults to contract name)
+
+#### What it does
+
+- Loads contract ABI from artifacts
+- Generates error signatures with selectors
+- Shows function selectors for debugging
+- Useful for error handling and contract interaction
+
+---
+
+### Copy Task
+
+The `copy` task uses the `copyBatch` function from the PostageStamp contract.
+
+#### Usage
+
+```bash
+npx hardhat copy \
+  --owner 0x1234... \
+  --initialbalance 1000000000000000000 \
+  --depth 20 \
+  --bucketdepth 16 \
+  --batchid 0xabcd... \
+  --immutable false \
+  --contract 0x5678...
+```
+
+#### Parameters
+
+- `--owner`: The account's address
+- `--initialbalance`: Initial balance for the batch
+- `--depth`: Batch depth
+- `--bucketdepth`: Bucket depth
+- `--batchid`: Batch ID
+- `--immutable`: Whether batch is immutable (true/false)
+- `--contract`: PostageStamp contract address
+
+#### What it does
+
+- Estimates gas for the copyBatch transaction
+- Adds 20% buffer to estimated gas
+- Executes copyBatch with optimized gas settings
+
+---
+
+## Available Tasks Summary
 
 - `status`: Check contract statuses and roles
-- `contracts`: Other contract-related tasks
-- `deployments`: Deployment management tasks
-- `compare`: Contract comparison utilities
-- `signatures`: Signature verification tasks
-- `copybatch`: Batch copying utilities 
+- `contracts`: Display contract deployment information
+- `deployments`: Show all deployed contracts in copy-paste friendly format
+- `compare`: Compare bytecodes between deployments
+- `signatures`: Generate ABI signatures for errors and functions
+- `copy`: Use copyBatch function from PostageStamp contract 
