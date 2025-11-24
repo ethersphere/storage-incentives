@@ -31,6 +31,11 @@ export const networkConfig: networkConfigInfo = {
     swarmNetworkId: 1,
     multisig: '0xD5C070FEb5EA883063c183eDFF10BA6836cf9816',
   },
+  base: {
+    blockConfirmations: 6,
+    swarmNetworkId: 2,
+    multisig: '0xD5C070FEb5EA883063c183eDFF10BA6836cf9816',
+  },
 };
 
 export const developmentChains = ['hardhat', 'localhost'];
