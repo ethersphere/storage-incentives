@@ -5,10 +5,12 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
+  const roundLength = networkConfig[network.name]?.roundLength || 152;
   const args = [
     (await get('StakeRegistry')).address,
     (await get('PostageStamp')).address,
     (await get('PriceOracle')).address,
+    roundLength,
   ];
 
   await deploy('Redistribution', {

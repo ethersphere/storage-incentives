@@ -11,7 +11,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   const token = await get('TestToken');
 
-  const argsStamp = [token.address, 16];
+  const minimumValidityBlocks = networkConfig[network.name]?.minimumValidityBlocks || 17280;
+  const argsStamp = [token.address, 16, minimumValidityBlocks];
 
   await deploy('PostageStamp', {
     from: deployer,
