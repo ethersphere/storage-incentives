@@ -1,22 +1,25 @@
 import { DeployFunction } from 'hardhat-deploy/types';
+import { networkConfig } from '../../helper-hardhat-config';
 
-const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
-  const { log, get } = deployments;
+const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
+  const { deploy, log } = deployments;
   const { deployer } = await getNamedAccounts();
-  let token = null;
 
   log('----------------------------------------------------');
   log('Deployer address at ', deployer);
   log('----------------------------------------------------');
 
-  // We ONLY use already deployed token for MAINNET
-  if (!(token = await get('Token'))) {
-    // we have problem as there is not token, error out
-    throw new Error('Token not available');
-  } else {
-    log('Using already deployed Token at', token.address);
-  }
+  // Deploy new TestToken for Base (similar to testnet)
+  const args = ['Test BZZ Token', 'tBZZ', '1250000000000000000000000'];
 
+  const token = await deploy('TestToken', {
+    from: deployer,
+    args: args,
+    log: true,
+    waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
+  });
+
+  log('TestToken deployed at:', token.address);
   log('----------------------------------------------------');
 };
 

@@ -5,7 +5,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
   const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
-  const token = await get('Token');
+  const token = await get('TestToken');
   const oracleAddress = (await get('PriceOracle')).address;
 
   const args = [token.address, swarmNetworkID, oracleAddress];

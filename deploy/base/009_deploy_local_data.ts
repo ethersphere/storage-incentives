@@ -48,7 +48,7 @@ const func: DeployFunction = async function ({ deployments, network, config }) {
     log('Data saved to ' + fileName);
   }
 
-  const tokenContract = await get('Token');
+  const tokenContract = await get('TestToken');
   const stampsContract = await get('PostageStamp');
   const oracleContract = await get('PriceOracle');
   const stakingContract = await get('StakeRegistry');

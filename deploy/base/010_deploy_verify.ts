@@ -5,12 +5,19 @@ import verify from '../../utils/verify';
 const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
-  // Support mainnet and base networks with Etherscan API V2
-  if ((network.name == 'mainnet' || network.name == 'base') && process.env.ETHERSCAN_API_KEY) {
+  // Support base network with Etherscan API V2
+  if (network.name == 'base' && process.env.ETHERSCAN_API_KEY) {
     const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
     const roundLength = networkConfig[network.name]?.roundLength || 152;
     const minimumValidityBlocks = networkConfig[network.name]?.minimumValidityBlocks || 17280;
-    const token = await get('Token');
+    
+    // Verify TestToken
+    const token = await get('TestToken');
+    const argsToken = ['Test BZZ Token', 'tBZZ', '1250000000000000000000000'];
+
+    log('Verifying TestToken...');
+    await verify(token.address, argsToken);
+    log('----------------------------------------------------');
 
     // Verify postageStamp
     const postageStamp = await get('PostageStamp');
