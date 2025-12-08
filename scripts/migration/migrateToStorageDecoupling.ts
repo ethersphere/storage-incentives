@@ -1,20 +1,21 @@
 import { ethers } from "hardhat";
-import { PostageStamp, PostageStampStorage, PostageStampV2 } from "../../typechain-types";
+import { PostageStampLegacy, PostageStampStorage, PostageStamp } from "../../typechain-types";
 
 /**
- * Migration script to move from monolithic PostageStamp contract
- * to the decoupled PostageStampStorage + PostageStampV2 architecture
+ * Migration script to move from monolithic PostageStamp contract (legacy)
+ * to the decoupled PostageStampStorage + PostageStamp architecture
  * 
  * WARNING: This script should be run during a maintenance window with the old contract paused
  * 
  * Steps:
- * 1. Deploy new PostageStampStorage and PostageStampV2 contracts
- * 2. Pause the old PostageStamp contract
+ * 1. Deploy new PostageStampStorage and PostageStamp contracts
+ * 2. Pause the old PostageStamp contract (legacy)
  * 3. Export all batch data from old contract
  * 4. Import all batch data to new storage contract
  * 5. Transfer all BZZ tokens to new storage contract
  * 6. Verify migration success
- * 7. Update node configurations to use PostageStampV2
+ * 7. Tag deployment in git
+ * 8. Update node configurations to use new PostageStamp address
  */
 
 interface BatchData {
@@ -46,7 +47,7 @@ async function main() {
   console.log("BZZ Token:", BZZ_TOKEN_ADDRESS);
 
   // Get old contract
-  const oldPostageStamp = await ethers.getContractAt("PostageStamp", OLD_POSTAGE_STAMP_ADDRESS) as PostageStamp;
+  const oldPostageStamp = await ethers.getContractAt("PostageStampLegacy", OLD_POSTAGE_STAMP_ADDRESS) as PostageStampLegacy;
 
   // Step 1: Pause old contract
   console.log("\n--- Step 1: Pausing old contract ---");
@@ -79,14 +80,14 @@ async function main() {
   const minimumBucketDepth = await oldPostageStamp.minimumBucketDepth();
   const minimumValidityBlocks = await oldPostageStamp.minimumValidityBlocks();
 
-  const PostageStampV2Factory = await ethers.getContractFactory("PostageStampV2");
-  const logicContract = await PostageStampV2Factory.deploy(
+  const PostageStampFactory = await ethers.getContractFactory("PostageStamp");
+  const logicContract = await PostageStampFactory.deploy(
     storageContract.address,
     minimumBucketDepth,
     minimumValidityBlocks
-  ) as PostageStampV2;
+  ) as PostageStamp;
   await logicContract.deployed();
-  console.log("✓ PostageStampV2 deployed at:", logicContract.address);
+  console.log("✓ PostageStamp deployed at:", logicContract.address);
 
   // Update storage to point to logic contract
   const updateTx = await storageContract.connect(admin).updateLogicContract(logicContract.address);
@@ -218,7 +219,7 @@ async function main() {
 
   // Copy role members from old contract (if needed)
   // This is simplified - adjust based on your needs
-  console.log("⚠️  Please manually grant roles on PostageStampV2:");
+  console.log("⚠️  Please manually grant roles on new PostageStamp:");
   console.log("   PRICE_ORACLE_ROLE, PAUSER_ROLE, REDISTRIBUTOR_ROLE");
 
   // Step 9: Verification
@@ -249,14 +250,15 @@ async function main() {
   }
 
   console.log("\n=== Migration Summary ===");
-  console.log("Old PostageStamp:", OLD_POSTAGE_STAMP_ADDRESS, "(PAUSED)");
+  console.log("Old PostageStamp (legacy):", OLD_POSTAGE_STAMP_ADDRESS, "(PAUSED)");
   console.log("New PostageStampStorage:", storageContract.address);
-  console.log("New PostageStampV2:", logicContract.address);
+  console.log("New PostageStamp:", logicContract.address);
   console.log("\n📝 Next steps:");
-  console.log("1. Update all Swarm node configurations to use:", logicContract.address);
-  console.log("2. Update documentation and announcements");
-  console.log("3. Monitor the new contracts for any issues");
-  console.log("4. Keep the old contract paused for reference");
+  console.log("1. Tag this deployment: git tag -a v2.0.0 -m 'Migration to storage decoupling'");
+  console.log("2. Update all Swarm node configurations to use:", logicContract.address);
+  console.log("3. Update documentation and announcements");
+  console.log("4. Monitor the new contracts for any issues");
+  console.log("5. Keep the old contract paused for reference");
 }
 
 /**

@@ -9,11 +9,12 @@ This branch introduces a **storage decoupling architecture** for the PostageStam
 ### Smart Contracts
 - **`src/interface/IPostageStampStorage.sol`** - Interface for the storage contract
 - **`src/PostageStampStorage.sol`** - Immutable storage contract (holds all data and BZZ tokens)
-- **`src/PostageStampV2.sol`** - Upgradeable logic contract (implements all operations)
+- **`src/PostageStamp.sol`** - Upgradeable logic contract (implements all operations, versioned via git tags)
+- **`src/PostageStampLegacy.sol`** - Original monolithic contract (for reference)
 
 ### Deployment & Migration
-- **`deploy/PostageStampV2.deploy.ts`** - Deployment script for fresh installations
-- **`scripts/migration/migrateToStorageDecoupling.ts`** - Migration script from old PostageStamp
+- **`deploy/PostageStamp.deploy.ts`** - Deployment script for fresh installations
+- **`scripts/migration/migrateToStorageDecoupling.ts`** - Migration script from legacy PostageStamp
 
 ### Documentation
 - **`SWIP-storage-decoupling.md`** - Full Swarm Improvement Proposal
@@ -32,9 +33,9 @@ This branch introduces a **storage decoupling architecture** for the PostageStam
            │ Only authorized logic can access
            │
 ┌──────────────────────────────┐
-│  PostageStampV2              │  ← Upgradeable, implements business logic
+│  PostageStamp                │  ← Upgradeable, implements business logic
 │  - createBatch()             │     Can be replaced without moving data
-│  - topUp()                   │
+│  - topUp()                   │     Versioned via git tags
 │  - increaseDepth()           │
 │  - All business logic        │
 └──────────────────────────────┘
@@ -60,9 +61,12 @@ This branch introduces a **storage decoupling architecture** for the PostageStam
 
 ```bash
 # Deploy both contracts
-npx hardhat deploy --tags PostageStampV2 --network <network>
+npx hardhat deploy --tags PostageStamp --network <network>
 
-# Use the PostageStampV2 address in your Swarm nodes
+# Tag the deployment
+git tag -a v2.0.0 -m "Initial storage decoupling deployment"
+
+# Use the PostageStamp address in your Swarm nodes
 ```
 
 ### For Existing Deployments (Migration)
@@ -79,16 +83,19 @@ npx hardhat run scripts/migration/migrateToStorageDecoupling.ts --network <netwo
 # 3. Update all Swarm nodes to use the new PostageStampV2 address
 ```
 
-### For Future Upgrades (V2 → V3)
+### For Future Upgrades
 
 ```bash
-# 1. Deploy new logic contract
-npx hardhat deploy --tags PostageStampV3 --network <network>
+# 1. Checkout new version
+git checkout v2.1.0
 
-# 2. Update storage pointer
+# 2. Deploy updated logic contract
+npx hardhat deploy --tags PostageStamp --network <network>
+
+# 3. Update storage pointer
 npx hardhat run scripts/updateLogicContract.ts --network <network>
 
-# 3. Update Swarm nodes
+# 4. Update Swarm nodes to use new address
 # No token or data migration needed!
 ```
 
@@ -116,15 +123,16 @@ PostageStampStorage (Immutable)
 ├── Batch storage
 └── BZZ tokens
 
-PostageStampV2 (Logic)
+PostageStamp (Logic)
 └── All business logic
 
 To upgrade:
-1. Deploy PostageStampV3
-2. Update pointer
-3. Update nodes
-4. No migration!
-5. Low risk, low cost
+1. Checkout new git tag
+2. Deploy updated PostageStamp
+3. Update pointer
+4. Update nodes
+5. No migration!
+6. Low risk, low cost
 ```
 
 ## Read More
@@ -137,7 +145,7 @@ To upgrade:
 ```bash
 # Unit tests (TODO: to be implemented)
 npx hardhat test test/PostageStampStorage.test.ts
-npx hardhat test test/PostageStampV2.test.ts
+npx hardhat test test/PostageStamp.test.ts
 
 # Integration tests (TODO: to be implemented)
 npx hardhat test test/StorageDecoupling.integration.test.ts

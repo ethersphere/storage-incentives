@@ -46,10 +46,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   console.log("PostageStampStorage deployed at:", storageDeployment.address);
 
-  // Step 2: Deploy PostageStampV2
-  console.log("\n--- Deploying PostageStampV2 ---");
+  // Step 2: Deploy PostageStamp (logic contract)
+  console.log("\n--- Deploying PostageStamp (logic) ---");
   
-  const logicDeployment = await deploy("PostageStampV2", {
+  const logicDeployment = await deploy("PostageStamp", {
     from: deployer,
     args: [
       storageDeployment.address,
@@ -60,7 +60,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     autoMine: true,
   });
 
-  console.log("PostageStampV2 deployed at:", logicDeployment.address);
+  console.log("PostageStamp deployed at:", logicDeployment.address);
 
   // Step 3: Update storage contract to point to the real logic contract
   console.log("\n--- Updating Logic Contract Address in Storage ---");
@@ -79,8 +79,8 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     console.log("Logic contract already set correctly");
   }
 
-  // Step 4: Setup roles on PostageStampV2
-  console.log("\n--- Setting up Roles on PostageStampV2 ---");
+  // Step 4: Setup roles on PostageStamp
+  console.log("\n--- Setting up Roles on PostageStamp ---");
 
   const PRICE_ORACLE_ROLE = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("PRICE_ORACLE_ROLE"));
   const PAUSER_ROLE = ethers.utils.keccak256(ethers.utils.toUtf8Bytes("PAUSER_ROLE"));
@@ -88,10 +88,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   // Grant PRICE_ORACLE_ROLE
   if (priceOracle) {
-    const hasPriceOracleRole = await read("PostageStampV2", "hasRole", PRICE_ORACLE_ROLE, priceOracle);
+    const hasPriceOracleRole = await read("PostageStamp", "hasRole", PRICE_ORACLE_ROLE, priceOracle);
     if (!hasPriceOracleRole) {
       await execute(
-        "PostageStampV2",
+        "PostageStamp",
         { from: deployer, log: true },
         "grantRole",
         PRICE_ORACLE_ROLE,
@@ -103,10 +103,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   // Grant REDISTRIBUTOR_ROLE
   if (redistributor) {
-    const hasRedistributorRole = await read("PostageStampV2", "hasRole", REDISTRIBUTOR_ROLE, redistributor);
+    const hasRedistributorRole = await read("PostageStamp", "hasRole", REDISTRIBUTOR_ROLE, redistributor);
     if (!hasRedistributorRole) {
       await execute(
-        "PostageStampV2",
+        "PostageStamp",
         { from: deployer, log: true },
         "grantRole",
         REDISTRIBUTOR_ROLE,
@@ -118,10 +118,10 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
   // Grant PAUSER_ROLE
   if (pauser) {
-    const hasPauserRole = await read("PostageStampV2", "hasRole", PAUSER_ROLE, pauser);
+    const hasPauserRole = await read("PostageStamp", "hasRole", PAUSER_ROLE, pauser);
     if (!hasPauserRole) {
       await execute(
-        "PostageStampV2",
+        "PostageStamp",
         { from: deployer, log: true },
         "grantRole",
         PAUSER_ROLE,
@@ -134,19 +134,20 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   // Step 5: Verification and Summary
   console.log("\n=== Deployment Complete ===");
   console.log("PostageStampStorage:", storageDeployment.address);
-  console.log("PostageStampV2:", logicDeployment.address);
+  console.log("PostageStamp:", logicDeployment.address);
   console.log("BZZ Token:", bzzToken.address);
   console.log("\nNext steps:");
-  console.log("1. Verify contracts on block explorer");
-  console.log("2. Update Swarm node configurations to use PostageStampV2 address");
-  console.log("3. Test batch creation, topup, and other operations");
-  console.log("4. When upgrading in the future, deploy new logic contract and call:");
-  console.log(`   PostageStampStorage.updateLogicContract(newLogicAddress)`);
+  console.log("1. Tag this deployment: git tag -a v2.0.0 -m 'Initial storage decoupling'");
+  console.log("2. Verify contracts on block explorer");
+  console.log("3. Update Swarm node configurations to use PostageStamp address");
+  console.log("4. Test batch creation, topup, and other operations");
+  console.log("5. When upgrading: checkout new git tag, deploy new PostageStamp, update pointer");
+  console.log("   PostageStampStorage.updateLogicContract(newLogicAddress)");
 
   return true;
 };
 
-func.tags = ["PostageStampV2", "StorageDecoupling"];
+func.tags = ["PostageStamp", "StorageDecoupling"];
 func.dependencies = ["TestToken"]; // or "Token" for mainnet
 
 export default func;

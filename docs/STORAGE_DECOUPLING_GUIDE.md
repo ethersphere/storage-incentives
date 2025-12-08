@@ -15,10 +15,10 @@ The new architecture separates storage from logic into two contracts:
 - **Never needs to be upgraded or replaced**
 - Only the authorized logic contract can modify data
 
-### PostageStampV2 (Upgradeable)
+### PostageStamp (Upgradeable)
 - Contains all business logic
 - Stateless (except configuration)
-- Can be upgraded by deploying a new version
+- Can be upgraded by deploying a new version (tracked via git tags)
 - **Upgrading requires NO token or data migration**
 
 ## Benefits
@@ -43,16 +43,20 @@ export PRICE_ORACLE_ADDRESS="0x..."
 export REDISTRIBUTOR_ADDRESS="0x..."
 
 # 2. Run deployment script
-npx hardhat deploy --tags PostageStampV2 --network <network>
+npx hardhat deploy --tags PostageStamp --network <network>
 
-# 3. Update Swarm node configurations with the PostageStampV2 address
+# 3. Tag the deployment
+git tag -a v2.0.0 -m "Initial storage decoupling deployment"
+
+# 4. Update Swarm node configurations with the PostageStamp address
 ```
 
 **What happens:**
 1. PostageStampStorage deploys with BZZ token reference
-2. PostageStampV2 deploys pointing to storage
+2. PostageStamp (logic contract) deploys pointing to storage
 3. Roles are configured
-4. System is ready to use
+4. Deployment is tagged in git for versioning
+5. System is ready to use
 
 ### Scenario 2: Migration from Existing PostageStamp
 
@@ -80,31 +84,37 @@ npx hardhat run scripts/migration/verifyMigration.ts --network <network>
 ```
 
 **What happens:**
-1. Old PostageStamp contract is paused
-2. New contracts are deployed
+1. Old PostageStamp contract (legacy) is paused
+2. New contracts are deployed (PostageStampStorage + PostageStamp logic)
 3. All batch data is copied to PostageStampStorage
 4. All BZZ tokens are transferred to PostageStampStorage
 5. Global state is set in storage
-6. Verification confirms successful migration
+6. Deployment is tagged in git (e.g., v2.0.0)
+7. Verification confirms successful migration
 
 ## Upgrading the Logic Contract
 
-Once deployed, upgrading to PostageStampV3 (or V4, V5, etc.) is simple:
+Once deployed, upgrading to a new version is simple:
 
 ```bash
-# 1. Deploy new logic contract
-npx hardhat deploy --tags PostageStampV3 --network <network>
+# 1. Checkout new version from git
+git checkout v2.1.0
 
-# 2. Update storage to point to new logic
+# 2. Deploy updated logic contract
+npx hardhat deploy --tags PostageStamp --network <network>
+
+# 3. Update storage to point to new logic
 # (Requires ADMIN_ROLE on PostageStampStorage)
 npx hardhat run scripts/updateLogicContract.ts --network <network>
 
-# 3. Update Swarm nodes to use PostageStampV3 address
+# 4. Update Swarm nodes to use new PostageStamp address
 
-# 4. (Optional) Pause PostageStampV2 to prevent confusion
+# 5. (Optional) Pause old PostageStamp instance to prevent confusion
 ```
 
 **No token or data migration required!**
+
+Version tracking is handled via git tags (e.g., v2.0.0, v2.1.0, v3.0.0) rather than contract naming.
 
 ## Key Functions
 
@@ -128,7 +138,7 @@ function transferTokenFrom(address _token, address _from, uint256 _amount) exter
 function updateLogicContract(address _newLogicContract) external; // ADMIN_ROLE only
 ```
 
-### PostageStampV2
+### PostageStamp (Logic Contract)
 
 ```solidity
 // Same interface as original PostageStamp
@@ -153,7 +163,7 @@ function batches(bytes32 _batchId) public view returns (...);
 - `ADMIN_ROLE`: Can update logic contract address (use multi-sig!)
 - `onlyLogicContract` modifier: Only authorized logic can modify storage
 
-**PostageStampV2:**
+**PostageStamp (Logic Contract):**
 - `DEFAULT_ADMIN_ROLE`: Can grant/revoke other roles
 - `PRICE_ORACLE_ROLE`: Can update storage price
 - `REDISTRIBUTOR_ROLE`: Can withdraw pot
@@ -182,7 +192,7 @@ During an upgrade:
 
 ```bash
 npx hardhat test test/PostageStampStorage.test.ts
-npx hardhat test test/PostageStampV2.test.ts
+npx hardhat test test/PostageStamp.test.ts
 ```
 
 ### Integration Tests
@@ -259,8 +269,8 @@ For questions or issues:
 ## References
 
 - SWIP Document: [SWIP-storage-decoupling.md](../SWIP-storage-decoupling.md)
-- Deployment Script: [deploy/PostageStampV2.deploy.ts](../deploy/PostageStampV2.deploy.ts)
+- Deployment Script: [deploy/PostageStamp.deploy.ts](../deploy/PostageStamp.deploy.ts)
 - Migration Script: [scripts/migration/migrateToStorageDecoupling.ts](../scripts/migration/migrateToStorageDecoupling.ts)
 - Interface: [src/interface/IPostageStampStorage.sol](../src/interface/IPostageStampStorage.sol)
 - Storage Contract: [src/PostageStampStorage.sol](../src/PostageStampStorage.sol)
-- Logic Contract: [src/PostageStampV2.sol](../src/PostageStampV2.sol)
+- Logic Contract: [src/PostageStamp.sol](../src/PostageStamp.sol)

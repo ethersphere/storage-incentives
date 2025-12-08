@@ -23,9 +23,9 @@ Currently, the PostageStamp contract is monolithic, containing both storage and 
 
 This proposal introduces a two-contract architecture:
 - **PostageStampStorage**: An immutable contract that holds all batch data, the order statistics tree, and BZZ tokens
-- **PostageStampV2**: An upgradeable logic contract that implements all postage stamp operations
+- **PostageStamp**: An upgradeable logic contract that implements all postage stamp operations
 
-This separation allows the logic contract to be upgraded independently while the storage contract remains unchanged, eliminating the need for token and data migration.
+This separation allows the logic contract to be upgraded independently while the storage contract remains unchanged, eliminating the need for token and data migration. Contract versions are tracked via git tags rather than in contract names.
 
 ## Motivation
 
@@ -67,7 +67,7 @@ This separation allows the logic contract to be upgraded independently while the
                  │ Storage Access
                  │
 ┌─────────────────────────────────────┐
-│   PostageStampV2 (Upgradeable)      │
+│   PostageStamp (Upgradeable)        │
 │                                     │
 │  - createBatch()                    │
 │  - topUp()                          │
@@ -75,6 +75,8 @@ This separation allows the logic contract to be upgraded independently while the
 │  - setPrice()                       │
 │  - withdraw()                       │
 │  - All business logic               │
+│                                     │
+│  Version tracked by git tags        │
 └─────────────────────────────────────┘
                  ▲
                  │
@@ -124,13 +126,14 @@ uint64 private lastUpdatedBlock;
 - `ADMIN_ROLE`: Can update the logic contract address
 - `DEFAULT_ADMIN_ROLE`: Top-level admin
 
-#### 3. PostageStampV2 Contract
+#### 3. PostageStamp Contract (Logic)
 
 **Key Properties**:
 - Contains all business logic from the original PostageStamp contract
 - Stateless (except for configuration parameters)
 - References the immutable storage contract
 - Can be upgraded by deploying a new version and updating the storage contract's logic address
+- Version tracking is handled via git tags, not contract naming
 
 **Core Functions** (unchanged interface):
 - `createBatch()`: Create new postage stamp batches
@@ -155,18 +158,20 @@ constructor(
 1. **Initial Deployment**:
    ```
    1. Deploy PostageStampStorage(bzzToken, initialLogicAddress, adminAddress)
-   2. Deploy PostageStampV2(storageContract, minimumBucketDepth, minimumValidityBlocks)
-   3. If initialLogicAddress was temporary, call storage.updateLogicContract(PostageStampV2Address)
-   4. Grant roles to PostageStampV2 (PRICE_ORACLE_ROLE, REDISTRIBUTOR_ROLE, etc.)
+   2. Deploy PostageStamp(storageContract, minimumBucketDepth, minimumValidityBlocks)
+   3. If initialLogicAddress was temporary, call storage.updateLogicContract(PostageStampAddress)
+   4. Grant roles to PostageStamp (PRICE_ORACLE_ROLE, REDISTRIBUTOR_ROLE, etc.)
+   5. Tag the deployment in git (e.g., v2.0.0)
    ```
 
 2. **Upgrade Process**:
    ```
-   1. Deploy PostageStampV3(storageContract, updatedParameters)
-   2. Configure roles on PostageStampV3
-   3. Call storage.updateLogicContract(PostageStampV3Address)
-   4. Update Swarm node configurations to use PostageStampV3 address
-   5. (Optional) Pause or restrict PostageStampV2 to prevent confusion
+   1. Checkout new version from git (e.g., v2.1.0)
+   2. Deploy new PostageStamp(storageContract, updatedParameters)
+   3. Configure roles on new PostageStamp
+   4. Call storage.updateLogicContract(newPostageStampAddress)
+   5. Update Swarm node configurations to use new PostageStamp address
+   6. (Optional) Pause old PostageStamp to prevent confusion
    ```
 
 ### Migration from Existing Contract
@@ -174,15 +179,16 @@ constructor(
 For existing deployments, a one-time migration is required:
 
 1. Deploy PostageStampStorage contract
-2. Pause the old PostageStamp contract
+2. Pause the old PostageStamp contract (legacy version)
 3. Run migration script to:
    - Transfer all BZZ tokens from old contract to storage contract
    - Copy all batch data to storage contract
    - Rebuild the order statistics tree in storage contract
    - Copy global state variables
-4. Deploy PostageStampV2 pointing to the storage contract
-5. Update node configurations
-6. Unpause and begin operations
+4. Deploy new PostageStamp (logic contract) pointing to the storage contract
+5. Tag the deployment in git (e.g., v2.0.0)
+6. Update node configurations
+7. Unpause and begin operations
 
 After this one-time migration, all future upgrades require no data or token migration.
 
@@ -234,10 +240,10 @@ Making the storage contract immutable provides:
 
 ### Maintaining Compatibility
 
-- PostageStampV2 maintains the same external interface as PostageStamp (except constructor)
+- The new PostageStamp contract maintains the same external interface as the legacy version (except constructor)
 - Function signatures remain unchanged
 - Return values and events are identical
-- Existing batch IDs remain valid
+- Existing batch IDs remain valid after migration
 
 ### Transition Plan
 
@@ -271,7 +277,7 @@ The reference implementation consists of three files:
 
 1. **`src/interface/IPostageStampStorage.sol`**: Interface defining all storage operations
 2. **`src/PostageStampStorage.sol`**: Immutable storage contract implementation
-3. **`src/PostageStampV2.sol`**: Upgradeable logic contract implementation
+3. **`src/PostageStamp.sol`**: Upgradeable logic contract implementation (versioned via git tags)
 
 ### Testing Plan
 
@@ -286,10 +292,10 @@ The reference implementation consists of three files:
    - Test price oracle updates
 
 3. **Upgrade Tests**:
-   - Deploy V2, create batches
-   - Deploy V3, update storage pointer
-   - Verify V3 can read V2's batches
-   - Verify V2 can no longer modify storage
+   - Deploy initial version, create batches
+   - Deploy updated version (from new git tag), update storage pointer
+   - Verify new version can read existing batches
+   - Verify old version can no longer modify storage
 
 4. **Migration Tests**:
    - Create batches in old contract
