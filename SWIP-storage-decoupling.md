@@ -273,7 +273,7 @@ Making the storage contract immutable provides:
 
 ### Reference Implementation
 
-The reference implementation consists of three files:
+The reference implementation is available in [PR #300](https://github.com/ethersphere/storage-incentives/pull/300) and consists of three files:
 
 1. **`src/interface/IPostageStampStorage.sol`**: Interface defining all storage operations
 2. **`src/PostageStampStorage.sol`**: Immutable storage contract implementation
