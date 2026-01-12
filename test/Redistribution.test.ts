@@ -179,7 +179,6 @@ const errors = {
   reveal: {
     noCommits: 'NoCommitsReceived()',
     doNotMatch: 'NoMatchingCommit()',
-    outOfDepth: 'OutOfDepth()',
     outOfDepthReveal: 'OutOfDepthReveal()',
     notInReveal: 'NotRevealPhase()',
   },
@@ -187,8 +186,8 @@ const errors = {
     noReveals: 'NoReveals()',
     alreadyClaimed: 'AlreadyClaimed()',
     randomCheckFailed: 'RandomElementCheckFailed()',
-    outOfDepth: 'OutOfDepth()',
-    reserveCheckFailed: 'ReserveCheckFailed()',
+    outOfDepthClaim: 'OutOfDepthClaim',
+    reserveCheckFailed: 'ReserveCheckFailed',
     indexOutsideSet: 'IndexOutsideSet()',
     batchDoesNotExist: 'BatchDoesNotExist()',
     bucketDiffers: 'BucketDiffers()',
@@ -1090,7 +1089,7 @@ describe('Redistribution', function () {
 
           await expect(
             r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith(errors.claim.outOfDepth);
+          ).to.be.revertedWith(errors.claim.outOfDepthClaim);
         });
 
         it('should not claim pot because of estimation check', async () => {
