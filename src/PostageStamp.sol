@@ -22,6 +22,17 @@ import "./interface/IPostageStampStorage.sol";
  * Note: Contract versioning is tracked via git tags, not in the contract name.
  */
 contract PostageStamp is AccessControl, Pausable {
+    // ----------------------------- Type declarations ------------------------------
+
+    struct ImportBatch {
+        bytes32 batchId;
+        address owner;
+        uint8 depth;
+        uint8 bucketDepth;
+        bool immutableFlag;
+        uint256 remainingBalance;
+    }
+
     // ----------------------------- State variables ------------------------------
 
     /// @notice Reference to the immutable storage contract
@@ -55,12 +66,11 @@ contract PostageStamp is AccessControl, Pausable {
         uint8 bucketDepth,
         bool immutableFlag
     );
-
-    event PotWithdrawn(address recipient, uint256 totalAmount);
     event BatchTopUp(bytes32 indexed batchId, uint256 topupAmount, uint256 normalisedBalance);
     event BatchDepthIncrease(bytes32 indexed batchId, uint8 newDepth, uint256 normalisedBalance);
     event PriceUpdate(uint256 price);
-    event CopyBatchFailed(uint index, bytes32 batchId);
+    event PotWithdrawn(address recipient, uint256 totalAmount);
+    event CopyBatchFailed(uint256 index, bytes32 batchId);
 
     // ----------------------------- Errors ------------------------------
 
@@ -82,17 +92,6 @@ contract PostageStamp is AccessControl, Pausable {
     error NoBatchesExist();
     error OnlyPauser();
     error OnlyRedistributor();
-
-    // ----------------------------- Structs ------------------------------
-
-    struct ImportBatch {
-        bytes32 batchId;
-        address owner;
-        uint8 depth;
-        uint8 bucketDepth;
-        bool immutableFlag;
-        uint256 remainingBalance;
-    }
 
     // ----------------------------- Constructor ------------------------------
 
@@ -119,7 +118,9 @@ contract PostageStamp is AccessControl, Pausable {
         _setupRole(PAUSER_ROLE, msg.sender);
     }
 
-    // ----------------------------- State Changing Functions ------------------------------
+    ////////////////////////////////////////
+    //           STATE SETTING           //
+    ////////////////////////////////////////
 
     /**
      * @notice Create a new batch
@@ -278,8 +279,8 @@ contract PostageStamp is AccessControl, Pausable {
             revert PriceOracleOnly();
         }
 
-        uint64 lastPrice = storageContract.getLastPrice();
-        if (lastPrice != 0) {
+        uint64 currentLastPrice = storageContract.getLastPrice();
+        if (currentLastPrice != 0) {
             storageContract.setTotalOutPayment(currentTotalOutPayment());
         }
 
@@ -297,7 +298,6 @@ contract PostageStamp is AccessControl, Pausable {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
         }
-
         minimumValidityBlocks = _value;
     }
 
@@ -325,15 +325,15 @@ contract PostageStamp is AccessControl, Pausable {
             IPostageStampStorage.Batch memory batch = storageContract.getBatch(fbi);
             uint256 batchSize = 1 << batch.depth;
 
-            uint256 validChunkCount = storageContract.getValidChunkCount();
-            if (validChunkCount < batchSize) {
+            uint256 currentValidChunkCount = storageContract.getValidChunkCount();
+            if (currentValidChunkCount < batchSize) {
                 revert InsufficientChunkCount();
             }
-            storageContract.setValidChunkCount(validChunkCount - batchSize);
+            storageContract.setValidChunkCount(currentValidChunkCount - batchSize);
 
-            uint256 pot = storageContract.getPot();
-            pot += batchSize * (batch.normalisedBalance - _lastExpiryBalance);
-            storageContract.setPot(pot);
+            uint256 currentPot = storageContract.getPot();
+            currentPot += batchSize * (batch.normalisedBalance - _lastExpiryBalance);
+            storageContract.setPot(currentPot);
 
             storageContract.treeRemove(fbi, batch.normalisedBalance);
             storageContract.deleteBatch(fbi);
@@ -343,25 +343,25 @@ contract PostageStamp is AccessControl, Pausable {
             }
         }
 
-        uint256 lastExpiryBalance = storageContract.getLastExpiryBalance();
-        if (lastExpiryBalance < _lastExpiryBalance) {
+        uint256 newLastExpiryBalance = storageContract.getLastExpiryBalance();
+        if (newLastExpiryBalance < _lastExpiryBalance) {
             revert TotalOutpaymentDecreased();
         }
 
-        uint256 pot = storageContract.getPot();
-        pot += storageContract.getValidChunkCount() * (lastExpiryBalance - _lastExpiryBalance);
-        storageContract.setPot(pot);
+        uint256 currentPot = storageContract.getPot();
+        currentPot += storageContract.getValidChunkCount() * (newLastExpiryBalance - _lastExpiryBalance);
+        storageContract.setPot(currentPot);
     }
 
     /**
-     * @notice Get the current total pot
+     * @notice Get the current total pot and expire batches
      * @return The total pot amount
      */
     function totalPot() public returns (uint256) {
         expireLimited(type(uint256).max);
         uint256 balance = storageContract.tokenBalance(storageContract.bzzToken());
-        uint256 pot = storageContract.getPot();
-        return pot < balance ? pot : balance;
+        uint256 currentPot = storageContract.getPot();
+        return currentPot < balance ? currentPot : balance;
     }
 
     /**
@@ -469,17 +469,19 @@ contract PostageStamp is AccessControl, Pausable {
         emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
     }
 
-    // ----------------------------- View Functions ------------------------------
+    ////////////////////////////////////////
+    //           STATE READING           //
+    ////////////////////////////////////////
 
     /**
      * @notice Get current total out payment
      * @return The current total out payment per chunk
      */
     function currentTotalOutPayment() public view returns (uint256) {
-        uint64 lastUpdatedBlock = storageContract.getLastUpdatedBlock();
-        uint64 lastPrice = storageContract.getLastPrice();
-        uint256 blocks = block.number - lastUpdatedBlock;
-        uint256 increaseSinceLastUpdate = lastPrice * blocks;
+        uint64 lastUpdatedBlockNum = storageContract.getLastUpdatedBlock();
+        uint64 currentLastPrice = storageContract.getLastPrice();
+        uint256 blocks = block.number - lastUpdatedBlockNum;
+        uint256 increaseSinceLastUpdate = currentLastPrice * blocks;
         return storageContract.getTotalOutPayment() + increaseSinceLastUpdate;
     }
 
@@ -543,6 +545,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Get batch owner
+     * @param _batchId The batch ID
+     * @return The batch owner address
      */
     function batchOwner(bytes32 _batchId) public view returns (address) {
         return storageContract.getBatch(_batchId).owner;
@@ -550,6 +554,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Get batch depth
+     * @param _batchId The batch ID
+     * @return The batch depth
      */
     function batchDepth(bytes32 _batchId) public view returns (uint8) {
         return storageContract.getBatch(_batchId).depth;
@@ -557,6 +563,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Get batch bucket depth
+     * @param _batchId The batch ID
+     * @return The batch bucket depth
      */
     function batchBucketDepth(bytes32 _batchId) public view returns (uint8) {
         return storageContract.getBatch(_batchId).bucketDepth;
@@ -564,6 +572,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Get batch immutable flag
+     * @param _batchId The batch ID
+     * @return The batch immutable flag
      */
     function batchImmutableFlag(bytes32 _batchId) public view returns (bool) {
         return storageContract.getBatch(_batchId).immutableFlag;
@@ -571,6 +581,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Get batch normalised balance
+     * @param _batchId The batch ID
+     * @return The batch normalised balance
      */
     function batchNormalisedBalance(bytes32 _batchId) public view returns (uint256) {
         return storageContract.getBatch(_batchId).normalisedBalance;
@@ -578,6 +590,8 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Get batch last updated block number
+     * @param _batchId The batch ID
+     * @return The batch last updated block number
      */
     function batchLastUpdatedBlockNumber(bytes32 _batchId) public view returns (uint256) {
         return storageContract.getBatch(_batchId).lastUpdatedBlockNumber;
@@ -585,6 +599,13 @@ contract PostageStamp is AccessControl, Pausable {
 
     /**
      * @notice Get public batch data
+     * @param _batchId The batch ID
+     * @return owner The batch owner
+     * @return depth The batch depth
+     * @return bucketDepth The batch bucket depth
+     * @return immutableFlag The batch immutable flag
+     * @return normalisedBalance The batch normalised balance
+     * @return lastUpdatedBlockNumber The batch last updated block number
      */
     function batches(
         bytes32 _batchId
@@ -611,28 +632,54 @@ contract PostageStamp is AccessControl, Pausable {
         );
     }
 
-    // ----------------------------- Storage Proxy Getters ------------------------------
+    ////////////////////////////////////////
+    //       STORAGE PROXY GETTERS       //
+    ////////////////////////////////////////
 
+    /**
+     * @notice Get BZZ token address
+     * @return The BZZ token address from storage
+     */
     function bzzToken() public view returns (address) {
         return storageContract.bzzToken();
     }
 
+    /**
+     * @notice Get valid chunk count
+     * @return The valid chunk count from storage
+     */
     function validChunkCount() public view returns (uint256) {
         return storageContract.getValidChunkCount();
     }
 
+    /**
+     * @notice Get pot
+     * @return The pot from storage
+     */
     function pot() public view returns (uint256) {
         return storageContract.getPot();
     }
 
+    /**
+     * @notice Get last expiry balance
+     * @return The last expiry balance from storage
+     */
     function lastExpiryBalance() public view returns (uint256) {
         return storageContract.getLastExpiryBalance();
     }
 
+    /**
+     * @notice Get last price
+     * @return The last price from storage
+     */
     function lastPrice() public view returns (uint64) {
         return storageContract.getLastPrice();
     }
 
+    /**
+     * @notice Get last updated block
+     * @return The last updated block from storage
+     */
     function lastUpdatedBlock() public view returns (uint64) {
         return storageContract.getLastUpdatedBlock();
     }

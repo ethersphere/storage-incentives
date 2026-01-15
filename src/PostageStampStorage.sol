@@ -74,6 +74,12 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     /// @notice Role that can perform emergency operations
     bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
 
+    // ----------------------------- Events ------------------------------
+
+    // Inherited from IPostageStampStorage:
+    // - event BatchStored(bytes32 indexed batchId);
+    // - event BatchDeleted(bytes32 indexed batchId);
+
     // ----------------------------- Errors ------------------------------
 
     error ZeroAddress();
@@ -103,27 +109,9 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
         _setRoleAdmin(EMERGENCY_ROLE, DEFAULT_ADMIN_ROLE);
     }
 
-    // ----------------------------- Role Management Helpers ------------------------------
-
-    /**
-     * @notice Check if an address is an authorized writer (PostageStamp logic contract)
-     * @param _address Address to check
-     * @return True if the address has WRITER_ROLE
-     */
-    function isWriter(address _address) external view returns (bool) {
-        return hasRole(WRITER_ROLE, _address);
-    }
-
-    /**
-     * @notice Check if an address is the admin (multisig)
-     * @param _address Address to check
-     * @return True if the address has DEFAULT_ADMIN_ROLE
-     */
-    function isAdmin(address _address) external view returns (bool) {
-        return hasRole(DEFAULT_ADMIN_ROLE, _address);
-    }
-
-    // ----------------------------- Storage Operations ------------------------------
+    ////////////////////////////////////////
+    //           STATE SETTING           //
+    ////////////////////////////////////////
 
     /// @inheritdoc IPostageStampStorage
     function storeBatch(bytes32 _batchId, Batch calldata _batch) external {
@@ -144,18 +132,6 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function getBatch(bytes32 _batchId) external view returns (Batch memory) {
-        return batches[_batchId];
-    }
-
-    /// @inheritdoc IPostageStampStorage
-    function batchExists(bytes32 _batchId) external view returns (bool) {
-        return batches[_batchId].owner != address(0);
-    }
-
-    // ----------------------------- Tree Operations ------------------------------
-
-    /// @inheritdoc IPostageStampStorage
     function treeInsert(bytes32 _batchId, uint256 _normalisedBalance) external {
         if (!hasRole(WRITER_ROLE, msg.sender)) {
             revert UnauthorizedWriter();
@@ -169,6 +145,102 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
             revert UnauthorizedWriter();
         }
         tree.remove(_batchId, _normalisedBalance);
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function setTotalOutPayment(uint256 _totalOutPayment) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        totalOutPayment = _totalOutPayment;
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function setValidChunkCount(uint256 _validChunkCount) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        validChunkCount = _validChunkCount;
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function setPot(uint256 _pot) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        pot = _pot;
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function setLastExpiryBalance(uint256 _lastExpiryBalance) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        lastExpiryBalance = _lastExpiryBalance;
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function setLastPrice(uint64 _lastPrice) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        lastPrice = _lastPrice;
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function setLastUpdatedBlock(uint64 _lastUpdatedBlock) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        lastUpdatedBlock = _lastUpdatedBlock;
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function transferToken(address _token, address _to, uint256 _amount) external returns (bool) {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        return ERC20(_token).transfer(_to, _amount);
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function transferTokenFrom(address _token, address _from, uint256 _amount) external returns (bool) {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
+        return ERC20(_token).transferFrom(_from, address(this), _amount);
+    }
+
+    ////////////////////////////////////////
+    //           STATE READING           //
+    ////////////////////////////////////////
+
+    /**
+     * @notice Check if an address is an authorized writer (PostageStamp logic contract)
+     * @param _address Address to check
+     * @return True if the address has WRITER_ROLE
+     */
+    function isWriter(address _address) external view returns (bool) {
+        return hasRole(WRITER_ROLE, _address);
+    }
+
+    /**
+     * @notice Check if an address is the admin (multisig)
+     * @param _address Address to check
+     * @return True if the address has DEFAULT_ADMIN_ROLE
+     */
+    function isAdmin(address _address) external view returns (bool) {
+        return hasRole(DEFAULT_ADMIN_ROLE, _address);
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function getBatch(bytes32 _batchId) external view returns (Batch memory) {
+        return batches[_batchId];
+    }
+
+    /// @inheritdoc IPostageStampStorage
+    function batchExists(bytes32 _batchId) external view returns (bool) {
+        return batches[_batchId].owner != address(0);
     }
 
     /// @inheritdoc IPostageStampStorage
@@ -186,27 +258,9 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
         return tree.valueKeyAtIndex(_value, _index);
     }
 
-    // ----------------------------- Global State ------------------------------
-
-    /// @inheritdoc IPostageStampStorage
-    function setTotalOutPayment(uint256 _totalOutPayment) external {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        totalOutPayment = _totalOutPayment;
-    }
-
     /// @inheritdoc IPostageStampStorage
     function getTotalOutPayment() external view returns (uint256) {
         return totalOutPayment;
-    }
-
-    /// @inheritdoc IPostageStampStorage
-    function setValidChunkCount(uint256 _validChunkCount) external {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        validChunkCount = _validChunkCount;
     }
 
     /// @inheritdoc IPostageStampStorage
@@ -215,24 +269,8 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setPot(uint256 _pot) external {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        pot = _pot;
-    }
-
-    /// @inheritdoc IPostageStampStorage
     function getPot() external view returns (uint256) {
         return pot;
-    }
-
-    /// @inheritdoc IPostageStampStorage
-    function setLastExpiryBalance(uint256 _lastExpiryBalance) external {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        lastExpiryBalance = _lastExpiryBalance;
     }
 
     /// @inheritdoc IPostageStampStorage
@@ -241,47 +279,13 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setLastPrice(uint64 _lastPrice) external {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        lastPrice = _lastPrice;
-    }
-
-    /// @inheritdoc IPostageStampStorage
     function getLastPrice() external view returns (uint64) {
         return lastPrice;
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setLastUpdatedBlock(uint64 _lastUpdatedBlock) external {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        lastUpdatedBlock = _lastUpdatedBlock;
-    }
-
-    /// @inheritdoc IPostageStampStorage
     function getLastUpdatedBlock() external view returns (uint64) {
         return lastUpdatedBlock;
-    }
-
-    // ----------------------------- Token Operations ------------------------------
-
-    /// @inheritdoc IPostageStampStorage
-    function transferToken(address _token, address _to, uint256 _amount) external returns (bool) {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        return ERC20(_token).transfer(_to, _amount);
-    }
-
-    /// @inheritdoc IPostageStampStorage
-    function transferTokenFrom(address _token, address _from, uint256 _amount) external returns (bool) {
-        if (!hasRole(WRITER_ROLE, msg.sender)) {
-            revert UnauthorizedWriter();
-        }
-        return ERC20(_token).transferFrom(_from, address(this), _amount);
     }
 
     /// @inheritdoc IPostageStampStorage
