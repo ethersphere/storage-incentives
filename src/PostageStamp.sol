@@ -402,6 +402,73 @@ contract PostageStamp is AccessControl, Pausable {
         _unpause();
     }
 
+    /**
+     * @notice Create a batch with a specific batch ID (for testing/migration)
+     * @dev This function allows creating batches with specific IDs, useful for:
+     *      - Migration from legacy contracts
+     *      - Testing with pre-signed chunks that reference specific batch IDs
+     *      Requires ADMIN role to prevent misuse
+     * @param _owner Owner of the batch
+     * @param _initialBalancePerChunk Initial balance per chunk
+     * @param _depth Depth of the batch
+     * @param _bucketDepth Bucket depth
+     * @param _batchId Specific batch ID to use
+     * @param _immutable Whether the batch is immutable
+     */
+    function copyBatch(
+        address _owner,
+        uint256 _initialBalancePerChunk,
+        uint8 _depth,
+        uint8 _bucketDepth,
+        bytes32 _batchId,
+        bool _immutable
+    ) external whenNotPaused {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+            revert AdministratorOnly();
+        }
+
+        if (_owner == address(0)) {
+            revert ZeroAddress();
+        }
+
+        if (_bucketDepth == 0 || _bucketDepth < minimumBucketDepth || _bucketDepth >= _depth) {
+            revert InvalidDepth();
+        }
+
+        if (storageContract.batchExists(_batchId)) {
+            revert BatchExists();
+        }
+
+        uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
+        if (!storageContract.transferTokenFrom(storageContract.bzzToken(), msg.sender, totalAmount)) {
+            revert TransferFailed();
+        }
+
+        uint256 normalisedBalance = currentTotalOutPayment() + _initialBalancePerChunk;
+        if (normalisedBalance == 0) {
+            revert ZeroBalance();
+        }
+
+        expireLimited(type(uint256).max);
+
+        uint256 newValidChunkCount = storageContract.getValidChunkCount() + (1 << _depth);
+        storageContract.setValidChunkCount(newValidChunkCount);
+
+        IPostageStampStorage.Batch memory batch = IPostageStampStorage.Batch({
+            owner: _owner,
+            depth: _depth,
+            bucketDepth: _bucketDepth,
+            immutableFlag: _immutable,
+            normalisedBalance: normalisedBalance,
+            lastUpdatedBlockNumber: block.number
+        });
+
+        storageContract.storeBatch(_batchId, batch);
+        storageContract.treeInsert(_batchId, normalisedBalance);
+
+        emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+    }
+
     // ----------------------------- View Functions ------------------------------
 
     /**
