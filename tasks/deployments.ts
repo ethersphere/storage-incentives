@@ -1,9 +1,9 @@
 /**
  * Deployments Task - Display deployed contracts in copy-paste friendly format
- * 
+ *
  * Usage:
  *   npx hardhat deployments
- * 
+ *
  * This task displays:
  * - All deployed contracts for both mainnet and testnet
  * - Contract addresses with Etherscan explorer links
