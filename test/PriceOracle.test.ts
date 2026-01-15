@@ -316,6 +316,68 @@ describe('PriceOracle', function () {
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice4);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice4);
       });
+
+      it('should apply defanged penalty for skipped rounds (changeRate[1] instead of changeRate[0])', async function () {
+        const priceOracleU = await ethers.getContract('PriceOracle', updater);
+
+        const currentPrice = await priceOracle.currentPrice();
+        expect(currentPrice).to.be.eq(minimumPrice);
+
+        // Advance one round and set initial price with redundancy=4 (neutral)
+        await mineNBlocks(roundLength);
+        await priceOracleU.adjustPrice(4);
+
+        const price1 = await priceOracle.currentPrice();
+
+        // Skip 3 rounds (mine 3 * roundLength blocks + 1 to ensure we're in the 4th round)
+        const skippedRounds = 3;
+        await mineNBlocks(roundLength * (skippedRounds + 1));
+
+        // Now call adjustPrice with redundancy=2
+        const currentRedundancy = 2;
+        
+        // Calculate what the price would be with OLD approach (changeRate[0])
+        // This uses the maximum penalty for skipped rounds
+        let oldApproachPriceUpscaled = price1 << 10;
+        
+        // Apply changeRate[0] for skipped rounds (old approach)
+        for (let i = 0; i < skippedRounds; i++) {
+          oldApproachPriceUpscaled = Math.floor((changeRate[0] * oldApproachPriceUpscaled) / priceBase);
+        }
+        
+        // Apply changeRate[2] for current round
+        oldApproachPriceUpscaled = Math.floor((changeRate[currentRedundancy] * oldApproachPriceUpscaled) / priceBase);
+        const oldApproachPrice = oldApproachPriceUpscaled >> 10;
+
+        // Now actually call adjustPrice and see what we get with NEW defanged approach
+        await priceOracleU.adjustPrice(currentRedundancy);
+
+        const finalPrice = await priceOracle.currentPrice();
+
+        // The key test: final price should be LESS than what it would be with changeRate[0]
+        // because we're using changeRate[1] instead (defanged approach)
+        expect(finalPrice).to.be.lt(oldApproachPrice);
+
+        // Calculate the expected price with NEW approach for verification
+        let newApproachPriceUpscaled = price1 << 10;
+        
+        // Apply changeRate[1] for skipped rounds (new defanged approach)
+        for (let i = 0; i < skippedRounds; i++) {
+          newApproachPriceUpscaled = Math.floor((changeRate[1] * newApproachPriceUpscaled) / priceBase);
+        }
+        
+        // Apply changeRate[2] for current round
+        newApproachPriceUpscaled = Math.floor((changeRate[currentRedundancy] * newApproachPriceUpscaled) / priceBase);
+        const newApproachPrice = newApproachPriceUpscaled >> 10;
+
+        // Verify the actual price matches our calculation
+        expect(finalPrice).to.be.eq(newApproachPrice);
+
+        // Log the difference for documentation
+        console.log(`        Price with changeRate[0] (old): ${oldApproachPrice}`);
+        console.log(`        Price with changeRate[1] (new): ${finalPrice}`);
+        console.log(`        Difference: ${oldApproachPrice - finalPrice} (${((oldApproachPrice - finalPrice) / oldApproachPrice * 100).toFixed(2)}%)`);
+      });
     });
   });
 });
