@@ -134,9 +134,9 @@ contract PriceOracle is AccessControl {
             uint32 _changeRate = changeRate[usedRedundancy];
             _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
 
-            // If previous rounds were skipped, use MAX price increase for the previous rounds
+            // If previous rounds were skipped, use rate as if 1 player participated (defanged approach)
             if (skippedRounds > 0) {
-                _changeRate = changeRate[0];
+                _changeRate = changeRate[1]; // Use redundancy=1 rate instead of max penalty
                 for (uint64 i = 0; i < skippedRounds; i++) {
                     _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
                 }
