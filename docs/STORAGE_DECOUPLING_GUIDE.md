@@ -2,275 +2,363 @@
 
 ## Overview
 
-This guide explains the PostageStamp storage decoupling architecture and how to deploy, migrate, and upgrade the system.
+This guide explains the PostageStamp storage decoupling architecture, where storage and logic are separated to enable seamless upgrades without token or data migration.
 
 ## Architecture
 
-The new architecture separates storage from logic into two contracts:
+```
+                    ┌─────────────────────────────────────┐
+                    │      PostageStampStorage            │
+                    │      (deployed once, forever)       │
+                    │                                     │
+                    │   • Holds all BZZ tokens            │
+                    │   • Stores all batch data           │
+                    │   • Stores order statistics tree    │
+                    │   • Stores global state             │
+                    │                                     │
+                    │   Admin: Multisig (set in constructor)
+                    │                                     │
+                    │   WRITER_ROLE granted to:           │
+                    │   ├── PostageStamp v1.0 ✓          │
+                    │   ├── PostageStamp v1.1 ✓          │
+                    │   └── PostageStamp v2.0 ✓          │
+                    └─────────────────────────────────────┘
+                              ▲       ▲       ▲
+                              │       │       │
+                 ┌────────────┘       │       └────────────┐
+                 │                    │                    │
+        ┌────────┴────────┐  ┌───────┴───────┐  ┌────────┴────────┐
+        │ PostageStamp    │  │ PostageStamp  │  │ PostageStamp    │
+        │ v1.0 (logic)    │  │ v1.1 (logic)  │  │ v2.0 (logic)    │
+        │                 │  │               │  │                 │
+        │ storageContract │  │storageContract│  │ storageContract │
+        │ = 0xStorage     │  │= 0xStorage    │  │ = 0xStorage     │
+        └────────┬────────┘  └───────┬───────┘  └────────┬────────┘
+                 │                   │                    │
+                 ▼                   ▼                    ▼
+        ┌────────────────┐  ┌───────────────┐  ┌────────────────┐
+        │  Bee v1.0.0    │  │  Bee v1.1.0   │  │  Bee v2.0.0    │
+        │ (hardcoded to  │  │ (hardcoded to │  │ (hardcoded to  │
+        │  v1.0 logic)   │  │  v1.1 logic)  │  │  v2.0 logic)   │
+        └────────────────┘  └───────────────┘  └────────────────┘
+```
 
 ### PostageStampStorage (Immutable)
-- Holds all BZZ tokens
-- Stores all batch data and the order statistics tree
-- Stores global state variables
-- **Never needs to be upgraded or replaced**
-- Only the authorized logic contract can modify data
+- Deployed once with multisig as permanent admin
+- Holds all BZZ tokens and batch data
+- Uses role-based access control (WRITER_ROLE)
+- Multiple logic contracts can have write access simultaneously
+- **Never needs code changes** - only role management
 
-### PostageStamp (Upgradeable)
+### PostageStamp Logic Contracts (Versioned)
 - Contains all business logic
-- Stateless (except configuration)
-- Can be upgraded by deploying a new version (tracked via git tags)
-- **Upgrading requires NO token or data migration**
+- Points to storage contract (immutable reference)
+- Each version is a separate deployment
+- Bee nodes choose which version to use
+- Can be upgraded without affecting storage
+
+## Key Concepts
+
+### Role-Based Access Control
+
+| Role | Holder | Can Do |
+|------|--------|--------|
+| DEFAULT_ADMIN_ROLE | Multisig | Grant/revoke WRITER_ROLE |
+| WRITER_ROLE | PostageStamp logic contracts | Modify storage data |
+| EMERGENCY_ROLE | Multisig | Emergency operations |
+
+### Bee Node Versioning
+
+Each Bee node version is hardcoded to use a specific PostageStamp logic contract address:
+
+```go
+// In Bee node configuration
+const PostageStampAddress = "0x..." // Specific to this Bee version
+```
+
+This means:
+- **Bee v1.0.0** → uses PostageStamp v1.0 at 0xAAA...
+- **Bee v1.1.0** → uses PostageStamp v1.1 at 0xBBB...
+- **Bee v2.0.0** → uses PostageStamp v2.0 at 0xCCC...
+
+All versions share the same PostageStampStorage contract.
 
 ## Benefits
 
 1. **Zero-Migration Upgrades**: Deploy new logic without moving funds or data
-2. **Reduced Risk**: Tokens stay in the same trusted, immutable contract
-3. **Faster Iteration**: Lower upgrade costs enable more improvements
-4. **Simple Updates**: Nodes just update the logic contract address
-5. **Backward Compatible**: Old logic can continue in read-only mode
+2. **Gradual Network Migration**: Old and new Bee versions coexist during transition
+3. **Reduced Risk**: Tokens stay in the same trusted storage contract
+4. **Simple Governance**: Only role management needed, no complex upgrades
+5. **Version Flexibility**: Can maintain multiple active versions simultaneously
+6. **Rollback Capability**: Can revoke new version and keep old one if issues arise
 
-## Deployment Scenarios
+## Deployment
 
-### Scenario 1: Fresh Deployment (No Existing PostageStamp)
-
-Use this for new networks or testnets without existing PostageStamp contracts.
+### Initial Deployment (Storage + First Logic)
 
 ```bash
 # 1. Set environment variables
 export BZZ_TOKEN_ADDRESS="0x..."
-export ADMIN_ADDRESS="0x..."
-export PRICE_ORACLE_ADDRESS="0x..."
-export REDISTRIBUTOR_ADDRESS="0x..."
+export MULTISIG_ADDRESS="0x..."  # Permanent admin
 
-# 2. Run deployment script
-npx hardhat deploy --tags PostageStamp --network <network>
-
-# 3. Tag the deployment
-git tag -a v2.0.0 -m "Initial storage decoupling deployment"
-
-# 4. Update Swarm node configurations with the PostageStamp address
+# 2. Deploy storage and logic
+npx hardhat deploy --tags postageStamp --network <network>
 ```
 
 **What happens:**
-1. PostageStampStorage deploys with BZZ token reference
-2. PostageStamp (logic contract) deploys pointing to storage
-3. Roles are configured
-4. Deployment is tagged in git for versioning
-5. System is ready to use
+1. PostageStampStorage deploys with multisig as admin
+2. PostageStamp (logic v1) deploys pointing to storage
+3. Multisig grants WRITER_ROLE to logic contract
+4. System is ready to use
 
-### Scenario 2: Migration from Existing PostageStamp
+### Deploying New Logic Version
 
-Use this for mainnet or networks with existing PostageStamp contracts.
+When upgrading to a new Bee version:
+
+```bash
+# 1. Deploy new logic contract (pointing to existing storage)
+npx hardhat deploy --tags postageStampLogic --network <network>
+
+# 2. Multisig grants WRITER_ROLE to new logic
+# (via Safe UI or script)
+storage.grantRole(WRITER_ROLE, newLogicAddress)
+
+# 3. New Bee version uses the new logic address
+# (hardcoded in Bee binary)
+```
+
+**No storage changes required!**
+
+### Multisig Operations
+
+The multisig can perform these operations on storage:
+
+```solidity
+// Grant write access to new logic contract
+storage.grantRole(storage.WRITER_ROLE(), newPostageStampAddress);
+
+// Revoke write access from old logic contract (optional)
+storage.revokeRole(storage.WRITER_ROLE(), oldPostageStampAddress);
+
+// Check if an address has write access
+storage.isWriter(someAddress);  // returns bool
+
+// Check if an address is admin
+storage.isAdmin(someAddress);   // returns bool
+```
+
+## Migration from Legacy PostageStamp
+
+For networks with existing (monolithic) PostageStamp contracts:
 
 ```bash
 # 1. Prepare batch data
-# Export all batch IDs from events or indexer
 npx hardhat run scripts/migration/exportBatchIds.ts --network <network>
 
-# 2. Announce maintenance window to users
-# Recommended: At least 24 hours notice
+# 2. Announce maintenance window (24h notice recommended)
 
-# 3. Run migration script
+# 3. Run migration
 export OLD_POSTAGE_STAMP="0x..."
 export BZZ_TOKEN="0x..."
+export MULTISIG="0x..."
 npx hardhat run scripts/migration/migrateToStorageDecoupling.ts --network <network>
 
 # 4. Verify migration
 npx hardhat run scripts/migration/verifyMigration.ts --network <network>
 
-# 5. Update all Swarm nodes to use new PostageStampV2 address
-
-# 6. Monitor for 24-48 hours
+# 5. Update Bee nodes to use new PostageStamp address
 ```
 
-**What happens:**
-1. Old PostageStamp contract (legacy) is paused
-2. New contracts are deployed (PostageStampStorage + PostageStamp logic)
-3. All batch data is copied to PostageStampStorage
-4. All BZZ tokens are transferred to PostageStampStorage
-5. Global state is set in storage
-6. Deployment is tagged in git (e.g., v2.0.0)
-7. Verification confirms successful migration
-
-## Upgrading the Logic Contract
-
-Once deployed, upgrading to a new version is simple:
-
-```bash
-# 1. Checkout new version from git
-git checkout v2.1.0
-
-# 2. Deploy updated logic contract
-npx hardhat deploy --tags PostageStamp --network <network>
-
-# 3. Update storage to point to new logic
-# (Requires ADMIN_ROLE on PostageStampStorage)
-npx hardhat run scripts/updateLogicContract.ts --network <network>
-
-# 4. Update Swarm nodes to use new PostageStamp address
-
-# 5. (Optional) Pause old PostageStamp instance to prevent confusion
-```
-
-**No token or data migration required!**
-
-Version tracking is handled via git tags (e.g., v2.0.0, v2.1.0, v3.0.0) rather than contract naming.
+**Migration steps:**
+1. Pause old PostageStamp contract
+2. Deploy PostageStampStorage with multisig admin
+3. Deploy PostageStamp logic pointing to storage
+4. Copy all batch data to storage
+5. Transfer all BZZ tokens to storage
+6. Grant WRITER_ROLE to logic contract
+7. Verify everything works
 
 ## Key Functions
 
 ### PostageStampStorage
 
 ```solidity
-// Batch operations
+// Role Management (multisig only)
+function grantRole(bytes32 role, address account) external;
+function revokeRole(bytes32 role, address account) external;
+function isWriter(address _address) external view returns (bool);
+function isAdmin(address _address) external view returns (bool);
+
+// Batch Operations (WRITER_ROLE only)
 function storeBatch(bytes32 _batchId, Batch calldata _batch) external;
 function getBatch(bytes32 _batchId) external view returns (Batch memory);
 function deleteBatch(bytes32 _batchId) external;
+function batchExists(bytes32 _batchId) external view returns (bool);
 
-// Tree operations
+// Tree Operations (WRITER_ROLE only)
 function treeInsert(bytes32 _batchId, uint256 _normalisedBalance) external;
 function treeRemove(bytes32 _batchId, uint256 _normalisedBalance) external;
+function treeFirst() external view returns (uint256);
+function treeCount() external view returns (uint256);
 
-// Token operations
-function transferToken(address _token, address _to, uint256 _amount) external returns (bool);
-function transferTokenFrom(address _token, address _from, uint256 _amount) external returns (bool);
+// Token Operations (WRITER_ROLE only)
+function transferToken(address _token, address _to, uint256 _amount) external;
+function transferTokenFrom(address _token, address _from, uint256 _amount) external;
+function tokenBalance(address _token) external view returns (uint256);
 
-// Admin operations
-function updateLogicContract(address _newLogicContract) external; // ADMIN_ROLE only
+// Global State (WRITER_ROLE can set, anyone can read)
+function setTotalOutPayment(uint256 _totalOutPayment) external;
+function getTotalOutPayment() external view returns (uint256);
+function setValidChunkCount(uint256 _validChunkCount) external;
+function getValidChunkCount() external view returns (uint256);
+function setPot(uint256 _pot) external;
+function getPot() external view returns (uint256);
+// ... etc
 ```
 
 ### PostageStamp (Logic Contract)
 
 ```solidity
-// Same interface as original PostageStamp
+// User Operations
 function createBatch(...) external returns (bytes32);
 function topUp(bytes32 _batchId, uint256 _topupAmountPerChunk) external;
 function increaseDepth(bytes32 _batchId, uint8 _newDepth) external;
-function setPrice(uint256 _price) external; // PRICE_ORACLE_ROLE
-function withdraw(address beneficiary) external; // REDISTRIBUTOR_ROLE
+
+// Oracle Operations (PRICE_ORACLE_ROLE)
+function setPrice(uint256 _price) external;
+
+// Redistribution Operations (REDISTRIBUTOR_ROLE)
+function withdraw(address beneficiary) external;
+
+// Batch Expiry
 function expireLimited(uint256 limit) public;
 
-// View functions
+// View Functions
 function remainingBalance(bytes32 _batchId) public view returns (uint256);
 function currentTotalOutPayment() public view returns (uint256);
 function batches(bytes32 _batchId) public view returns (...);
+function bzzToken() public view returns (address);
+function storageContract() public view returns (address);
 ```
 
 ## Security Considerations
 
-### Access Control
+### Access Control Summary
 
 **PostageStampStorage:**
-- `ADMIN_ROLE`: Can update logic contract address (use multi-sig!)
-- `onlyLogicContract` modifier: Only authorized logic can modify storage
+- DEFAULT_ADMIN_ROLE → Multisig (set once in constructor, forever)
+- WRITER_ROLE → PostageStamp logic contracts (granted by multisig)
 
-**PostageStamp (Logic Contract):**
-- `DEFAULT_ADMIN_ROLE`: Can grant/revoke other roles
-- `PRICE_ORACLE_ROLE`: Can update storage price
-- `REDISTRIBUTOR_ROLE`: Can withdraw pot
-- `PAUSER_ROLE`: Can pause operations
+**PostageStamp (Logic):**
+- DEFAULT_ADMIN_ROLE → Can grant/revoke other roles
+- PRICE_ORACLE_ROLE → Can update storage price
+- REDISTRIBUTOR_ROLE → Can withdraw pot
+- PAUSER_ROLE → Can pause operations
 
 ### Best Practices
 
-1. **Multi-sig for Admin**: Use a multi-sig wallet for the ADMIN_ROLE on PostageStampStorage
-2. **Audit Before Upgrade**: Always audit new logic contracts before upgrading
-3. **Gradual Rollout**: Test on testnet, then gradually roll out on mainnet
-4. **Monitor After Upgrade**: Watch for unexpected behavior for 24-48 hours
-5. **Keep Old Logic**: Don't remove old logic contracts, they provide read-only access
+1. **Multisig for Storage Admin**: Always use a multisig (e.g., Gnosis Safe) as the storage admin
+2. **Audit New Logic**: Audit every new logic contract before granting WRITER_ROLE
+3. **Gradual Rollout**: Grant WRITER_ROLE to new logic, monitor, then optionally revoke old
+4. **Keep Old Versions Active**: During migration, keep old logic with WRITER_ROLE until network has transitioned
+5. **Monitor Role Changes**: Set up alerts for RoleGranted and RoleRevoked events
 
 ### Upgrade Safety
 
-During an upgrade:
-1. **Pause old logic contract** to prevent new writes
-2. **Deploy and configure new logic contract**
-3. **Update storage pointer atomically**
-4. **Update node configurations**
-5. **Monitor for issues**
+Safe upgrade process:
+1. Deploy new logic contract
+2. Multisig grants WRITER_ROLE to new logic
+3. Release new Bee version pointing to new logic
+4. Monitor network during migration
+5. (Optional) Revoke WRITER_ROLE from old logic after full migration
+
+**Note:** Multiple logic contracts can have WRITER_ROLE simultaneously. This is intentional to allow gradual migration.
+
+## Troubleshooting
+
+### Issue: New logic contract can't modify storage
+
+**Cause**: Logic contract doesn't have WRITER_ROLE
+
+**Solution**:
+```solidity
+// Check if logic has write access
+storage.isWriter(logicAddress)  // Should return true
+
+// If false, multisig needs to grant role
+storage.grantRole(WRITER_ROLE, logicAddress)
+```
+
+### Issue: Token transfers failing
+
+**Cause**: User hasn't approved storage contract for token transfers
+
+**Solution**: Users must approve PostageStampStorage (not the logic contract) to spend their BZZ tokens.
+
+### Issue: Batches not showing after migration
+
+**Cause**: Tree not properly rebuilt during migration
+
+**Solution**:
+1. Verify batches are stored: storage.getBatch(batchId)
+2. Verify tree is populated: storage.treeCount()
+3. Re-run tree insertion for missing batches
+
+## FAQ
+
+**Q: Can multiple logic contracts write to storage simultaneously?**
+
+A: Yes! This is by design. Multiple PostageStamp versions can have WRITER_ROLE at the same time, allowing gradual network migration between Bee versions.
+
+**Q: What if we need to revoke a malicious logic contract?**
+
+A: The multisig can call storage.revokeRole(WRITER_ROLE, maliciousAddress) to immediately revoke write access.
+
+**Q: How do I check which logic contracts have write access?**
+
+A: Call storage.isWriter(address) for specific addresses, or monitor RoleGranted events for WRITER_ROLE.
+
+**Q: Can the multisig be changed?**
+
+A: The multisig has DEFAULT_ADMIN_ROLE which means it can grant DEFAULT_ADMIN_ROLE to a new multisig and revoke it from itself. However, this should be done carefully.
+
+**Q: What happens to old logic contracts?**
+
+A: They remain on-chain. You can:
+- Keep their WRITER_ROLE active (safe if no Bee nodes use them)
+- Revoke their WRITER_ROLE after migration is complete
+- They can still be used for read-only queries
+
+**Q: How much does an upgrade cost?**
+
+A: Only the gas to:
+1. Deploy new logic contract (~2M gas)
+2. Multisig calls grantRole() (~50K gas)
+
+No token transfers or data migration needed!
+
+**Q: What if the storage contract has a bug?**
+
+A: The storage contract is intentionally simple to minimize bug risk. If a critical bug is found, a new storage contract would need to be deployed with data migration (similar to initial migration from legacy).
 
 ## Testing
 
 ### Unit Tests
 
 ```bash
-npx hardhat test test/PostageStampStorage.test.ts
 npx hardhat test test/PostageStamp.test.ts
 ```
 
-### Integration Tests
+### Full Test Suite
 
 ```bash
-npx hardhat test test/StorageDecoupling.integration.test.ts
+npx hardhat test
 ```
-
-### Upgrade Simulation
-
-```bash
-npx hardhat test test/UpgradeSimulation.test.ts
-```
-
-## Troubleshooting
-
-### Issue: Logic contract can't modify storage
-
-**Cause**: Storage contract's `logicContract` address doesn't match
-
-**Solution**:
-```bash
-# Check current logic address
-npx hardhat run scripts/checkLogicAddress.ts
-
-# Update if needed
-npx hardhat run scripts/updateLogicContract.ts
-```
-
-### Issue: Token transfers failing
-
-**Cause**: Logic contract not approved to move tokens from storage
-
-**Solution**: The storage contract holds tokens and logic contract calls `transferToken()` or `transferTokenFrom()` on storage, which handles the actual ERC20 calls.
-
-### Issue: Batches not showing up after migration
-
-**Cause**: Tree not properly rebuilt during migration
-
-**Solution**:
-1. Verify batches are stored: Call `storage.getBatch(batchId)`
-2. Verify tree is populated: Call `storage.treeCount()`
-3. Re-run tree insertion for missing batches
-
-## FAQ
-
-**Q: What happens to the old PostageStamp contract after migration?**
-
-A: It remains on-chain but should be paused. You can keep it for historical reference and read-only queries.
-
-**Q: Can I downgrade to an older logic contract?**
-
-A: Yes! You can update the storage contract to point back to an older logic contract if needed. This is useful for emergency rollbacks.
-
-**Q: How much does an upgrade cost?**
-
-A: Only the gas to deploy the new logic contract and call `updateLogicContract()`. No token transfers or data migration needed!
-
-**Q: What if the storage contract has a bug?**
-
-A: Since the storage contract is immutable, bugs cannot be fixed in-place. However, the simple storage contract is much easier to audit and less likely to have bugs than complex logic. In an extreme case, you could migrate to a new storage contract using the same process as the initial migration.
-
-**Q: Can multiple logic contracts use the same storage?**
-
-A: No, only one logic contract can be authorized at a time. This prevents conflicts and ensures data consistency.
-
-## Support
-
-For questions or issues:
-- Open an issue on GitHub
-- Join the Swarm Discord
-- Read the SWIP document: `SWIP-storage-decoupling.md`
 
 ## References
 
 - SWIP Document: [SWIP-storage-decoupling.md](../SWIP-storage-decoupling.md)
-- Deployment Script: [deploy/PostageStamp.deploy.ts](../deploy/PostageStamp.deploy.ts)
-- Migration Script: [scripts/migration/migrateToStorageDecoupling.ts](../scripts/migration/migrateToStorageDecoupling.ts)
-- Interface: [src/interface/IPostageStampStorage.sol](../src/interface/IPostageStampStorage.sol)
 - Storage Contract: [src/PostageStampStorage.sol](../src/PostageStampStorage.sol)
 - Logic Contract: [src/PostageStamp.sol](../src/PostageStamp.sol)
+- Interface: [src/interface/IPostageStampStorage.sol](../src/interface/IPostageStampStorage.sol)
+- Migration Script: [scripts/migration/migrateToStorageDecoupling.ts](../scripts/migration/migrateToStorageDecoupling.ts)
