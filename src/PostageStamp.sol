@@ -12,13 +12,13 @@ import "./interface/IPostageStampStorage.sol";
  * @dev This contract contains the business logic for postage stamp operations while
  * delegating all storage operations to the immutable PostageStampStorage contract.
  * This allows the logic to be upgraded without migrating funds or batch data.
- * 
+ *
  * Key benefits:
  * - No need to migrate BZZ tokens when upgrading
  * - No need to migrate batch data when upgrading
  * - Swarm nodes only need to update the logic contract address
  * - Storage contract remains immutable and trusted
- * 
+ *
  * Note: Contract versioning is tracked via git tags, not in the contract name.
  */
 contract PostageStamp is AccessControl, Pausable {
@@ -102,11 +102,7 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _minimumBucketDepth The minimum bucket depth of batches
      * @param _minimumValidityBlocks Minimum validity in blocks (~24h = 17280)
      */
-    constructor(
-        address _storageContract,
-        uint8 _minimumBucketDepth,
-        uint64 _minimumValidityBlocks
-    ) {
+    constructor(address _storageContract, uint8 _minimumBucketDepth, uint64 _minimumValidityBlocks) {
         if (_storageContract == address(0)) {
             revert ZeroAddress();
         }
@@ -171,7 +167,7 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         expireLimited(type(uint256).max);
-        
+
         uint256 newValidChunkCount = storageContract.getValidChunkCount() + (1 << _depth);
         storageContract.setValidChunkCount(newValidChunkCount);
 
@@ -257,17 +253,16 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         expireLimited(type(uint256).max);
-        
-        uint256 newValidChunkCount = storageContract.getValidChunkCount() + 
-            (1 << _newDepth) - (1 << batch.depth);
+
+        uint256 newValidChunkCount = storageContract.getValidChunkCount() + (1 << _newDepth) - (1 << batch.depth);
         storageContract.setValidChunkCount(newValidChunkCount);
 
         storageContract.treeRemove(_batchId, batch.normalisedBalance);
-        
+
         batch.depth = _newDepth;
         batch.lastUpdatedBlockNumber = block.number;
         batch.normalisedBalance = currentTotalOutPayment() + newRemainingBalance;
-        
+
         storageContract.storeBatch(_batchId, batch);
         storageContract.treeInsert(_batchId, batch.normalisedBalance);
 
@@ -313,20 +308,20 @@ contract PostageStamp is AccessControl, Pausable {
     function expireLimited(uint256 limit) public {
         uint256 _lastExpiryBalance = storageContract.getLastExpiryBalance();
         uint256 i;
-        
+
         for (i; i < limit; ) {
             if (isBatchesTreeEmpty()) {
                 storageContract.setLastExpiryBalance(currentTotalOutPayment());
                 break;
             }
-            
+
             bytes32 fbi = firstBatchId();
-            
+
             if (remainingBalance(fbi) > 0) {
                 storageContract.setLastExpiryBalance(currentTotalOutPayment());
                 break;
             }
-            
+
             IPostageStampStorage.Batch memory batch = storageContract.getBatch(fbi);
             uint256 batchSize = 1 << batch.depth;
 
@@ -524,14 +519,20 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @notice Get public batch data
      */
-    function batches(bytes32 _batchId) public view returns (
-        address owner,
-        uint8 depth,
-        uint8 bucketDepth,
-        bool immutableFlag,
-        uint256 normalisedBalance,
-        uint256 lastUpdatedBlockNumber
-    ) {
+    function batches(
+        bytes32 _batchId
+    )
+        public
+        view
+        returns (
+            address owner,
+            uint8 depth,
+            uint8 bucketDepth,
+            bool immutableFlag,
+            uint256 normalisedBalance,
+            uint256 lastUpdatedBlockNumber
+        )
+    {
         IPostageStampStorage.Batch memory batch = storageContract.getBatch(_batchId);
         return (
             batch.owner,
