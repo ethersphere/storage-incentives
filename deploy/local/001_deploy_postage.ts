@@ -16,17 +16,14 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const minimumBucketDepth = 16;
   const minimumValidityBlocks = networkConfig[network.name]?.minimumValidityBlocks || 17280;
 
-  // Step 1: Deploy PostageStampStorage
+  // Step 1: Deploy PostageStampStorage (truly immutable)
   log('--- Deploying PostageStampStorage ---');
-
-  const tempLogicAddress = deployer; // Temporary, will be updated
 
   const storageDeployment = await deploy('PostageStampStorage', {
     from: deployer,
     args: [
-      token.address,
-      tempLogicAddress, // Temporary logic contract address
-      deployer, // Admin who can update logic contract
+      token.address, // BZZ token address
+      deployer, // Admin who can grant/revoke WRITER_ROLE
     ],
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
@@ -47,16 +44,23 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   log('PostageStamp deployed at:', logicDeployment.address);
 
-  // Step 3: Update storage contract to point to the real logic contract
-  log('--- Updating Logic Contract Address in Storage ---');
+  // Step 3: Grant WRITER_ROLE to the logic contract
+  log('--- Granting WRITER_ROLE to Logic Contract ---');
 
-  const currentLogicAddress = await read('PostageStampStorage', 'logicContract');
+  const WRITER_ROLE = await read('PostageStampStorage', 'WRITER_ROLE');
+  const hasRole = await read('PostageStampStorage', 'hasRole', WRITER_ROLE, logicDeployment.address);
 
-  if (currentLogicAddress.toLowerCase() !== logicDeployment.address.toLowerCase()) {
-    await execute('PostageStampStorage', { from: deployer, log: true }, 'updateLogicContract', logicDeployment.address);
-    log('Logic contract updated to:', logicDeployment.address);
+  if (!hasRole) {
+    await execute(
+      'PostageStampStorage',
+      { from: deployer, log: true },
+      'grantRole',
+      WRITER_ROLE,
+      logicDeployment.address
+    );
+    log('WRITER_ROLE granted to:', logicDeployment.address);
   } else {
-    log('Logic contract already set correctly');
+    log('Logic contract already has WRITER_ROLE');
   }
 
   log('----------------------------------------------------');

@@ -12,8 +12,14 @@ import "./interface/IPostageStampStorage.sol";
  * @notice Immutable storage contract for postage stamp batches
  * @dev This contract holds all postage stamp data and BZZ tokens. It is designed to be
  * deployed once and never upgraded. Logic contracts can be upgraded by deploying new
- * versions and updating the authorized logic contract address in this storage contract.
- * This eliminates the need to migrate funds and batch data when upgrading the system.
+ * versions that are granted the WRITER_ROLE. Each Bee node version knows which logic
+ * contract address to use. This eliminates the need to migrate funds and batch data.
+ *
+ * Upgrade process:
+ * 1. Deploy new PostageStamp logic contract (points to this storage)
+ * 2. Grant WRITER_ROLE to new logic contract
+ * 3. Update Bee nodes to use new logic contract address
+ * 4. (Optional) Revoke WRITER_ROLE from old logic contract
  */
 contract PostageStampStorage is AccessControl, IPostageStampStorage {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
@@ -22,9 +28,6 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
 
     /// @notice Address of the ERC20 BZZ token
     address public immutable bzzToken;
-
-    /// @notice Current authorized logic contract that can modify storage
-    address public logicContract;
 
     /// @notice Mapping of batch IDs to batch data
     mapping(bytes32 => Batch) private batches;
@@ -52,61 +55,52 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
 
     // ----------------------------- Roles ------------------------------
 
-    /// @notice Role that can update the logic contract address
-    bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
+    /// @notice Role that can modify storage (granted to PostageStamp logic contracts)
+    bytes32 public constant WRITER_ROLE = keccak256("WRITER_ROLE");
 
     /// @notice Role that can perform emergency operations
     bytes32 public constant EMERGENCY_ROLE = keccak256("EMERGENCY_ROLE");
 
     // ----------------------------- Errors ------------------------------
 
-    error UnauthorizedLogicContract();
     error ZeroAddress();
-    error SameLogicContract();
-
-    // ----------------------------- Modifiers ------------------------------
-
-    /**
-     * @notice Restricts function access to the authorized logic contract only
-     */
-    modifier onlyLogicContract() {
-        if (msg.sender != logicContract) {
-            revert UnauthorizedLogicContract();
-        }
-        _;
-    }
+    error UnauthorizedWriter();
 
     // ----------------------------- Constructor ------------------------------
 
     /**
      * @notice Initialize the storage contract
      * @param _bzzToken Address of the BZZ token contract
-     * @param _initialLogicContract Address of the initial logic contract
-     * @param _admin Address of the admin who can update the logic contract
+     * @param _admin Address of the admin who can grant/revoke WRITER_ROLE
      */
-    constructor(address _bzzToken, address _initialLogicContract, address _admin) {
-        if (_bzzToken == address(0) || _initialLogicContract == address(0) || _admin == address(0)) {
+    constructor(address _bzzToken, address _admin) {
+        if (_bzzToken == address(0) || _admin == address(0)) {
             revert ZeroAddress();
         }
 
         bzzToken = _bzzToken;
-        logicContract = _initialLogicContract;
 
-        _setupRole(ADMIN_ROLE, _admin);
         _setupRole(DEFAULT_ADMIN_ROLE, _admin);
-        _setRoleAdmin(ADMIN_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(WRITER_ROLE, DEFAULT_ADMIN_ROLE);
+        _setRoleAdmin(EMERGENCY_ROLE, DEFAULT_ADMIN_ROLE);
     }
 
     // ----------------------------- Storage Operations ------------------------------
 
     /// @inheritdoc IPostageStampStorage
-    function storeBatch(bytes32 _batchId, Batch calldata _batch) external onlyLogicContract {
+    function storeBatch(bytes32 _batchId, Batch calldata _batch) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         batches[_batchId] = _batch;
         emit BatchStored(_batchId);
     }
 
     /// @inheritdoc IPostageStampStorage
-    function deleteBatch(bytes32 _batchId) external onlyLogicContract {
+    function deleteBatch(bytes32 _batchId) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         delete batches[_batchId];
         emit BatchDeleted(_batchId);
     }
@@ -124,12 +118,18 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     // ----------------------------- Tree Operations ------------------------------
 
     /// @inheritdoc IPostageStampStorage
-    function treeInsert(bytes32 _batchId, uint256 _normalisedBalance) external onlyLogicContract {
+    function treeInsert(bytes32 _batchId, uint256 _normalisedBalance) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         tree.insert(_batchId, _normalisedBalance);
     }
 
     /// @inheritdoc IPostageStampStorage
-    function treeRemove(bytes32 _batchId, uint256 _normalisedBalance) external onlyLogicContract {
+    function treeRemove(bytes32 _batchId, uint256 _normalisedBalance) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         tree.remove(_batchId, _normalisedBalance);
     }
 
@@ -151,7 +151,10 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     // ----------------------------- Global State ------------------------------
 
     /// @inheritdoc IPostageStampStorage
-    function setTotalOutPayment(uint256 _totalOutPayment) external onlyLogicContract {
+    function setTotalOutPayment(uint256 _totalOutPayment) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         totalOutPayment = _totalOutPayment;
     }
 
@@ -161,7 +164,10 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setValidChunkCount(uint256 _validChunkCount) external onlyLogicContract {
+    function setValidChunkCount(uint256 _validChunkCount) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         validChunkCount = _validChunkCount;
     }
 
@@ -171,7 +177,10 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setPot(uint256 _pot) external onlyLogicContract {
+    function setPot(uint256 _pot) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         pot = _pot;
     }
 
@@ -181,7 +190,10 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setLastExpiryBalance(uint256 _lastExpiryBalance) external onlyLogicContract {
+    function setLastExpiryBalance(uint256 _lastExpiryBalance) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         lastExpiryBalance = _lastExpiryBalance;
     }
 
@@ -191,7 +203,10 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setLastPrice(uint64 _lastPrice) external onlyLogicContract {
+    function setLastPrice(uint64 _lastPrice) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         lastPrice = _lastPrice;
     }
 
@@ -201,7 +216,10 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     }
 
     /// @inheritdoc IPostageStampStorage
-    function setLastUpdatedBlock(uint64 _lastUpdatedBlock) external onlyLogicContract {
+    function setLastUpdatedBlock(uint64 _lastUpdatedBlock) external {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         lastUpdatedBlock = _lastUpdatedBlock;
     }
 
@@ -213,38 +231,23 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     // ----------------------------- Token Operations ------------------------------
 
     /// @inheritdoc IPostageStampStorage
-    function transferToken(address _token, address _to, uint256 _amount) external onlyLogicContract returns (bool) {
+    function transferToken(address _token, address _to, uint256 _amount) external returns (bool) {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         return ERC20(_token).transfer(_to, _amount);
     }
 
     /// @inheritdoc IPostageStampStorage
-    function transferTokenFrom(
-        address _token,
-        address _from,
-        uint256 _amount
-    ) external onlyLogicContract returns (bool) {
+    function transferTokenFrom(address _token, address _from, uint256 _amount) external returns (bool) {
+        if (!hasRole(WRITER_ROLE, msg.sender)) {
+            revert UnauthorizedWriter();
+        }
         return ERC20(_token).transferFrom(_from, address(this), _amount);
     }
 
     /// @inheritdoc IPostageStampStorage
     function tokenBalance(address _token) external view returns (uint256) {
         return ERC20(_token).balanceOf(address(this));
-    }
-
-    // ----------------------------- Logic Contract Management ------------------------------
-
-    /// @inheritdoc IPostageStampStorage
-    function updateLogicContract(address _newLogicContract) external onlyRole(ADMIN_ROLE) {
-        if (_newLogicContract == address(0)) {
-            revert ZeroAddress();
-        }
-        if (_newLogicContract == logicContract) {
-            revert SameLogicContract();
-        }
-
-        address oldLogic = logicContract;
-        logicContract = _newLogicContract;
-
-        emit LogicContractUpdated(oldLogic, _newLogicContract);
     }
 }

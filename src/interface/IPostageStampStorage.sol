@@ -22,7 +22,6 @@ interface IPostageStampStorage {
 
     // ----------------------------- Events ------------------------------
 
-    event LogicContractUpdated(address indexed oldLogic, address indexed newLogic);
     event BatchStored(bytes32 indexed batchId);
     event BatchDeleted(bytes32 indexed batchId);
 
@@ -197,18 +196,4 @@ interface IPostageStampStorage {
      * @return The balance
      */
     function tokenBalance(address _token) external view returns (uint256);
-
-    // ----------------------------- Logic Contract Management ------------------------------
-
-    /**
-     * @notice Update the authorized logic contract address
-     * @param _newLogicContract The new logic contract address
-     */
-    function updateLogicContract(address _newLogicContract) external;
-
-    /**
-     * @notice Get the current logic contract address
-     * @return The logic contract address
-     */
-    function logicContract() external view returns (address);
 }
