@@ -15,11 +15,24 @@ import "./interface/IPostageStampStorage.sol";
  * versions that are granted the WRITER_ROLE. Each Bee node version knows which logic
  * contract address to use. This eliminates the need to migrate funds and batch data.
  *
- * Upgrade process:
+ * ROLE MANAGEMENT:
+ * - DEFAULT_ADMIN_ROLE: Set to multisig in constructor, can grant/revoke WRITER_ROLE
+ * - WRITER_ROLE: Granted to PostageStamp logic contracts that can modify storage
+ *
+ * ADDING NEW LOGIC CONTRACT (multisig calls):
+ *   storage.grantRole(WRITER_ROLE, newPostageStampAddress)
+ *
+ * REMOVING OLD LOGIC CONTRACT (optional, multisig calls):
+ *   storage.revokeRole(WRITER_ROLE, oldPostageStampAddress)
+ *
+ * UPGRADE PROCESS:
  * 1. Deploy new PostageStamp logic contract (points to this storage)
- * 2. Grant WRITER_ROLE to new logic contract
+ * 2. Multisig grants WRITER_ROLE to new logic contract
  * 3. Update Bee nodes to use new logic contract address
- * 4. (Optional) Revoke WRITER_ROLE from old logic contract
+ * 4. (Optional) Multisig revokes WRITER_ROLE from old logic contract
+ *
+ * Note: Multiple logic contracts can have WRITER_ROLE simultaneously,
+ * allowing gradual network migration between Bee versions.
  */
 contract PostageStampStorage is AccessControl, IPostageStampStorage {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
@@ -71,18 +84,43 @@ contract PostageStampStorage is AccessControl, IPostageStampStorage {
     /**
      * @notice Initialize the storage contract
      * @param _bzzToken Address of the BZZ token contract
-     * @param _admin Address of the admin who can grant/revoke WRITER_ROLE
+     * @param _multisig Address of the multisig wallet that will be the permanent admin
+     * @dev The multisig becomes DEFAULT_ADMIN_ROLE and can:
+     *      - Grant WRITER_ROLE to new PostageStamp logic contracts
+     *      - Revoke WRITER_ROLE from old PostageStamp logic contracts
+     *      This is the ONLY admin action ever needed on this contract.
      */
-    constructor(address _bzzToken, address _admin) {
-        if (_bzzToken == address(0) || _admin == address(0)) {
+    constructor(address _bzzToken, address _multisig) {
+        if (_bzzToken == address(0) || _multisig == address(0)) {
             revert ZeroAddress();
         }
 
         bzzToken = _bzzToken;
 
-        _setupRole(DEFAULT_ADMIN_ROLE, _admin);
+        // Multisig is the permanent admin - can grant/revoke WRITER_ROLE
+        _setupRole(DEFAULT_ADMIN_ROLE, _multisig);
         _setRoleAdmin(WRITER_ROLE, DEFAULT_ADMIN_ROLE);
         _setRoleAdmin(EMERGENCY_ROLE, DEFAULT_ADMIN_ROLE);
+    }
+
+    // ----------------------------- Role Management Helpers ------------------------------
+
+    /**
+     * @notice Check if an address is an authorized writer (PostageStamp logic contract)
+     * @param _address Address to check
+     * @return True if the address has WRITER_ROLE
+     */
+    function isWriter(address _address) external view returns (bool) {
+        return hasRole(WRITER_ROLE, _address);
+    }
+
+    /**
+     * @notice Check if an address is the admin (multisig)
+     * @param _address Address to check
+     * @return True if the address has DEFAULT_ADMIN_ROLE
+     */
+    function isAdmin(address _address) external view returns (bool) {
+        return hasRole(DEFAULT_ADMIN_ROLE, _address);
     }
 
     // ----------------------------- Storage Operations ------------------------------
