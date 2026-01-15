@@ -1402,10 +1402,11 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             // Check if the increase is properly applied, we have 3 skipped round here
+            // Using increaseRate[1] for defanged approach (as if 1 player participated)
             currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
+              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[1])
             );
 
             const sr = await ethers.getContract('StakeRegistry');
@@ -1466,10 +1467,11 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             // Check if the increase is properly applied, we have 3 skipped round here
+            // Using increaseRate[1] for defanged approach (as if 1 player participated)
             currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
+              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[1])
             );
 
             expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
