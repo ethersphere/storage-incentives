@@ -1,11 +1,11 @@
 /**
  * Status Task - Check deployed contract statuses and roles
- * 
+ *
  * Usage:
  *   npx hardhat status                    # Check mainnet (default)
  *   npx hardhat status --target mainnet  # Check mainnet explicitly
  *   npx hardhat status --target testnet  # Check testnet
- * 
+ *
  * This task checks:
  * - Contract pause/active status
  * - Admin role assignments for specified addresses
