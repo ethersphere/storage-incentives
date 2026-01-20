@@ -10,7 +10,7 @@ const func: DeployFunction = async function ({ deployments, network }) {
     const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
     const roundLength = networkConfig[network.name]?.roundLength || 152;
     const minimumValidityBlocks = networkConfig[network.name]?.minimumValidityBlocks || 17280;
-    
+
     // Verify TestToken
     const token = await get('TestToken');
     const argsToken = ['Test BZZ Token', 'tBZZ', '1250000000000000000000000'];
