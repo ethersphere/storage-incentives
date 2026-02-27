@@ -60,6 +60,11 @@ The harness defines `echidna_*` properties that Echidna checks continuously:
 - **Post-conditions for successful `manageStake(add > 0)`**
   - `echidna_last_manageStake_add_updates_potential_and_registry_balance`: on the immediate post-state after a successful `manageStake` with `addAmount > 0`, both the actor’s `potentialStake` and the registry’s ERC20 balance must increase by exactly `addAmount`.
   - `echidna_last_manageStake_add_recomputes_committedStake`: on that same immediate post-state, `committedStake` must equal `floor(potential / (price * 2**height))`.
+- **Pause/migrate and penalty post-conditions**
+  - `echidna_migrate_never_succeeds_while_unpaused`: `migrateStake()` must never succeed unless the registry is paused.
+  - `echidna_last_migrate_refunds_and_deletes_when_stake_exists`: on the immediate post-state after a successful `migrateStake()`, the stake is deleted and the actor is refunded exactly their previous `potentialStake` (or it is a no-op if no stake existed).
+  - `echidna_last_freeze_only_updates_lastUpdated`: on the immediate post-state after a successful redistributor `freezeDeposit`, only `lastUpdatedBlockNumber` is modified (other stake fields remain unchanged).
+  - `echidna_last_slash_updates_expected_fields`: on the immediate post-state after a successful redistributor `slashDeposit`, partial slashes only decrease `potentialStake` and set `lastUpdatedBlockNumber`, and full slashes delete the stake.
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
 
