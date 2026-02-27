@@ -22,32 +22,41 @@ It deploys:
 - `StakeRegistry` (from `src/Staking.sol`)
 - a small constant-price oracle used by `StakeRegistry`
 
-The harness gives `StakeRegistry` an infinite token allowance and then exposes a few actions Echidna can call.
+It also deploys several **actor contracts** (`EchidnaStakeActor`) which behave like independent users (each has its own address and token balance), plus a dedicated actor that receives the `REDISTRIBUTOR_ROLE` so we can fuzz freeze/slash flows.
 
 ### Actions (what Echidna mutates)
 
 These functions are intentionally written to be **mostly non-reverting**, so Echidna can explore longer state sequences:
 
-- `act_manageStake(setNonce, addAmount, height)`
-  - Calls `StakeRegistry.manageStake(...)` with bounded inputs.
-  - Ensures the first stake can satisfy the minimum-stake requirement (otherwise skips).
-- `act_withdrawSurplus()`
-  - Calls `StakeRegistry.withdrawFromStake()`.
-- `act_tokenTransfer(to, amount)`
-  - Moves some tokens out of the harness to vary balances and edge cases.
+- **Per-actor stake actions**
+  - `act_actor_manageStake(actorId, setNonce, addAmount, height)`
+  - `act_actor_withdrawSurplus(actorId)`
+  - `act_actor_migrateStake(actorId)` (only succeeds when paused)
+- **Admin actions (executed by the harness admin)**
+  - `act_admin_pause()`, `act_admin_unpause()`
+  - `act_admin_changeNetworkId(newNetworkId)`
+- **Redistributor actions (executed by the redistributor actor)**
+  - `act_redistributor_freeze(targetActorId, time)`
+  - `act_redistributor_slash(targetActorId, amount)`
+- **Negative tests (unauthorized attempts)**
+  - `act_actor_tryPause(...)`, `act_actor_tryUnpause(...)`, `act_actor_tryChangeNetworkId(...)`
+  - `act_actor_tryFreeze(...)`, `act_actor_trySlash(...)`
+- **Funding**
+  - `act_fundActor(actorId, amount)` transfers tokens from the harness to an actor so fuzzing doesn’t get “stuck” when actors run out of balance.
 
 ### Properties (what must always hold)
 
 The harness defines `echidna_*` properties that Echidna checks continuously:
 
-- **Stake/accounting invariants**
-  - `echidna_stake_committed_never_decreases`: after a *successful* `manageStake`, the recorded `committedStake` for the harness address never decreases.
-  - `echidna_registry_token_is_expected`: `StakeRegistry.bzzToken()` stays equal to the `TestToken` address.
-  - `echidna_registry_balance_covers_potential`: the ERC20 balance held by `StakeRegistry` is always at least the recorded `potentialStake` for the harness address.
-  - `echidna_withdrawable_matches_effective_math`: `withdrawableStake()` matches the same effective-stake math as the contract uses.
-  - `echidna_nodeEffective_matches_freeze_rule`: `nodeEffectiveStake()` is `0` while frozen (same-block update or explicitly frozen), otherwise equals the expected effective stake.
-  - `echidna_stake_empty_state_is_zeroed`: if a stake entry is deleted/empty, all fields are zeroed.
-  - `echidna_overlay_matches_nonce_and_network`: the stored overlay matches the expected `keccak256(owner, reverse(networkId), nonce)` for the last successful stake update.
+- **Authorization / “must never happen”**
+  - `echidna_never_performed_forbidden_calls`: asserts that unauthorized actors never successfully paused/unpaused/changed network id, never successfully froze/slashed, and that we didn’t observe other action-level invariant violations.
+- **Cross-actor accounting**
+  - `echidna_registry_balance_covers_sum_potential`: registry token balance covers the sum of all actors’ `potentialStake`.
+- **Per-actor stake invariants**
+  - `echidna_stake_committed_never_decreases_per_actor`: committed stake never decreases for an actor while it has an active stake entry.
+  - `echidna_nodeEffective_matches_freeze_rule_per_actor`: effective stake is `0` while frozen, otherwise matches expected effective stake math.
+  - `echidna_empty_state_is_zeroed_for_all`: if a stake entry is deleted/empty, all fields are zeroed.
+  - `echidna_overlay_matches_last_manageStake_for_all`: overlay matches `keccak256(owner, reverse(networkIdAtLastStake), lastNonce)` per actor.
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
 
