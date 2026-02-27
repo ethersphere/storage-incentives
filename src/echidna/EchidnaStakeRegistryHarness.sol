@@ -99,6 +99,35 @@ contract EchidnaStakeRegistryHarness {
     uint256 internal pendingPotentialBefore;
     uint256 internal pendingRegistryBalanceBefore;
 
+    // Post-condition checks for the last freeze/slash/migrate call (pending until next action).
+    bool internal pendingFreezeCheck;
+    uint256 internal pendingFreezeIdx;
+    bool internal pendingFreezeHadStake;
+    bytes32 internal pendingFreezeOverlay;
+    uint256 internal pendingFreezeCommitted;
+    uint256 internal pendingFreezePotential;
+    uint8 internal pendingFreezeHeight;
+    uint256 internal pendingFreezeExpectedLastUpdated;
+
+    bool internal pendingSlashCheck;
+    uint256 internal pendingSlashIdx;
+    bool internal pendingSlashHadStake;
+    bytes32 internal pendingSlashOverlay;
+    uint256 internal pendingSlashCommitted;
+    uint256 internal pendingSlashPotential;
+    uint8 internal pendingSlashHeight;
+    uint256 internal pendingSlashLastUpdated;
+    uint256 internal pendingSlashAmount;
+    uint256 internal pendingSlashExpectedBlockNumber;
+
+    bool internal pendingMigrateCheck;
+    uint256 internal pendingMigrateIdx;
+    bool internal pendingMigrateHadStake;
+    uint256 internal pendingMigratePotentialBefore;
+    uint256 internal pendingMigrateActorBalanceBefore;
+    uint256 internal pendingMigrateLastUpdatedBefore;
+    bool internal migrateSucceededWhileUnpaused;
+
     constructor() {
         // Keep values modest so arithmetic in invariants stays safe.
         initialSupply = 1_000_000_000_000_000_000_000_000; // 1e24
@@ -125,7 +154,7 @@ contract EchidnaStakeRegistryHarness {
     // -----------------------------
 
     function act_fundActor(uint8 actorId, uint256 amount) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -143,7 +172,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_manageStake(uint8 actorId, bytes32 setNonce, uint256 addAmount, uint8 height) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaStakeActor actor = actors[idx];
@@ -208,7 +237,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_withdrawSurplus(uint8 actorId) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaStakeActor a = actors[idx];
@@ -243,37 +272,35 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_migrateStake(uint8 actorId) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaStakeActor a = actors[idx];
         (bytes32 otherDigestA, bytes32 otherDigestB) = _otherDigests(idx);
 
-        uint256 beforeBal = token.balanceOf(address(a));
-        (, , uint256 potential, uint256 lastUpdated, ) = registry.stakes(address(a));
+        pendingMigrateIdx = idx;
+        pendingMigrateActorBalanceBefore = token.balanceOf(address(a));
+        (, , pendingMigratePotentialBefore, pendingMigrateLastUpdatedBefore, ) = registry.stakes(address(a));
+        pendingMigrateHadStake = pendingMigrateLastUpdatedBefore != 0;
 
         bool ok = a.migrateStake();
         if (!ok) return;
 
+        if (!registry.paused()) migrateSucceededWhileUnpaused = true;
         _checkOtherDigestsUnchanged(idx, otherDigestA, otherDigestB);
+        pendingMigrateCheck = true;
 
-        // migrateStake only succeeds when paused; if it succeeded, stake must be deleted.
-        (bytes32 ov2, uint256 c2, uint256 p2, uint256 u2, uint8 h2) = registry.stakes(address(a));
-        if (lastUpdated != 0) {
-            if (ov2 != bytes32(0) || c2 != 0 || p2 != 0 || u2 != 0 || h2 != 0) actionInvariantViolated = true;
-            if (token.balanceOf(address(a)) != beforeBal + potential) actionInvariantViolated = true;
-            // Keep tracking in sync so "committed never decreases" doesn't trip on deletion.
+        // If a stake existed, migrateStake refunds and deletes it. Reset per-actor tracking
+        // so future re-stakes don't incorrectly look like "commitment decreased".
+        if (pendingMigrateHadStake) {
             lastCommittedStakeByActor[idx] = 0;
             lastSetNonceByActor[idx] = bytes32(0);
             networkIdAtLastStakeByActor[idx] = trackedNetworkId;
-        } else {
-            // If no stake existed, migrate is a no-op.
-            if (token.balanceOf(address(a)) != beforeBal) actionInvariantViolated = true;
         }
     }
 
     function act_admin_pause() external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -284,7 +311,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_admin_unpause() external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -295,7 +322,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_admin_changeNetworkId(uint64 newNetworkId) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -307,7 +334,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_tryPause(uint8 actorId) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -319,7 +346,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_tryUnpause(uint8 actorId) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -331,7 +358,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_tryChangeNetworkId(uint8 actorId, uint64 newNetworkId) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -343,51 +370,48 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_redistributor_freeze(uint8 targetActorId, uint32 time) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
 
         uint256 idx = uint256(targetActorId) % ACTOR_COUNT;
         EchidnaStakeActor t = actors[idx];
         (bytes32 otherDigestA, bytes32 otherDigestB) = _otherDigests(idx);
 
-        uint256 before = registry.lastUpdatedBlockNumberOfAddress(address(t));
+        (pendingFreezeOverlay, pendingFreezeCommitted, pendingFreezePotential, pendingFreezeExpectedLastUpdated, pendingFreezeHeight) = registry
+            .stakes(address(t));
+        pendingFreezeIdx = idx;
+        pendingFreezeHadStake = pendingFreezeExpectedLastUpdated != 0;
+        pendingFreezeExpectedLastUpdated = pendingFreezeHadStake ? block.number + uint256(time) : 0;
+
         bool ok = redistributor.tryFreezeDeposit(address(t), uint256(time));
         if (!ok) return;
 
         _checkOtherDigestsUnchanged(idx, otherDigestA, otherDigestB);
-
-        // Only affects existing stakes.
-        if (before != 0) {
-            uint256 afterU = registry.lastUpdatedBlockNumberOfAddress(address(t));
-            if (afterU != block.number + uint256(time)) actionInvariantViolated = true;
-        }
+        pendingFreezeCheck = true;
     }
 
     function act_redistributor_slash(uint8 targetActorId, uint256 amount) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
 
         uint256 idx = uint256(targetActorId) % ACTOR_COUNT;
         EchidnaStakeActor t = actors[idx];
         (bytes32 otherDigestA, bytes32 otherDigestB) = _otherDigests(idx);
 
-        (, , uint256 pBefore, uint256 uBefore, ) = registry.stakes(address(t));
+        (pendingSlashOverlay, pendingSlashCommitted, pendingSlashPotential, pendingSlashLastUpdated, pendingSlashHeight) = registry
+            .stakes(address(t));
+        pendingSlashIdx = idx;
+        pendingSlashHadStake = pendingSlashLastUpdated != 0;
+        pendingSlashAmount = amount;
+        pendingSlashExpectedBlockNumber = block.number;
+
         bool ok = redistributor.trySlashDeposit(address(t), amount);
         if (!ok) return;
 
         _checkOtherDigestsUnchanged(idx, otherDigestA, otherDigestB);
+        pendingSlashCheck = true;
 
-        if (uBefore == 0) {
-            // No stake: should remain empty.
-            if (registry.lastUpdatedBlockNumberOfAddress(address(t)) != 0) actionInvariantViolated = true;
-            return;
-        }
-
-        if (pBefore > amount) {
-            (, , uint256 pAfter, uint256 uAfter, ) = registry.stakes(address(t));
-            if (pAfter != pBefore - amount) actionInvariantViolated = true;
-            if (uAfter != block.number) actionInvariantViolated = true;
-        } else {
-            // Stake deleted.
-            if (registry.lastUpdatedBlockNumberOfAddress(address(t)) != 0) actionInvariantViolated = true;
+        // If the slash deleted the stake (amount >= potential), reset per-actor tracking
+        // so future re-stakes don't incorrectly look like "commitment decreased".
+        if (pendingSlashHadStake && pendingSlashPotential <= pendingSlashAmount) {
             lastCommittedStakeByActor[idx] = 0;
             lastSetNonceByActor[idx] = bytes32(0);
             networkIdAtLastStakeByActor[idx] = trackedNetworkId;
@@ -395,7 +419,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_tryFreeze(uint8 actorId, uint8 targetActorId, uint32 time) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -407,7 +431,7 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function act_actor_trySlash(uint8 actorId, uint8 targetActorId, uint256 amount) external {
-        _clearPendingManageStakeAddCheck();
+        _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
@@ -465,6 +489,67 @@ contract EchidnaStakeRegistryHarness {
         uint256 denom = uint256(ORACLE_PRICE) * (1 << pendingHeight);
         uint256 expectedCommitted = potentialAfter / denom;
         return committedAfter == expectedCommitted;
+    }
+
+    function echidna_migrate_never_succeeds_while_unpaused() external view returns (bool) {
+        return !migrateSucceededWhileUnpaused;
+    }
+
+    function echidna_last_migrate_refunds_and_deletes_when_stake_exists() external view returns (bool) {
+        if (!pendingMigrateCheck) return true;
+        address a = address(actors[pendingMigrateIdx]);
+
+        // migrateStake has whenPaused; if the call succeeded, we must be paused.
+        if (!registry.paused()) return false;
+
+        if (!pendingMigrateHadStake) {
+            // No stake existed; migrate is a no-op.
+            if (token.balanceOf(a) != pendingMigrateActorBalanceBefore) return false;
+            return registry.lastUpdatedBlockNumberOfAddress(a) == 0;
+        }
+
+        // Stake existed; it must be deleted and balance refunded.
+        if (token.balanceOf(a) != pendingMigrateActorBalanceBefore + pendingMigratePotentialBefore) return false;
+        return registry.lastUpdatedBlockNumberOfAddress(a) == 0;
+    }
+
+    function echidna_last_freeze_only_updates_lastUpdated() external view returns (bool) {
+        if (!pendingFreezeCheck) return true;
+        address a = address(actors[pendingFreezeIdx]);
+        (bytes32 ov, uint256 c, uint256 p, uint256 u, uint8 h) = registry.stakes(a);
+
+        if (!pendingFreezeHadStake) {
+            return ov == bytes32(0) && c == 0 && p == 0 && u == 0 && h == 0;
+        }
+
+        if (ov != pendingFreezeOverlay) return false;
+        if (c != pendingFreezeCommitted) return false;
+        if (p != pendingFreezePotential) return false;
+        if (h != pendingFreezeHeight) return false;
+        return u == pendingFreezeExpectedLastUpdated;
+    }
+
+    function echidna_last_slash_updates_expected_fields() external view returns (bool) {
+        if (!pendingSlashCheck) return true;
+        address a = address(actors[pendingSlashIdx]);
+        (bytes32 ov, uint256 c, uint256 p, uint256 u, uint8 h) = registry.stakes(a);
+
+        if (!pendingSlashHadStake) {
+            // No stake existed; slash does nothing.
+            return ov == bytes32(0) && c == 0 && p == 0 && u == 0 && h == 0;
+        }
+
+        if (pendingSlashPotential > pendingSlashAmount) {
+            // Partial slash: only potential decreases, lastUpdated set to block.number at slash time.
+            if (ov != pendingSlashOverlay) return false;
+            if (c != pendingSlashCommitted) return false;
+            if (h != pendingSlashHeight) return false;
+            if (p != pendingSlashPotential - pendingSlashAmount) return false;
+            return u == pendingSlashExpectedBlockNumber;
+        }
+
+        // Full slash: stake deleted.
+        return ov == bytes32(0) && c == 0 && p == 0 && u == 0 && h == 0;
     }
 
     function echidna_stake_committed_never_decreases_per_actor() external view returns (bool) {
@@ -566,9 +651,10 @@ contract EchidnaStakeRegistryHarness {
         }
     }
 
-    function _clearPendingManageStakeAddCheck() internal {
-        if (pendingManageStakeAddCheck) {
-            pendingManageStakeAddCheck = false;
-        }
+    function _clearPendingChecks() internal {
+        pendingManageStakeAddCheck = false;
+        pendingFreezeCheck = false;
+        pendingSlashCheck = false;
+        pendingMigrateCheck = false;
     }
 }

@@ -13,6 +13,13 @@ cd "$ROOT_DIR"
 IMAGE="${ECHIDNA_IMAGE:-ghcr.io/crytic/echidna/echidna:latest}"
 CONTRACT="EchidnaStakeRegistryHarness"
 
+# Avoid stale Crytic compile artifacts causing old properties/tests to run.
+rm -rf crytic-export
+
+# Compile on the host. The Echidna container image doesn't ship with Node/npx,
+# and without Hardhat artifacts CryticCompile will try (and fail) to run `npx hardhat compile`.
+yarn -s hardhat compile --force >/dev/null
+
 docker run --rm \
   -v "$ROOT_DIR":/src \
   -w /src \
