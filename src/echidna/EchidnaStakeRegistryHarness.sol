@@ -109,11 +109,8 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function echidna_stake_commitment_implies_potential_cover() external view returns (bool) {
-        (, uint256 committedStake, uint256 potentialStake, , uint8 h) = registry.stakes(address(this));
-
-        // With a constant oracle price of 1, committedStake is floor(potentialStake / 2**h),
-        // so committedStake * 2**h must never exceed potentialStake.
-        uint256 factor = (1 << h);
-        return committedStake * factor <= potentialStake;
+        (, , uint256 potentialStake, , ) = registry.stakes(address(this));
+        uint256 effective = registry.nodeEffectiveStake(address(this));
+        return effective <= potentialStake;
     }
 }

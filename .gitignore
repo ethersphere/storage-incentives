@@ -44,3 +44,4 @@ tenderly.log
 echidna/corpus/
 echidna/coverage/
 echidna/out/
+crytic-export/
