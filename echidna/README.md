@@ -40,12 +40,14 @@ These functions are intentionally written to be **mostly non-reverting**, so Ech
 
 The harness defines `echidna_*` properties that Echidna checks continuously:
 
-- **Token invariants**
-  - `echidna_token_supply_constant`: total supply stays equal to the initial supply minted to the harness.
-  - `echidna_token_decimals_16`: decimals stays `16` (this repo’s BZZ/sBZZ convention).
-- **Stake invariants**
+- **Stake/accounting invariants**
   - `echidna_stake_committed_never_decreases`: after a *successful* `manageStake`, the recorded `committedStake` for the harness address never decreases.
-  - `echidna_stake_commitment_implies_potential_cover`: `nodeEffectiveStake(address(this)) <= potentialStake`.
+  - `echidna_registry_token_is_expected`: `StakeRegistry.bzzToken()` stays equal to the `TestToken` address.
+  - `echidna_registry_balance_covers_potential`: the ERC20 balance held by `StakeRegistry` is always at least the recorded `potentialStake` for the harness address.
+  - `echidna_withdrawable_matches_effective_math`: `withdrawableStake()` matches the same effective-stake math as the contract uses.
+  - `echidna_nodeEffective_matches_freeze_rule`: `nodeEffectiveStake()` is `0` while frozen (same-block update or explicitly frozen), otherwise equals the expected effective stake.
+  - `echidna_stake_empty_state_is_zeroed`: if a stake entry is deleted/empty, all fields are zeroed.
+  - `echidna_overlay_matches_nonce_and_network`: the stored overlay matches the expected `keccak256(owner, reverse(networkId), nonce)` for the last successful stake update.
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
 
