@@ -101,6 +101,29 @@ To get started with this project, follow these steps:
 2. Run `yarn install` at the root of the repo to install all dependencies.
 3. Add a `.env` file in your root directory, where you'll store your sensitive information for deployment. An example file [`.env.example`](./.env.example) is provided for reference.
 
+## Fuzz testing (Echidna)
+
+This repo includes a **small Echidna harness** that fuzzes `TestToken` + `StakeRegistry` with a few basic invariants.
+
+- **Harness contract**: `src/echidna/EchidnaStakeRegistryHarness.sol`
+- **Echidna config**: `echidna/echidna.yaml`
+
+### Run (Docker)
+
+1. Install a Docker runtime (e.g. Docker Desktop).
+2. Run:
+
+```bash
+yarn echidna
+```
+
+### What this is doing
+
+Echidna repeatedly calls the harness “action” functions (like `act_manageStake`) with random inputs, building **stateful sequences**. After (and during) those sequences it checks `echidna_*` property functions such as:
+
+- **Token properties**: total supply stays constant; decimals stay 16
+- **Stake properties**: committed stake never decreases after a successful update; commitment stays consistent with potential stake (given a constant oracle price)
+
 ## Run
 
 ### [Tests](./test)
