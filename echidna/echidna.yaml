@@ -4,7 +4,7 @@ testMode: property
 seqLen: 50
 
 # Start small; can be increased once it’s stable in CI.
-testLimit: 25000
+testLimit: 125000
 
 # Persist interesting inputs between runs.
 corpusDir: echidna/corpus

@@ -30,13 +30,20 @@ contract EchidnaStakeRegistryHarness {
     // Tracks the committedStake after the last successful stake update.
     uint256 internal lastCommittedStake;
 
+    // Tracks the inputs that should determine the current overlay.
+    bytes32 internal lastSetNonce;
+    uint64 internal trackedNetworkId;
+    uint64 internal networkIdAtLastStake;
+
     constructor() {
         // Keep values modest so arithmetic in invariants stays safe.
         initialSupply = 1_000_000_000_000_000_000_000_000; // 1e24
 
         token = new TestToken("TestToken", "TT", initialSupply);
         oracle = new ConstantPriceOracle(1);
-        registry = new StakeRegistry(address(token), 10, address(oracle));
+        trackedNetworkId = 10;
+        networkIdAtLastStake = trackedNetworkId;
+        registry = new StakeRegistry(address(token), trackedNetworkId, address(oracle));
 
         // Allow the registry to pull our tokens during manageStake().
         token.approve(address(registry), type(uint256).max);
@@ -48,6 +55,8 @@ contract EchidnaStakeRegistryHarness {
 
     function act_tokenTransfer(address to, uint256 amount) external {
         if (to == address(0)) return;
+        if (to == address(registry)) return;
+        if (to == address(token)) return;
 
         uint256 bal = token.balanceOf(address(this));
         if (bal == 0) return;
@@ -83,6 +92,8 @@ contract EchidnaStakeRegistryHarness {
 
         (, uint256 committedStake, , , ) = registry.stakes(address(this));
         lastCommittedStake = committedStake;
+        lastSetNonce = setNonce;
+        networkIdAtLastStake = trackedNetworkId;
     }
 
     function act_withdrawSurplus() external {
@@ -91,26 +102,83 @@ contract EchidnaStakeRegistryHarness {
         ok; // silence unused var warning
     }
 
+    function act_pause() external {
+        (bool ok, ) = address(registry).call(abi.encodeWithSelector(registry.pause.selector));
+        ok;
+    }
+
+    function act_unpause() external {
+        (bool ok, ) = address(registry).call(abi.encodeWithSelector(registry.unPause.selector));
+        ok;
+    }
+
+    function act_changeNetworkId(uint64 newNetworkId) external {
+        (bool ok, ) = address(registry).call(abi.encodeWithSelector(registry.changeNetworkId.selector, newNetworkId));
+        if (!ok) return;
+        trackedNetworkId = newNetworkId;
+    }
+
     // -----------------------------
     // Properties (checked by Echidna)
     // -----------------------------
-
-    function echidna_token_supply_constant() external view returns (bool) {
-        return token.totalSupply() == initialSupply;
-    }
-
-    function echidna_token_decimals_16() external view returns (bool) {
-        return token.decimals() == 16;
-    }
 
     function echidna_stake_committed_never_decreases() external view returns (bool) {
         (, uint256 committedStake, , , ) = registry.stakes(address(this));
         return committedStake >= lastCommittedStake;
     }
 
-    function echidna_stake_commitment_implies_potential_cover() external view returns (bool) {
+    function echidna_registry_token_is_expected() external view returns (bool) {
+        return registry.bzzToken() == address(token);
+    }
+
+    function echidna_registry_balance_covers_potential() external view returns (bool) {
         (, , uint256 potentialStake, , ) = registry.stakes(address(this));
-        uint256 effective = registry.nodeEffectiveStake(address(this));
-        return effective <= potentialStake;
+        return token.balanceOf(address(registry)) >= potentialStake;
+    }
+
+    function echidna_withdrawable_matches_effective_math() external view returns (bool) {
+        (, uint256 committedStake, uint256 potentialStake, , uint8 h) = registry.stakes(address(this));
+
+        uint256 effective = _min(potentialStake, committedStake * (1 << h) * uint256(oracle.currentPrice()));
+        uint256 expectedWithdrawable = potentialStake - effective;
+
+        return registry.withdrawableStake() == expectedWithdrawable;
+    }
+
+    function echidna_nodeEffective_matches_freeze_rule() external view returns (bool) {
+        (, uint256 committedStake, uint256 potentialStake, , uint8 h) = registry.stakes(address(this));
+        uint256 lastUpdated = registry.lastUpdatedBlockNumberOfAddress(address(this));
+        uint256 fromView = registry.nodeEffectiveStake(address(this));
+
+        if (lastUpdated >= block.number) {
+            return fromView == 0;
+        }
+
+        uint256 expected = _min(potentialStake, committedStake * (1 << h) * uint256(oracle.currentPrice()));
+        return fromView == expected;
+    }
+
+    function echidna_stake_empty_state_is_zeroed() external view returns (bool) {
+        (bytes32 overlay, uint256 committedStake, uint256 potentialStake, uint256 lastUpdated, uint8 h) = registry
+            .stakes(address(this));
+        if (lastUpdated != 0) return true;
+        return overlay == bytes32(0) && committedStake == 0 && potentialStake == 0 && h == 0;
+    }
+
+    function echidna_overlay_matches_nonce_and_network() external view returns (bool) {
+        (bytes32 overlay, , , uint256 lastUpdated, ) = registry.stakes(address(this));
+        if (lastUpdated == 0) return true;
+        return overlay == keccak256(abi.encodePacked(address(this), _reverse(networkIdAtLastStake), lastSetNonce));
+    }
+
+    function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    function _reverse(uint64 input) internal pure returns (uint64 v) {
+        v = input;
+        v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
+        v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
+        v = (v >> 32) | (v << 32);
     }
 }
