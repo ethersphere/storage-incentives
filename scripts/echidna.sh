@@ -10,7 +10,7 @@ fi
 
 cd "$ROOT_DIR"
 
-IMAGE="ghcr.io/crytic/echidna:latest"
+IMAGE="${ECHIDNA_IMAGE:-ghcr.io/crytic/echidna/echidna:latest}"
 CONTRACT="EchidnaStakeRegistryHarness"
 
 docker run --rm \
