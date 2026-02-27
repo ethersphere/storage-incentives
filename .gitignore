@@ -39,3 +39,8 @@ gas-report.txt
 
 # Tenderly
 tenderly.log
+
+# Echidna fuzzing
+echidna/corpus/
+echidna/coverage/
+echidna/out/
