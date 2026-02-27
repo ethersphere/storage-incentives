@@ -57,6 +57,9 @@ The harness defines `echidna_*` properties that Echidna checks continuously:
   - `echidna_nodeEffective_matches_freeze_rule_per_actor`: effective stake is `0` while frozen, otherwise matches expected effective stake math.
   - `echidna_empty_state_is_zeroed_for_all`: if a stake entry is deleted/empty, all fields are zeroed.
   - `echidna_overlay_matches_last_manageStake_for_all`: overlay matches `keccak256(owner, reverse(networkIdAtLastStake), lastNonce)` per actor.
+- **Post-conditions for successful `manageStake(add > 0)`**
+  - `echidna_last_manageStake_add_updates_potential_and_registry_balance`: on the immediate post-state after a successful `manageStake` with `addAmount > 0`, both the actor’s `potentialStake` and the registry’s ERC20 balance must increase by exactly `addAmount`.
+  - `echidna_last_manageStake_add_recomputes_committedStake`: on that same immediate post-state, `committedStake` must equal `floor(potential / (price * 2**height))`.
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
 
