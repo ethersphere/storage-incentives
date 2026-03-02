@@ -11,19 +11,34 @@ fi
 cd "$ROOT_DIR"
 
 IMAGE="${ECHIDNA_IMAGE:-ghcr.io/crytic/echidna/echidna:latest}"
-CONTRACT="EchidnaStakeRegistryHarness"
-
-# Avoid stale Crytic compile artifacts causing old properties/tests to run.
-rm -rf crytic-export
+CONTRACT="${ECHIDNA_CONTRACT:-}"
 
 # Compile on the host. The Echidna container image doesn't ship with Node/npx,
 # and without Hardhat artifacts CryticCompile will try (and fail) to run `npx hardhat compile`.
 yarn -s hardhat compile --force >/dev/null
 
-docker run --rm \
-  -v "$ROOT_DIR":/src \
-  -w /src \
-  "$IMAGE" \
-  echidna-test . \
-  --contract "$CONTRACT" \
-  --config echidna/echidna.yaml
+CONTRACTS_DEFAULT=(
+  "EchidnaStakeRegistryHarness"
+  "EchidnaPriceOracleHarness"
+)
+
+if [[ -n "$CONTRACT" ]]; then
+  CONTRACTS_TO_RUN=("$CONTRACT")
+else
+  CONTRACTS_TO_RUN=("${CONTRACTS_DEFAULT[@]}")
+fi
+
+for c in "${CONTRACTS_TO_RUN[@]}"; do
+  echo "==> echidna: running contract $c" >&2
+
+  # Avoid stale Crytic compile artifacts causing old properties/tests to run.
+  rm -rf crytic-export
+
+  docker run --rm \
+    -v "$ROOT_DIR":/src \
+    -w /src \
+    "$IMAGE" \
+    echidna-test . \
+    --contract "$c" \
+    --config echidna/echidna.yaml
+done
