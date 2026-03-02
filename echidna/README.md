@@ -14,15 +14,24 @@ If a property returns `false`, Echidna prints a **reproducer** (a short sequence
 
 ### Harness
 
-- **Harness contract**: `src/echidna/EchidnaStakeRegistryHarness.sol`
+This repo currently contains multiple harnesses:
 
-It deploys:
+- **Staking harness**: `src/echidna/EchidnaStakeRegistryHarness.sol`
+- **Oracle harness**: `src/echidna/EchidnaPriceOracleHarness.sol`
+
+The staking harness deploys:
 
 - `TestToken` (a mintable ERC20 preset used as BZZ stand-in)
 - `StakeRegistry` (from `src/Staking.sol`)
 - a small constant-price oracle used by `StakeRegistry`
 
 It also deploys several **actor contracts** (`EchidnaStakeActor`) which behave like independent users (each has its own address and token balance), plus a dedicated actor that receives the `REDISTRIBUTOR_ROLE` so we can fuzz freeze/slash flows.
+
+The oracle harness deploys:
+
+- `PriceOracle` (from `src/PriceOracle.sol`)
+- a `PostageStamp` mock that can succeed or revert on `setPrice(uint256)`
+- an updater actor (has `PRICE_UPDATER_ROLE`) and a random actor (no roles) to fuzz access control
 
 ### Actions (what Echidna mutates)
 
@@ -96,6 +105,15 @@ From repo root:
 
 ```bash
 yarn echidna
+```
+
+By default, this runs **all** Echidna harness contracts in `src/echidna/`.
+
+To run only a specific harness contract:
+
+```bash
+ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness yarn echidna
+ECHIDNA_CONTRACT=EchidnaPriceOracleHarness yarn echidna
 ```
 
 This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
