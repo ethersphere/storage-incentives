@@ -22,6 +22,7 @@ CONTRACTS_DEFAULT=(
   "EchidnaPriceOracleHarness"
   "EchidnaPostageStampHarness"
   "EchidnaRedistributionHarness"
+  "EchidnaRedistributionClaimHarness"
   "EchidnaSystemHarness"
 )
 

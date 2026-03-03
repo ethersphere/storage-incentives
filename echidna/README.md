@@ -20,6 +20,7 @@ This repo currently contains multiple harnesses:
 - **Oracle harness**: `src/echidna/EchidnaPriceOracleHarness.sol`
 - **PostageStamp harness**: `src/echidna/EchidnaPostageStampHarness.sol`
 - **Redistribution harness**: `src/echidna/EchidnaRedistributionHarness.sol`
+- **Redistribution claim-stub harness**: `src/echidna/EchidnaRedistributionClaimHarness.sol`
 - **System/integration harness**: `src/echidna/EchidnaSystemHarness.sol`
 
 ### What each harness deploys
@@ -58,6 +59,14 @@ The **redistribution harness** (base) deploys:
 
 It also includes “happy-path” actions (`act_happyCommit`, `act_happyReveal`) that try to **increase the rate of successful**
 `commit → reveal` sequences by pre-conditioning the mocked stake/overlay inputs (so we can assert stronger post-conditions).
+
+The **redistribution claim-stub harness** deploys:
+
+- a fuzz-only `RedistributionClaimStub` that runs the real `winnerSelection()` but exposes `claimStub()` which **bypasses**
+  inclusion/SOC/stamp proof verification and directly calls `withdraw(winner)` on a small pot mock.
+
+This is meant to fuzz the **claim-phase state machine + pot withdrawal effects** end-to-end, without paying the cost of generating
+valid Merkle/SOC/postage proofs.
 
 The **system/integration harness** deploys:
 
@@ -108,6 +117,10 @@ Key actions per harness:
   - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_setSampleMaxValue`, `act_admin_setFreezingParams`
   - Negative tests: `act_rando_try*` (unauthorized attempts)
   - Pause gating checks: `act_tryCommitWhilePaused`, `act_tryRevealWhilePaused`
+
+- **Redistribution claim-stub harness**
+  - Happy-path flow: `act_happyCommit`, `act_happyReveal`, `act_claimStub`
+  - Pot seeding: `act_seedPot`
 
 - **System/integration harness**
   - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`
@@ -161,6 +174,12 @@ High-signal properties per harness:
     - `echidna_tracked_commit_matches_storage`
     - `echidna_tracked_reveal_matches_storage`
 
+- **Redistribution claim-stub harness**
+  - claim can only succeed once per round (`echidna_claim_only_once_per_round`)
+  - successful claim withdraws the entire pot to the selected winner (`echidna_claim_withdraws_pot_to_winner_when_successful`)
+  - claim triggers an oracle `adjustPrice` call (`echidna_claim_triggers_oracle_adjustPrice`)
+  - non-revealers are frozen during claim processing (`echidna_nonrevealers_frozen_after_claim_selection`)
+
 - **System/integration harness**
   - Wiring invariants: correct addresses + roles across contracts
   - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
@@ -207,6 +226,7 @@ ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaPriceOracleHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaPostageStampHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna
+ECHIDNA_CONTRACT=EchidnaRedistributionClaimHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
 ```
 
