@@ -74,6 +74,7 @@ contract EchidnaPriceOracleHarness {
     uint64 internal pendingExpectedUpScaledAfter;
     uint256 internal pendingAdjustStampCallsBefore;
     bool internal pendingAdjustStampShouldCall;
+    bool internal adjustWouldOverflowButSucceeded;
 
     constructor() {
         stamp = new EchidnaPostageStampMock();
@@ -130,29 +131,61 @@ contract EchidnaPriceOracleHarness {
         pendingLastAdjustedBefore = oracle.lastAdjustedRound();
         pendingAdjustStampCallsBefore = stamp.setPriceCalls();
 
-        // Precompute expected post-state when the call is supposed to reach the main branch.
-        if (!pendingAdjustPaused) {
-            uint64 currentRound = oracle.currentRound();
-
-            // Only compute expected if the call would not revert on the round check and redundancy != 0.
-            if (redundancy != 0 && currentRound > pendingLastAdjustedBefore) {
-                pendingExpectedLastAdjustedAfter = currentRound;
-                pendingExpectedUpScaledAfter = _expectedAdjustedPrice(pendingPriceBefore, redundancy, currentRound, pendingLastAdjustedBefore);
-                pendingAdjustStampShouldCall = !stamp.shouldRevert();
-                pendingAdjust = true;
-            }
-        }
-
         (bool ok, bool returned) = updater.callAdjustPrice(redundancy);
-        ok;
-        returned;
 
-        // If paused, adjustPrice must not change state.
         if (pendingAdjustPaused) {
+            // If paused, adjustPrice must not change state.
             if (oracle.currentPriceUpScaled() != pendingPriceBefore) pausedAdjustChangedState = true;
             if (oracle.lastAdjustedRound() != pendingLastAdjustedBefore) pausedAdjustChangedState = true;
             if (stamp.setPriceCalls() != pendingAdjustStampCallsBefore) pausedAdjustChangedState = true;
+            ok;
+            returned;
+            return;
         }
+
+        // Not paused. Determine whether the call is expected to revert on basic guards.
+        uint64 currentRound = oracle.currentRound();
+        bool wouldRevertEarly = (redundancy == 0) || (currentRound <= pendingLastAdjustedBefore);
+
+        if (wouldRevertEarly) {
+            // If it unexpectedly succeeded, that's a bug in either model or contract.
+            if (ok) adjustWouldOverflowButSucceeded = true;
+            // A revert should not change state.
+            if (oracle.currentPriceUpScaled() != pendingPriceBefore) pausedAdjustChangedState = true;
+            if (oracle.lastAdjustedRound() != pendingLastAdjustedBefore) pausedAdjustChangedState = true;
+            if (stamp.setPriceCalls() != pendingAdjustStampCallsBefore) pausedAdjustChangedState = true;
+            returned;
+            return;
+        }
+
+        // Compute expected post-state. If arithmetic would overflow in the contract, we expect a revert.
+        (bool canCompute, uint64 expected) = _tryExpectedAdjustedPrice(
+            pendingPriceBefore,
+            redundancy,
+            currentRound,
+            pendingLastAdjustedBefore
+        );
+
+        if (!canCompute) {
+            if (ok && returned) adjustWouldOverflowButSucceeded = true;
+            returned;
+            return;
+        }
+
+        // If we can compute a valid expected result, the call should not revert.
+        if (!ok) {
+            // Don't arm pendingAdjust (it would fail postconditions); just flag the mismatch.
+            adjustWouldOverflowButSucceeded = true;
+            returned;
+            return;
+        }
+
+        pendingExpectedLastAdjustedAfter = currentRound;
+        pendingExpectedUpScaledAfter = expected;
+        pendingAdjustStampShouldCall = !stamp.shouldRevert();
+        pendingAdjust = true;
+
+        returned;
     }
 
     function act_rando_tryAdjustPrice(uint16 redundancy) external {
@@ -185,7 +218,11 @@ contract EchidnaPriceOracleHarness {
     // -----------------------------
 
     function echidna_never_performed_forbidden_calls() external view returns (bool) {
-        return !unauthorizedAdminCallSucceeded && !unauthorizedAdjustSucceeded && !pausedAdjustChangedState;
+        return
+            !unauthorizedAdminCallSucceeded &&
+            !unauthorizedAdjustSucceeded &&
+            !pausedAdjustChangedState &&
+            !adjustWouldOverflowButSucceeded;
     }
 
     function echidna_price_never_below_minimum() external view returns (bool) {
@@ -243,12 +280,12 @@ contract EchidnaPriceOracleHarness {
         returned = ok && data.length >= 32 ? abi.decode(data, (bool)) : false;
     }
 
-    function _expectedAdjustedPrice(
+    function _tryExpectedAdjustedPrice(
         uint64 priceUpScaledBefore,
         uint16 redundancy,
         uint64 currentRound,
         uint64 lastAdjusted
-    ) internal view returns (uint64) {
+    ) internal view returns (bool ok, uint64 expected) {
         uint16 used = redundancy;
         uint16 maxRed = uint16(4 + 4);
         if (used > maxRed) used = maxRed;
@@ -257,20 +294,24 @@ contract EchidnaPriceOracleHarness {
         uint256 base = uint256(oracle.priceBase());
 
         uint256 rate = uint256(oracle.changeRate(uint256(used)));
+        // In the real contract, this multiplication happens in uint64 space:
+        // uint32 * uint64 -> uint64, and would revert on overflow.
+        if (rate * price > type(uint64).max) return (false, 0);
         price = (rate * price) / base;
 
         uint64 skipped = currentRound - lastAdjusted - 1;
         if (skipped > 0) {
             uint256 rateMax = uint256(oracle.changeRate(0));
             for (uint64 i = 0; i < skipped; i++) {
+                if (rateMax * price > type(uint64).max) return (false, 0);
                 price = (rateMax * price) / base;
             }
         }
 
         uint256 minUp = uint256(oracle.minimumPriceUpscaled());
         if (price < minUp) price = minUp;
-        require(price <= type(uint64).max, "expected overflow");
-        return uint64(price);
+        if (price > type(uint64).max) return (false, 0);
+        return (true, uint64(price));
     }
 
     function _clearPending() internal {
