@@ -22,6 +22,7 @@ CONTRACTS_DEFAULT=(
   "EchidnaPriceOracleHarness"
   "EchidnaPostageStampHarness"
   "EchidnaRedistributionHarness"
+  "EchidnaSystemHarness"
 )
 
 if [[ -n "$CONTRACT" ]]; then

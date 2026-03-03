@@ -20,6 +20,7 @@ This repo currently contains multiple harnesses:
 - **Oracle harness**: `src/echidna/EchidnaPriceOracleHarness.sol`
 - **PostageStamp harness**: `src/echidna/EchidnaPostageStampHarness.sol`
 - **Redistribution harness**: `src/echidna/EchidnaRedistributionHarness.sol`
+- **System/integration harness**: `src/echidna/EchidnaSystemHarness.sol`
 
 ### What each harness deploys
 
@@ -58,6 +59,20 @@ The **redistribution harness** (base) deploys:
 It also includes “happy-path” actions (`act_happyCommit`, `act_happyReveal`) that try to **increase the rate of successful**
 `commit → reveal` sequences by pre-conditioning the mocked stake/overlay inputs (so we can assert stronger post-conditions).
 
+The **system/integration harness** deploys:
+
+- `TestToken`
+- `PostageStamp`
+- `PriceOracle` (wired as the `PRICE_ORACLE_ROLE` on `PostageStamp`)
+- `StakeRegistry` (wired to `PriceOracle.currentPrice()`)
+- `Redistribution` (wired to `StakeRegistry`, `PostageStamp`, `PriceOracle`)
+
+and grants:
+
+- `StakeRegistry.REDISTRIBUTOR_ROLE` to `Redistribution` (so it can `freezeDeposit`)
+- `PostageStamp.REDISTRIBUTOR_ROLE` to `Redistribution` (so it can `withdraw`)
+- `PriceOracle.PRICE_UPDATER_ROLE` to one actor (to fuzz `adjustPrice`)
+
 ### Actions (what Echidna mutates)
 
 Harness action functions are intentionally written to be **mostly non-reverting**, so Echidna can explore longer state sequences.
@@ -92,6 +107,12 @@ Key actions per harness:
   - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_setSampleMaxValue`, `act_admin_setFreezingParams`
   - Negative tests: `act_rando_try*` (unauthorized attempts)
   - Pause gating checks: `act_tryCommitWhilePaused`, `act_tryRevealWhilePaused`
+
+- **System/integration harness**
+  - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`
+  - Postage actions: `act_actor_createBatch`, `act_actor_topUp`, `act_actor_increaseDepth`, `act_actor_expireAll`
+  - Oracle actions: `act_admin_setOraclePrice`, `act_updater_adjustOraclePrice`, `act_rando_tryAdjustOraclePrice`
+  - Redistribution flow: `act_redist_happyCommit`, `act_redist_happyReveal`
 
 ### Properties (what must always hold)
 
@@ -132,6 +153,11 @@ High-signal properties per harness:
   - Happy-path post-conditions (only asserted for the currently active commit round):
     - `echidna_tracked_commit_matches_storage`
     - `echidna_tracked_reveal_matches_storage`
+
+- **System/integration harness**
+  - Wiring invariants: correct addresses + roles across contracts
+  - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
+  - Redistribution happy-path consistency: tracked commit/reveal values appear in `Redistribution` storage
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
 
@@ -174,6 +200,7 @@ ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaPriceOracleHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaPostageStampHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna
+ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
 ```
 
 This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
