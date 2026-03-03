@@ -104,6 +104,7 @@ Key actions per harness:
   - Stake configuration: `act_setActorStake`
   - Game entrypoints: `act_commit`, `act_reveal`, `act_claim` (often reverts early; still useful to shake out panics/state bugs)
   - Happy-path flow: `act_happyCommit`, `act_happyReveal`
+  - Winner selection (fuzz-only exposure): `act_winnerSelection`
   - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_setSampleMaxValue`, `act_admin_setFreezingParams`
   - Negative tests: `act_rando_try*` (unauthorized attempts)
   - Pause gating checks: `act_tryCommitWhilePaused`, `act_tryRevealWhilePaused`
@@ -141,15 +142,21 @@ High-signal properties per harness:
   - Pause-mode negative tests (batch mutations must not succeed while paused)
   - Batch post-conditions (`createBatch`, `topUp`, `increaseDepth`) and expiry sanity (`expireAll`)
   - Pot/withdraw post-conditions (beneficiary receives exactly the withdrawn amount; `pot` resets)
-  - Non-interference checks for unrelated tracked batches during targeted operations
+  - Non-interference checks for unrelated tracked batches during targeted operations (now checks multiple other batches)
+  - Pot monotonicity: pot must never decrease except by a successful withdraw-to-zero (`echidna_pot_never_decreases_except_withdraw`)
 
 - **Redistribution harness (base)**
   - Access control “must never happen” flag (`echidna_never_performed_forbidden_calls`)
   - Pause gating: `echidna_never_succeeded_while_paused`
+  - Phase sanity: exactly one of commit/reveal/claim is active (`echidna_phase_partitions_round`)
   - Round bookkeeping sanity (`currentCommitRound/currentRevealRound` never in the future)
   - Commit/reveal internal consistency:
     - committed overlays remain unique
     - if a commit is marked as revealed, its `revealIndex` points to a reveal with the same overlay/owner
+    - every reveal entry must correspond to a revealed commit (`echidna_reveal_entries_imply_matching_commit`)
+  - Claim-phase state machine (using a fuzz-only exposed `winnerSelection()`):
+    - winner selection cannot succeed twice in the same round (`echidna_winnerSelection_only_once_per_round`)
+    - successful winner selection freezes all non-revealers (`echidna_last_winnerSelection_freezes_nonrevealed`)
   - Happy-path post-conditions (only asserted for the currently active commit round):
     - `echidna_tracked_commit_matches_storage`
     - `echidna_tracked_reveal_matches_storage`
