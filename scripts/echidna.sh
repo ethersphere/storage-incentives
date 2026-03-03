@@ -20,6 +20,7 @@ yarn -s hardhat compile --force >/dev/null
 CONTRACTS_DEFAULT=(
   "EchidnaStakeRegistryHarness"
   "EchidnaPriceOracleHarness"
+  "EchidnaPostageStampHarness"
 )
 
 if [[ -n "$CONTRACT" ]]; then

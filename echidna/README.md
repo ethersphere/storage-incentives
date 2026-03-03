@@ -18,6 +18,7 @@ This repo currently contains multiple harnesses:
 
 - **Staking harness**: `src/echidna/EchidnaStakeRegistryHarness.sol`
 - **Oracle harness**: `src/echidna/EchidnaPriceOracleHarness.sol`
+- **PostageStamp harness**: `src/echidna/EchidnaPostageStampHarness.sol`
 
 The staking harness deploys:
 
