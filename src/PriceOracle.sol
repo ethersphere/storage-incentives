@@ -78,7 +78,8 @@ contract PriceOracle is AccessControl {
             revert CallerNotAdmin();
         }
 
-        uint64 _currentPriceUpScaled = _price << 10;
+        // Cast before shifting to avoid uint32 overflow/truncation.
+        uint64 _currentPriceUpScaled = uint64(_price) << 10;
         uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
 
         // Enforce minimum price
