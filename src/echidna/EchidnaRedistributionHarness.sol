@@ -14,6 +14,8 @@ contract EchidnaStakeRegistryMock is IStakeRegistry {
     }
 
     mapping(address => Node) internal nodes;
+    mapping(address => uint256) public freezeCount;
+    mapping(address => uint256) public lastFreezeTime;
 
     function setNode(address owner, bytes32 overlay, uint8 height, uint256 effectiveStake, uint256 lastUpdated) external {
         nodes[owner] = Node({
@@ -27,6 +29,8 @@ contract EchidnaStakeRegistryMock is IStakeRegistry {
 
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!nodes[_owner].exists) return;
+        freezeCount[_owner] += 1;
+        lastFreezeTime[_owner] = _time;
         nodes[_owner].lastUpdated = block.number + _time;
     }
 
@@ -133,10 +137,18 @@ contract EchidnaPostageStampMock is IPostageStamp {
     }
 }
 
-contract EchidnaRedistributionActor {
-    Redistribution internal immutable redist;
+contract RedistributionExposed is Redistribution {
+    constructor(address staking, address postageContract, address oracleContract) Redistribution(staking, postageContract, oracleContract) {}
 
-    constructor(Redistribution r) {
+    function exposedWinnerSelection() external {
+        winnerSelection();
+    }
+}
+
+contract EchidnaRedistributionActor {
+    RedistributionExposed internal immutable redist;
+
+    constructor(RedistributionExposed r) {
         redist = r;
     }
 
@@ -157,6 +169,10 @@ contract EchidnaRedistributionActor {
         p.socProof = new Redistribution.SOCProof[](0);
 
         (ok, ) = address(redist).call(abi.encodeWithSelector(redist.claim.selector, p, p, p));
+    }
+
+    function callWinnerSelection() external returns (bool ok) {
+        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.exposedWinnerSelection.selector));
     }
 
     function tryPause() external returns (bool ok) {
@@ -182,7 +198,7 @@ contract EchidnaRedistributionHarness {
     EchidnaStakeRegistryMock internal immutable stakeMock;
     EchidnaPostageStampMock internal immutable stampMock;
     EchidnaPriceOracleMock internal immutable oracleMock;
-    Redistribution internal immutable redist;
+    RedistributionExposed internal immutable redist;
 
     uint256 internal constant ACTOR_COUNT = 3;
     EchidnaRedistributionActor[3] internal actors;
@@ -191,6 +207,17 @@ contract EchidnaRedistributionHarness {
     bool internal unauthorizedAdminCallSucceeded;
     bool internal commitSucceededWhilePaused;
     bool internal revealSucceededWhilePaused;
+    bool internal winnerSelectionSucceededTwiceSameRound;
+
+    // Pending winnerSelection postconditions.
+    bool internal pendingWinnerSelection;
+    uint64 internal pendingWinnerSelectionRound;
+    uint8 internal pendingWinnerSelectionLen;
+    address[25] internal pendingWSOwners;
+    bool[25] internal pendingWSRevealed;
+    uint256[25] internal pendingWSFreezeCountBefore;
+
+    uint64 internal lastWinnerSelectionRound;
 
     // Tracked "happy-path" state per actor (used to assert strong postconditions when we succeed).
     bool[3] internal trackedHasCommit;
@@ -228,7 +255,7 @@ contract EchidnaRedistributionHarness {
         stampMock = new EchidnaPostageStampMock();
         oracleMock = new EchidnaPriceOracleMock();
 
-        redist = new Redistribution(address(stakeMock), address(stampMock), address(oracleMock));
+        redist = new RedistributionExposed(address(stakeMock), address(stampMock), address(oracleMock));
 
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {
             actors[i] = new EchidnaRedistributionActor(redist);
@@ -408,6 +435,40 @@ contract EchidnaRedistributionHarness {
         if (ok) revealSucceededWhilePaused = true;
     }
 
+    function act_winnerSelection(uint8 actorId) external {
+        uint256 idx = uint256(actorId) % ACTOR_COUNT;
+        // Snapshot current commits (bounded) and freeze counts before selection.
+        pendingWinnerSelection = false;
+        pendingWinnerSelectionLen = 0;
+        pendingWinnerSelectionRound = redist.currentRound();
+
+        for (uint256 i = 0; i < 25; i++) {
+            (bool ok, bytes memory data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
+            if (!ok) break;
+            (bytes32 ov, address ow, bool rev, uint8 h, uint256 st, bytes32 obf, uint256 ri) =
+                abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
+            ov;
+            h;
+            st;
+            obf;
+            ri;
+            pendingWSOwners[i] = ow;
+            pendingWSRevealed[i] = rev;
+            pendingWSFreezeCountBefore[i] = stakeMock.freezeCount(ow);
+            pendingWinnerSelectionLen++;
+        }
+
+        bool okCall = actors[idx].callWinnerSelection();
+        if (!okCall) return;
+
+        // "Only once per round" should hold: a second success in the same round is forbidden.
+        if (lastWinnerSelectionRound == pendingWinnerSelectionRound) winnerSelectionSucceededTwiceSameRound = true;
+        lastWinnerSelectionRound = pendingWinnerSelectionRound;
+
+        // Arm postconditions: non-revealers must have been frozen.
+        pendingWinnerSelection = true;
+    }
+
     // -----------------------------
     // Properties
     // -----------------------------
@@ -418,6 +479,54 @@ contract EchidnaRedistributionHarness {
 
     function echidna_never_succeeded_while_paused() external view returns (bool) {
         return !commitSucceededWhilePaused && !revealSucceededWhilePaused;
+    }
+
+    function echidna_phase_partitions_round() external view returns (bool) {
+        bool c = redist.currentPhaseCommit();
+        bool r = redist.currentPhaseReveal();
+        bool cl = redist.currentPhaseClaim();
+        // Exactly one phase must be true for any block.
+        return (c && !r && !cl) || (!c && r && !cl) || (!c && !r && cl);
+    }
+
+    function echidna_reveal_entries_imply_matching_commit() external view returns (bool) {
+        // For each reveal entry, there must exist a commit marked revealed with matching overlay/owner and revealIndex pointing here.
+        for (uint256 i = 0; i < 25; i++) {
+            (bool okR, bytes32 rOverlay, address rOwner) = _revealOverlayOwner(i);
+            if (!okR) break;
+
+            bool found = false;
+            for (uint256 j = 0; j < 25; j++) {
+                (bool okC, bytes32 cOverlay, address cOwner, bool cRevealed, uint256 cRevealIndex) = _commitRevealLink(j);
+                if (!okC) break;
+                if (cRevealed && cRevealIndex == i && cOverlay == rOverlay && cOwner == rOwner) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    function echidna_winnerSelection_only_once_per_round() external view returns (bool) {
+        return !winnerSelectionSucceededTwiceSameRound;
+    }
+
+    function echidna_last_winnerSelection_freezes_nonrevealed() external view returns (bool) {
+        if (!pendingWinnerSelection) return true;
+        // If we moved to another claim round, the commit set and expectations are stale; ignore.
+        if (redist.currentClaimRound() != pendingWinnerSelectionRound) return true;
+
+        for (uint256 i = 0; i < pendingWinnerSelectionLen; i++) {
+            if (pendingWSRevealed[i]) continue;
+            address ow = pendingWSOwners[i];
+            if (ow == address(0)) continue;
+            if (stakeMock.freezeCount(ow) <= pendingWSFreezeCountBefore[i]) return false;
+            // Freeze should move lastUpdated into the future in the mock.
+            if (stakeMock.lastUpdatedBlockNumberOfAddress(ow) <= block.number) return false;
+        }
+        return true;
     }
 
     function echidna_round_counters_not_in_future() external view returns (bool) {
@@ -527,6 +636,15 @@ contract EchidnaRedistributionHarness {
 
     function _commitOverlayOwner(uint256 i) internal view returns (bool ok, bytes32 ov, address ow) {
         (ok, ov, ow, , ) = _commitFields(i);
+    }
+
+    function _commitRevealLink(
+        uint256 i
+    ) internal view returns (bool ok, bytes32 overlay, address owner, bool revealed, uint256 revealIndex) {
+        bytes memory data;
+        (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
+        if (!ok) return (false, bytes32(0), address(0), false, 0);
+        (overlay, owner, revealed, , , , revealIndex) = abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
     }
 
     function _commitFields(

@@ -103,6 +103,7 @@ contract EchidnaPostageStampHarness {
     bool internal unauthorizedPauseSucceeded;
     bool internal pausedMutationSucceeded;
     bool internal nonInterferenceViolated;
+    bool internal potDecreasedUnexpectedly;
 
     // Pending postconditions (cleared on each action).
     bool internal pendingCreate;
@@ -148,8 +149,16 @@ contract EchidnaPostageStampHarness {
     bool internal tmpImmutable;
     bytes32 internal tmpBatchA;
     bytes32 internal tmpBatchB;
+    bytes32 internal tmpBatchC;
+    bytes32 internal tmpBatchD;
+    bytes32 internal tmpBatchE;
     bytes32 internal tmpDigestA;
     bytes32 internal tmpDigestB;
+    bytes32 internal tmpDigestC;
+    bytes32 internal tmpDigestD;
+    bytes32 internal tmpDigestE;
+
+    uint256 internal lastPotObserved;
 
     constructor() {
         token = new TestToken("TestToken", "TT", 1_000_000_000_000_000_000_000_000); // 1e24
@@ -167,6 +176,8 @@ contract EchidnaPostageStampHarness {
         stamp.grantRole(stamp.PRICE_ORACLE_ROLE(), address(oracleActor));
         stamp.grantRole(stamp.REDISTRIBUTOR_ROLE(), address(redistributorActor));
         stamp.grantRole(stamp.PAUSER_ROLE(), address(pauserActor));
+
+        lastPotObserved = stamp.pot();
     }
 
     // -----------------------------
@@ -186,11 +197,13 @@ contract EchidnaPostageStampHarness {
         external
     {
         _clearPending();
+        uint256 potBefore = stamp.pot();
         // Normalize expiry so createBatch's internal expireLimited() doesn't unexpectedly mutate other batches.
         stamp.expireLimited(type(uint256).max);
         tmpNonce = nonce;
         tmpImmutable = immutableFlag;
         _createBatchInternal(actorId, initialPerChunk, depthRaw);
+        _observePot(potBefore, false);
     }
 
     function act_topUp(uint8 actorId, uint8 batchIndex, uint256 topupPerChunk) external {
@@ -234,29 +247,43 @@ contract EchidnaPostageStampHarness {
 
     function act_increaseDepth(uint8 actorId, uint8 batchIndex, uint8 newDepthRaw) external {
         _clearPending();
+        uint256 potBefore = stamp.pot();
         EchidnaPostageActor a = _actor(actorId);
 
         if (stamp.paused()) {
             bool okPaused = a.increaseDepth(_batch(batchIndex), 3);
             if (okPaused) pausedMutationSucceeded = true;
+            _observePot(potBefore, false);
             return;
         }
 
         bytes32 batchId = _batch(batchIndex);
-        if (batchId == bytes32(0)) return;
+        if (batchId == bytes32(0)) {
+            _observePot(potBefore, false);
+            return;
+        }
 
         // increaseDepth is owner-gated; we only attempt if the batch owner matches this actor.
-        if (stamp.batchOwner(batchId) != address(a)) return;
+        if (stamp.batchOwner(batchId) != address(a)) {
+            _observePot(potBefore, false);
+            return;
+        }
 
         // Normalize state to avoid this call also expiring unrelated batches (it calls expireLimited internally).
         stamp.expireLimited(type(uint256).max);
 
         uint8 oldDepth = stamp.batchDepth(batchId);
-        if (oldDepth == 0) return;
+        if (oldDepth == 0) {
+            _observePot(potBefore, false);
+            return;
+        }
 
         uint8 minBucket = stamp.minimumBucketDepth();
         uint8 newDepth = uint8(minBucket + 1 + (newDepthRaw % 12));
-        if (newDepth <= oldDepth) return;
+        if (newDepth <= oldDepth) {
+            _observePot(potBefore, false);
+            return;
+        }
 
         uint256 validBefore = stamp.validChunkCount();
         uint256 tokenBefore = token.balanceOf(address(stamp));
@@ -270,7 +297,10 @@ contract EchidnaPostageStampHarness {
         _armNonInterference(batchIndex, batchId);
 
         bool ok = a.increaseDepth(batchId, newDepth);
-        if (!ok) return;
+        if (!ok) {
+            _observePot(potBefore, false);
+            return;
+        }
         _checkNonInterference(batchId);
 
         pendingIncreaseDepth = true;
@@ -281,12 +311,17 @@ contract EchidnaPostageStampHarness {
         pendingIncTokenBefore = tokenBefore;
         pendingIncBucketDepth = bucketDepthBefore;
         pendingIncExpectedNormalised = expectedNormalisedAfter;
+        _observePot(potBefore, false);
     }
 
     function act_oracle_setPrice(uint256 price) external {
         _clearPending();
+        uint256 potBefore = stamp.pot();
         bool ok = oracleActor.trySetPrice(price);
-        if (!ok) return;
+        if (!ok) {
+            _observePot(potBefore, false);
+            return;
+        }
 
         pendingSetPrice = true;
         pendingSetPriceLastUpdatedExpected = uint64(block.number);
@@ -294,16 +329,20 @@ contract EchidnaPostageStampHarness {
         // Capture the exact base total payout immediately after setting the price.
         // At this point `lastUpdatedBlock == block.number`, so `currentTotalOutPayment()` equals `totalOutPayment`.
         pendingSetPriceTotalOutPaymentBefore = stamp.currentTotalOutPayment();
+        _observePot(potBefore, false);
     }
 
     function act_expireAll() external {
         _clearPending();
+        uint256 potBefore = stamp.pot();
         stamp.expireLimited(type(uint256).max);
         pendingExpireAll = true;
+        _observePot(potBefore, false);
     }
 
     function act_redistributor_withdraw(uint8 beneficiaryActorId) external {
         _clearPending();
+        uint256 potBefore = stamp.pot();
         address beneficiary = address(_actor(beneficiaryActorId));
         if (beneficiary == address(0)) beneficiary = address(0xBEEF);
 
@@ -312,13 +351,17 @@ contract EchidnaPostageStampHarness {
         uint256 stampBalBefore = token.balanceOf(address(stamp));
 
         bool ok = redistributorActor.tryWithdraw(beneficiary);
-        if (!ok) return;
+        if (!ok) {
+            _observePot(potBefore, false);
+            return;
+        }
 
         pendingWithdraw = true;
         pendingWithdrawBeneficiary = beneficiary;
         pendingWithdrawBeneficiaryBalBefore = balBefore;
         pendingWithdrawStampBalBefore = stampBalBefore;
         pendingWithdrawExpectedAmount = amount;
+        _observePot(potBefore, true);
     }
 
     function act_pauser_pause() external {
@@ -366,7 +409,12 @@ contract EchidnaPostageStampHarness {
             !unauthorizedWithdrawSucceeded &&
             !unauthorizedPauseSucceeded &&
             !pausedMutationSucceeded &&
-            !nonInterferenceViolated;
+            !nonInterferenceViolated &&
+            !potDecreasedUnexpectedly;
+    }
+
+    function echidna_pot_never_decreases_except_withdraw() external view returns (bool) {
+        return !potDecreasedUnexpectedly;
     }
 
     function echidna_minimumInitialBalancePerChunk_matches_formula() external view returns (bool) {
@@ -473,16 +521,38 @@ contract EchidnaPostageStampHarness {
     function _armNonInterference(uint8 batchIndex, bytes32 target) internal {
         tmpBatchA = _batch(uint8(batchIndex + 1));
         tmpBatchB = _batch(uint8(batchIndex + 2));
+        tmpBatchC = _batch(uint8(batchIndex + 3));
+        tmpBatchD = _batch(uint8(batchIndex + 4));
+        tmpBatchE = _batch(uint8(batchIndex + 5));
         if (tmpBatchA == target) tmpBatchA = bytes32(0);
         if (tmpBatchB == target) tmpBatchB = bytes32(0);
+        if (tmpBatchC == target) tmpBatchC = bytes32(0);
+        if (tmpBatchD == target) tmpBatchD = bytes32(0);
+        if (tmpBatchE == target) tmpBatchE = bytes32(0);
         tmpDigestA = tmpBatchA == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchA);
         tmpDigestB = tmpBatchB == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchB);
+        tmpDigestC = tmpBatchC == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchC);
+        tmpDigestD = tmpBatchD == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchD);
+        tmpDigestE = tmpBatchE == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchE);
     }
 
     function _checkNonInterference(bytes32 target) internal {
         target;
         if (tmpBatchA != bytes32(0) && _batchDigest(tmpBatchA) != tmpDigestA) nonInterferenceViolated = true;
         if (tmpBatchB != bytes32(0) && _batchDigest(tmpBatchB) != tmpDigestB) nonInterferenceViolated = true;
+        if (tmpBatchC != bytes32(0) && _batchDigest(tmpBatchC) != tmpDigestC) nonInterferenceViolated = true;
+        if (tmpBatchD != bytes32(0) && _batchDigest(tmpBatchD) != tmpDigestD) nonInterferenceViolated = true;
+        if (tmpBatchE != bytes32(0) && _batchDigest(tmpBatchE) != tmpDigestE) nonInterferenceViolated = true;
+    }
+
+    function _observePot(uint256 potBefore, bool withdrew) internal {
+        potBefore;
+        uint256 prev = lastPotObserved;
+        uint256 nowPot = stamp.pot();
+        if (nowPot < prev) {
+            if (!(withdrew && nowPot == 0 && prev > 0)) potDecreasedUnexpectedly = true;
+        }
+        lastPotObserved = nowPot;
     }
 
     function _createBatchInternal(uint8 actorId, uint256 initialPerChunk, uint8 depthRaw) internal {
