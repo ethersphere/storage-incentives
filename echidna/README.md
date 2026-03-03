@@ -55,6 +55,9 @@ The **redistribution harness** (base) deploys:
   - `IPriceOracle` (tracks `adjustPrice()` calls)
 - a small set of actor contracts (independent `msg.sender`s) to fuzz access control and commit/reveal/claim entrypoints
 
+It also includes “happy-path” actions (`act_happyCommit`, `act_happyReveal`) that try to **increase the rate of successful**
+`commit → reveal` sequences by pre-conditioning the mocked stake/overlay inputs (so we can assert stronger post-conditions).
+
 ### Actions (what Echidna mutates)
 
 Harness action functions are intentionally written to be **mostly non-reverting**, so Echidna can explore longer state sequences.
@@ -85,8 +88,10 @@ Key actions per harness:
 - **Redistribution harness (base)**
   - Stake configuration: `act_setActorStake`
   - Game entrypoints: `act_commit`, `act_reveal`, `act_claim` (often reverts early; still useful to shake out panics/state bugs)
+  - Happy-path flow: `act_happyCommit`, `act_happyReveal`
   - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_setSampleMaxValue`, `act_admin_setFreezingParams`
   - Negative tests: `act_rando_try*` (unauthorized attempts)
+  - Pause gating checks: `act_tryCommitWhilePaused`, `act_tryRevealWhilePaused`
 
 ### Properties (what must always hold)
 
@@ -119,10 +124,14 @@ High-signal properties per harness:
 
 - **Redistribution harness (base)**
   - Access control “must never happen” flag (`echidna_never_performed_forbidden_calls`)
+  - Pause gating: `echidna_never_succeeded_while_paused`
   - Round bookkeeping sanity (`currentCommitRound/currentRevealRound` never in the future)
   - Commit/reveal internal consistency:
     - committed overlays remain unique
     - if a commit is marked as revealed, its `revealIndex` points to a reveal with the same overlay/owner
+  - Happy-path post-conditions (only asserted for the currently active commit round):
+    - `echidna_tracked_commit_matches_storage`
+    - `echidna_tracked_reveal_matches_storage`
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
 

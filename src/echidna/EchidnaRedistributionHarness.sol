@@ -189,6 +189,39 @@ contract EchidnaRedistributionHarness {
 
     // Forbidden-call flags.
     bool internal unauthorizedAdminCallSucceeded;
+    bool internal commitSucceededWhilePaused;
+    bool internal revealSucceededWhilePaused;
+
+    // Tracked "happy-path" state per actor (used to assert strong postconditions when we succeed).
+    bool[3] internal trackedHasCommit;
+    bool[3] internal trackedHasReveal;
+    uint64[3] internal trackedRound;
+    bytes32[3] internal trackedOverlay;
+    uint8[3] internal trackedHeight;
+    uint8[3] internal trackedDepth;
+    uint256[3] internal trackedStake;
+    bytes32[3] internal trackedReserveHash;
+    bytes32[3] internal trackedNonce;
+    bytes32[3] internal trackedObfuscated;
+
+    struct CommitView {
+        bytes32 overlay;
+        address owner;
+        bool revealed;
+        uint8 height;
+        uint256 stake;
+        bytes32 obfuscatedHash;
+        uint256 revealIndex;
+    }
+
+    struct RevealView {
+        bytes32 overlay;
+        address owner;
+        uint8 depth;
+        uint256 stake;
+        uint256 stakeDensity;
+        bytes32 hash;
+    }
 
     constructor() {
         stakeMock = new EchidnaStakeRegistryMock();
@@ -216,7 +249,8 @@ contract EchidnaRedistributionHarness {
         uint8 h = uint8(height % 16);
         // Avoid lastUpdated=0 unless we want NotStaked; keep at least 1.
         uint256 u = lastUpdated == 0 ? 1 : lastUpdated;
-        stakeMock.setNode(address(a), overlay, h, effectiveStake, u);
+        uint256 stake = _boundStake(effectiveStake);
+        stakeMock.setNode(address(a), overlay, h, stake, u);
     }
 
     function act_commit(uint8 actorId, bytes32 obfuscatedHash, int8 roundDelta) external {
@@ -275,11 +309,115 @@ contract EchidnaRedistributionHarness {
     }
 
     // -----------------------------
+    // Advanced actions (aim for successful commit/reveal)
+    // -----------------------------
+
+    function act_happyCommit(uint8 actorId, uint8 height, uint256 stakeAmount, bytes32 reserveHash, bytes32 nonce) external {
+        if (redist.paused()) return;
+        if (!redist.currentPhaseCommit()) return;
+        // Avoid the "phase last block" restriction in commit phase.
+        if (block.number % 152 == (152 / 4) - 1) return;
+
+        uint256 idx = uint256(actorId) % ACTOR_COUNT;
+        EchidnaRedistributionActor a = actors[idx];
+
+        // Pick a unique overlay per actor that still has a high chance of being eligible.
+        // We set depthResponsibility = 0 (depth == height), which makes proximity always pass.
+        bytes32 anchor = redist.currentRoundAnchor();
+        bytes32 overlay = keccak256(abi.encodePacked("overlay", idx, anchor));
+
+        uint8 h = uint8(height % 16);
+        uint8 d = h;
+        uint256 stake = _boundStake(stakeAmount);
+        uint256 lastUpdated = _backdateLastUpdated();
+
+        // Set node data so commit checks can pass.
+        stakeMock.setNode(address(a), overlay, h, stake, lastUpdated);
+
+        // Avoid reverting on AlreadyCommitted for identical overlay.
+        if (_commitOverlayExists(overlay)) return;
+
+        bytes32 obfuscated = redist.wrapCommit(overlay, d, reserveHash, nonce);
+        bool ok = a.callCommit(obfuscated, redist.currentRound());
+        if (!ok) return;
+
+        trackedHasCommit[idx] = true;
+        trackedHasReveal[idx] = false;
+        trackedRound[idx] = redist.currentRound();
+        trackedOverlay[idx] = overlay;
+        trackedHeight[idx] = h;
+        trackedDepth[idx] = d;
+        trackedStake[idx] = stake;
+        trackedReserveHash[idx] = reserveHash;
+        trackedNonce[idx] = nonce;
+        trackedObfuscated[idx] = obfuscated;
+    }
+
+    function act_happyReveal(uint8 actorId) external {
+        if (redist.paused()) return;
+        if (!redist.currentPhaseReveal()) return;
+
+        uint256 idx = uint256(actorId) % ACTOR_COUNT;
+        if (!trackedHasCommit[idx] || trackedHasReveal[idx]) return;
+
+        // Reveal must happen in the same round that received commits.
+        if (redist.currentRound() != trackedRound[idx]) return;
+        if (redist.currentCommitRound() != trackedRound[idx]) return;
+
+        EchidnaRedistributionActor a = actors[idx];
+        // Ensure the actor's overlay/height match the committed values.
+        stakeMock.setNode(address(a), trackedOverlay[idx], trackedHeight[idx], trackedStake[idx], _backdateLastUpdated());
+
+        bool ok = a.callReveal(trackedDepth[idx], trackedReserveHash[idx], trackedNonce[idx]);
+        if (!ok) return;
+
+        trackedHasReveal[idx] = true;
+    }
+
+    function act_tryCommitWhilePaused(uint8 actorId, bytes32 reserveHash, bytes32 nonce) external {
+        if (!redist.paused()) return;
+        if (!redist.currentPhaseCommit()) return;
+        if (block.number % 152 == (152 / 4) - 1) return;
+
+        uint256 idx = uint256(actorId) % ACTOR_COUNT;
+        EchidnaRedistributionActor a = actors[idx];
+
+        bytes32 anchor = redist.currentRoundAnchor();
+        bytes32 overlay = keccak256(abi.encodePacked("paused-overlay", idx, anchor));
+        uint8 h = 0;
+        uint8 d = 0;
+        stakeMock.setNode(address(a), overlay, h, 1e18, _backdateLastUpdated());
+
+        bytes32 obfuscated = redist.wrapCommit(overlay, d, reserveHash, nonce);
+        bool ok = a.callCommit(obfuscated, redist.currentRound());
+        if (ok) commitSucceededWhilePaused = true;
+    }
+
+    function act_tryRevealWhilePaused(uint8 actorId) external {
+        if (!redist.paused()) return;
+        if (!redist.currentPhaseReveal()) return;
+
+        uint256 idx = uint256(actorId) % ACTOR_COUNT;
+        if (!trackedHasCommit[idx]) return;
+        if (redist.currentRound() != trackedRound[idx]) return;
+        if (redist.currentCommitRound() != trackedRound[idx]) return;
+
+        EchidnaRedistributionActor a = actors[idx];
+        stakeMock.setNode(address(a), trackedOverlay[idx], trackedHeight[idx], trackedStake[idx], _backdateLastUpdated());
+        bool ok = a.callReveal(trackedDepth[idx], trackedReserveHash[idx], trackedNonce[idx]);
+        if (ok) revealSucceededWhilePaused = true;
+    }
+
+    // -----------------------------
     // Properties
     // -----------------------------
 
     function echidna_never_performed_forbidden_calls() external view returns (bool) {
         return !unauthorizedAdminCallSucceeded;
+    }
+
+    function echidna_never_succeeded_while_paused() external view returns (bool) {
+        return !commitSucceededWhilePaused && !revealSucceededWhilePaused;
     }
 
     function echidna_round_counters_not_in_future() external view returns (bool) {
@@ -314,6 +452,47 @@ contract EchidnaRedistributionHarness {
             if (rOverlay != cOverlay) return false;
             if (rOwner != cOwner) return false;
             if (cOwner != owner[i]) return false;
+        }
+        return true;
+    }
+
+    function echidna_tracked_commit_matches_storage() external view returns (bool) {
+        uint64 liveCommitRound = redist.currentCommitRound();
+        for (uint256 i = 0; i < ACTOR_COUNT; i++) {
+            if (!trackedHasCommit[i]) continue;
+            // `currentCommits` is deleted when a new commit round begins.
+            // Only assert strong postconditions for commits in the currently tracked commit round.
+            if (trackedRound[i] != liveCommitRound) continue;
+
+            (bool ok, uint256 commitIdx) = _findCommit(trackedOverlay[i], trackedObfuscated[i]);
+            if (!ok) return false;
+
+            (
+                ,
+                bytes32 ov,
+                address ow,
+                ,
+                uint8 h,
+                uint256 stake,
+                bytes32 obf,
+                /* revealIndex */
+            ) = _commitFull(commitIdx);
+
+            if (ov != trackedOverlay[i]) return false;
+            if (obf != trackedObfuscated[i]) return false;
+            if (ow != address(actors[i])) return false;
+            if (h != trackedHeight[i]) return false;
+            if (stake != trackedStake[i]) return false;
+        }
+        return true;
+    }
+
+    function echidna_tracked_reveal_matches_storage() external view returns (bool) {
+        uint64 liveCommitRound = redist.currentCommitRound();
+        for (uint256 i = 0; i < ACTOR_COUNT; i++) {
+            if (!trackedHasReveal[i]) continue;
+            if (trackedRound[i] != liveCommitRound) continue;
+            if (!_checkTrackedReveal(i)) return false;
         }
         return true;
     }
@@ -368,6 +547,103 @@ contract EchidnaRedistributionHarness {
         // Reveal struct getter returns:
         // (bytes32 overlay, address owner, uint8 depth, uint256 stake, uint256 stakeDensity, bytes32 hash)
         (ov, ow, , , , ) = abi.decode(data, (bytes32, address, uint8, uint256, uint256, bytes32));
+    }
+
+    function _commitFull(
+        uint256 i
+    )
+        internal
+        view
+        returns (
+            bool ok,
+            bytes32 overlay,
+            address owner,
+            bool revealed,
+            uint8 height,
+            uint256 stake,
+            bytes32 obfuscatedHash,
+            uint256 revealIndex
+        )
+    {
+        bytes memory data;
+        (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
+        if (!ok) return (false, bytes32(0), address(0), false, 0, 0, bytes32(0), 0);
+        (overlay, owner, revealed, height, stake, obfuscatedHash, revealIndex) =
+            abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
+    }
+
+    function _revealFull(
+        uint256 i
+    ) internal view returns (bool ok, bytes32 overlay, address owner, uint8 depth, uint256 stake, uint256 stakeDensity, bytes32 hash) {
+        bytes memory data;
+        (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentReveals(uint256)", i));
+        if (!ok) return (false, bytes32(0), address(0), 0, 0, 0, bytes32(0));
+        (overlay, owner, depth, stake, stakeDensity, hash) = abi.decode(data, (bytes32, address, uint8, uint256, uint256, bytes32));
+    }
+
+    function _checkTrackedReveal(uint256 actorIdx) internal view returns (bool) {
+        (bool ok, uint256 commitIdx) = _findCommit(trackedOverlay[actorIdx], trackedObfuscated[actorIdx]);
+        if (!ok) return false;
+
+        bytes memory cdata;
+        (ok, cdata) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", commitIdx));
+        if (!ok) return false;
+        CommitView memory c = abi.decode(cdata, (CommitView));
+
+        if (c.owner != address(actors[actorIdx])) return false;
+        if (c.overlay != trackedOverlay[actorIdx]) return false;
+        if (c.obfuscatedHash != trackedObfuscated[actorIdx]) return false;
+        if (c.height != trackedHeight[actorIdx]) return false;
+        if (c.stake != trackedStake[actorIdx]) return false;
+        if (!c.revealed) return false;
+
+        bytes memory rdata;
+        (ok, rdata) = address(redist).staticcall(abi.encodeWithSignature("currentReveals(uint256)", c.revealIndex));
+        if (!ok) return false;
+        RevealView memory r = abi.decode(rdata, (RevealView));
+
+        if (r.overlay != trackedOverlay[actorIdx]) return false;
+        if (r.owner != address(actors[actorIdx])) return false;
+        if (r.depth != trackedDepth[actorIdx]) return false;
+        if (r.hash != trackedReserveHash[actorIdx]) return false;
+        if (r.stake != c.stake) return false;
+
+        uint8 dr = trackedDepth[actorIdx] - c.height;
+        uint256 expectedDensity = c.stake * (uint256(1) << dr);
+        if (r.stakeDensity != expectedDensity) return false;
+        return true;
+    }
+
+    function _findCommit(bytes32 overlay, bytes32 obfuscated) internal view returns (bool ok, uint256 idx) {
+        for (uint256 i = 0; i < 25; i++) {
+            (bool okI, bytes32 ov, , , , , bytes32 obf, ) = _commitFull(i);
+            if (!okI) break;
+            if (ov == overlay && obf == obfuscated) return (true, i);
+        }
+        return (false, 0);
+    }
+
+    function _commitOverlayExists(bytes32 overlay) internal view returns (bool) {
+        for (uint256 i = 0; i < 25; i++) {
+            (bool ok, bytes32 ov, , , ) = _commitFields(i);
+            if (!ok) break;
+            if (ov == overlay) return true;
+        }
+        return false;
+    }
+
+    function _backdateLastUpdated() internal view returns (uint256) {
+        uint256 twoRounds = 2 * 152;
+        if (block.number > twoRounds + 1) return block.number - twoRounds - 1;
+        return 1;
+    }
+
+    function _boundStake(uint256 s) internal pure returns (uint256) {
+        // Keep stake densities well within uint256 range even if depthResponsibility grows a bit.
+        uint256 max = 1e24;
+        if (s == 0) return 1;
+        if (s > max) return (s % max) + 1;
+        return s;
     }
 }
 
