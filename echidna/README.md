@@ -19,8 +19,11 @@ This repo currently contains multiple harnesses:
 - **Staking harness**: `src/echidna/EchidnaStakeRegistryHarness.sol`
 - **Oracle harness**: `src/echidna/EchidnaPriceOracleHarness.sol`
 - **PostageStamp harness**: `src/echidna/EchidnaPostageStampHarness.sol`
+- **Redistribution harness**: `src/echidna/EchidnaRedistributionHarness.sol`
 
-The staking harness deploys:
+### What each harness deploys
+
+The **staking harness** deploys:
 
 - `TestToken` (a mintable ERC20 preset used as BZZ stand-in)
 - `StakeRegistry` (from `src/Staking.sol`)
@@ -28,53 +31,98 @@ The staking harness deploys:
 
 It also deploys several **actor contracts** (`EchidnaStakeActor`) which behave like independent users (each has its own address and token balance), plus a dedicated actor that receives the `REDISTRIBUTOR_ROLE` so we can fuzz freeze/slash flows.
 
-The oracle harness deploys:
+The **oracle harness** deploys:
 
 - `PriceOracle` (from `src/PriceOracle.sol`)
 - a `PostageStamp` mock that can succeed or revert on `setPrice(uint256)`
 - an updater actor (has `PRICE_UPDATER_ROLE`) and a random actor (no roles) to fuzz access control
 
+The **postage stamp harness** deploys:
+
+- `TestToken` (ERC20 used as BZZ stand-in)
+- `PostageStamp` (from `src/PostageStamp.sol`)
+- actor contracts with roles:
+  - a price oracle actor (has `PRICE_ORACLE_ROLE`)
+  - a redistributor actor (has `REDISTRIBUTOR_ROLE`)
+  - a pauser actor (has `PAUSER_ROLE`)
+
+The **redistribution harness** (base) deploys:
+
+- `Redistribution` (from `src/Redistribution.sol`)
+- mocks for its dependencies:
+  - `IStakeRegistry` (overlay/height/effective stake + `freezeDeposit` tracking)
+  - `IPostageStamp` (tracks `withdraw()` calls; provides minimal `batches()`/`validChunkCount()` access)
+  - `IPriceOracle` (tracks `adjustPrice()` calls)
+- a small set of actor contracts (independent `msg.sender`s) to fuzz access control and commit/reveal/claim entrypoints
+
 ### Actions (what Echidna mutates)
 
-These functions are intentionally written to be **mostly non-reverting**, so Echidna can explore longer state sequences:
+Harness action functions are intentionally written to be **mostly non-reverting**, so Echidna can explore longer state sequences.
 
-- **Per-actor stake actions**
-  - `act_actor_manageStake(actorId, setNonce, addAmount, height)`
-  - `act_actor_withdrawSurplus(actorId)`
-  - `act_actor_migrateStake(actorId)` (only succeeds when paused)
-- **Admin actions (executed by the harness admin)**
-  - `act_admin_pause()`, `act_admin_unpause()`
-  - `act_admin_changeNetworkId(newNetworkId)`
-- **Redistributor actions (executed by the redistributor actor)**
-  - `act_redistributor_freeze(targetActorId, time)`
-  - `act_redistributor_slash(targetActorId, amount)`
-- **Negative tests (unauthorized attempts)**
-  - `act_actor_tryPause(...)`, `act_actor_tryUnpause(...)`, `act_actor_tryChangeNetworkId(...)`
-  - `act_actor_tryFreeze(...)`, `act_actor_trySlash(...)`
-- **Funding**
-  - `act_fundActor(actorId, amount)` transfers tokens from the harness to an actor so fuzzing doesn’t get “stuck” when actors run out of balance.
+Key actions per harness:
+
+- **Staking harness**
+  - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`, `act_actor_migrateStake`
+  - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_changeNetworkId`
+  - Redistributor actions: `act_redistributor_freeze`, `act_redistributor_slash`
+  - Negative tests: `act_actor_try*` (unauthorized attempts)
+  - Funding: `act_fundActor`
+
+- **Oracle harness**
+  - Admin actions: `act_admin_setPrice`, `act_admin_pause`, `act_admin_unpause`
+  - Updater actions: `act_updater_adjustPrice`
+  - Negative tests: `act_rando_try*`
+  - PostageStamp mock behavior: `act_setStampRevertMode`
+
+- **PostageStamp harness**
+  - Batch actions: `act_createBatch`, `act_topUp`, `act_increaseDepth`, `act_expireAll`
+  - Price update: `act_oracle_setPrice`
+  - Pot withdrawal: `act_redistributor_withdraw`
+  - Pause/unpause: `act_pauser_pause`, `act_pauser_unpause`
+  - Negative tests: `act_rando_try*`
+  - Funding: `act_fundActor`
+
+- **Redistribution harness (base)**
+  - Stake configuration: `act_setActorStake`
+  - Game entrypoints: `act_commit`, `act_reveal`, `act_claim` (often reverts early; still useful to shake out panics/state bugs)
+  - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_setSampleMaxValue`, `act_admin_setFreezingParams`
+  - Negative tests: `act_rando_try*` (unauthorized attempts)
 
 ### Properties (what must always hold)
 
-The harness defines `echidna_*` properties that Echidna checks continuously:
+Each harness defines `echidna_*` properties that Echidna checks continuously.
 
-- **Authorization / “must never happen”**
-  - `echidna_never_performed_forbidden_calls`: asserts that unauthorized actors never successfully paused/unpaused/changed network id, never successfully froze/slashed, and that we didn’t observe other action-level invariant violations.
-- **Cross-actor accounting**
-  - `echidna_registry_balance_covers_sum_potential`: registry token balance covers the sum of all actors’ `potentialStake`.
-- **Per-actor stake invariants**
-  - `echidna_stake_committed_never_decreases_per_actor`: committed stake never decreases for an actor while it has an active stake entry.
-  - `echidna_nodeEffective_matches_freeze_rule_per_actor`: effective stake is `0` while frozen, otherwise matches expected effective stake math.
-  - `echidna_empty_state_is_zeroed_for_all`: if a stake entry is deleted/empty, all fields are zeroed.
-  - `echidna_overlay_matches_last_manageStake_for_all`: overlay matches `keccak256(owner, reverse(networkIdAtLastStake), lastNonce)` per actor.
-- **Post-conditions for successful `manageStake(add > 0)`**
-  - `echidna_last_manageStake_add_updates_potential_and_registry_balance`: on the immediate post-state after a successful `manageStake` with `addAmount > 0`, both the actor’s `potentialStake` and the registry’s ERC20 balance must increase by exactly `addAmount`.
-  - `echidna_last_manageStake_add_recomputes_committedStake`: on that same immediate post-state, `committedStake` must equal `floor(potential / (price * 2**height))`.
-- **Pause/migrate and penalty post-conditions**
-  - `echidna_migrate_never_succeeds_while_unpaused`: `migrateStake()` must never succeed unless the registry is paused.
-  - `echidna_last_migrate_refunds_and_deletes_when_stake_exists`: on the immediate post-state after a successful `migrateStake()`, the stake is deleted and the actor is refunded exactly their previous `potentialStake` (or it is a no-op if no stake existed).
-  - `echidna_last_freeze_only_updates_lastUpdated`: on the immediate post-state after a successful redistributor `freezeDeposit`, only `lastUpdatedBlockNumber` is modified (other stake fields remain unchanged).
-  - `echidna_last_slash_updates_expected_fields`: on the immediate post-state after a successful redistributor `slashDeposit`, partial slashes only decrease `potentialStake` and set `lastUpdatedBlockNumber`, and full slashes delete the stake.
+Common patterns used across harnesses:
+
+- **Authorization (“must never happen”)**: calls that should be role-gated must never succeed for unauthorized actors.
+- **Post-conditions**: for successful state transitions, the immediate post-state must match expected math and accounting.
+
+High-signal properties per harness:
+
+- **Staking harness**
+  - Access control + “must never happen” flags (`echidna_never_performed_forbidden_calls`)
+  - Registry accounting (ERC20 balance covers sum of potential stake)
+  - Per-actor invariants (commitment monotonicity, effective stake/freeze semantics, overlay derivation)
+  - Post-conditions for `manageStake(add>0)`, `freezeDeposit`, `slashDeposit`, `migrateStake`
+
+- **Oracle harness**
+  - Access control (admin-only + updater-only) and “paused means no changes”
+  - Price invariants: price never below minimum; downscaled vs upscaled consistency; lastAdjustedRound not in the future
+  - Post-conditions for `setPrice` and `adjustPrice` (including skipped-round math), with overflow-aware modeling
+
+- **PostageStamp harness**
+  - Access control (oracle-only price updates, redistributor-only withdraw, pauser-only pause/unpause)
+  - Pause-mode negative tests (batch mutations must not succeed while paused)
+  - Batch post-conditions (`createBatch`, `topUp`, `increaseDepth`) and expiry sanity (`expireAll`)
+  - Pot/withdraw post-conditions (beneficiary receives exactly the withdrawn amount; `pot` resets)
+  - Non-interference checks for unrelated tracked batches during targeted operations
+
+- **Redistribution harness (base)**
+  - Access control “must never happen” flag (`echidna_never_performed_forbidden_calls`)
+  - Round bookkeeping sanity (`currentCommitRound/currentRevealRound` never in the future)
+  - Commit/reveal internal consistency:
+    - committed overlays remain unique
+    - if a commit is marked as revealed, its `revealIndex` points to a reveal with the same overlay/owner
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
 
@@ -115,6 +163,8 @@ To run only a specific harness contract:
 ```bash
 ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaPriceOracleHarness yarn echidna
+ECHIDNA_CONTRACT=EchidnaPostageStampHarness yarn echidna
+ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna
 ```
 
 This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
@@ -133,7 +183,7 @@ These are ignored by git via `.gitignore`.
 
 Typical next steps:
 
-- Add another harness under `src/echidna/` for `PostageStamp` or `Redistribution`.
+- Add another harness under `src/echidna/` for other protocol contracts.
 - Keep actions non-reverting and model only the roles/privileges you want to include.
 - Start with a few **obviously true** invariants, then iterate:
   - If Echidna finds a counterexample, decide whether that is a **bug** or a **property mismatch**.
