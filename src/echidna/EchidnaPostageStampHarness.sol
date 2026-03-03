@@ -101,6 +101,8 @@ contract EchidnaPostageStampHarness {
     bool internal unauthorizedPriceSetSucceeded;
     bool internal unauthorizedWithdrawSucceeded;
     bool internal unauthorizedPauseSucceeded;
+    bool internal pausedMutationSucceeded;
+    bool internal nonInterferenceViolated;
 
     // Pending postconditions (cleared on each action).
     bool internal pendingCreate;
@@ -125,12 +127,29 @@ contract EchidnaPostageStampHarness {
     uint8 internal pendingIncNewDepth;
     uint256 internal pendingIncValidChunkBefore;
     uint256 internal pendingIncTokenBefore;
+    uint8 internal pendingIncBucketDepth;
+    uint256 internal pendingIncExpectedNormalised;
 
     bool internal pendingExpireAll;
+
+    bool internal pendingSetPrice;
+    uint256 internal pendingSetPriceTotalOutPaymentBefore;
+    uint64 internal pendingSetPriceLastUpdatedExpected;
+    uint64 internal pendingSetPriceLastPriceExpected;
+
+    bool internal pendingWithdraw;
+    address internal pendingWithdrawBeneficiary;
+    uint256 internal pendingWithdrawBeneficiaryBalBefore;
+    uint256 internal pendingWithdrawExpectedAmount;
+    uint256 internal pendingWithdrawStampBalBefore;
 
     // Temporary inputs to reduce stack pressure in helpers.
     bytes32 internal tmpNonce;
     bool internal tmpImmutable;
+    bytes32 internal tmpBatchA;
+    bytes32 internal tmpBatchB;
+    bytes32 internal tmpDigestA;
+    bytes32 internal tmpDigestB;
 
     constructor() {
         token = new TestToken("TestToken", "TT", 1_000_000_000_000_000_000_000_000); // 1e24
@@ -167,6 +186,8 @@ contract EchidnaPostageStampHarness {
         external
     {
         _clearPending();
+        // Normalize expiry so createBatch's internal expireLimited() doesn't unexpectedly mutate other batches.
+        stamp.expireLimited(type(uint256).max);
         tmpNonce = nonce;
         tmpImmutable = immutableFlag;
         _createBatchInternal(actorId, initialPerChunk, depthRaw);
@@ -176,10 +197,15 @@ contract EchidnaPostageStampHarness {
         _clearPending();
         EchidnaPostageActor a = _actor(actorId);
 
-        if (stamp.paused()) return;
+        if (stamp.paused()) {
+            bool okPaused = a.topUp(_batch(batchIndex), 1);
+            if (okPaused) pausedMutationSucceeded = true;
+            return;
+        }
 
         bytes32 batchId = _batch(batchIndex);
         if (batchId == bytes32(0)) return;
+        _armNonInterference(batchIndex, batchId);
 
         // Only the creator can topUp (msg.sender irrelevant); topUp isn't owner gated but will revert if batch doesn't exist/expired.
         uint8 depth = stamp.batchDepth(batchId);
@@ -196,6 +222,7 @@ contract EchidnaPostageStampHarness {
 
         bool ok = a.topUp(batchId, perChunk);
         if (!ok) return;
+        _checkNonInterference(batchId);
 
         pendingTopUp = true;
         pendingTopUpBatchId = batchId;
@@ -209,7 +236,11 @@ contract EchidnaPostageStampHarness {
         _clearPending();
         EchidnaPostageActor a = _actor(actorId);
 
-        if (stamp.paused()) return;
+        if (stamp.paused()) {
+            bool okPaused = a.increaseDepth(_batch(batchIndex), 3);
+            if (okPaused) pausedMutationSucceeded = true;
+            return;
+        }
 
         bytes32 batchId = _batch(batchIndex);
         if (batchId == bytes32(0)) return;
@@ -229,9 +260,18 @@ contract EchidnaPostageStampHarness {
 
         uint256 validBefore = stamp.validChunkCount();
         uint256 tokenBefore = token.balanceOf(address(stamp));
+        uint8 bucketDepthBefore = stamp.batchBucketDepth(batchId);
+
+        uint256 ctopBefore = stamp.currentTotalOutPayment();
+        uint256 remainingBefore = stamp.remainingBalance(batchId);
+        uint8 depthChange = newDepth - oldDepth;
+        uint256 expectedNormalisedAfter = ctopBefore + (remainingBefore / (1 << depthChange));
+
+        _armNonInterference(batchIndex, batchId);
 
         bool ok = a.increaseDepth(batchId, newDepth);
         if (!ok) return;
+        _checkNonInterference(batchId);
 
         pendingIncreaseDepth = true;
         pendingIncBatchId = batchId;
@@ -239,17 +279,56 @@ contract EchidnaPostageStampHarness {
         pendingIncNewDepth = newDepth;
         pendingIncValidChunkBefore = validBefore;
         pendingIncTokenBefore = tokenBefore;
+        pendingIncBucketDepth = bucketDepthBefore;
+        pendingIncExpectedNormalised = expectedNormalisedAfter;
     }
 
     function act_oracle_setPrice(uint256 price) external {
         _clearPending();
-        oracleActor.trySetPrice(price);
+        bool ok = oracleActor.trySetPrice(price);
+        if (!ok) return;
+
+        pendingSetPrice = true;
+        pendingSetPriceLastUpdatedExpected = uint64(block.number);
+        pendingSetPriceLastPriceExpected = uint64(price);
+        // Capture the exact base total payout immediately after setting the price.
+        // At this point `lastUpdatedBlock == block.number`, so `currentTotalOutPayment()` equals `totalOutPayment`.
+        pendingSetPriceTotalOutPaymentBefore = stamp.currentTotalOutPayment();
     }
 
     function act_expireAll() external {
         _clearPending();
         stamp.expireLimited(type(uint256).max);
         pendingExpireAll = true;
+    }
+
+    function act_redistributor_withdraw(uint8 beneficiaryActorId) external {
+        _clearPending();
+        address beneficiary = address(_actor(beneficiaryActorId));
+        if (beneficiary == address(0)) beneficiary = address(0xBEEF);
+
+        uint256 amount = stamp.totalPot();
+        uint256 balBefore = token.balanceOf(beneficiary);
+        uint256 stampBalBefore = token.balanceOf(address(stamp));
+
+        bool ok = redistributorActor.tryWithdraw(beneficiary);
+        if (!ok) return;
+
+        pendingWithdraw = true;
+        pendingWithdrawBeneficiary = beneficiary;
+        pendingWithdrawBeneficiaryBalBefore = balBefore;
+        pendingWithdrawStampBalBefore = stampBalBefore;
+        pendingWithdrawExpectedAmount = amount;
+    }
+
+    function act_pauser_pause() external {
+        _clearPending();
+        pauserActor.tryPause();
+    }
+
+    function act_pauser_unpause() external {
+        _clearPending();
+        pauserActor.tryUnpause();
     }
 
     function act_rando_trySetPrice(uint8 actorId, uint256 price) external {
@@ -271,12 +350,23 @@ contract EchidnaPostageStampHarness {
         if (ok) unauthorizedPauseSucceeded = true;
     }
 
+    function act_rando_tryUnpause(uint8 actorId) external {
+        _clearPending();
+        bool ok = _actor(actorId).tryUnpause();
+        if (ok) unauthorizedPauseSucceeded = true;
+    }
+
     // -----------------------------
     // Properties
     // -----------------------------
 
     function echidna_never_performed_forbidden_calls() external view returns (bool) {
-        return !unauthorizedPriceSetSucceeded && !unauthorizedWithdrawSucceeded && !unauthorizedPauseSucceeded;
+        return
+            !unauthorizedPriceSetSucceeded &&
+            !unauthorizedWithdrawSucceeded &&
+            !unauthorizedPauseSucceeded &&
+            !pausedMutationSucceeded &&
+            !nonInterferenceViolated;
     }
 
     function echidna_minimumInitialBalancePerChunk_matches_formula() external view returns (bool) {
@@ -316,12 +406,31 @@ contract EchidnaPostageStampHarness {
         if (stamp.validChunkCount() != pendingIncValidChunkBefore + expectedDelta) return false;
 
         if (stamp.batchDepth(pendingIncBatchId) != pendingIncNewDepth) return false;
+        if (stamp.batchBucketDepth(pendingIncBatchId) != pendingIncBucketDepth) return false;
+        if (stamp.batchNormalisedBalance(pendingIncBatchId) != pendingIncExpectedNormalised) return false;
         return true;
     }
 
     function echidna_expireAll_clears_expired_batches() external view returns (bool) {
         if (!pendingExpireAll) return true;
         return !stamp.expiredBatchesExist();
+    }
+
+    function echidna_setPrice_postconditions_hold() external view returns (bool) {
+        if (!pendingSetPrice) return true;
+        if (stamp.lastUpdatedBlock() != pendingSetPriceLastUpdatedExpected) return false;
+        if (stamp.lastPrice() != pendingSetPriceLastPriceExpected) return false;
+        uint256 blocksSince = block.number - uint256(pendingSetPriceLastUpdatedExpected);
+        uint256 expected = pendingSetPriceTotalOutPaymentBefore + uint256(pendingSetPriceLastPriceExpected) * blocksSince;
+        return stamp.currentTotalOutPayment() == expected;
+    }
+
+    function echidna_withdraw_postconditions_hold() external view returns (bool) {
+        if (!pendingWithdraw) return true;
+        if (stamp.pot() != 0) return false;
+        if (token.balanceOf(pendingWithdrawBeneficiary) != pendingWithdrawBeneficiaryBalBefore + pendingWithdrawExpectedAmount)
+            return false;
+        return token.balanceOf(address(stamp)) == pendingWithdrawStampBalBefore - pendingWithdrawExpectedAmount;
     }
 
     // -----------------------------
@@ -342,6 +451,38 @@ contract EchidnaPostageStampHarness {
         pendingTopUp = false;
         pendingIncreaseDepth = false;
         pendingExpireAll = false;
+        pendingSetPrice = false;
+        pendingWithdraw = false;
+    }
+
+    function _batchDigest(bytes32 batchId) internal view returns (bytes32) {
+        address owner = stamp.batchOwner(batchId);
+        if (owner == address(0)) return bytes32(0);
+        return keccak256(
+            abi.encodePacked(
+                owner,
+                stamp.batchDepth(batchId),
+                stamp.batchBucketDepth(batchId),
+                stamp.batchImmutableFlag(batchId),
+                stamp.batchNormalisedBalance(batchId),
+                stamp.batchLastUpdatedBlockNumber(batchId)
+            )
+        );
+    }
+
+    function _armNonInterference(uint8 batchIndex, bytes32 target) internal {
+        tmpBatchA = _batch(uint8(batchIndex + 1));
+        tmpBatchB = _batch(uint8(batchIndex + 2));
+        if (tmpBatchA == target) tmpBatchA = bytes32(0);
+        if (tmpBatchB == target) tmpBatchB = bytes32(0);
+        tmpDigestA = tmpBatchA == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchA);
+        tmpDigestB = tmpBatchB == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchB);
+    }
+
+    function _checkNonInterference(bytes32 target) internal {
+        target;
+        if (tmpBatchA != bytes32(0) && _batchDigest(tmpBatchA) != tmpDigestA) nonInterferenceViolated = true;
+        if (tmpBatchB != bytes32(0) && _batchDigest(tmpBatchB) != tmpDigestB) nonInterferenceViolated = true;
     }
 
     function _createBatchInternal(uint8 actorId, uint256 initialPerChunk, uint8 depthRaw) internal {
