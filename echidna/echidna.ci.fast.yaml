@@ -1,0 +1,14 @@
+testMode: property
+
+# Keep CI fast and predictable.
+seqLen: 50
+testLimit: 5000
+shrinkLimit: 200
+
+maxTimeDelay: 0
+maxBlockDelay: 300
+
+corpusDir: echidna/corpus
+coverage: false
+format: text
+

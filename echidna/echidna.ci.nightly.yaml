@@ -1,0 +1,14 @@
+testMode: property
+
+# Deeper nightly campaign.
+seqLen: 125
+testLimit: 150000
+shrinkLimit: 1000
+
+maxTimeDelay: 0
+maxBlockDelay: 1000
+
+corpusDir: echidna/corpus
+coverage: true
+format: text
+
