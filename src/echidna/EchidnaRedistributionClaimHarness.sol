@@ -17,7 +17,13 @@ contract EchidnaStakeRegistryMock2 is IStakeRegistry {
     mapping(address => Node) internal nodes;
     mapping(address => uint256) public freezeCount;
 
-    function setNode(address owner, bytes32 overlay, uint8 height, uint256 effectiveStake, uint256 lastUpdated) external {
+    function setNode(
+        address owner,
+        bytes32 overlay,
+        uint8 height,
+        uint256 effectiveStake,
+        uint256 lastUpdated
+    ) external {
         nodes[owner] = Node({
             overlay: overlay,
             height: height,
@@ -98,23 +104,48 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
 
     // Unused in this claim-stub harness but required by the interface.
     function setPrice(uint256) external {}
-    function validChunkCount() external view returns (uint256) { return validChunkCountValue; }
-    function batchOwner(bytes32) external pure returns (address) { return address(0); }
-    function batchDepth(bytes32) external pure returns (uint8) { return 0; }
-    function batchBucketDepth(bytes32) external pure returns (uint8) { return 0; }
-    function remainingBalance(bytes32) external pure returns (uint256) { return 0; }
-    function minimumInitialBalancePerChunk() external pure returns (uint256) { return 0; }
-    function batches(bytes32)
+    function validChunkCount() external view returns (uint256) {
+        return validChunkCountValue;
+    }
+    function batchOwner(bytes32) external pure returns (address) {
+        return address(0);
+    }
+    function batchDepth(bytes32) external pure returns (uint8) {
+        return 0;
+    }
+    function batchBucketDepth(bytes32) external pure returns (uint8) {
+        return 0;
+    }
+    function remainingBalance(bytes32) external pure returns (uint256) {
+        return 0;
+    }
+    function minimumInitialBalancePerChunk() external pure returns (uint256) {
+        return 0;
+    }
+    function batches(
+        bytes32
+    )
         external
         pure
-        returns (address owner, uint8 depth, uint8 bucketDepth, bool immutableFlag, uint256 normalisedBalance, uint256 lastUpdatedBlockNumber)
+        returns (
+            address owner,
+            uint8 depth,
+            uint8 bucketDepth,
+            bool immutableFlag,
+            uint256 normalisedBalance,
+            uint256 lastUpdatedBlockNumber
+        )
     {
         return (address(0), 0, 0, false, 0, 0);
     }
 }
 
 contract RedistributionClaimStub is Redistribution {
-    constructor(address staking, address postageContract, address oracleContract) Redistribution(staking, postageContract, oracleContract) {}
+    constructor(
+        address staking,
+        address postageContract,
+        address oracleContract
+    ) Redistribution(staking, postageContract, oracleContract) {}
 
     /// @notice Fuzz-only claim: run real winnerSelection(), then withdraw pot to winner.
     /// @dev Bypasses inclusion/SOC/stamp proof verification entirely.
@@ -122,7 +153,9 @@ contract RedistributionClaimStub is Redistribution {
         winnerSelection();
         Reveal memory winnerSelected = winner;
 
-        (bool success, ) = address(PostageContract).call(abi.encodeWithSignature("withdraw(address)", winnerSelected.owner));
+        (bool success, ) = address(PostageContract).call(
+            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
+        );
         if (!success) {
             emit WithdrawFailed(winnerSelected.owner);
         }
@@ -209,7 +242,13 @@ contract EchidnaRedistributionClaimHarness {
         stampMock.seedPot(x);
     }
 
-    function act_setActorNode(uint8 actorId, bytes32 overlay, uint8 height, uint256 effectiveStake, uint256 lastUpdated) external {
+    function act_setActorNode(
+        uint8 actorId,
+        bytes32 overlay,
+        uint8 height,
+        uint256 effectiveStake,
+        uint256 lastUpdated
+    ) external {
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         uint8 h = uint8(height % 16);
         uint256 stake = effectiveStake == 0 ? 1e18 : (effectiveStake % 1e24) + 1;
@@ -347,4 +386,3 @@ contract EchidnaRedistributionClaimHarness {
         return 1;
     }
 }
-

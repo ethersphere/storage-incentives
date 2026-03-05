@@ -319,4 +319,3 @@ contract EchidnaPriceOracleHarness {
         pendingAdjust = false;
     }
 }
-

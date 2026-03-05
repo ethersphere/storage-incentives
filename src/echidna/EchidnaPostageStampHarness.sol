@@ -193,9 +193,13 @@ contract EchidnaPostageStampHarness {
         token.transfer(address(_actor(actorId)), x);
     }
 
-    function act_createBatch(uint8 actorId, uint256 initialPerChunk, uint8 depthRaw, bytes32 nonce, bool immutableFlag)
-        external
-    {
+    function act_createBatch(
+        uint8 actorId,
+        uint256 initialPerChunk,
+        uint8 depthRaw,
+        bytes32 nonce,
+        bool immutableFlag
+    ) external {
         _clearPending();
         uint256 potBefore = stamp.pot();
         // Normalize expiry so createBatch's internal expireLimited() doesn't unexpectedly mutate other batches.
@@ -418,7 +422,9 @@ contract EchidnaPostageStampHarness {
     }
 
     function echidna_minimumInitialBalancePerChunk_matches_formula() external view returns (bool) {
-        return stamp.minimumInitialBalancePerChunk() == uint256(stamp.minimumValidityBlocks()) * uint256(stamp.lastPrice());
+        return
+            stamp.minimumInitialBalancePerChunk() ==
+            uint256(stamp.minimumValidityBlocks()) * uint256(stamp.lastPrice());
     }
 
     function echidna_lastExpiryBalance_never_exceeds_currentTotalOutPayment() external view returns (bool) {
@@ -469,15 +475,19 @@ contract EchidnaPostageStampHarness {
         if (stamp.lastUpdatedBlock() != pendingSetPriceLastUpdatedExpected) return false;
         if (stamp.lastPrice() != pendingSetPriceLastPriceExpected) return false;
         uint256 blocksSince = block.number - uint256(pendingSetPriceLastUpdatedExpected);
-        uint256 expected = pendingSetPriceTotalOutPaymentBefore + uint256(pendingSetPriceLastPriceExpected) * blocksSince;
+        uint256 expected = pendingSetPriceTotalOutPaymentBefore +
+            uint256(pendingSetPriceLastPriceExpected) *
+            blocksSince;
         return stamp.currentTotalOutPayment() == expected;
     }
 
     function echidna_withdraw_postconditions_hold() external view returns (bool) {
         if (!pendingWithdraw) return true;
         if (stamp.pot() != 0) return false;
-        if (token.balanceOf(pendingWithdrawBeneficiary) != pendingWithdrawBeneficiaryBalBefore + pendingWithdrawExpectedAmount)
-            return false;
+        if (
+            token.balanceOf(pendingWithdrawBeneficiary) !=
+            pendingWithdrawBeneficiaryBalBefore + pendingWithdrawExpectedAmount
+        ) return false;
         return token.balanceOf(address(stamp)) == pendingWithdrawStampBalBefore - pendingWithdrawExpectedAmount;
     }
 
@@ -506,16 +516,17 @@ contract EchidnaPostageStampHarness {
     function _batchDigest(bytes32 batchId) internal view returns (bytes32) {
         address owner = stamp.batchOwner(batchId);
         if (owner == address(0)) return bytes32(0);
-        return keccak256(
-            abi.encodePacked(
-                owner,
-                stamp.batchDepth(batchId),
-                stamp.batchBucketDepth(batchId),
-                stamp.batchImmutableFlag(batchId),
-                stamp.batchNormalisedBalance(batchId),
-                stamp.batchLastUpdatedBlockNumber(batchId)
-            )
-        );
+        return
+            keccak256(
+                abi.encodePacked(
+                    owner,
+                    stamp.batchDepth(batchId),
+                    stamp.batchBucketDepth(batchId),
+                    stamp.batchImmutableFlag(batchId),
+                    stamp.batchNormalisedBalance(batchId),
+                    stamp.batchLastUpdatedBlockNumber(batchId)
+                )
+            );
     }
 
     function _armNonInterference(uint8 batchIndex, bytes32 target) internal {
@@ -598,4 +609,3 @@ contract EchidnaPostageStampHarness {
         pendingCreate = true;
     }
 }
-

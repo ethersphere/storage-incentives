@@ -27,7 +27,9 @@ contract EchidnaStakeActor {
     }
 
     function manageStake(bytes32 setNonce, uint256 addAmount, uint8 height) external returns (bool ok) {
-        (ok, ) = address(registry).call(abi.encodeWithSelector(registry.manageStake.selector, setNonce, addAmount, height));
+        (ok, ) = address(registry).call(
+            abi.encodeWithSelector(registry.manageStake.selector, setNonce, addAmount, height)
+        );
     }
 
     function withdrawFromStake() external returns (bool ok) {
@@ -376,8 +378,13 @@ contract EchidnaStakeRegistryHarness {
         EchidnaStakeActor t = actors[idx];
         (bytes32 otherDigestA, bytes32 otherDigestB) = _otherDigests(idx);
 
-        (pendingFreezeOverlay, pendingFreezeCommitted, pendingFreezePotential, pendingFreezeExpectedLastUpdated, pendingFreezeHeight) = registry
-            .stakes(address(t));
+        (
+            pendingFreezeOverlay,
+            pendingFreezeCommitted,
+            pendingFreezePotential,
+            pendingFreezeExpectedLastUpdated,
+            pendingFreezeHeight
+        ) = registry.stakes(address(t));
         pendingFreezeIdx = idx;
         pendingFreezeHadStake = pendingFreezeExpectedLastUpdated != 0;
         pendingFreezeExpectedLastUpdated = pendingFreezeHadStake ? block.number + uint256(time) : 0;
@@ -396,8 +403,13 @@ contract EchidnaStakeRegistryHarness {
         EchidnaStakeActor t = actors[idx];
         (bytes32 otherDigestA, bytes32 otherDigestB) = _otherDigests(idx);
 
-        (pendingSlashOverlay, pendingSlashCommitted, pendingSlashPotential, pendingSlashLastUpdated, pendingSlashHeight) = registry
-            .stakes(address(t));
+        (
+            pendingSlashOverlay,
+            pendingSlashCommitted,
+            pendingSlashPotential,
+            pendingSlashLastUpdated,
+            pendingSlashHeight
+        ) = registry.stakes(address(t));
         pendingSlashIdx = idx;
         pendingSlashHadStake = pendingSlashLastUpdated != 0;
         pendingSlashAmount = amount;
@@ -619,9 +631,8 @@ contract EchidnaStakeRegistryHarness {
     }
 
     function _stakeDigest(address who) internal view returns (bytes32) {
-        (bytes32 overlay, uint256 committedStake, uint256 potentialStake, uint256 lastUpdated, uint8 h) = registry.stakes(
-            who
-        );
+        (bytes32 overlay, uint256 committedStake, uint256 potentialStake, uint256 lastUpdated, uint8 h) = registry
+            .stakes(who);
         return keccak256(abi.encodePacked(overlay, committedStake, potentialStake, lastUpdated, h));
     }
 

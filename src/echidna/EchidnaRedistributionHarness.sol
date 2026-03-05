@@ -17,7 +17,13 @@ contract EchidnaStakeRegistryMock is IStakeRegistry {
     mapping(address => uint256) public freezeCount;
     mapping(address => uint256) public lastFreezeTime;
 
-    function setNode(address owner, bytes32 overlay, uint8 height, uint256 effectiveStake, uint256 lastUpdated) external {
+    function setNode(
+        address owner,
+        bytes32 overlay,
+        uint8 height,
+        uint256 effectiveStake,
+        uint256 lastUpdated
+    ) external {
         nodes[owner] = Node({
             overlay: overlay,
             height: height,
@@ -130,7 +136,14 @@ contract EchidnaPostageStampMock is IPostageStamp {
     )
         external
         view
-        returns (address owner, uint8 depth, uint8 bucketDepth, bool immutableFlag, uint256 normalisedBalance, uint256 lastUpdatedBlockNumber)
+        returns (
+            address owner,
+            uint8 depth,
+            uint8 bucketDepth,
+            bool immutableFlag,
+            uint256 normalisedBalance,
+            uint256 lastUpdatedBlockNumber
+        )
     {
         Batch memory b = _batches[id];
         return (b.owner, b.depth, b.bucketDepth, b.immutableFlag, b.normalisedBalance, b.lastUpdatedBlockNumber);
@@ -138,7 +151,11 @@ contract EchidnaPostageStampMock is IPostageStamp {
 }
 
 contract RedistributionExposed is Redistribution {
-    constructor(address staking, address postageContract, address oracleContract) Redistribution(staking, postageContract, oracleContract) {}
+    constructor(
+        address staking,
+        address postageContract,
+        address oracleContract
+    ) Redistribution(staking, postageContract, oracleContract) {}
 
     function exposedWinnerSelection() external {
         winnerSelection();
@@ -268,9 +285,13 @@ contract EchidnaRedistributionHarness {
     // Actions
     // -----------------------------
 
-    function act_setActorStake(uint8 actorId, bytes32 overlay, uint8 height, uint256 effectiveStake, uint256 lastUpdated)
-        external
-    {
+    function act_setActorStake(
+        uint8 actorId,
+        bytes32 overlay,
+        uint8 height,
+        uint256 effectiveStake,
+        uint256 lastUpdated
+    ) external {
         EchidnaRedistributionActor a = actors[uint256(actorId) % ACTOR_COUNT];
         // Bound height so 2**depthResponsibility doesn't explode too hard during reveal.
         uint8 h = uint8(height % 16);
@@ -339,7 +360,13 @@ contract EchidnaRedistributionHarness {
     // Advanced actions (aim for successful commit/reveal)
     // -----------------------------
 
-    function act_happyCommit(uint8 actorId, uint8 height, uint256 stakeAmount, bytes32 reserveHash, bytes32 nonce) external {
+    function act_happyCommit(
+        uint8 actorId,
+        uint8 height,
+        uint256 stakeAmount,
+        bytes32 reserveHash,
+        bytes32 nonce
+    ) external {
         if (redist.paused()) return;
         if (!redist.currentPhaseCommit()) return;
         // Avoid the "phase last block" restriction in commit phase.
@@ -393,7 +420,13 @@ contract EchidnaRedistributionHarness {
 
         EchidnaRedistributionActor a = actors[idx];
         // Ensure the actor's overlay/height match the committed values.
-        stakeMock.setNode(address(a), trackedOverlay[idx], trackedHeight[idx], trackedStake[idx], _backdateLastUpdated());
+        stakeMock.setNode(
+            address(a),
+            trackedOverlay[idx],
+            trackedHeight[idx],
+            trackedStake[idx],
+            _backdateLastUpdated()
+        );
 
         bool ok = a.callReveal(trackedDepth[idx], trackedReserveHash[idx], trackedNonce[idx]);
         if (!ok) return;
@@ -430,7 +463,13 @@ contract EchidnaRedistributionHarness {
         if (redist.currentCommitRound() != trackedRound[idx]) return;
 
         EchidnaRedistributionActor a = actors[idx];
-        stakeMock.setNode(address(a), trackedOverlay[idx], trackedHeight[idx], trackedStake[idx], _backdateLastUpdated());
+        stakeMock.setNode(
+            address(a),
+            trackedOverlay[idx],
+            trackedHeight[idx],
+            trackedStake[idx],
+            _backdateLastUpdated()
+        );
         bool ok = a.callReveal(trackedDepth[idx], trackedReserveHash[idx], trackedNonce[idx]);
         if (ok) revealSucceededWhilePaused = true;
     }
@@ -443,10 +482,14 @@ contract EchidnaRedistributionHarness {
         pendingWinnerSelectionRound = redist.currentRound();
 
         for (uint256 i = 0; i < 25; i++) {
-            (bool ok, bytes memory data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
+            (bool ok, bytes memory data) = address(redist).staticcall(
+                abi.encodeWithSignature("currentCommits(uint256)", i)
+            );
             if (!ok) break;
-            (bytes32 ov, address ow, bool rev, uint8 h, uint256 st, bytes32 obf, uint256 ri) =
-                abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
+            (bytes32 ov, address ow, bool rev, uint8 h, uint256 st, bytes32 obf, uint256 ri) = abi.decode(
+                data,
+                (bytes32, address, bool, uint8, uint256, bytes32, uint256)
+            );
             ov;
             h;
             st;
@@ -497,7 +540,9 @@ contract EchidnaRedistributionHarness {
 
             bool found = false;
             for (uint256 j = 0; j < 25; j++) {
-                (bool okC, bytes32 cOverlay, address cOwner, bool cRevealed, uint256 cRevealIndex) = _commitRevealLink(j);
+                (bool okC, bytes32 cOverlay, address cOwner, bool cRevealed, uint256 cRevealIndex) = _commitRevealLink(
+                    j
+                );
                 if (!okC) break;
                 if (cRevealed && cRevealIndex == i && cOverlay == rOverlay && cOwner == rOwner) {
                     found = true;
@@ -547,7 +592,13 @@ contract EchidnaRedistributionHarness {
     }
 
     function echidna_revealed_commit_indices_valid() external view returns (bool) {
-        (uint256 cN, , uint256[25] memory revealIndex, bool[25] memory revealed, address[25] memory owner) = _scanCommits();
+        (
+            uint256 cN,
+            ,
+            uint256[25] memory revealIndex,
+            bool[25] memory revealed,
+            address[25] memory owner
+        ) = _scanCommits();
         uint256 rN = _scanRevealsLen();
         for (uint256 i = 0; i < cN; i++) {
             if (!revealed[i]) continue;
@@ -576,16 +627,9 @@ contract EchidnaRedistributionHarness {
             (bool ok, uint256 commitIdx) = _findCommit(trackedOverlay[i], trackedObfuscated[i]);
             if (!ok) return false;
 
-            (
-                ,
-                bytes32 ov,
-                address ow,
-                ,
-                uint8 h,
-                uint256 stake,
-                bytes32 obf,
-                /* revealIndex */
-            ) = _commitFull(commitIdx);
+            (, bytes32 ov, address ow, , uint8 h, uint256 stake, bytes32 obf /* revealIndex */, ) = _commitFull(
+                commitIdx
+            );
 
             if (ov != trackedOverlay[i]) return false;
             if (obf != trackedObfuscated[i]) return false;
@@ -613,7 +657,13 @@ contract EchidnaRedistributionHarness {
     function _scanCommits()
         internal
         view
-        returns (uint256 n, bytes32[25] memory overlays, uint256[25] memory revealIndex, bool[25] memory revealed, address[25] memory owner)
+        returns (
+            uint256 n,
+            bytes32[25] memory overlays,
+            uint256[25] memory revealIndex,
+            bool[25] memory revealed,
+            address[25] memory owner
+        )
     {
         for (uint256 i = 0; i < 25; i++) {
             (bool ok, bytes32 ov, address ow, bool rev, uint256 ri) = _commitFields(i);
@@ -644,12 +694,13 @@ contract EchidnaRedistributionHarness {
         bytes memory data;
         (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
         if (!ok) return (false, bytes32(0), address(0), false, 0);
-        (overlay, owner, revealed, , , , revealIndex) = abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
+        (overlay, owner, revealed, , , , revealIndex) = abi.decode(
+            data,
+            (bytes32, address, bool, uint8, uint256, bytes32, uint256)
+        );
     }
 
-    function _commitFields(
-        uint256 i
-    ) internal view returns (bool ok, bytes32 ov, address ow, bool rev, uint256 ri) {
+    function _commitFields(uint256 i) internal view returns (bool ok, bytes32 ov, address ow, bool rev, uint256 ri) {
         bytes memory data;
         (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
         if (!ok) return (false, bytes32(0), address(0), false, 0);
@@ -686,17 +737,34 @@ contract EchidnaRedistributionHarness {
         bytes memory data;
         (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
         if (!ok) return (false, bytes32(0), address(0), false, 0, 0, bytes32(0), 0);
-        (overlay, owner, revealed, height, stake, obfuscatedHash, revealIndex) =
-            abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
+        (overlay, owner, revealed, height, stake, obfuscatedHash, revealIndex) = abi.decode(
+            data,
+            (bytes32, address, bool, uint8, uint256, bytes32, uint256)
+        );
     }
 
     function _revealFull(
         uint256 i
-    ) internal view returns (bool ok, bytes32 overlay, address owner, uint8 depth, uint256 stake, uint256 stakeDensity, bytes32 hash) {
+    )
+        internal
+        view
+        returns (
+            bool ok,
+            bytes32 overlay,
+            address owner,
+            uint8 depth,
+            uint256 stake,
+            uint256 stakeDensity,
+            bytes32 hash
+        )
+    {
         bytes memory data;
         (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentReveals(uint256)", i));
         if (!ok) return (false, bytes32(0), address(0), 0, 0, 0, bytes32(0));
-        (overlay, owner, depth, stake, stakeDensity, hash) = abi.decode(data, (bytes32, address, uint8, uint256, uint256, bytes32));
+        (overlay, owner, depth, stake, stakeDensity, hash) = abi.decode(
+            data,
+            (bytes32, address, uint8, uint256, uint256, bytes32)
+        );
     }
 
     function _checkTrackedReveal(uint256 actorIdx) internal view returns (bool) {
@@ -764,4 +832,3 @@ contract EchidnaRedistributionHarness {
         return s;
     }
 }
-

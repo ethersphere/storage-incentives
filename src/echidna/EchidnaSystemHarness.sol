@@ -42,7 +42,15 @@ contract EchidnaSystemActor {
         bool immutableFlag
     ) external returns (bool ok) {
         (ok, ) = address(stamp).call(
-            abi.encodeWithSelector(stamp.createBatch.selector, owner, initialBalancePerChunk, depth, bucketDepth, nonce, immutableFlag)
+            abi.encodeWithSelector(
+                stamp.createBatch.selector,
+                owner,
+                initialBalancePerChunk,
+                depth,
+                bucketDepth,
+                nonce,
+                immutableFlag
+            )
         );
     }
 
@@ -147,9 +155,14 @@ contract EchidnaSystemHarness {
         a.callWithdrawFromStake();
     }
 
-    function act_actor_createBatch(uint8 actorId, uint256 initialBalancePerChunk, uint8 depth, uint8 bucketDepth, bytes32 nonce, bool imm)
-        external
-    {
+    function act_actor_createBatch(
+        uint8 actorId,
+        uint256 initialBalancePerChunk,
+        uint8 depth,
+        uint8 bucketDepth,
+        bytes32 nonce,
+        bool imm
+    ) external {
         EchidnaSystemActor a = actors[uint256(actorId) % ACTOR_COUNT];
         uint8 d = uint8((depth % 12) + 1); // avoid huge shifts, avoid 0
         uint8 b = uint8(bucketDepth % d);
@@ -345,10 +358,14 @@ contract EchidnaSystemHarness {
     function _commitExists(bytes32 obfuscated, address owner) internal view returns (bool) {
         // currentCommits is deleted each new commit round; bounded scan to avoid unbounded loops.
         for (uint256 i = 0; i < 25; i++) {
-            (bool ok, bytes memory data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
+            (bool ok, bytes memory data) = address(redist).staticcall(
+                abi.encodeWithSignature("currentCommits(uint256)", i)
+            );
             if (!ok) break;
-            (bytes32 ov, address ow, bool rev, uint8 h, uint256 st, bytes32 obf, uint256 ri) =
-                abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
+            (bytes32 ov, address ow, bool rev, uint8 h, uint256 st, bytes32 obf, uint256 ri) = abi.decode(
+                data,
+                (bytes32, address, bool, uint8, uint256, bytes32, uint256)
+            );
             ov;
             rev;
             h;
@@ -361,10 +378,14 @@ contract EchidnaSystemHarness {
 
     function _revealMatchesCommit(address owner, uint8 depth, bytes32 hash) internal view returns (bool) {
         for (uint256 i = 0; i < 25; i++) {
-            (bool ok, bytes memory data) = address(redist).staticcall(abi.encodeWithSignature("currentReveals(uint256)", i));
+            (bool ok, bytes memory data) = address(redist).staticcall(
+                abi.encodeWithSignature("currentReveals(uint256)", i)
+            );
             if (!ok) break;
-            (bytes32 ov, address ow, uint8 d, uint256 st, uint256 sd, bytes32 h) =
-                abi.decode(data, (bytes32, address, uint8, uint256, uint256, bytes32));
+            (bytes32 ov, address ow, uint8 d, uint256 st, uint256 sd, bytes32 h) = abi.decode(
+                data,
+                (bytes32, address, uint8, uint256, uint256, bytes32)
+            );
             ov;
             st;
             sd;
@@ -373,4 +394,3 @@ contract EchidnaSystemHarness {
         return false;
     }
 }
-
