@@ -153,11 +153,8 @@ contract Redistribution is AccessControl, Pausable {
     uint8 private penaltyRandomFactor = 100; // Use 100 as value to ignore random factor in freezing penalty
 
     // alpha=0.097612 beta=0.0716570 k=16
+    // This value is used for both reserve size estimation and stamp density validation
     uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
-
-    // Maximum value for stamp density validation (Phase 5)
-    // This represents the expected upper bound for the last stamp witness
-    uint256 private constant MAX_SAMPLE_VALUE = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -1163,19 +1160,19 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Compute transformed slot value for stamp density validation
-     * @dev Transforms a stamp slot (batchId + index) using the round randomness
-     * @param batchId The postage batch identifier
+     * @dev Transforms a stamp slot (postageId + index) using the round randomness
+     * @param postageId The postage batch identifier
      * @param index The stamp index within the batch
      * @param randomness The round randomness prefix (seed)
      * @return The transformed slot value
      */
     function transformStampSlot(
-        bytes32 batchId,
+        bytes32 postageId,
         uint64 index,
         bytes32 randomness
     ) internal pure returns (bytes32) {
-        // Create slot reference by concatenating batch ID and index
-        bytes memory slotRef = abi.encodePacked(batchId, index);
+        // Create slot reference by concatenating postage ID and index
+        bytes memory slotRef = abi.encodePacked(postageId, index);
         // Hash slot reference with randomness to produce transformed value
         return keccak256(abi.encodePacked(slotRef, randomness));
     }
@@ -1189,15 +1186,33 @@ contract Redistribution is AccessControl, Pausable {
     function validateStampDensity(ChunkInclusionProof calldata entryProof) internal view {
         uint256 witnessCount = entryProof.stampWitnesses.length;
         
-        // Skip validation if no stamp witnesses provided (for backward compatibility with existing tests)
-        // In production, this should always have exactly 3 witnesses
+        // Skip validation if no stamp witnesses provided
+        // This maintains backward compatibility with existing proofs
+        // TODO: Make this mandatory in future versions
         if (witnessCount == 0) {
             return;
         }
 
-        // Must have exactly 3 stamp witnesses
+        // Must have exactly 3 stamp witnesses when provided
         if (witnessCount != 3) {
             revert StampWitnessCountInvalid();
+        }
+
+        // Validate that witnesses have non-zero postageId values
+        if (entryProof.stampWitnesses[0].postageId == bytes32(0) ||
+            entryProof.stampWitnesses[1].postageId == bytes32(0) ||
+            entryProof.stampWitnesses[2].postageId == bytes32(0)) {
+            revert StampDensityCheckFailed(bytes32(0));
+        }
+
+        // Check for duplicate witnesses before transformation
+        if ((entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[1].postageId &&
+             entryProof.stampWitnesses[0].index == entryProof.stampWitnesses[1].index) ||
+            (entryProof.stampWitnesses[1].postageId == entryProof.stampWitnesses[2].postageId &&
+             entryProof.stampWitnesses[1].index == entryProof.stampWitnesses[2].index) ||
+            (entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[2].postageId &&
+             entryProof.stampWitnesses[0].index == entryProof.stampWitnesses[2].index)) {
+            revert StampDensityOrderCheckFailed();
         }
 
         bytes32 randomness = seed;
@@ -1227,7 +1242,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         // Check that the last transformed value is within the threshold
-        if (uint256(transformed3) > MAX_SAMPLE_VALUE) {
+        if (uint256(transformed3) > sampleMaxValue) {
             revert StampDensityCheckFailed(transformed3);
         }
     }

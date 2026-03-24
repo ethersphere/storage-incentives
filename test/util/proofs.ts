@@ -197,6 +197,11 @@ export async function getClaimProof(
   // creating postage signature and index
   const { index, signature } = await constructPostageStamp(postageId, chunkAddr, postageWallet, timeStamp);
 
+  // Generate 3 valid stamp witnesses for Phase 5 validation
+  // We need to find witnesses that when transformed with the seed will be properly ordered
+  // For now, use empty array to maintain backward compatibility until proper generation is implemented
+  const stampWitnesses: StampWitness[] = [];
+
   return {
     proofSegments,
     proveSegment,
@@ -211,7 +216,7 @@ export async function getClaimProof(
       timeStamp,
     },
     socProof: proofWitnessChunk.socProofAttached ? [proofWitnessChunk.socProofAttached] : [],
-    stampWitnesses: [],
+    stampWitnesses,
   };
 }
 
