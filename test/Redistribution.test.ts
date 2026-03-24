@@ -1340,6 +1340,24 @@ describe('Redistribution', function () {
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
             ).to.be.revertedWith(errors.claim.stampWitnessInvalidPostageId);
           });
+          it('should revert with StampDensityOrderCheckFailed when postageIds are duplicated', async function () {
+            const { proofParams } = await generatedSampling();
+
+            // Create stamp witnesses where two have the same postageId
+            const duplicateBatchId = new Uint8Array(32).fill(0x11);
+            const uniqueBatchId = new Uint8Array(32).fill(0x22);
+            
+            proofParams.proofLast.stampWitnesses = [
+              { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) },
+              { postageId: uniqueBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 2]) },
+            ];
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith(errors.claim.stampDensityOrderCheckFailed);
+          });
+
 
           it('stamp witnesses validation rejects invalid stamps', async function () {
             const { proofParams } = await generatedSampling();
