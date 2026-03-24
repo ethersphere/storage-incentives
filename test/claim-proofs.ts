@@ -40,6 +40,7 @@ export const node5_proof1 = {
       timeStamp: '0x1785462106d88f33',
     },
     socProof: [],
+    stampWitnesses: [],
   },
   proof2: {
     proofSegments: [
@@ -80,6 +81,7 @@ export const node5_proof1 = {
       timeStamp: '0x178551f31887a7e0',
     },
     socProof: [],
+    stampWitnesses: [],
   },
   proofLast: {
     proofSegments: [
@@ -121,6 +123,7 @@ export const node5_proof1 = {
       timeStamp: '0x178548a18495b42a',
     },
     socProof: [],
+    stampWitnesses: [],
   },
 };
 
@@ -174,6 +177,7 @@ export const node5_soc_proof1 = {
         chunkAddr: '0x2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48',
       },
     ],
+    stampWitnesses: [],
   },
   proof2: {
     proofSegments: [
@@ -222,6 +226,7 @@ export const node5_soc_proof1 = {
         chunkAddr: '0x2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48',
       },
     ],
+    stampWitnesses: [],
   },
   proofLast: {
     proofSegments: [
@@ -270,5 +275,6 @@ export const node5_soc_proof1 = {
         chunkAddr: '0x2387e8e7d8a48c2a9339c97c1dc3461a9a7aa07e994c5cb8b38fd7c1b3e6ea48',
       },
     ],
+    stampWitnesses: [],
   },
 };

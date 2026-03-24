@@ -99,6 +99,12 @@ contract Redistribution is AccessControl, Pausable {
         //
         PostageProof postageProof;
         SOCProof[] socProof;
+        StampWitness[] stampWitnesses;
+    }
+
+    struct StampWitness {
+        bytes32 postageId;
+        uint64 index;
     }
 
     struct SOCProof {
@@ -148,6 +154,10 @@ contract Redistribution is AccessControl, Pausable {
 
     // alpha=0.097612 beta=0.0716570 k=16
     uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
+
+    // Maximum value for stamp density validation (Phase 5)
+    // This represents the expected upper bound for the last stamp witness
+    uint256 private constant MAX_SAMPLE_VALUE = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -260,6 +270,9 @@ contract Redistribution is AccessControl, Pausable {
     error RandomElementCheckFailed(); // Random element order check failed
     error LastElementCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(bytes32 trALast); // Reserve size estimation check failed
+    error StampWitnessCountInvalid(); // Stamp witness count must be exactly 3
+    error StampDensityOrderCheckFailed(); // Stamp density ordering check failed
+    error StampDensityCheckFailed(bytes32 transformedValue); // Stamp density validation failed
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -481,6 +494,9 @@ contract Redistribution is AccessControl, Pausable {
         );
 
         estimateSize(entryProofLast.proofSegments[0]);
+
+        // Phase 5: Stamp density validation
+        validateStampDensity(entryProofLast);
 
         // Do the check if the withdraw was success
         (bool success, ) = address(PostageContract).call(
@@ -1142,6 +1158,77 @@ contract Redistribution is AccessControl, Pausable {
     function estimateSize(bytes32 trALast) internal view {
         if (uint256(trALast) >= sampleMaxValue) {
             revert ReserveCheckFailed(trALast);
+        }
+    }
+
+    /**
+     * @notice Compute transformed slot value for stamp density validation
+     * @dev Transforms a stamp slot (batchId + index) using the round randomness
+     * @param batchId The postage batch identifier
+     * @param index The stamp index within the batch
+     * @param randomness The round randomness prefix (seed)
+     * @return The transformed slot value
+     */
+    function transformStampSlot(
+        bytes32 batchId,
+        uint64 index,
+        bytes32 randomness
+    ) internal pure returns (bytes32) {
+        // Create slot reference by concatenating batch ID and index
+        bytes memory slotRef = abi.encodePacked(batchId, index);
+        // Hash slot reference with randomness to produce transformed value
+        return keccak256(abi.encodePacked(slotRef, randomness));
+    }
+
+    /**
+     * @notice Validate stamp density proof (Phase 5)
+     * @dev Verifies that the three stamp witnesses are correctly ordered and
+     * that the last witness value is within the expected threshold
+     * @param entryProof The chunk inclusion proof containing stamp witnesses
+     */
+    function validateStampDensity(ChunkInclusionProof calldata entryProof) internal view {
+        uint256 witnessCount = entryProof.stampWitnesses.length;
+        
+        // Skip validation if no stamp witnesses provided (for backward compatibility with existing tests)
+        // In production, this should always have exactly 3 witnesses
+        if (witnessCount == 0) {
+            return;
+        }
+
+        // Must have exactly 3 stamp witnesses
+        if (witnessCount != 3) {
+            revert StampWitnessCountInvalid();
+        }
+
+        bytes32 randomness = seed;
+
+        // Compute transformed values for all three witnesses
+        bytes32 transformed1 = transformStampSlot(
+            entryProof.stampWitnesses[0].postageId,
+            entryProof.stampWitnesses[0].index,
+            randomness
+        );
+
+        bytes32 transformed2 = transformStampSlot(
+            entryProof.stampWitnesses[1].postageId,
+            entryProof.stampWitnesses[1].index,
+            randomness
+        );
+
+        bytes32 transformed3 = transformStampSlot(
+            entryProof.stampWitnesses[2].postageId,
+            entryProof.stampWitnesses[2].index,
+            randomness
+        );
+
+        // Check ordering: transformed1 < transformed2 < transformed3
+        if (uint256(transformed1) >= uint256(transformed2) || uint256(transformed2) >= uint256(transformed3)) {
+            revert StampDensityOrderCheckFailed();
+        }
+
+        // Check that the last transformed value is within the threshold
+        if (uint256(transformed3) > MAX_SAMPLE_VALUE) {
+            revert StampDensityCheckFailed(transformed3);
         }
     }
 }

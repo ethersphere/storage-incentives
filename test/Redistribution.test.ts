@@ -199,6 +199,9 @@ const errors = {
     inclusionProofFailed4: 'InclusionProofFailed',
     socVerificationFailed: 'SocVerificationFailed()',
     socCalcNotMatching: 'SocCalcNotMatching()',
+    stampWitnessCountInvalid: 'StampWitnessCountInvalid()',
+    stampDensityOrderCheckFailed: 'StampDensityOrderCheckFailed()',
+    stampDensityCheckFailed: 'StampDensityCheckFailed',
   },
   deposit: {
     noBalance: 'ERC20: insufficient allowance',
@@ -1300,6 +1303,64 @@ describe('Redistribution', function () {
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
             ).to.be.revertedWith(errors.claim.inclusionProofFailed2);
+          });
+        });
+
+        describe('should not claim pot because of stamp density checks (Phase 5)', async () => {
+          it('stamp witness count is not 3', async function () {
+            const { proofParams } = await generatedSampling();
+
+            // Remove one stamp witness to make count invalid
+            proofParams.proofLast.stampWitnesses = [
+              { postageId: new Uint8Array(randomBytes(32)), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: new Uint8Array(randomBytes(32)), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) },
+            ];
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith(errors.claim.stampWitnessCountInvalid);
+          });
+
+          it('stamp witnesses validation rejects invalid stamps', async function () {
+            const { proofParams } = await generatedSampling();
+
+            // Create stamp witnesses with random values that will likely fail validation
+            // After hashing with seed, these will fail either ordering or density checks
+            const batchId1 = new Uint8Array(randomBytes(32));
+            const batchId2 = new Uint8Array(randomBytes(32));
+            const batchId3 = new Uint8Array(randomBytes(32));
+
+            proofParams.proofLast.stampWitnesses = [
+              { postageId: batchId1, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: batchId2, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) },
+              { postageId: batchId3, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 2]) },
+            ];
+
+            // Should revert with Phase 5 validation error (ordering or density)
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.reverted;
+          });
+
+          it('stamp density validation rejects invalid witnesses', async function () {
+            const { proofParams } = await generatedSampling();
+
+            // Create stamp witnesses with max values that will likely fail validation
+            // Note: After hashing with seed, ordering is unpredictable, so this may fail
+            // either ordering check or density check - both are valid Phase 5 validations
+            const maxBatchId = new Uint8Array(32).fill(0xff);
+            const maxIndex = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
+
+            proofParams.proofLast.stampWitnesses = [
+              { postageId: new Uint8Array(32).fill(0x00), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: new Uint8Array(32).fill(0x11), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: maxBatchId, index: maxIndex },
+            ];
+
+            // Should revert with either ordering or density error (both are Phase 5 validations)
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.reverted;
           });
         });
 

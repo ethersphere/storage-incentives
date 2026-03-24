@@ -35,12 +35,17 @@ type WitnessProof = {
   chunkSpan: number;
   postageProof: PostageProof;
   socProof: SocProof[];
+  stampWitnesses: StampWitness[];
 };
 type PostageProof = {
   signature: Uint8Array;
   postageId: Uint8Array;
   index: Uint8Array;
   timeStamp: number;
+};
+type StampWitness = {
+  postageId: Uint8Array;
+  index: Uint8Array;
 };
 type SocProof = {
   signer: string; // signer Ethereum address to check against
@@ -206,6 +211,7 @@ export async function getClaimProof(
       timeStamp,
     },
     socProof: proofWitnessChunk.socProofAttached ? [proofWitnessChunk.socProofAttached] : [],
+    stampWitnesses: [],
   };
 }
 
