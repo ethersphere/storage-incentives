@@ -1207,6 +1207,8 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         // Check for duplicate postageIds (witnesses must be from different batches)
+        // Note: StampDensityOrderCheckFailed is used here because duplicate batches
+        // would prevent proper ordering validation in the subsequent transformation step
         if (entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[1].postageId ||
             entryProof.stampWitnesses[1].postageId == entryProof.stampWitnesses[2].postageId ||
             entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[2].postageId) {

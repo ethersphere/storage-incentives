@@ -1322,6 +1322,25 @@ describe('Redistribution', function () {
             ).to.be.revertedWith(errors.claim.stampWitnessCountInvalid);
           });
 
+          it('should revert with StampWitnessInvalidPostageId when postageId is zero', async function () {
+            const { proofParams } = await generatedSampling();
+
+            // Create stamp witnesses where first one has zero postageId
+            // Use distinct non-zero values for the other two to avoid duplicate check
+            const batchId2 = new Uint8Array(32).fill(0x11);
+            const batchId3 = new Uint8Array(32).fill(0x22);
+            
+            proofParams.proofLast.stampWitnesses = [
+              { postageId: new Uint8Array(32).fill(0x00), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: batchId2, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) },
+              { postageId: batchId3, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 2]) },
+            ];
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith(errors.claim.stampWitnessInvalidPostageId);
+          });
+
           it('stamp witnesses validation rejects invalid stamps', async function () {
             const { proofParams } = await generatedSampling();
 
