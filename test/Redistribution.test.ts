@@ -1340,10 +1340,10 @@ describe('Redistribution', function () {
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
             ).to.be.revertedWith(errors.claim.stampWitnessInvalidPostageId);
           });
-          it('should revert with StampDensityOrderCheckFailed when postageIds are duplicated', async function () {
+          it('should revert with StampDensityOrderCheckFailed when postageIds[0] and [1] are duplicated', async function () {
             const { proofParams } = await generatedSampling();
 
-            // Create stamp witnesses where two have the same postageId
+            // Create stamp witnesses where first two have the same postageId
             const duplicateBatchId = new Uint8Array(32).fill(0x11);
             const uniqueBatchId = new Uint8Array(32).fill(0x22);
             
@@ -1351,6 +1351,42 @@ describe('Redistribution', function () {
               { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
               { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) },
               { postageId: uniqueBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 2]) },
+            ];
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith(errors.claim.stampDensityOrderCheckFailed);
+          });
+
+          it('should revert with StampDensityOrderCheckFailed when postageIds[1] and [2] are duplicated', async function () {
+            const { proofParams } = await generatedSampling();
+
+            // Create stamp witnesses where last two have the same postageId
+            const uniqueBatchId = new Uint8Array(32).fill(0x11);
+            const duplicateBatchId = new Uint8Array(32).fill(0x22);
+            
+            proofParams.proofLast.stampWitnesses = [
+              { postageId: uniqueBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) },
+              { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 2]) },
+            ];
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith(errors.claim.stampDensityOrderCheckFailed);
+          });
+
+          it('should revert with StampDensityOrderCheckFailed when postageIds[0] and [2] are duplicated', async function () {
+            const { proofParams } = await generatedSampling();
+
+            // Create stamp witnesses where first and last have the same postageId
+            const duplicateBatchId = new Uint8Array(32).fill(0x11);
+            const uniqueBatchId = new Uint8Array(32).fill(0x22);
+            
+            proofParams.proofLast.stampWitnesses = [
+              { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: uniqueBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 1]) },
+              { postageId: duplicateBatchId, index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 2]) },
             ];
 
             await expect(
@@ -1390,7 +1426,7 @@ describe('Redistribution', function () {
             const maxIndex = new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
             proofParams.proofLast.stampWitnesses = [
-              { postageId: new Uint8Array(32).fill(0x00), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
+              { postageId: new Uint8Array(32).fill(0x01), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
               { postageId: new Uint8Array(32).fill(0x11), index: new Uint8Array([0, 0, 0, 0, 0, 0, 0, 0]) },
               { postageId: maxBatchId, index: maxIndex },
             ];
