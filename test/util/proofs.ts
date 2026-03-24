@@ -199,7 +199,8 @@ export async function getClaimProof(
 
   // Generate 3 valid stamp witnesses for Phase 5 validation
   // We need to find witnesses that when transformed with the seed will be properly ordered
-  // For now, use empty array to maintain backward compatibility until proper generation is implemented
+  // TODO(Phase-5-Implementation): Implement proper stamp witness generation that finds witnesses
+  // with correct ordering after transformation. For now, use empty array for backward compatibility.
   const stampWitnesses: StampWitness[] = [];
 
   return {

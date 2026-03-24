@@ -200,6 +200,7 @@ const errors = {
     socVerificationFailed: 'SocVerificationFailed()',
     socCalcNotMatching: 'SocCalcNotMatching()',
     stampWitnessCountInvalid: 'StampWitnessCountInvalid()',
+    stampWitnessInvalidPostageId: 'StampWitnessInvalidPostageId()',
     stampDensityOrderCheckFailed: 'StampDensityOrderCheckFailed()',
     stampDensityCheckFailed: 'StampDensityCheckFailed',
   },

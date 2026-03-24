@@ -268,6 +268,7 @@ contract Redistribution is AccessControl, Pausable {
     error LastElementCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(bytes32 trALast); // Reserve size estimation check failed
     error StampWitnessCountInvalid(); // Stamp witness count must be exactly 3
+    error StampWitnessInvalidPostageId(); // Stamp witness has invalid (zero) postageId
     error StampDensityOrderCheckFailed(); // Stamp density ordering check failed
     error StampDensityCheckFailed(bytes32 transformedValue); // Stamp density validation failed
 
@@ -1188,7 +1189,7 @@ contract Redistribution is AccessControl, Pausable {
         
         // Skip validation if no stamp witnesses provided
         // This maintains backward compatibility with existing proofs
-        // TODO: Make this mandatory in future versions
+        // TODO(Phase-5-Mandatory): Make this mandatory in version 2.0.0
         if (witnessCount == 0) {
             return;
         }
@@ -1202,16 +1203,13 @@ contract Redistribution is AccessControl, Pausable {
         if (entryProof.stampWitnesses[0].postageId == bytes32(0) ||
             entryProof.stampWitnesses[1].postageId == bytes32(0) ||
             entryProof.stampWitnesses[2].postageId == bytes32(0)) {
-            revert StampDensityCheckFailed(bytes32(0));
+            revert StampWitnessInvalidPostageId();
         }
 
-        // Check for duplicate witnesses before transformation
-        if ((entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[1].postageId &&
-             entryProof.stampWitnesses[0].index == entryProof.stampWitnesses[1].index) ||
-            (entryProof.stampWitnesses[1].postageId == entryProof.stampWitnesses[2].postageId &&
-             entryProof.stampWitnesses[1].index == entryProof.stampWitnesses[2].index) ||
-            (entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[2].postageId &&
-             entryProof.stampWitnesses[0].index == entryProof.stampWitnesses[2].index)) {
+        // Check for duplicate postageIds (witnesses must be from different batches)
+        if (entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[1].postageId ||
+            entryProof.stampWitnesses[1].postageId == entryProof.stampWitnesses[2].postageId ||
+            entryProof.stampWitnesses[0].postageId == entryProof.stampWitnesses[2].postageId) {
             revert StampDensityOrderCheckFailed();
         }
 
