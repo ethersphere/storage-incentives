@@ -183,6 +183,7 @@ High-signal properties per harness:
 - **System/integration harness**
   - Wiring invariants: correct addresses + roles across contracts
   - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
+  - Stamp accounting: internal `pot` does not exceed the stamp contract’s BZZ balance (`echidna_stamp_internal_pot_not_above_contract_balance`)
   - Redistribution happy-path consistency: tracked commit/reveal values appear in `Redistribution` storage
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.

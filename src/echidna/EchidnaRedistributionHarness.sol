@@ -281,6 +281,11 @@ contract EchidnaRedistributionHarness {
         }
     }
 
+    function _clearWinnerSelectionPending() internal {
+        pendingWinnerSelection = false;
+        pendingWinnerSelectionLen = 0;
+    }
+
     // -----------------------------
     // Actions
     // -----------------------------
@@ -292,6 +297,7 @@ contract EchidnaRedistributionHarness {
         uint256 effectiveStake,
         uint256 lastUpdated
     ) external {
+        _clearWinnerSelectionPending();
         EchidnaRedistributionActor a = actors[uint256(actorId) % ACTOR_COUNT];
         // Bound height so 2**depthResponsibility doesn't explode too hard during reveal.
         uint8 h = uint8(height % 16);
@@ -302,6 +308,7 @@ contract EchidnaRedistributionHarness {
     }
 
     function act_commit(uint8 actorId, bytes32 obfuscatedHash, int8 roundDelta) external {
+        _clearWinnerSelectionPending();
         EchidnaRedistributionActor a = actors[uint256(actorId) % ACTOR_COUNT];
         uint64 cr = redist.currentRound();
         uint64 rn = cr;
@@ -311,47 +318,57 @@ contract EchidnaRedistributionHarness {
     }
 
     function act_reveal(uint8 actorId, uint8 depth, bytes32 hash, bytes32 nonce) external {
+        _clearWinnerSelectionPending();
         EchidnaRedistributionActor a = actors[uint256(actorId) % ACTOR_COUNT];
         a.callReveal(uint8(depth % 32), hash, nonce);
     }
 
     function act_claim(uint8 actorId) external {
+        _clearWinnerSelectionPending();
         EchidnaRedistributionActor a = actors[uint256(actorId) % ACTOR_COUNT];
         a.callClaim();
     }
 
     function act_admin_pause() external {
+        _clearWinnerSelectionPending();
         redist.pause();
     }
 
     function act_admin_unpause() external {
+        _clearWinnerSelectionPending();
         redist.unPause();
     }
 
     function act_admin_setSampleMaxValue(uint256 v) external {
+        _clearWinnerSelectionPending();
         redist.setSampleMaxValue(v);
     }
 
     function act_admin_setFreezingParams(uint8 a, uint8 b, uint8 c) external {
+        _clearWinnerSelectionPending();
         redist.setFreezingParams(a, b, c);
     }
 
     function act_rando_tryPause(uint8 actorId) external {
+        _clearWinnerSelectionPending();
         bool ok = actors[uint256(actorId) % ACTOR_COUNT].tryPause();
         if (ok) unauthorizedAdminCallSucceeded = true;
     }
 
     function act_rando_tryUnpause(uint8 actorId) external {
+        _clearWinnerSelectionPending();
         bool ok = actors[uint256(actorId) % ACTOR_COUNT].tryUnpause();
         if (ok) unauthorizedAdminCallSucceeded = true;
     }
 
     function act_rando_trySetSampleMaxValue(uint8 actorId, uint256 v) external {
+        _clearWinnerSelectionPending();
         bool ok = actors[uint256(actorId) % ACTOR_COUNT].trySetSampleMaxValue(v);
         if (ok) unauthorizedAdminCallSucceeded = true;
     }
 
     function act_rando_trySetFreezingParams(uint8 actorId, uint8 a, uint8 b, uint8 c) external {
+        _clearWinnerSelectionPending();
         bool ok = actors[uint256(actorId) % ACTOR_COUNT].trySetFreezingParams(a, b, c);
         if (ok) unauthorizedAdminCallSucceeded = true;
     }
@@ -367,6 +384,7 @@ contract EchidnaRedistributionHarness {
         bytes32 reserveHash,
         bytes32 nonce
     ) external {
+        _clearWinnerSelectionPending();
         if (redist.paused()) return;
         if (!redist.currentPhaseCommit()) return;
         // Avoid the "phase last block" restriction in commit phase.
@@ -408,6 +426,7 @@ contract EchidnaRedistributionHarness {
     }
 
     function act_happyReveal(uint8 actorId) external {
+        _clearWinnerSelectionPending();
         if (redist.paused()) return;
         if (!redist.currentPhaseReveal()) return;
 
@@ -435,6 +454,7 @@ contract EchidnaRedistributionHarness {
     }
 
     function act_tryCommitWhilePaused(uint8 actorId, bytes32 reserveHash, bytes32 nonce) external {
+        _clearWinnerSelectionPending();
         if (!redist.paused()) return;
         if (!redist.currentPhaseCommit()) return;
         if (block.number % 152 == (152 / 4) - 1) return;
@@ -454,6 +474,7 @@ contract EchidnaRedistributionHarness {
     }
 
     function act_tryRevealWhilePaused(uint8 actorId) external {
+        _clearWinnerSelectionPending();
         if (!redist.paused()) return;
         if (!redist.currentPhaseReveal()) return;
 
@@ -475,10 +496,9 @@ contract EchidnaRedistributionHarness {
     }
 
     function act_winnerSelection(uint8 actorId) external {
+        _clearWinnerSelectionPending();
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         // Snapshot current commits (bounded) and freeze counts before selection.
-        pendingWinnerSelection = false;
-        pendingWinnerSelectionLen = 0;
         pendingWinnerSelectionRound = redist.currentRound();
 
         for (uint256 i = 0; i < 25; i++) {

@@ -103,26 +103,11 @@ To get started with this project, follow these steps:
 
 ## Fuzz testing (Echidna)
 
-This repo includes a **small Echidna harness** that fuzzes `TestToken` + `StakeRegistry` with a few basic invariants.
-
-- **Harness contract**: `src/echidna/EchidnaStakeRegistryHarness.sol`
-- **Echidna config**: `echidna/echidna.yaml`
-
-### Run (Docker)
-
-1. Install a Docker runtime (e.g. Docker Desktop).
-2. Run:
+Harness layout, properties, and troubleshooting are documented in [echidna/README.md](./echidna/README.md). Run (Docker required):
 
 ```bash
 yarn echidna
 ```
-
-### What this is doing
-
-Echidna repeatedly calls the harness “action” functions (like `act_manageStake`) with random inputs, building **stateful sequences**. After (and during) those sequences it checks `echidna_*` property functions such as:
-
-- **Token properties**: total supply stays constant; decimals stay 16
-- **Stake properties**: committed stake never decreases after a successful update; commitment stays consistent with potential stake (given a constant oracle price)
 
 ## Run
 

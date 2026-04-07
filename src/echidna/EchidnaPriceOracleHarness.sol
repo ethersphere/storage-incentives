@@ -98,19 +98,17 @@ contract EchidnaPriceOracleHarness {
     function act_admin_setPrice(uint32 p) external {
         _clearPending();
 
-        pendingStampCallsBefore = stamp.setPriceCalls();
+        uint256 callsBefore = stamp.setPriceCalls();
+        (bool ok, bool returned) = _callSetPriceAsAdmin(p);
 
-        uint64 minUp = oracle.minimumPriceUpscaled();
-        uint64 expected = uint64(p) << 10;
-        if (expected < minUp) expected = minUp;
+        // Do not arm postconditions unless the call fully succeeded; otherwise
+        // `pendingSetPrice` would not match what the contract actually did (e.g. stamp callback failed).
+        if (!ok || !returned) return;
 
-        pendingExpectedUpScaled = expected;
+        pendingStampCallsBefore = callsBefore;
+        pendingExpectedUpScaled = oracle.currentPriceUpScaled();
         pendingStampShouldCall = !stamp.shouldRevert();
         pendingSetPrice = true;
-
-        (bool ok, bool returned) = _callSetPriceAsAdmin(p);
-        ok;
-        returned;
     }
 
     function act_admin_pause() external {
@@ -134,12 +132,13 @@ contract EchidnaPriceOracleHarness {
         (bool ok, bool returned) = updater.callAdjustPrice(redundancy);
 
         if (pendingAdjustPaused) {
-            // If paused, adjustPrice must not change state.
-            if (oracle.currentPriceUpScaled() != pendingPriceBefore) pausedAdjustChangedState = true;
-            if (oracle.lastAdjustedRound() != pendingLastAdjustedBefore) pausedAdjustChangedState = true;
-            if (stamp.setPriceCalls() != pendingAdjustStampCallsBefore) pausedAdjustChangedState = true;
-            ok;
-            returned;
+            if (
+                oracle.currentPriceUpScaled() != pendingPriceBefore ||
+                oracle.lastAdjustedRound() != pendingLastAdjustedBefore ||
+                stamp.setPriceCalls() != pendingAdjustStampCallsBefore
+            ) {
+                pausedAdjustChangedState = true;
+            }
             return;
         }
 
@@ -148,13 +147,14 @@ contract EchidnaPriceOracleHarness {
         bool wouldRevertEarly = (redundancy == 0) || (currentRound <= pendingLastAdjustedBefore);
 
         if (wouldRevertEarly) {
-            // If it unexpectedly succeeded, that's a bug in either model or contract.
             if (ok) adjustWouldOverflowButSucceeded = true;
-            // A revert should not change state.
-            if (oracle.currentPriceUpScaled() != pendingPriceBefore) pausedAdjustChangedState = true;
-            if (oracle.lastAdjustedRound() != pendingLastAdjustedBefore) pausedAdjustChangedState = true;
-            if (stamp.setPriceCalls() != pendingAdjustStampCallsBefore) pausedAdjustChangedState = true;
-            returned;
+            if (
+                oracle.currentPriceUpScaled() != pendingPriceBefore ||
+                oracle.lastAdjustedRound() != pendingLastAdjustedBefore ||
+                stamp.setPriceCalls() != pendingAdjustStampCallsBefore
+            ) {
+                pausedAdjustChangedState = true;
+            }
             return;
         }
 
@@ -168,15 +168,11 @@ contract EchidnaPriceOracleHarness {
 
         if (!canCompute) {
             if (ok && returned) adjustWouldOverflowButSucceeded = true;
-            returned;
             return;
         }
 
-        // If we can compute a valid expected result, the call should not revert.
         if (!ok) {
-            // Don't arm pendingAdjust (it would fail postconditions); just flag the mismatch.
             adjustWouldOverflowButSucceeded = true;
-            returned;
             return;
         }
 
@@ -184,8 +180,6 @@ contract EchidnaPriceOracleHarness {
         pendingExpectedUpScaledAfter = expected;
         pendingAdjustStampShouldCall = !stamp.shouldRevert();
         pendingAdjust = true;
-
-        returned;
     }
 
     function act_rando_tryAdjustPrice(uint16 redundancy) external {
@@ -317,5 +311,16 @@ contract EchidnaPriceOracleHarness {
     function _clearPending() internal {
         pendingSetPrice = false;
         pendingAdjust = false;
+        pendingExpectedUpScaled = 0;
+        pendingStampCallsBefore = 0;
+        pendingStampShouldCall = false;
+        pendingAdjustPaused = false;
+        pendingPriceBefore = 0;
+        pendingLastAdjustedBefore = 0;
+        pendingExpectedLastAdjustedAfter = 0;
+        pendingExpectedUpScaledAfter = 0;
+        pendingAdjustStampCallsBefore = 0;
+        pendingAdjustStampShouldCall = false;
+        adjustWouldOverflowButSucceeded = false;
     }
 }

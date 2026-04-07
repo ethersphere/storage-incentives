@@ -316,13 +316,10 @@ contract EchidnaSystemHarness {
         return token.balanceOf(address(stake)) >= sumPotential;
     }
 
-    function echidna_stamp_totalPot_never_exceeds_token_balance() external view returns (bool) {
-        // `totalPot()` is `min(pot, tokenBalance)` but is not `view` (it calls `expireLimited`),
-        // so we assert the semantic relationship in a view-safe way.
-        uint256 bal = token.balanceOf(address(stamp));
-        uint256 p = stamp.pot();
-        uint256 totalPotView = p < bal ? p : bal;
-        return totalPotView <= bal;
+    function echidna_stamp_internal_pot_not_above_contract_balance() external view returns (bool) {
+        // Raw `pot` tracks accrued liability; it must not exceed ERC20 balance held by the stamp contract.
+        // (`totalPot()` caps at balance but is non-view; this is the meaningful accounting check.)
+        return stamp.pot() <= token.balanceOf(address(stamp));
     }
 
     function echidna_tracked_redist_commit_reveal_consistent() external view returns (bool) {

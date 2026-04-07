@@ -35,14 +35,12 @@ fi
 for c in "${CONTRACTS_TO_RUN[@]}"; do
   echo "==> echidna: running contract $c" >&2
 
-  # Avoid stale Crytic compile artifacts causing old properties/tests to run.
-  rm -rf crytic-export
-
+  # Drop stale Crytic output inside Docker (same uid as container root). A host
+  # `rm -rf crytic-export` often fails after Docker created the dir as root.
   docker run --rm \
+    --entrypoint sh \
     -v "$ROOT_DIR":/src \
     -w /src \
     "$IMAGE" \
-    echidna-test . \
-    --contract "$c" \
-    --config echidna/echidna.yaml
+    -c "rm -rf crytic-export && echidna-test . --contract ${c} --config echidna/echidna.yaml"
 done
