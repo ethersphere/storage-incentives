@@ -6,6 +6,7 @@ import "../PostageStamp.sol";
 import "../PriceOracle.sol";
 import "../Redistribution.sol" as RedistMod;
 import "../Staking.sol" as StakingMod;
+import "./RedistributionExposed.sol";
 
 contract EchidnaSystemActor {
     TestToken internal immutable token;
@@ -118,8 +119,10 @@ contract EchidnaSystemHarness {
         // Deploy stake registry (uses oracle.currentPrice()).
         stake = new StakingMod.StakeRegistry(address(token), 1, address(oracle));
 
-        // Deploy redistribution (uses stake/stamp/oracle).
-        redist = new RedistMod.Redistribution(address(stake), address(stamp), address(oracle));
+        // Deploy redistribution (uses stake/stamp/oracle). Exposed wrapper adds length helpers for harness scans.
+        redist = RedistMod.Redistribution(
+            address(new RedistributionExposed(address(stake), address(stamp), address(oracle)))
+        );
 
         // Wire roles: redistribution must be able to freeze stake and withdraw the stamp pot.
         stake.grantRole(stake.REDISTRIBUTOR_ROLE(), address(redist));
@@ -353,8 +356,9 @@ contract EchidnaSystemHarness {
     }
 
     function _commitExists(bytes32 obfuscated, address owner) internal view returns (bool) {
-        // currentCommits is deleted each new commit round; bounded scan to avoid unbounded loops.
-        for (uint256 i = 0; i < 25; i++) {
+        uint256 lim = RedistributionExposed(address(redist)).currentCommitsLength();
+        if (lim > 25) lim = 25;
+        for (uint256 i = 0; i < lim; i++) {
             (bool ok, bytes memory data) = address(redist).staticcall(
                 abi.encodeWithSignature("currentCommits(uint256)", i)
             );
@@ -374,7 +378,9 @@ contract EchidnaSystemHarness {
     }
 
     function _revealMatchesCommit(address owner, uint8 depth, bytes32 hash) internal view returns (bool) {
-        for (uint256 i = 0; i < 25; i++) {
+        uint256 lim = RedistributionExposed(address(redist)).currentRevealsLength();
+        if (lim > 25) lim = 25;
+        for (uint256 i = 0; i < lim; i++) {
             (bool ok, bytes memory data) = address(redist).staticcall(
                 abi.encodeWithSignature("currentReveals(uint256)", i)
             );

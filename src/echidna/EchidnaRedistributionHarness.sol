@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "../Redistribution.sol";
 import "../interface/IPostageStamp.sol";
+import "./RedistributionExposed.sol";
 
 contract EchidnaStakeRegistryMock is IStakeRegistry {
     struct Node {
@@ -150,18 +151,6 @@ contract EchidnaPostageStampMock is IPostageStamp {
     }
 }
 
-contract RedistributionExposed is Redistribution {
-    constructor(
-        address staking,
-        address postageContract,
-        address oracleContract
-    ) Redistribution(staking, postageContract, oracleContract) {}
-
-    function exposedWinnerSelection() external {
-        winnerSelection();
-    }
-}
-
 contract EchidnaRedistributionActor {
     RedistributionExposed internal immutable redist;
 
@@ -218,6 +207,8 @@ contract EchidnaRedistributionHarness {
     RedistributionExposed internal immutable redist;
 
     uint256 internal constant ACTOR_COUNT = 3;
+    /// @dev Cap scans; must match pending winnerSelection snapshot arrays (size 25).
+    uint256 internal constant MAX_COMMIT_REVEAL_SCAN = 25;
     EchidnaRedistributionActor[3] internal actors;
 
     // Forbidden-call flags.
@@ -284,6 +275,16 @@ contract EchidnaRedistributionHarness {
     function _clearWinnerSelectionPending() internal {
         pendingWinnerSelection = false;
         pendingWinnerSelectionLen = 0;
+    }
+
+    function _boundedCommitsLen() internal view returns (uint256) {
+        uint256 n = redist.currentCommitsLength();
+        return n > MAX_COMMIT_REVEAL_SCAN ? MAX_COMMIT_REVEAL_SCAN : n;
+    }
+
+    function _boundedRevealsLen() internal view returns (uint256) {
+        uint256 n = redist.currentRevealsLength();
+        return n > MAX_COMMIT_REVEAL_SCAN ? MAX_COMMIT_REVEAL_SCAN : n;
     }
 
     // -----------------------------
@@ -501,7 +502,8 @@ contract EchidnaRedistributionHarness {
         // Snapshot current commits (bounded) and freeze counts before selection.
         pendingWinnerSelectionRound = redist.currentRound();
 
-        for (uint256 i = 0; i < 25; i++) {
+        uint256 commitLim = _boundedCommitsLen();
+        for (uint256 i = 0; i < commitLim; i++) {
             (bool ok, bytes memory data) = address(redist).staticcall(
                 abi.encodeWithSignature("currentCommits(uint256)", i)
             );
@@ -554,16 +556,18 @@ contract EchidnaRedistributionHarness {
 
     function echidna_reveal_entries_imply_matching_commit() external view returns (bool) {
         // For each reveal entry, there must exist a commit marked revealed with matching overlay/owner and revealIndex pointing here.
-        for (uint256 i = 0; i < 25; i++) {
+        uint256 rLim = _boundedRevealsLen();
+        uint256 cLim = _boundedCommitsLen();
+        for (uint256 i = 0; i < rLim; i++) {
             (bool okR, bytes32 rOverlay, address rOwner) = _revealOverlayOwner(i);
-            if (!okR) break;
+            if (!okR) return false;
 
             bool found = false;
-            for (uint256 j = 0; j < 25; j++) {
+            for (uint256 j = 0; j < cLim; j++) {
                 (bool okC, bytes32 cOverlay, address cOwner, bool cRevealed, uint256 cRevealIndex) = _commitRevealLink(
                     j
                 );
-                if (!okC) break;
+                if (!okC) return false;
                 if (cRevealed && cRevealIndex == i && cOverlay == rOverlay && cOwner == rOwner) {
                     found = true;
                     break;
@@ -685,7 +689,8 @@ contract EchidnaRedistributionHarness {
             address[25] memory owner
         )
     {
-        for (uint256 i = 0; i < 25; i++) {
+        uint256 lim = _boundedCommitsLen();
+        for (uint256 i = 0; i < lim; i++) {
             (bool ok, bytes32 ov, address ow, bool rev, uint256 ri) = _commitFields(i);
             if (!ok) break;
             overlays[i] = ov;
@@ -697,11 +702,7 @@ contract EchidnaRedistributionHarness {
     }
 
     function _scanRevealsLen() internal view returns (uint256 n) {
-        for (uint256 i = 0; i < 25; i++) {
-            (bool ok, , ) = _revealOverlayOwner(i);
-            if (!ok) break;
-            n++;
-        }
+        n = _boundedRevealsLen();
     }
 
     function _commitOverlayOwner(uint256 i) internal view returns (bool ok, bytes32 ov, address ow) {
@@ -821,7 +822,8 @@ contract EchidnaRedistributionHarness {
     }
 
     function _findCommit(bytes32 overlay, bytes32 obfuscated) internal view returns (bool ok, uint256 idx) {
-        for (uint256 i = 0; i < 25; i++) {
+        uint256 lim = _boundedCommitsLen();
+        for (uint256 i = 0; i < lim; i++) {
             (bool okI, bytes32 ov, , , , , bytes32 obf, ) = _commitFull(i);
             if (!okI) break;
             if (ov == overlay && obf == obfuscated) return (true, i);
@@ -830,7 +832,8 @@ contract EchidnaRedistributionHarness {
     }
 
     function _commitOverlayExists(bytes32 overlay) internal view returns (bool) {
-        for (uint256 i = 0; i < 25; i++) {
+        uint256 lim = _boundedCommitsLen();
+        for (uint256 i = 0; i < lim; i++) {
             (bool ok, bytes32 ov, , , ) = _commitFields(i);
             if (!ok) break;
             if (ov == overlay) return true;
