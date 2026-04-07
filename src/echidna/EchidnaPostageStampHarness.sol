@@ -506,11 +506,41 @@ contract EchidnaPostageStampHarness {
 
     function _clearPending() internal {
         pendingCreate = false;
+        pendingBatchId = bytes32(0);
+        pendingCreateTotalAmount = 0;
+        pendingStampTokenBalanceBefore = 0;
+        pendingCreateNormalisedExpected = 0;
+        pendingCreateDepth = 0;
+        pendingCreateBucketDepth = 0;
+        pendingCreateImmutable = false;
+
         pendingTopUp = false;
+        pendingTopUpBatchId = bytes32(0);
+        pendingTopUpTokenBefore = 0;
+        pendingTopUpNormalisedBefore = 0;
+        pendingTopUpTotalAmount = 0;
+        pendingTopUpPerChunk = 0;
+
         pendingIncreaseDepth = false;
+        pendingIncBatchId = bytes32(0);
+        pendingIncOldDepth = 0;
+        pendingIncNewDepth = 0;
+        pendingIncValidChunkBefore = 0;
+        pendingIncTokenBefore = 0;
+        pendingIncBucketDepth = 0;
+        pendingIncExpectedNormalised = 0;
+
         pendingExpireAll = false;
         pendingSetPrice = false;
+        pendingSetPriceTotalOutPaymentBefore = 0;
+        pendingSetPriceLastUpdatedExpected = 0;
+        pendingSetPriceLastPriceExpected = 0;
+
         pendingWithdraw = false;
+        pendingWithdrawBeneficiary = address(0);
+        pendingWithdrawBeneficiaryBalBefore = 0;
+        pendingWithdrawExpectedAmount = 0;
+        pendingWithdrawStampBalBefore = 0;
     }
 
     function _batchDigest(bytes32 batchId) internal view returns (bytes32) {

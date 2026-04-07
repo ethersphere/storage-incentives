@@ -232,11 +232,16 @@ contract EchidnaRedistributionClaimHarness {
         }
     }
 
+    function _clearClaimPending() internal {
+        pendingClaim = false;
+    }
+
     // -----------------------------
     // Actions
     // -----------------------------
 
     function act_seedPot(uint256 amount) external {
+        _clearClaimPending();
         uint256 x = amount % 1e24;
         if (x == 0) x = 1e18;
         stampMock.seedPot(x);
@@ -249,6 +254,7 @@ contract EchidnaRedistributionClaimHarness {
         uint256 effectiveStake,
         uint256 lastUpdated
     ) external {
+        _clearClaimPending();
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         uint8 h = uint8(height % 16);
         uint256 stake = effectiveStake == 0 ? 1e18 : (effectiveStake % 1e24) + 1;
@@ -257,6 +263,7 @@ contract EchidnaRedistributionClaimHarness {
     }
 
     function act_happyCommit(uint8 actorId, bytes32 hash, bytes32 nonce) external {
+        _clearClaimPending();
         if (!redist.currentPhaseCommit()) return;
         if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) return;
 
@@ -285,6 +292,7 @@ contract EchidnaRedistributionClaimHarness {
     }
 
     function act_happyReveal(uint8 actorId) external {
+        _clearClaimPending();
         if (!redist.currentPhaseReveal()) return;
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
@@ -298,9 +306,8 @@ contract EchidnaRedistributionClaimHarness {
     }
 
     function act_claimStub(uint8 actorId) external {
+        _clearClaimPending();
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
-
-        pendingClaim = false;
         pendingClaimRound = redist.currentRound();
         pendingOracleCallsBefore = oracleMock.calls();
 
