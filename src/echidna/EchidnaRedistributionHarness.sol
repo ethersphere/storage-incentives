@@ -556,6 +556,15 @@ contract EchidnaRedistributionHarness {
 
     function echidna_reveal_entries_imply_matching_commit() external view returns (bool) {
         // For each reveal entry, there must exist a commit marked revealed with matching overlay/owner and revealIndex pointing here.
+        //
+        // `commit()` deletes `currentCommits` when `currentCommitRound` advances but does not clear
+        // `currentReveals` until the reveal phase for that round begins (`reveal()` deletes when
+        // `currentRevealRound` catches up). During commit phase with `currentCommitRound != currentRevealRound`,
+        // stale reveal slots are expected and must not be checked against the fresh commit array.
+        if (redist.currentPhaseCommit() && redist.currentCommitRound() != redist.currentRevealRound()) {
+            return true;
+        }
+
         uint256 rLim = _boundedRevealsLen();
         uint256 cLim = _boundedCommitsLen();
         for (uint256 i = 0; i < rLim; i++) {
