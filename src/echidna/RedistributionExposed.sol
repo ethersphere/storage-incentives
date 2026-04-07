@@ -6,9 +6,11 @@ import "../Redistribution.sol";
 /// @notice Test/fuzz wrapper: exposes `winnerSelection` and array lengths so harnesses need not call
 /// the auto-generated `currentCommits(i)` / `currentReveals(i)` getters out of bounds (those revert).
 contract RedistributionExposed is Redistribution {
-    constructor(address staking, address postageContract, address oracleContract)
-        Redistribution(staking, postageContract, oracleContract)
-    {}
+    constructor(
+        address staking,
+        address postageContract,
+        address oracleContract
+    ) Redistribution(staking, postageContract, oracleContract) {}
 
     function exposedWinnerSelection() external {
         winnerSelection();
