@@ -558,10 +558,11 @@ contract EchidnaRedistributionHarness {
         // For each reveal entry, there must exist a commit marked revealed with matching overlay/owner and revealIndex pointing here.
         //
         // `commit()` deletes `currentCommits` when `currentCommitRound` advances but does not clear
-        // `currentReveals` until the reveal phase for that round begins (`reveal()` deletes when
-        // `currentRevealRound` catches up). During commit phase with `currentCommitRound != currentRevealRound`,
-        // stale reveal slots are expected and must not be checked against the fresh commit array.
-        if (redist.currentPhaseCommit() && redist.currentCommitRound() != redist.currentRevealRound()) {
+        // `currentReveals` until the first `reveal()` of the new round (`reveal()` deletes when
+        // `currentRevealRound` catches up to `cr`). Until then, `currentCommitRound != currentRevealRound`
+        // even in **reveal phase** (currentPhaseCommit false): old `currentReveals` entries coexist with
+        // fresh unrevealed `currentCommits`. Skip linkage checks for that whole transitional window.
+        if (redist.currentCommitRound() != redist.currentRevealRound()) {
             return true;
         }
 
