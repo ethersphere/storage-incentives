@@ -4,68 +4,7 @@ pragma solidity ^0.8.19;
 import "../Redistribution.sol";
 import "../TestToken.sol";
 import "../interface/IPostageStamp.sol";
-
-contract EchidnaStakeRegistryMock2 is IStakeRegistry {
-    struct Node {
-        bytes32 overlay;
-        uint8 height;
-        uint256 effectiveStake;
-        uint256 lastUpdated;
-        bool exists;
-    }
-
-    mapping(address => Node) internal nodes;
-    mapping(address => uint256) public freezeCount;
-
-    function setNode(
-        address owner,
-        bytes32 overlay,
-        uint8 height,
-        uint256 effectiveStake,
-        uint256 lastUpdated
-    ) external {
-        nodes[owner] = Node({
-            overlay: overlay,
-            height: height,
-            effectiveStake: effectiveStake,
-            lastUpdated: lastUpdated,
-            exists: true
-        });
-    }
-
-    function freezeDeposit(address _owner, uint256 _time) external {
-        if (!nodes[_owner].exists) return;
-        freezeCount[_owner] += 1;
-        nodes[_owner].lastUpdated = block.number + _time;
-    }
-
-    function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256) {
-        return nodes[_owner].lastUpdated;
-    }
-
-    function overlayOfAddress(address _owner) external view returns (bytes32) {
-        return nodes[_owner].overlay;
-    }
-
-    function heightOfAddress(address _owner) external view returns (uint8) {
-        return nodes[_owner].height;
-    }
-
-    function nodeEffectiveStake(address _owner) external view returns (uint256) {
-        return nodes[_owner].effectiveStake;
-    }
-}
-
-contract EchidnaPriceOracleMock2 is IPriceOracle {
-    uint256 public calls;
-    uint16 public lastRedundancy;
-
-    function adjustPrice(uint16 redundancy) external returns (bool) {
-        calls += 1;
-        lastRedundancy = redundancy;
-        return true;
-    }
-}
+import "./EchidnaMocks.sol";
 
 contract EchidnaPostageStampPotMock is IPostageStamp {
     TestToken internal immutable token;
@@ -191,9 +130,9 @@ contract EchidnaRedistributionClaimHarness {
     uint256 internal constant ROUND_LENGTH = 152;
 
     TestToken internal immutable token;
-    EchidnaStakeRegistryMock2 internal immutable stakeMock;
+    EchidnaStakeRegistryMock internal immutable stakeMock;
     EchidnaPostageStampPotMock internal immutable stampMock;
-    EchidnaPriceOracleMock2 internal immutable oracleMock;
+    EchidnaPriceOracleMock internal immutable oracleMock;
     RedistributionClaimStub internal immutable redist;
 
     EchidnaRedistributionClaimActor[3] internal actors;
@@ -220,9 +159,9 @@ contract EchidnaRedistributionClaimHarness {
 
     constructor() {
         token = new TestToken("TestToken", "TT", 0);
-        stakeMock = new EchidnaStakeRegistryMock2();
+        stakeMock = new EchidnaStakeRegistryMock();
         stampMock = new EchidnaPostageStampPotMock(token);
-        oracleMock = new EchidnaPriceOracleMock2();
+        oracleMock = new EchidnaPriceOracleMock();
         redist = new RedistributionClaimStub(address(stakeMock), address(stampMock), address(oracleMock));
 
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {

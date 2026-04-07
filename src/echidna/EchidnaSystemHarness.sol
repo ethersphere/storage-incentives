@@ -167,10 +167,11 @@ contract EchidnaSystemHarness {
         bool imm
     ) external {
         EchidnaSystemActor a = actors[uint256(actorId) % ACTOR_COUNT];
-        uint8 d = uint8((depth % 12) + 1); // avoid huge shifts, avoid 0
-        uint8 b = uint8(bucketDepth % d);
-        if (b < 16) b = 16;
-        if (b >= d) b = uint8(d - 1);
+        uint8 minBucket = stamp.minimumBucketDepth();
+        // depth must exceed minimumBucketDepth; allow [minBucket+1 .. minBucket+10]
+        uint8 d = uint8(minBucket + 1 + (depth % 10));
+        // bucketDepth must be in [minBucket, d-1]
+        uint8 b = uint8(minBucket + (bucketDepth % (d - minBucket)));
 
         uint256 min = stamp.minimumInitialBalancePerChunk();
         uint256 init = initialBalancePerChunk % (min + 1e6);

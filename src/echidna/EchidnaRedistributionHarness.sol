@@ -4,70 +4,7 @@ pragma solidity ^0.8.19;
 import "../Redistribution.sol";
 import "../interface/IPostageStamp.sol";
 import "./RedistributionExposed.sol";
-
-contract EchidnaStakeRegistryMock is IStakeRegistry {
-    struct Node {
-        bytes32 overlay;
-        uint8 height;
-        uint256 effectiveStake;
-        uint256 lastUpdated;
-        bool exists;
-    }
-
-    mapping(address => Node) internal nodes;
-    mapping(address => uint256) public freezeCount;
-    mapping(address => uint256) public lastFreezeTime;
-
-    function setNode(
-        address owner,
-        bytes32 overlay,
-        uint8 height,
-        uint256 effectiveStake,
-        uint256 lastUpdated
-    ) external {
-        nodes[owner] = Node({
-            overlay: overlay,
-            height: height,
-            effectiveStake: effectiveStake,
-            lastUpdated: lastUpdated,
-            exists: true
-        });
-    }
-
-    function freezeDeposit(address _owner, uint256 _time) external {
-        if (!nodes[_owner].exists) return;
-        freezeCount[_owner] += 1;
-        lastFreezeTime[_owner] = _time;
-        nodes[_owner].lastUpdated = block.number + _time;
-    }
-
-    function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256) {
-        return nodes[_owner].lastUpdated;
-    }
-
-    function overlayOfAddress(address _owner) external view returns (bytes32) {
-        return nodes[_owner].overlay;
-    }
-
-    function heightOfAddress(address _owner) external view returns (uint8) {
-        return nodes[_owner].height;
-    }
-
-    function nodeEffectiveStake(address _owner) external view returns (uint256) {
-        return nodes[_owner].effectiveStake;
-    }
-}
-
-contract EchidnaPriceOracleMock is IPriceOracle {
-    uint256 public calls;
-    uint16 public lastRedundancy;
-
-    function adjustPrice(uint16 redundancy) external returns (bool) {
-        calls += 1;
-        lastRedundancy = redundancy;
-        return true;
-    }
-}
+import "./EchidnaMocks.sol";
 
 contract EchidnaPostageStampMock is IPostageStamp {
     uint256 public withdrawCalls;
@@ -508,18 +445,10 @@ contract EchidnaRedistributionHarness {
                 abi.encodeWithSignature("currentCommits(uint256)", i)
             );
             if (!ok) break;
-            (bytes32 ov, address ow, bool rev, uint8 h, uint256 st, bytes32 obf, uint256 ri) = abi.decode(
-                data,
-                (bytes32, address, bool, uint8, uint256, bytes32, uint256)
-            );
-            ov;
-            h;
-            st;
-            obf;
-            ri;
-            pendingWSOwners[i] = ow;
-            pendingWSRevealed[i] = rev;
-            pendingWSFreezeCountBefore[i] = stakeMock.freezeCount(ow);
+            CommitView memory cv = abi.decode(data, (CommitView));
+            pendingWSOwners[i] = cv.owner;
+            pendingWSRevealed[i] = cv.revealed;
+            pendingWSFreezeCountBefore[i] = stakeMock.freezeCount(cv.owner);
             pendingWinnerSelectionLen++;
         }
 

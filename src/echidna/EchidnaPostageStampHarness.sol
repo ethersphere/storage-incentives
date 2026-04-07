@@ -201,13 +201,12 @@ contract EchidnaPostageStampHarness {
         bool immutableFlag
     ) external {
         _clearPending();
-        uint256 potBefore = stamp.pot();
         // Normalize expiry so createBatch's internal expireLimited() doesn't unexpectedly mutate other batches.
         stamp.expireLimited(type(uint256).max);
         tmpNonce = nonce;
         tmpImmutable = immutableFlag;
         _createBatchInternal(actorId, initialPerChunk, depthRaw);
-        _observePot(potBefore, false);
+        _observePot(false);
     }
 
     function act_topUp(uint8 actorId, uint8 batchIndex, uint256 topupPerChunk) external {
@@ -239,7 +238,7 @@ contract EchidnaPostageStampHarness {
 
         bool ok = a.topUp(batchId, perChunk);
         if (!ok) return;
-        _checkNonInterference(batchId);
+        _checkNonInterference();
 
         pendingTopUp = true;
         pendingTopUpBatchId = batchId;
@@ -251,25 +250,24 @@ contract EchidnaPostageStampHarness {
 
     function act_increaseDepth(uint8 actorId, uint8 batchIndex, uint8 newDepthRaw) external {
         _clearPending();
-        uint256 potBefore = stamp.pot();
         EchidnaPostageActor a = _actor(actorId);
 
         if (stamp.paused()) {
             bool okPaused = a.increaseDepth(_batch(batchIndex), 3);
             if (okPaused) pausedMutationSucceeded = true;
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
 
         bytes32 batchId = _batch(batchIndex);
         if (batchId == bytes32(0)) {
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
 
         // increaseDepth is owner-gated; we only attempt if the batch owner matches this actor.
         if (stamp.batchOwner(batchId) != address(a)) {
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
 
@@ -278,14 +276,14 @@ contract EchidnaPostageStampHarness {
 
         uint8 oldDepth = stamp.batchDepth(batchId);
         if (oldDepth == 0) {
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
 
         uint8 minBucket = stamp.minimumBucketDepth();
         uint8 newDepth = uint8(minBucket + 1 + (newDepthRaw % 12));
         if (newDepth <= oldDepth) {
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
 
@@ -302,10 +300,10 @@ contract EchidnaPostageStampHarness {
 
         bool ok = a.increaseDepth(batchId, newDepth);
         if (!ok) {
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
-        _checkNonInterference(batchId);
+        _checkNonInterference();
 
         pendingIncreaseDepth = true;
         pendingIncBatchId = batchId;
@@ -315,15 +313,14 @@ contract EchidnaPostageStampHarness {
         pendingIncTokenBefore = tokenBefore;
         pendingIncBucketDepth = bucketDepthBefore;
         pendingIncExpectedNormalised = expectedNormalisedAfter;
-        _observePot(potBefore, false);
+        _observePot(false);
     }
 
     function act_oracle_setPrice(uint256 price) external {
         _clearPending();
-        uint256 potBefore = stamp.pot();
         bool ok = oracleActor.trySetPrice(price);
         if (!ok) {
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
 
@@ -333,20 +330,18 @@ contract EchidnaPostageStampHarness {
         // Capture the exact base total payout immediately after setting the price.
         // At this point `lastUpdatedBlock == block.number`, so `currentTotalOutPayment()` equals `totalOutPayment`.
         pendingSetPriceTotalOutPaymentBefore = stamp.currentTotalOutPayment();
-        _observePot(potBefore, false);
+        _observePot(false);
     }
 
     function act_expireAll() external {
         _clearPending();
-        uint256 potBefore = stamp.pot();
         stamp.expireLimited(type(uint256).max);
         pendingExpireAll = true;
-        _observePot(potBefore, false);
+        _observePot(false);
     }
 
     function act_redistributor_withdraw(uint8 beneficiaryActorId) external {
         _clearPending();
-        uint256 potBefore = stamp.pot();
         address beneficiary = address(_actor(beneficiaryActorId));
         if (beneficiary == address(0)) beneficiary = address(0xBEEF);
 
@@ -356,7 +351,7 @@ contract EchidnaPostageStampHarness {
 
         bool ok = redistributorActor.tryWithdraw(beneficiary);
         if (!ok) {
-            _observePot(potBefore, false);
+            _observePot(false);
             return;
         }
 
@@ -365,7 +360,7 @@ contract EchidnaPostageStampHarness {
         pendingWithdrawBeneficiaryBalBefore = balBefore;
         pendingWithdrawStampBalBefore = stampBalBefore;
         pendingWithdrawExpectedAmount = amount;
-        _observePot(potBefore, true);
+        _observePot(true);
     }
 
     function act_pauser_pause() external {
@@ -415,10 +410,6 @@ contract EchidnaPostageStampHarness {
             !pausedMutationSucceeded &&
             !nonInterferenceViolated &&
             !potDecreasedUnexpectedly;
-    }
-
-    function echidna_pot_never_decreases_except_withdraw() external view returns (bool) {
-        return !potDecreasedUnexpectedly;
     }
 
     function echidna_minimumInitialBalancePerChunk_matches_formula() external view returns (bool) {
@@ -577,8 +568,7 @@ contract EchidnaPostageStampHarness {
         tmpDigestE = tmpBatchE == bytes32(0) ? bytes32(0) : _batchDigest(tmpBatchE);
     }
 
-    function _checkNonInterference(bytes32 target) internal {
-        target;
+    function _checkNonInterference() internal {
         if (tmpBatchA != bytes32(0) && _batchDigest(tmpBatchA) != tmpDigestA) nonInterferenceViolated = true;
         if (tmpBatchB != bytes32(0) && _batchDigest(tmpBatchB) != tmpDigestB) nonInterferenceViolated = true;
         if (tmpBatchC != bytes32(0) && _batchDigest(tmpBatchC) != tmpDigestC) nonInterferenceViolated = true;
@@ -586,8 +576,7 @@ contract EchidnaPostageStampHarness {
         if (tmpBatchE != bytes32(0) && _batchDigest(tmpBatchE) != tmpDigestE) nonInterferenceViolated = true;
     }
 
-    function _observePot(uint256 potBefore, bool withdrew) internal {
-        potBefore;
+    function _observePot(bool withdrew) internal {
         uint256 prev = lastPotObserved;
         uint256 nowPot = stamp.pot();
         if (nowPot < prev) {
