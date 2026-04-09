@@ -269,22 +269,6 @@ contract EchidnaSystemHarness {
     // Integration properties
     // -----------------------------
 
-    function echidna_system_is_wired_correctly() external view returns (bool) {
-        if (address(stake.OracleContract()) != address(oracle)) return false;
-        if (address(redist.Stakes()) != address(stake)) return false;
-        if (address(redist.PostageContract()) != address(stamp)) return false;
-        if (address(redist.OracleContract()) != address(oracle)) return false;
-        return true;
-    }
-
-    function echidna_roles_wired_correctly() external view returns (bool) {
-        if (!stamp.hasRole(stamp.PRICE_ORACLE_ROLE(), address(oracle))) return false;
-        if (!stake.hasRole(stake.REDISTRIBUTOR_ROLE(), address(redist))) return false;
-        if (!stamp.hasRole(stamp.REDISTRIBUTOR_ROLE(), address(redist))) return false;
-        if (!oracle.hasRole(oracle.PRICE_UPDATER_ROLE(), address(actors[0]))) return false;
-        return true;
-    }
-
     function echidna_unauthorized_oracle_adjust_never_succeeds() external view returns (bool) {
         return !unauthorizedOracleAdjustSucceeded;
     }

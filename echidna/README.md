@@ -147,7 +147,7 @@ High-signal properties per harness:
 
 - **Oracle harness**
   - Access control (admin-only + updater-only) and “paused means no changes”
-  - Price invariants: price never below minimum; downscaled vs upscaled consistency; lastAdjustedRound not in the future
+  - Price invariants: price never below minimum; lastAdjustedRound not in the future
   - Post-conditions for `setPrice` and `adjustPrice` (including skipped-round math), with overflow-aware modeling
 
 - **PostageStamp harness**
@@ -181,7 +181,6 @@ High-signal properties per harness:
   - non-revealers are frozen during claim processing (`echidna_nonrevealers_frozen_after_claim_selection`)
 
 - **System/integration harness**
-  - Wiring invariants: correct addresses + roles across contracts
   - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
   - Stamp accounting: internal `pot` does not exceed the stamp contract’s BZZ balance (`echidna_stamp_internal_pot_not_above_contract_balance`)
   - Redistribution happy-path consistency: tracked commit/reveal values appear in `Redistribution` storage

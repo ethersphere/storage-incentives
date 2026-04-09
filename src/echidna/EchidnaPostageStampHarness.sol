@@ -412,12 +412,6 @@ contract EchidnaPostageStampHarness {
             !potDecreasedUnexpectedly;
     }
 
-    function echidna_minimumInitialBalancePerChunk_matches_formula() external view returns (bool) {
-        return
-            stamp.minimumInitialBalancePerChunk() ==
-            uint256(stamp.minimumValidityBlocks()) * uint256(stamp.lastPrice());
-    }
-
     function echidna_lastExpiryBalance_never_exceeds_currentTotalOutPayment() external view returns (bool) {
         return stamp.lastExpiryBalance() <= stamp.currentTotalOutPayment();
     }

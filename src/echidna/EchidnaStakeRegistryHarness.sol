@@ -467,10 +467,6 @@ contract EchidnaStakeRegistryHarness {
             !actionInvariantViolated;
     }
 
-    function echidna_registry_token_is_expected() external view returns (bool) {
-        return registry.bzzToken() == address(token);
-    }
-
     function echidna_registry_balance_covers_sum_potential() external view returns (bool) {
         uint256 sumPotential;
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {

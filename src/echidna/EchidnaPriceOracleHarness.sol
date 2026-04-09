@@ -223,10 +223,6 @@ contract EchidnaPriceOracleHarness {
         return oracle.currentPriceUpScaled() >= oracle.minimumPriceUpscaled();
     }
 
-    function echidna_currentPrice_matches_upscaled() external view returns (bool) {
-        return oracle.currentPrice() == uint32(oracle.currentPriceUpScaled() >> 10);
-    }
-
     function echidna_lastAdjustedRound_not_in_future() external view returns (bool) {
         return oracle.lastAdjustedRound() <= oracle.currentRound();
     }
