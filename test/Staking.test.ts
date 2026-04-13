@@ -46,6 +46,7 @@ const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc9
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
+const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
 const doubleStakeAmount_0 = '200000000000000000';
 const topUpForHeight1 = '100000000000000000';
@@ -213,6 +214,59 @@ describe('Staking', function () {
     await srStaker0.applyUpdates(staker_0);
     expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+  });
+
+  it('should keep queued withdrawal pending while the node is frozen', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
+
+    await srStaker0.withdraw(withdrawAmount);
+    await advanceRounds();
+
+    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+    await stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime);
+
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mineNBlocks(freezeTime + 1);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+  });
+
+  it('should keep queued withdrawal pending while the node is active in the current round', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const redistribution = await ethers.getContract('Redistribution', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+    await srStaker0.withdraw(withdrawAmount);
+    await advanceRounds();
+
+    const currentRound = await redistribution.currentRound();
+    await redistribution.commit(obfuscatedHash_0, currentRound);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
+
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
+
+    await mineNBlocks(roundLength);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
   });
 
   it('should schedule exits and clear the stake on applyUpdates', async function () {

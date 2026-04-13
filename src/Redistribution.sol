@@ -836,6 +836,27 @@ contract Redistribution is AccessControl, Pausable {
         return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depthResponsibility);
     }
 
+    function isParticipatingInCurrentRound(address _owner) external view returns (bool) {
+        uint64 cr = currentRound();
+
+        if (currentCommitRound != cr) {
+            return false;
+        }
+
+        uint256 commitsArrayLength = currentCommits.length;
+        for (uint256 i = 0; i < commitsArrayLength; ) {
+            if (currentCommits[i].owner == _owner) {
+                return true;
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        return false;
+    }
+
     // ----------------------------- Reveal ------------------------------
 
     /**

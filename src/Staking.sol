@@ -4,6 +4,10 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
+interface IRedistribution {
+    function isParticipatingInCurrentRound(address _owner) external view returns (bool);
+}
+
 /**
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
@@ -62,6 +66,7 @@ contract StakeRegistry is AccessControl, Pausable {
     uint64 public immutable WAIT_BASE;
     uint64 public immutable WAIT_OVERLAY_CHANGE;
     uint64 public immutable WAIT_WITHDRAWAL;
+    address public redistributionContract;
 
     event DepositCreated(
         address indexed owner,
@@ -88,6 +93,7 @@ contract StakeRegistry is AccessControl, Pausable {
     error HeightDecreaseNotAllowed();
     error InvalidWithdrawalAmount();
     error UpdateQueueFull();
+    error RedistributionNotConfigured();
 
     constructor(
         address _bzzToken,
@@ -236,10 +242,14 @@ contract StakeRegistry is AccessControl, Pausable {
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
+        if (!_stakes[_owner].initialized && _queueLength(_owner) == 0) {
+            return;
+        }
+
+        _stakes[_owner].frozenUntilBlock = block.number + _time;
         _applyReadyUpdates(_owner);
 
         if (_stakes[_owner].initialized) {
-            _stakes[_owner].frozenUntilBlock = block.number + _time;
             emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
         }
     }
@@ -270,6 +280,11 @@ contract StakeRegistry is AccessControl, Pausable {
     function changeNetworkId(uint64 _NetworkId) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
         NetworkId = _NetworkId;
+    }
+
+    function setRedistributionContract(address _redistributionContract) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
+        redistributionContract = _redistributionContract;
     }
 
     function pause() public {
@@ -322,6 +337,9 @@ contract StakeRegistry is AccessControl, Pausable {
         uint64 roundNumber = currentRound();
 
         while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
+            if (_blocksQueuedWithdrawalExecution(_owner, queue[head].kind)) {
+                break;
+            }
             _applyStoredUpdate(_owner, queue[head]);
             delete queue[head];
             unchecked {
@@ -393,6 +411,20 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    function _blocksQueuedWithdrawalExecution(address _owner, UpdateKind _kind) internal view returns (bool) {
+        if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
+            return false;
+        }
+
+        if (!addressNotFrozen(_owner)) {
+            return true;
+        }
+
+        if (redistributionContract == address(0)) revert RedistributionNotConfigured();
+
+        return IRedistribution(redistributionContract).isParticipatingInCurrentRound(_owner);
+    }
+
     function _previewStake(address _owner, bool includeFutureUpdates) internal view returns (StakeState memory preview) {
         preview = _stakes[_owner];
 
@@ -403,6 +435,9 @@ contract StakeRegistry is AccessControl, Pausable {
         for (uint256 i = head; i < queue.length; ) {
             ScheduledUpdate storage scheduled = queue[i];
             if (!includeFutureUpdates && scheduled.effectiveFromRound > roundNumber) {
+                break;
+            }
+            if (!includeFutureUpdates && _blocksQueuedWithdrawalExecution(_owner, scheduled.kind)) {
                 break;
             }
 

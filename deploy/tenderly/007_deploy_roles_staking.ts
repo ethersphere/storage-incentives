@@ -14,6 +14,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
   if (await read('StakeRegistry', 'hasRole', adminRole, deployer)) {
     const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
+    await execute('StakeRegistry', { from: deployer }, 'setRedistributionContract', redisAddress);
   } else {
     log(
       'DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN THE REDISTRIBUTION ROLE, PLEASE ASSIGN IT AND/OR GRANT ROLE MANUALLY'
