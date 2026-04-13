@@ -98,7 +98,6 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      const overlay = createOverlay(nodes[i], depth, nonce);
       await r_node.reveal(depth, sampleHashString, reveal_nonce);
     }
 

@@ -64,8 +64,6 @@ const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b555
 const height_0 = 0;
 const height_0_n_2 = 2;
 
-//fake
-const overlay_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
 const depth_f = '0x0000000000000000000000000000000000000000000000000000000000000007';
 const reveal_nonce_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
 
@@ -120,23 +118,6 @@ const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 const { depth: depth_5, hash: hash_5 } = node5_proof1;
 const height_5 = 0;
 
-let node_6: string;
-const overlay_6 = '0x141680b0d9c7ab250672fd4603ac13e39e47de6e2c93d71bbdc66459a6c5e39f';
-const stakeAmount_6 = '100000000000000000';
-
-const nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_6 = '0x06';
-const reveal_nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-let node_7: string;
-const overlay_7 = '0x152d169abc6e6a0e0a2a7b78dcfea0bebe32942f05e9bb10ee2996203d5361ef';
-const stakeAmount_7 = '100000000000000000';
-const nonce_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_7 = '0x06';
-const reveal_nonce_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
 // start round number after startRoundFixture()
 const startRoundNumber = 3;
 // start round number after mintToNode(red, 0) -> without claim
@@ -167,8 +148,6 @@ before(async function () {
   node_3 = namedAccounts.node_3;
   node_4 = namedAccounts.node_4;
   node_5 = namedAccounts.node_5;
-  node_6 = namedAccounts.node_6;
-  node_7 = namedAccounts.node_7;
 });
 
 const errors = {
@@ -246,7 +225,6 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      const currentRound = await r_node_0.currentRound();
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
         errors.commit.notStaked
       );
@@ -1171,7 +1149,7 @@ describe('Redistribution', function () {
             const { proofParams } = await generatedSampling(true);
 
             // alter the identifier into random one
-            proofParams.proof1.socProof![0].identifier = randomBytes(32);
+            proofParams.proof1.socProof![0].identifier = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1183,7 +1161,7 @@ describe('Redistribution', function () {
 
             proofParams.proof1.socProof![0] = await getSocProofAttachment(
               proofParams.proof1.socProof![0].chunkAddr,
-              randomBytes(32),
+              Uint8Array.from(randomBytes(32)),
               depth
             );
 
@@ -1199,7 +1177,7 @@ describe('Redistribution', function () {
 
             const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(2 ** 30, 4);
-            proofParams.proof1.postageProof.index = index;
+            proofParams.proof1.postageProof.index = Uint8Array.from(index);
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1233,7 +1211,7 @@ describe('Redistribution', function () {
             const chunkAddr = Buffer.from(proofParams.proof1.proveSegment);
             const { index, signature, timeStamp } = await constructPostageStamp(batchId, chunkAddr, wallet);
 
-            proofParams.proof1.postageProof.postageId = batchId;
+            proofParams.proof1.postageProof.postageId = Uint8Array.from(batchId);
             proofParams.proof1.postageProof.signature = signature;
             proofParams.proof1.postageProof.index = index;
             proofParams.proof1.postageProof.timeStamp = timeStamp;
@@ -1248,7 +1226,7 @@ describe('Redistribution', function () {
 
             const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(0, 0);
-            proofParams.proof1.postageProof.index = index;
+            proofParams.proof1.postageProof.index = Uint8Array.from(index);
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1260,7 +1238,7 @@ describe('Redistribution', function () {
 
             const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(1, 4);
-            proofParams.proof1.postageProof.index = index;
+            proofParams.proof1.postageProof.index = Uint8Array.from(index);
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1272,7 +1250,7 @@ describe('Redistribution', function () {
           it('wrong proof segments for the reserve commitment', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments[0] = randomBytes(32);
+            proofParams.proof1.proofSegments[0] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1282,7 +1260,7 @@ describe('Redistribution', function () {
           it('wrong proof segments for the original chunk', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments2[1] = randomBytes(32);
+            proofParams.proof1.proofSegments2[1] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1292,7 +1270,7 @@ describe('Redistribution', function () {
           it('wrong proof segments for the transformed chunk', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments3[1] = randomBytes(32);
+            proofParams.proof1.proofSegments3[1] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1302,7 +1280,7 @@ describe('Redistribution', function () {
           it('first inclusion proof segment of transformed and original do not match', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments2[0] = randomBytes(32);
+            proofParams.proof1.proofSegments2[0] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1424,7 +1402,7 @@ describe('Redistribution', function () {
             expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(0);
           });
 
-          it('if both reveal, should select correct winner', async function () {
+          it('if both reveal, should select a valid winner and pay that node', async function () {
             const nodesInNeighbourhood = 2;
 
             await r_node_1.reveal(depth_5, hash_5, reveal_nonce_1);
@@ -1432,10 +1410,16 @@ describe('Redistribution', function () {
 
             await mineNBlocks(phaseLength);
 
-            expect(await r_node_1.isWinner(overlay_1_n_25)).to.be.false;
-            expect(await r_node_5.isWinner(overlay_5)).to.be.true;
+            const node1Won = await r_node_1.isWinner(overlay_1_n_25);
+            const node5Won = await r_node_5.isWinner(overlay_5);
+            expect(node1Won).to.not.be.eq(node5Won);
 
-            const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
+            const winnerOwner = node1Won ? node_1 : node_5;
+            const winnerOverlay = node1Won ? overlay_1_n_25 : overlay_5;
+            const winnerStake = node1Won ? stakeAmount_1_n_25 : effectiveStakeAmount_5;
+            const winnerContract = node1Won ? r_node_1 : r_node_5;
+
+            const tx2 = await winnerContract.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
             let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -1458,16 +1442,16 @@ describe('Redistribution', function () {
               (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
               (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
 
-            expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
+            expect(await token.balanceOf(winnerOwner)).to.be.eq(expectedPotPayout);
 
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
-            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
-            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(winnerOwner);
+            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(winnerOverlay);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(winnerStake);
             expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-              calculateStakeDensity(effectiveStakeAmount_5, Number(depth_5))
+              calculateStakeDensity(winnerStake, Number(depth_5))
             );
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));

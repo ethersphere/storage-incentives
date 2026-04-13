@@ -55,7 +55,6 @@ const doubleStakeAmount_0 = '200000000000000000';
 const topUpForHeight1 = '100000000000000000';
 const stakeAmount_1 = '100000000000000000';
 const updateStakeAmount_0 = '633633';
-const updatedStakeAmount_0 = '100000000000633633';
 const withdrawAmount = '100000000000000000';
 const slashAmount = '50000000000000000';
 const partialSlashBalance = '50000000000000000';
@@ -210,6 +209,16 @@ describe('Staking', function () {
     await mineNBlocks(1);
 
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+  });
+
+  it('should return balance as effective stake for an unfrozen node', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await mineNBlocks(1);
+
+    const staked = await srStaker0.stakes(staker_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(staked.balance);
   });
 
   it('should schedule withdrawals and transfer tokens on applyUpdates', async function () {

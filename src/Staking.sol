@@ -442,7 +442,10 @@ contract StakeRegistry is AccessControl, Pausable {
         return success;
     }
 
-    function _previewStake(address _owner, bool includeFutureUpdates) internal view returns (StakeState memory preview) {
+    function _previewStake(
+        address _owner,
+        bool includeFutureUpdates
+    ) internal view returns (StakeState memory preview) {
         preview = _stakes[_owner];
 
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
