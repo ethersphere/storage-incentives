@@ -62,6 +62,7 @@ contract StakeRegistry is AccessControl, Pausable {
     mapping(address => StakeState) private _stakes;
     mapping(address => ScheduledUpdate[]) private _updateQueues;
     mapping(address => uint256) private _queueHeads;
+    mapping(address => bool) private _queueClosed;
 
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
@@ -101,6 +102,7 @@ contract StakeRegistry is AccessControl, Pausable {
     error HeightDecreaseNotAllowed();
     error InvalidWithdrawalAmount();
     error UpdateQueueFull();
+    error QueueClosed();
     error InvalidRedistributionContract();
 
     constructor(
@@ -245,6 +247,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
 
         uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
+        _queueClosed[msg.sender] = true;
         emit Withdrawal(msg.sender, effectiveFromRound, plannedStake.balance);
     }
 
@@ -281,6 +284,7 @@ contract StakeRegistry is AccessControl, Pausable {
         delete _stakes[msg.sender];
         delete _updateQueues[msg.sender];
         delete _queueHeads[msg.sender];
+        delete _queueClosed[msg.sender];
 
         if (payout > 0) {
             if (!ERC20(bzzToken).transfer(msg.sender, payout)) revert TransferFailed();
@@ -483,6 +487,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (head == queue.length) {
             delete _updateQueues[_owner];
             delete _queueHeads[_owner];
+            delete _queueClosed[_owner];
         } else {
             _queueHeads[_owner] = head;
         }
@@ -726,6 +731,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 _amount,
         uint8 _height
     ) internal returns (uint64 effectiveFromRound) {
+        if (_queueClosed[_owner]) revert QueueClosed();
         if (_queueLength(_owner) >= UPDATE_QUEUE_MAX_LENGTH) revert UpdateQueueFull();
 
         uint64 candidateRound = currentRound() + _minimumWait;

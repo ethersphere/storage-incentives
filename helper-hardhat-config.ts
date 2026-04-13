@@ -10,6 +10,9 @@ export interface networkConfigInfo {
   [key: string]: networkConfigItem;
 }
 
+const ROUNDS_PER_DAY = 114;
+const WITHDRAWAL_WAIT_ROUNDS = ROUNDS_PER_DAY * 28;
+
 export const networkConfig: networkConfigInfo = {
   localhost: {
     swarmNetworkId: 0,
@@ -38,7 +41,7 @@ export const networkConfig: networkConfigInfo = {
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
     stakeWaitBase: 2,
     stakeWaitOverlayChange: 2,
-    stakeWaitWithdrawal: 2,
+    stakeWaitWithdrawal: WITHDRAWAL_WAIT_ROUNDS,
   },
   testnet: {
     blockConfirmations: 6,
@@ -46,7 +49,7 @@ export const networkConfig: networkConfigInfo = {
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
     stakeWaitBase: 2,
     stakeWaitOverlayChange: 2,
-    stakeWaitWithdrawal: 2,
+    stakeWaitWithdrawal: WITHDRAWAL_WAIT_ROUNDS,
   },
   tenderly: {
     blockConfirmations: 1,
@@ -54,7 +57,7 @@ export const networkConfig: networkConfigInfo = {
     multisig: '0xb1C7F17Ed88189Abf269Bf68A3B2Ed83C5276aAe',
     stakeWaitBase: 2,
     stakeWaitOverlayChange: 2,
-    stakeWaitWithdrawal: 2,
+    stakeWaitWithdrawal: WITHDRAWAL_WAIT_ROUNDS,
   },
   mainnet: {
     blockConfirmations: 6,
@@ -62,7 +65,7 @@ export const networkConfig: networkConfigInfo = {
     multisig: '0xD5C070FEb5EA883063c183eDFF10BA6836cf9816',
     stakeWaitBase: 2,
     stakeWaitOverlayChange: 2,
-    stakeWaitWithdrawal: 2,
+    stakeWaitWithdrawal: WITHDRAWAL_WAIT_ROUNDS,
   },
 };
 

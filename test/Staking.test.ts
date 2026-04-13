@@ -40,6 +40,7 @@ const errors = {
   },
   general: {
     invalidRedistribution: 'InvalidRedistributionContract()',
+    queueClosed: 'QueueClosed()',
   },
 };
 
@@ -331,6 +332,18 @@ describe('Staking', function () {
     expect(stakedAfter.overlay).to.be.eq(zeroBytes32);
     expect(stakedAfter.balance).to.be.eq(0);
     expect(await srStaker0.lastUpdatedBlockNumberOfAddress(staker_0)).to.be.eq(0);
+  });
+
+  it('should not allow new updates to be queued after exit is scheduled', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await srStaker0.exit();
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_1, stakeAmount_0, height_0)).to.be.revertedWith(
+      errors.general.queueClosed
+    );
   });
 
   it('should not allow invalid withdrawals', async function () {
