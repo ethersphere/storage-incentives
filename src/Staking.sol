@@ -275,6 +275,8 @@ contract StakeRegistry is AccessControl, Pausable {
             } else {
                 delete _stakes[_owner];
             }
+
+            _reconcileQueuedWithdrawals(_owner);
         }
 
         emit StakeSlashed(_owner, previousOverlay, _amount);
@@ -560,6 +562,53 @@ contract StakeRegistry is AccessControl, Pausable {
 
     function _queueLength(address _owner) internal view returns (uint256) {
         return _updateQueues[_owner].length - _queueHeads[_owner];
+    }
+
+    function _reconcileQueuedWithdrawals(address _owner) internal {
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        uint256 head = _queueHeads[_owner];
+        StakeState memory preview = _stakes[_owner];
+
+        for (uint256 i = head; i < queue.length; ) {
+            ScheduledUpdate storage scheduled = queue[i];
+
+            if (scheduled.kind == UpdateKind.CreateDeposit) {
+                preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
+                preview.balance = scheduled.amount;
+                preview.height = scheduled.height;
+                preview.lastUpdatedBlockNumber = block.number;
+                preview.initialized = true;
+            } else if (scheduled.kind == UpdateKind.AddTokens) {
+                preview.balance += scheduled.amount;
+                preview.lastUpdatedBlockNumber = block.number;
+                preview.initialized = true;
+            } else if (scheduled.kind == UpdateKind.IncreaseHeight) {
+                if (preview.initialized && scheduled.height > preview.height) {
+                    preview.height = scheduled.height;
+                    preview.lastUpdatedBlockNumber = block.number;
+                }
+            } else if (scheduled.kind == UpdateKind.ChangeOverlay) {
+                if (preview.initialized) {
+                    preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
+                    preview.lastUpdatedBlockNumber = block.number;
+                }
+            } else if (scheduled.kind == UpdateKind.WithdrawTokens) {
+                if (preview.initialized) {
+                    if (scheduled.amount > preview.balance) {
+                        scheduled.amount = preview.balance;
+                    }
+
+                    preview.balance -= scheduled.amount;
+                    preview.lastUpdatedBlockNumber = block.number;
+                }
+            } else if (scheduled.kind == UpdateKind.ExitStake) {
+                delete preview;
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
     }
 
     function _pullTokens(address _owner, uint256 _amount) internal {

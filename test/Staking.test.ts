@@ -52,11 +52,14 @@ const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000
 const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
 const doubleStakeAmount_0 = '200000000000000000';
+const tripleStakeAmount_0 = '300000000000000000';
 const topUpForHeight1 = '100000000000000000';
 const stakeAmount_1 = '100000000000000000';
 const updateStakeAmount_0 = '633633';
 const withdrawAmount = '100000000000000000';
+const doubleWithdrawAmount = '200000000000000000';
 const slashAmount = '50000000000000000';
+const doubleSlashAmount = '200000000000000000';
 const partialSlashBalance = '50000000000000000';
 const height_0 = 0;
 const height_0_n_1 = 1;
@@ -356,6 +359,30 @@ describe('Staking', function () {
     await stakeRegistryRedistributor.slashDeposit(staker_0, partialSlashBalance);
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
     expect(await srStaker0.lastUpdatedBlockNumberOfAddress(staker_0)).to.be.eq(0);
+  });
+
+  it('should reduce queued withdrawals that exceed the post-slash stake', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, tripleStakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
+
+    await srStaker0.withdraw(doubleWithdrawAmount);
+
+    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+    await stakeRegistryRedistributor.slashDeposit(staker_0, doubleSlashAmount);
+
+    await advanceRounds();
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+
+    await srStaker0.applyUpdates(staker_0);
+
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
   });
 
   it('should not allow stake migration while unpaused and should include queued deposits when paused', async function () {
