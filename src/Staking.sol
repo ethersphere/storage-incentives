@@ -63,9 +63,17 @@ contract StakeRegistry is AccessControl, Pausable {
     uint64 public immutable WAIT_OVERLAY_CHANGE;
     uint64 public immutable WAIT_WITHDRAWAL;
 
-    event Deposit(address indexed owner, uint64 registeredFromRound, uint256 amount);
+    event DepositCreated(
+        address indexed owner,
+        uint64 registeredFromRound,
+        uint256 amount,
+        bytes32 overlay,
+        uint8 height
+    );
+    event TokensAdded(address indexed owner, uint64 registeredFromRound, uint256 amount);
+    event OverlayChanged(address indexed owner, uint64 registeredFromRound, bytes32 overlay);
+    event HeightIncreased(address indexed owner, uint64 registeredFromRound, uint8 height);
     event Withdrawal(address indexed owner, uint64 registeredFromRound, uint256 amount);
-    event ServiceCommitmentUpdate(address indexed owner, uint64 registeredFromRound, bytes32 overlay, uint8 height);
     event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
     event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
 
@@ -76,6 +84,7 @@ contract StakeRegistry is AccessControl, Pausable {
     error OnlyPauser();
     error BelowMinimumStake();
     error NotStaked();
+    error AlreadyStaked();
     error HeightDecreaseNotAllowed();
     error InvalidWithdrawalAmount();
     error UpdateQueueFull();
@@ -95,55 +104,72 @@ contract StakeRegistry is AccessControl, Pausable {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    function manageStake(bytes32 _setNonce, uint256 _addAmount, uint8 _height) external whenNotPaused {
+    function createDeposit(bytes32 _setNonce, uint256 _amount, uint8 _height) external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
+        if (plannedStake.initialized && plannedStake.balance > 0) revert AlreadyStaked();
+        if (_amount < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
+
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
+        _pullTokens(msg.sender, _amount);
 
-        if (!plannedStake.initialized || plannedStake.balance == 0) {
-            if (_addAmount < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
+        uint64 effectiveFromRound = _enqueueUpdate(
+            msg.sender,
+            UpdateKind.CreateDeposit,
+            WAIT_BASE,
+            _setNonce,
+            _amount,
+            _height
+        );
 
-            _pullTokens(msg.sender, _addAmount);
+        emit DepositCreated(msg.sender, effectiveFromRound, _amount, newOverlay, _height);
+    }
 
-            uint64 effectiveFromRound = _enqueueUpdate(
-                msg.sender,
-                UpdateKind.CreateDeposit,
-                WAIT_BASE,
-                _setNonce,
-                _addAmount,
-                _height
-            );
+    function addTokens(uint256 _amount) external whenNotPaused {
+        if (!addressNotFrozen(msg.sender)) revert Frozen();
 
-            emit Deposit(msg.sender, effectiveFromRound, _addAmount);
-            emit ServiceCommitmentUpdate(msg.sender, effectiveFromRound, newOverlay, _height);
-            return;
-        }
+        StakeState memory plannedStake = _previewStake(msg.sender, true);
+        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
 
+        _pullTokens(msg.sender, _amount);
+        uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _amount, 0);
+
+        emit TokensAdded(msg.sender, effectiveFromRound, _amount);
+    }
+
+    function changeOverlay(bytes32 _setNonce) external whenNotPaused {
+        if (!addressNotFrozen(msg.sender)) revert Frozen();
+
+        StakeState memory plannedStake = _previewStake(msg.sender, true);
+        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+
+        bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
+        if (newOverlay == plannedStake.overlay) return;
+
+        uint64 effectiveFromRound = _enqueueUpdate(
+            msg.sender,
+            UpdateKind.ChangeOverlay,
+            WAIT_OVERLAY_CHANGE,
+            _setNonce,
+            0,
+            0
+        );
+
+        emit OverlayChanged(msg.sender, effectiveFromRound, newOverlay);
+    }
+
+    function increaseHeight(uint8 _height) external whenNotPaused {
+        if (!addressNotFrozen(msg.sender)) revert Frozen();
+
+        StakeState memory plannedStake = _previewStake(msg.sender, true);
+        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
+        if (_height == plannedStake.height) return;
+        if (plannedStake.balance < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
 
-        if (_addAmount > 0) {
-            _pullTokens(msg.sender, _addAmount);
-            uint64 depositRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _addAmount, 0);
-            emit Deposit(msg.sender, depositRound, _addAmount);
-        }
-
-        if (_height > plannedStake.height) {
-            uint64 heightRound = _enqueueUpdate(msg.sender, UpdateKind.IncreaseHeight, WAIT_BASE, 0, 0, _height);
-            emit ServiceCommitmentUpdate(msg.sender, heightRound, plannedStake.overlay, _height);
-        }
-
-        if (newOverlay != plannedStake.overlay) {
-            uint64 overlayRound = _enqueueUpdate(
-                msg.sender,
-                UpdateKind.ChangeOverlay,
-                WAIT_OVERLAY_CHANGE,
-                _setNonce,
-                0,
-                plannedStake.height
-            );
-            emit ServiceCommitmentUpdate(msg.sender, overlayRound, newOverlay, plannedStake.height);
-        }
+        uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.IncreaseHeight, WAIT_BASE, 0, 0, _height);
+        emit HeightIncreased(msg.sender, effectiveFromRound, _height);
     }
 
     function withdraw(uint256 _amount) external whenNotPaused {

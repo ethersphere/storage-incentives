@@ -84,7 +84,8 @@ let node_2: string;
 const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
 const stakeAmount_2 = '100000000000000000';
 const effectiveStakeAmount_2 = '100000000000000000';
-const effectiveStakeAmount_2_n_2 = '100000000000000000';
+const topUpStakeAmount_2_n_2 = '300000000000000000';
+const effectiveStakeAmount_2_n_2 = '400000000000000000';
 const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_2 = '0x06';
@@ -100,7 +101,8 @@ const hash_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 const depth_3 = '0x06';
 const reveal_nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_3_n_2 = 3;
-const effectiveStakeAmount_3 = '100000000000000000';
+const topUpStakeAmount_3_n_2 = '700000000000000000';
+const effectiveStakeAmount_3 = '800000000000000000';
 
 let node_4: string;
 const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb02efb';
@@ -252,7 +254,7 @@ describe('Redistribution', function () {
     it('should not create a commit with recently staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -265,7 +267,7 @@ describe('Redistribution', function () {
     it('should create a commit with staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -279,7 +281,7 @@ describe('Redistribution', function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
 
-      await expect(sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0_n_2)).to.be.revertedWith(
+      await expect(sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0_n_2)).to.be.revertedWith(
         errors.deposit.belowMinimum
       );
     });
@@ -287,7 +289,7 @@ describe('Redistribution', function () {
     it('should create a commit with staked node and height 2', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0_n_2);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0_n_2, height_0_n_2);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0_n_2, height_0_n_2);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
@@ -346,32 +348,33 @@ describe('Redistribution', function () {
 
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0);
 
       const sr_node_1 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1.address, stakeAmount_1);
-      await sr_node_1.manageStake(nonce_1, stakeAmount_1, height_1);
+      await sr_node_1.createDeposit(nonce_1, stakeAmount_1, height_1);
 
       // 16 depth neighbourhood with node_5
       const sr_node_1_n_25 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1_n_25.address, stakeAmount_1);
-      await sr_node_1_n_25.manageStake(nonce_1_n_25, stakeAmount_1, height_1);
+      await sr_node_1_n_25.addTokens(stakeAmount_1);
+      await sr_node_1_n_25.changeOverlay(nonce_1_n_25);
 
       const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
       await mintAndApprove(deployer, node_2, sr_node_2.address, stakeAmount_2);
-      await sr_node_2.manageStake(nonce_2, stakeAmount_2, height_2);
+      await sr_node_2.createDeposit(nonce_2, stakeAmount_2, height_2);
 
       const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
       await mintAndApprove(deployer, node_3, sr_node_3.address, stakeAmount_3);
-      await sr_node_3.manageStake(nonce_3, stakeAmount_3, height_4);
+      await sr_node_3.createDeposit(nonce_3, stakeAmount_3, height_4);
 
       const sr_node_4 = await ethers.getContract('StakeRegistry', node_4);
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
-      await sr_node_4.manageStake(nonce_4, stakeAmount_3, height_4);
+      await sr_node_4.createDeposit(nonce_4, stakeAmount_3, height_4);
 
       const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
-      await sr_node_5.manageStake(nonce_5, stakeAmount_5, height_5);
+      await sr_node_5.createDeposit(nonce_5, stakeAmount_5, height_5);
 
       // We need to mine 2 rounds to make the staking possible
       // as this is the minimum time between staking and committing
@@ -527,7 +530,9 @@ describe('Redistribution', function () {
 
         // Change height and check if node is playing
         const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
-        await sr_node_3.manageStake(nonce_3, 0, height_3_n_2);
+        await mintAndApprove(deployer, node_3, sr_node_3.address, topUpStakeAmount_3_n_2);
+        await sr_node_3.addTokens(topUpStakeAmount_3_n_2);
+        await sr_node_3.increaseHeight(height_3_n_2);
         await mineNBlocks(3 * phaseLength);
         await mineToNode(redistribution, 3);
 
@@ -581,7 +586,9 @@ describe('Redistribution', function () {
       it('should create a commit with successful reveal if the overlay is within the reported depth with height 2', async function () {
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
         const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
-        await sr_node_2.manageStake(nonce_2, 0, height_2_n_2);
+        await mintAndApprove(deployer, node_2, sr_node_2.address, topUpStakeAmount_2_n_2);
+        await sr_node_2.addTokens(topUpStakeAmount_2_n_2);
+        await sr_node_2.increaseHeight(height_2_n_2);
 
         await mineToNode(redistribution, 2);
         expect(await redistribution.currentPhaseCommit()).to.be.true;
