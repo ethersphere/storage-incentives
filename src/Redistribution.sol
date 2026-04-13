@@ -18,9 +18,15 @@ interface IStakeRegistry {
 
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
+    function overlayOfAddressAtRound(address _owner, uint64 _targetRound) external view returns (bytes32);
+
     function heightOfAddress(address _owner) external view returns (uint8);
 
+    function heightOfAddressAtRound(address _owner, uint64 _targetRound) external view returns (uint8);
+
     function nodeEffectiveStake(address _owner) external view returns (uint256);
+
+    function nodeEffectiveStakeAtRound(address _owner, uint64 _targetRound) external view returns (uint256);
 }
 
 /**
@@ -805,18 +811,20 @@ contract Redistribution is AccessControl, Pausable {
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
-        uint256 _stake = Stakes.nodeEffectiveStake(_owner);
-        uint8 _depthResponsibility = _depth - Stakes.heightOfAddress(_owner);
-
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
+
+        uint64 targetRound = currentPhaseClaim() ? currentRound() + 1 : currentRound();
+        uint256 _stake = Stakes.nodeEffectiveStakeAtRound(_owner, targetRound);
 
         if (_stake == 0) {
             revert NotStaked();
         }
 
-        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depthResponsibility);
+        uint8 _depthResponsibility = _depth - Stakes.heightOfAddressAtRound(_owner, targetRound);
+
+        return inProximity(Stakes.overlayOfAddressAtRound(_owner, targetRound), currentRoundAnchor(), _depthResponsibility);
     }
 
     function isParticipatingInCurrentRound(address _owner) external view returns (bool) {

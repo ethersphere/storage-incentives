@@ -452,6 +452,21 @@ describe('Redistribution', function () {
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_3, depth_3)).to.be.true;
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_4, depth_4)).to.be.true;
       });
+
+      it('should use next-round stake state during claim-phase eligibility checks', async function () {
+        const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+
+        await sr_node_0.exit();
+        await mineNBlocks(roundLength + phaseLength * 2);
+
+        expect(await redistribution.currentRound()).to.be.eq(startRoundNumber + 1);
+        expect(await redistribution.currentPhaseClaim()).to.be.true;
+
+        await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
+          errors.commit.notStaked
+        );
+      });
     });
 
     describe('commit phase with no reveals', async function () {

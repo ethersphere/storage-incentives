@@ -113,6 +113,10 @@ contract StakeRegistry is AccessControl, Pausable {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
+    ////////////////////////////////////////
+    //           STATE CHANGING           //
+    ////////////////////////////////////////
+
     function createDeposit(bytes32 _setNonce, uint256 _amount, uint8 _height) external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
@@ -306,6 +310,10 @@ contract StakeRegistry is AccessControl, Pausable {
         _unpause();
     }
 
+    ////////////////////////////////////////
+    //            STATE READING           //
+    ////////////////////////////////////////
+
     function stakes(address _owner) public view returns (Stake memory) {
         return _toStakeView(_previewStake(_owner, false));
     }
@@ -328,6 +336,32 @@ contract StakeRegistry is AccessControl, Pausable {
 
     function heightOfAddress(address _owner) public view returns (uint8) {
         StakeState memory preview = _previewStake(_owner, false);
+        return preview.initialized ? preview.height : 0;
+    }
+
+    /**
+     * @notice Returns the effective stake that would be active in the target round.
+     */
+    function nodeEffectiveStakeAtRound(address _owner, uint64 _targetRound) public view returns (uint256) {
+        if (!_addressNotFrozenAtRound(_owner, _targetRound)) return 0;
+
+        StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
+        return preview.initialized ? preview.balance : 0;
+    }
+
+    /**
+     * @notice Returns the overlay that would be active in the target round.
+     */
+    function overlayOfAddressAtRound(address _owner, uint64 _targetRound) public view returns (bytes32) {
+        StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
+        return preview.initialized ? preview.overlay : bytes32(0);
+    }
+
+    /**
+     * @notice Returns the height that would be active in the target round.
+     */
+    function heightOfAddressAtRound(address _owner, uint64 _targetRound) public view returns (uint8) {
+        StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
         return preview.initialized ? preview.height : 0;
     }
 
@@ -432,6 +466,26 @@ contract StakeRegistry is AccessControl, Pausable {
         return IRedistribution(redistributionContract).isParticipatingInCurrentRound(_owner);
     }
 
+    function _blocksQueuedWithdrawalExecutionAtRound(
+        address _owner,
+        UpdateKind _kind,
+        uint64 _targetRound
+    ) internal view returns (bool) {
+        if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
+            return false;
+        }
+
+        if (!_addressNotFrozenAtRound(_owner, _targetRound)) {
+            return true;
+        }
+
+        if (_targetRound <= currentRound()) {
+            return IRedistribution(redistributionContract).isParticipatingInCurrentRound(_owner);
+        }
+
+        return false;
+    }
+
     function _supportsParticipationCheck(address _redistributionContract) internal view returns (bool) {
         if (_redistributionContract.code.length == 0) {
             return false;
@@ -460,6 +514,29 @@ contract StakeRegistry is AccessControl, Pausable {
                 break;
             }
             if (!includeFutureUpdates && _blocksQueuedWithdrawalExecution(_owner, scheduled.kind)) {
+                break;
+            }
+
+            preview = _applyPreviewUpdate(_owner, preview, scheduled);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _previewStakeAtRound(address _owner, uint64 _targetRound) internal view returns (StakeState memory preview) {
+        preview = _stakes[_owner];
+
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        uint256 head = _queueHeads[_owner];
+
+        for (uint256 i = head; i < queue.length; ) {
+            ScheduledUpdate storage scheduled = queue[i];
+            if (scheduled.effectiveFromRound > _targetRound) {
+                break;
+            }
+            if (_blocksQueuedWithdrawalExecutionAtRound(_owner, scheduled.kind, _targetRound)) {
                 break;
             }
 
@@ -562,6 +639,19 @@ contract StakeRegistry is AccessControl, Pausable {
 
     function _queueLength(address _owner) internal view returns (uint256) {
         return _updateQueues[_owner].length - _queueHeads[_owner];
+    }
+
+    function _addressNotFrozenAtRound(address _owner, uint64 _targetRound) internal view returns (bool) {
+        StakeState storage stake = _stakes[_owner];
+        if (!stake.initialized) {
+            return true;
+        }
+
+        if (_targetRound <= currentRound()) {
+            return stake.frozenUntilBlock < block.number;
+        }
+
+        return stake.frozenUntilBlock < uint256(_targetRound) * ROUND_LENGTH;
     }
 
     function _reconcileQueuedWithdrawals(address _owner) internal {

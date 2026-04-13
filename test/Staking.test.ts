@@ -203,6 +203,26 @@ describe('Staking', function () {
     await expect(srStaker0.increaseHeight(height_0)).to.be.revertedWith(errors.deposit.heightDecrease);
   });
 
+  it('should preview queued stake state at a target round', async function () {
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    await activateStake(srStaker1, staker_1, nonce_1, stakeAmount_1, height_1);
+
+    const currentRound = await srStaker1.currentRound();
+
+    await mintAndApprove(staker_1, srStaker1.address, topUpForHeight1);
+    await srStaker1.addTokens(topUpForHeight1);
+    await srStaker1.changeOverlay(nonce_1_n_25);
+    await srStaker1.increaseHeight(height_1_n_1);
+
+    expect(await srStaker1.nodeEffectiveStakeAtRound(staker_1, currentRound.add(1))).to.be.eq(stakeAmount_1);
+    expect(await srStaker1.overlayOfAddressAtRound(staker_1, currentRound.add(1))).to.be.eq(overlay_1);
+    expect(await srStaker1.heightOfAddressAtRound(staker_1, currentRound.add(1))).to.be.eq(height_1);
+
+    expect(await srStaker1.nodeEffectiveStakeAtRound(staker_1, currentRound.add(2))).to.be.eq(doubleStakeAmount_0);
+    expect(await srStaker1.overlayOfAddressAtRound(staker_1, currentRound.add(2))).to.be.eq(overlay_1_n_25);
+    expect(await srStaker1.heightOfAddressAtRound(staker_1, currentRound.add(2))).to.be.eq(height_1_n_1);
+  });
+
   it('should keep effective stake equal to balance after oracle price changes', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
