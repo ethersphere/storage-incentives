@@ -38,6 +38,9 @@ const errors = {
     notCurrentlyPaused: 'Pausable: not paused',
     onlyPauseCanUnPause: 'OnlyPauser()',
   },
+  general: {
+    invalidRedistribution: 'InvalidRedistributionContract()',
+  },
 };
 
 const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
@@ -102,10 +105,21 @@ describe('Staking', function () {
   });
 
   it('should deploy StakeRegistry with queue wait parameters', async function () {
+    const redistribution = await ethers.getContract('Redistribution');
     expect(stakeRegistry.address).to.be.properAddress;
     expect(await stakeRegistry.WAIT_BASE()).to.be.eq(2);
     expect(await stakeRegistry.WAIT_OVERLAY_CHANGE()).to.be.eq(2);
     expect(await stakeRegistry.WAIT_WITHDRAWAL()).to.be.eq(2);
+    expect(await stakeRegistry.redistributionContract()).to.be.eq(redistribution.address);
+  });
+
+  it('should only allow relinking redistribution to a valid redistributor contract', async function () {
+    const redistribution = await ethers.getContract('Redistribution');
+
+    await expect(stakeRegistry.setRedistributionContract(token.address)).to.be.revertedWith(
+      errors.general.invalidRedistribution
+    );
+    await expect(stakeRegistry.setRedistributionContract(redistribution.address)).to.not.be.reverted;
   });
 
   it('should schedule a new deposit and activate it after the base delay', async function () {

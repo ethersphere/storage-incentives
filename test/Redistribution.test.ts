@@ -187,6 +187,7 @@ const errors = {
   claim: {
     noReveals: 'NoReveals()',
     alreadyClaimed: 'AlreadyClaimed()',
+    postageWithdrawFailed: 'OnlyRedistributor()',
     randomCheckFailed: 'RandomElementCheckFailed()',
     outOfDepth: 'OutOfDepth()',
     reserveCheckFailed: 'ReserveCheckFailed()',
@@ -1491,6 +1492,30 @@ describe('Redistribution', function () {
             expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
 
             await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
+          });
+
+          it('should revert claim when postage payout fails and allow retry', async function () {
+            await r_node_1.reveal(depth_5, hash_5, reveal_nonce_1);
+            await r_node_5.reveal(depth_5, hash_5, reveal_nonce_5);
+
+            await mineNBlocks(phaseLength);
+
+            const postageDeployer = await ethers.getContract('PostageStamp', deployer);
+            const redistribution = await ethers.getContract('Redistribution');
+            const redistributorRole = await postageDeployer.REDISTRIBUTOR_ROLE();
+            const claimRoundBefore = await redistribution.currentClaimRound();
+
+            await postageDeployer.revokeRole(redistributorRole, redistribution.address);
+
+            await expect(r_node_5.claim(proof1, proof2, proofLast)).to.be.revertedWith(
+              errors.claim.postageWithdrawFailed
+            );
+            expect(await redistribution.currentClaimRound()).to.be.eq(claimRoundBefore);
+
+            await postageDeployer.grantRole(redistributorRole, redistribution.address);
+
+            await expect(r_node_5.claim(proof1, proof2, proofLast)).to.not.be.reverted;
+            expect(await redistribution.currentClaimRound()).to.be.eq(await redistribution.currentRound());
           });
 
           it('if incorrect winner claims, correct winner is paid', async function () {

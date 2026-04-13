@@ -12,12 +12,6 @@ interface IPriceOracle {
 }
 
 interface IStakeRegistry {
-    struct Stake {
-        bytes32 overlay;
-        uint256 stakeAmount;
-        uint256 lastUpdatedBlockNumber;
-    }
-
     function freezeDeposit(address _owner, uint256 _time) external;
 
     function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
@@ -199,11 +193,6 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Output external call status
      */
     event PriceAdjustmentSkipped(uint16 redundancyCount);
-
-    /**
-     * @dev Withdraw not successful in claim
-     */
-    event WithdrawFailed(address owner);
 
     /**
      * @dev Logs that an overlay has revealed
@@ -476,13 +465,7 @@ contract Redistribution is AccessControl, Pausable {
 
         estimateSize(entryProofLast.proofSegments[0]);
 
-        // Do the check if the withdraw was success
-        (bool success, ) = address(PostageContract).call(
-            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
-        );
-        if (!success) {
-            emit WithdrawFailed(winnerSelected.owner);
-        }
+        PostageContract.withdraw(winnerSelected.owner);
 
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());

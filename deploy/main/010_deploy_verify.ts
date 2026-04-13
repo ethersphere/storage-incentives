@@ -28,8 +28,10 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
     // Verify staking
     const staking = await get('StakeRegistry');
+    const redistribution = await get('Redistribution');
     const argStaking = [
       token.address,
+      redistribution.address,
       swarmNetworkID,
       config.stakeWaitBase || 2,
       config.stakeWaitOverlayChange || 2,
@@ -41,7 +43,6 @@ const func: DeployFunction = async function ({ deployments, network }) {
     log('----------------------------------------------------');
 
     // Verify redistribution
-    const redistribution = await get('Redistribution');
     const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
 
     log('Verifying...');

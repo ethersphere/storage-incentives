@@ -93,17 +93,20 @@ contract StakeRegistry is AccessControl, Pausable {
     error HeightDecreaseNotAllowed();
     error InvalidWithdrawalAmount();
     error UpdateQueueFull();
-    error RedistributionNotConfigured();
+    error InvalidRedistributionContract();
 
     constructor(
         address _bzzToken,
+        address _redistributionContract,
         uint64 _NetworkId,
         uint64 _waitBase,
         uint64 _waitOverlayChange,
         uint64 _waitWithdrawal
     ) {
+        if (_redistributionContract == address(0)) revert InvalidRedistributionContract();
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
+        redistributionContract = _redistributionContract;
         WAIT_BASE = _waitBase;
         WAIT_OVERLAY_CHANGE = _waitOverlayChange;
         WAIT_WITHDRAWAL = _waitWithdrawal;
@@ -284,6 +287,10 @@ contract StakeRegistry is AccessControl, Pausable {
 
     function setRedistributionContract(address _redistributionContract) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
+        if (
+            !hasRole(REDISTRIBUTOR_ROLE, _redistributionContract) ||
+            !_supportsParticipationCheck(_redistributionContract)
+        ) revert InvalidRedistributionContract();
         redistributionContract = _redistributionContract;
     }
 
@@ -420,9 +427,19 @@ contract StakeRegistry is AccessControl, Pausable {
             return true;
         }
 
-        if (redistributionContract == address(0)) revert RedistributionNotConfigured();
-
         return IRedistribution(redistributionContract).isParticipatingInCurrentRound(_owner);
+    }
+
+    function _supportsParticipationCheck(address _redistributionContract) internal view returns (bool) {
+        if (_redistributionContract.code.length == 0) {
+            return false;
+        }
+
+        (bool success, ) = _redistributionContract.staticcall(
+            abi.encodeWithSelector(IRedistribution.isParticipatingInCurrentRound.selector, address(0))
+        );
+
+        return success;
     }
 
     function _previewStake(address _owner, bool includeFutureUpdates) internal view returns (StakeState memory preview) {

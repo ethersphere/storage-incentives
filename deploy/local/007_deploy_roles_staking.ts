@@ -10,7 +10,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 
   const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
   await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
-  await execute('StakeRegistry', { from: deployer }, 'setRedistributionContract', redisAddress);
   log('----------------------------------------------------');
 };
 
