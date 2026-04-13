@@ -230,7 +230,6 @@ contract Redistribution is AccessControl, Pausable {
     error CommitRoundOver(); // Commit phase in this round is over
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
     error NotMatchingOwner(); // Sender of commit is not matching the overlay address
-    error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
     error NotStaked(); // Node didn't add any staking
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommitted(); // Node already committed in this round
@@ -293,15 +292,10 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
-        uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
         uint8 _height = Stakes.heightOfAddress(msg.sender);
 
-        if (_lastUpdate == 0) {
+        if (_stake == 0) {
             revert NotStaked();
-        }
-
-        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
-            revert MustStake2Rounds();
         }
 
         if (cr > _roundNumber) {
@@ -828,19 +822,15 @@ contract Redistribution is AccessControl, Pausable {
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
-        uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(_owner);
+        uint256 _stake = Stakes.nodeEffectiveStake(_owner);
         uint8 _depthResponsibility = _depth - Stakes.heightOfAddress(_owner);
 
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (_lastUpdate == 0) {
+        if (_stake == 0) {
             revert NotStaked();
-        }
-
-        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
-            revert MustStake2Rounds();
         }
 
         return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depthResponsibility);

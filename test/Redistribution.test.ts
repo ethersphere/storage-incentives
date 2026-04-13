@@ -59,7 +59,7 @@ const depth_0 = '0x06';
 const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
 const stakeAmount_0_n_2 = '400000000000000000';
-const effectiveStakeAmount_0 = '99999999999984000';
+const effectiveStakeAmount_0 = '100000000000000000';
 const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_0 = 0;
 const height_0_n_2 = 2;
@@ -83,7 +83,7 @@ const height_1 = 0;
 let node_2: string;
 const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
 const stakeAmount_2 = '100000000000000000';
-const effectiveStakeAmount_2 = '99999999999984000';
+const effectiveStakeAmount_2 = '100000000000000000';
 const effectiveStakeAmount_2_n_2 = '100000000000000000';
 const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
@@ -112,7 +112,7 @@ const height_4 = 0;
 let node_5: string;
 const overlay_5 = '0x676720d79d609ed462fadf6f14eb1bf9ec1a90999dd45a671d79a89c7b5ac9d8';
 const stakeAmount_5 = '100000000000000000';
-const effectiveStakeAmount_5 = '99999999999984000';
+const effectiveStakeAmount_5 = '100000000000000000';
 const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003ba6';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const { depth: depth_5, hash: hash_5 } = node5_proof1;
@@ -173,7 +173,6 @@ const errors = {
   commit: {
     notOwner: 'NotMatchingOwner()',
     notStaked: 'NotStaked()',
-    mustStake2Rounds: 'MustStake2Rounds()',
     alreadyCommitted: 'AlreadyCommitted()',
   },
   reveal: {
@@ -259,7 +258,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.mustStake2Rounds
+        errors.commit.notStaked
       );
     });
 
@@ -272,7 +271,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.mustStake2Rounds
+        errors.commit.notStaked
       );
     });
 
@@ -294,7 +293,7 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.mustStake2Rounds
+        errors.commit.notStaked
       );
     });
   });
@@ -781,7 +780,7 @@ describe('Redistribution', function () {
 
         await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_2))
           .to.emit(redistribution, 'Revealed')
-          .withArgs(currentRound, overlay_2, effectiveStakeAmount_2, '6399999999998976000', hash_2, parseInt(depth_2));
+          .withArgs(currentRound, overlay_2, effectiveStakeAmount_2, '6400000000000000000', hash_2, parseInt(depth_2));
       });
     });
 

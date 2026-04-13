@@ -4,10 +4,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
-interface IPriceOracle {
-    function currentPrice() external view returns (uint32);
-}
-
 /**
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
@@ -17,223 +13,232 @@ interface IPriceOracle {
  */
 
 contract StakeRegistry is AccessControl, Pausable {
-    // ----------------------------- State variables ------------------------------
+    uint256 private constant ROUND_LENGTH = 152;
+    uint256 private constant MIN_STAKE = 100000000000000000;
+    uint256 private constant UPDATE_QUEUE_MAX_LENGTH = 10;
+
+    enum UpdateKind {
+        CreateDeposit,
+        AddTokens,
+        IncreaseHeight,
+        ChangeOverlay,
+        WithdrawTokens,
+        ExitStake
+    }
 
     struct Stake {
-        // Overlay of the node that is being staked
         bytes32 overlay;
-        // Stake balance expressed through price oracle
-        uint256 committedStake;
-        // Stake balance expressed in BZZ
-        uint256 potentialStake;
-        // Block height the stake was updated, also used as flag to check if the stake is set
+        uint256 balance;
         uint256 lastUpdatedBlockNumber;
-        // Node indicating its increased reserve
+        uint256 frozenUntilBlock;
         uint8 height;
     }
 
-    // Associate every stake id with node address data.
-    mapping(address => Stake) public stakes;
+    struct StakeState {
+        bytes32 overlay;
+        uint256 balance;
+        uint256 lastUpdatedBlockNumber;
+        uint256 frozenUntilBlock;
+        uint8 height;
+        bool initialized;
+    }
 
-    // Role allowed to freeze and slash entries
+    struct ScheduledUpdate {
+        UpdateKind kind;
+        uint64 effectiveFromRound;
+        bytes32 nonce;
+        uint256 amount;
+        uint8 height;
+    }
+
+    mapping(address => StakeState) private _stakes;
+    mapping(address => ScheduledUpdate[]) private _updateQueues;
+    mapping(address => uint256) private _queueHeads;
+
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
-    // Swarm network ID
-    uint64 NetworkId;
-
-    // The miniumum stake allowed to be staked using the Staking contract.
-    uint64 private constant MIN_STAKE = 100000000000000000;
-
-    // Address of the staked ERC20 token
+    uint64 public NetworkId;
     address public immutable bzzToken;
+    uint64 public immutable WAIT_BASE;
+    uint64 public immutable WAIT_OVERLAY_CHANGE;
+    uint64 public immutable WAIT_WITHDRAWAL;
 
-    // The address of the linked PriceOracle contract.
-    IPriceOracle public OracleContract;
-
-    // ----------------------------- Events ------------------------------
-
-    /**
-     * @dev Emitted when a stake is created or updated by `owner` of the `overlay`.
-     */
-    event StakeUpdated(
-        address indexed owner,
-        uint256 committedStake,
-        uint256 potentialStake,
-        bytes32 overlay,
-        uint256 lastUpdatedBlock,
-        uint8 height
-    );
-
-    /**
-     * @dev Emitted when a stake for address `slashed` is slashed by `amount`.
-     */
+    event Deposit(address indexed owner, uint64 registeredFromRound, uint256 amount);
+    event Withdrawal(address indexed owner, uint64 registeredFromRound, uint256 amount);
+    event ServiceCommitmentUpdate(address indexed owner, uint64 registeredFromRound, bytes32 overlay, uint8 height);
     event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
-
-    /**
-     * @dev Emitted when a stake for address `frozen` is frozen for `time` blocks.
-     */
     event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
 
-    /**
-     * @dev Emitted when a address changes overlay it uses
-     */
-    event OverlayChanged(address owner, bytes32 overlay);
+    error TransferFailed();
+    error Frozen();
+    error Unauthorized();
+    error OnlyRedistributor();
+    error OnlyPauser();
+    error BelowMinimumStake();
+    error NotStaked();
+    error HeightDecreaseNotAllowed();
+    error InvalidWithdrawalAmount();
+    error UpdateQueueFull();
 
-    /**
-     * @dev Emitted when a stake for address is withdrawn
-     */
-    event StakeWithdrawn(address node, uint256 amount);
-
-    // ----------------------------- Errors ------------------------------
-
-    error TransferFailed(); // Used when token transfers fail
-    error Frozen(); // Used when an action cannot proceed because the overlay is frozen
-    error Unauthorized(); // Used where only the owner can perform the action
-    error OnlyRedistributor(); // Used when only the redistributor role is allowed
-    error OnlyPauser(); // Used when only the pauser role is allowed
-    error BelowMinimumStake(); // Node participating in game has stake below minimum treshold
-    error DecreasedCommitment(); // When new commitment would be lower than previous one
-
-    // ----------------------------- CONSTRUCTOR ------------------------------
-
-    /**
-     * @param _bzzToken Address of the staked ERC20 token
-     * @param _NetworkId Swarm network ID
-     */
-    constructor(address _bzzToken, uint64 _NetworkId, address _oracleContract) {
+    constructor(
+        address _bzzToken,
+        uint64 _NetworkId,
+        uint64 _waitBase,
+        uint64 _waitOverlayChange,
+        uint64 _waitWithdrawal
+    ) {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
-        OracleContract = IPriceOracle(_oracleContract);
+        WAIT_BASE = _waitBase;
+        WAIT_OVERLAY_CHANGE = _waitOverlayChange;
+        WAIT_WITHDRAWAL = _waitWithdrawal;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
-    ////////////////////////////////////////
-    //            STATE SETTING           //
-    ////////////////////////////////////////
-
-    /**
-     * @notice Create a new stake or update an existing one, change overlay of node
-     * @dev At least `_initialBalancePerChunk*2^depth` number of tokens need to be preapproved for this contract.
-     * @param _setNonce Nonce that was used for overlay calculation.
-     * @param _addAmount Deposited amount of ERC20 tokens, equals to added Potential stake value
-     * @param _height increased reserve by registering the number of doublings
-     */
     function manageStake(bytes32 _setNonce, uint256 _addAmount, uint8 _height) external whenNotPaused {
-        bytes32 _previousOverlay = stakes[msg.sender].overlay;
-        uint256 _stakingSet = stakes[msg.sender].lastUpdatedBlockNumber;
-        bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
+        if (!addressNotFrozen(msg.sender)) revert Frozen();
 
-        // First time adding stake, check the minimum is added, take into account height
-        if (_addAmount < MIN_STAKE * 2 ** _height && _stakingSet == 0) {
-            revert BelowMinimumStake();
-        }
+        StakeState memory plannedStake = _previewStake(msg.sender, true);
+        bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
 
-        if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
-        // Set current values, used also when changing overlay
-        uint256 updatedPotentialStake = stakes[msg.sender].potentialStake;
-        uint256 updatedCommittedStake = stakes[msg.sender].committedStake;
-        uint256 previousCommittedStake = updatedCommittedStake;
+        if (!plannedStake.initialized || plannedStake.balance == 0) {
+            if (_addAmount < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
 
-        // Only update stake values if _addAmount is greater than 0
-        if (_addAmount > 0) {
-            updatedPotentialStake = stakes[msg.sender].potentialStake + _addAmount;
+            _pullTokens(msg.sender, _addAmount);
 
-            // Calculate new committed stake
-            uint256 newCommittedStake = updatedPotentialStake / (OracleContract.currentPrice() * 2 ** _height);
-
-            // Never allow commitment to decrease
-            if (newCommittedStake < previousCommittedStake) {
-                revert DecreasedCommitment();
-            }
-
-            updatedCommittedStake = newCommittedStake;
-        }
-
-        stakes[msg.sender] = Stake({
-            overlay: _newOverlay,
-            committedStake: updatedCommittedStake,
-            potentialStake: updatedPotentialStake,
-            lastUpdatedBlockNumber: block.number,
-            height: _height
-        });
-
-        // Transfer tokens and emit event that stake has been updated
-        if (_addAmount > 0) {
-            if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _addAmount)) revert TransferFailed();
-            emit StakeUpdated(
+            uint64 effectiveFromRound = _enqueueUpdate(
                 msg.sender,
-                updatedCommittedStake,
-                updatedPotentialStake,
-                _newOverlay,
-                block.number,
+                UpdateKind.CreateDeposit,
+                WAIT_BASE,
+                _setNonce,
+                _addAmount,
                 _height
             );
+
+            emit Deposit(msg.sender, effectiveFromRound, _addAmount);
+            emit ServiceCommitmentUpdate(msg.sender, effectiveFromRound, newOverlay, _height);
+            return;
         }
 
-        // Emit overlay change event
-        if (_previousOverlay != _newOverlay) {
-            emit OverlayChanged(msg.sender, _newOverlay);
+        if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
+
+        if (_addAmount > 0) {
+            _pullTokens(msg.sender, _addAmount);
+            uint64 depositRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _addAmount, 0);
+            emit Deposit(msg.sender, depositRound, _addAmount);
+        }
+
+        if (_height > plannedStake.height) {
+            uint64 heightRound = _enqueueUpdate(msg.sender, UpdateKind.IncreaseHeight, WAIT_BASE, 0, 0, _height);
+            emit ServiceCommitmentUpdate(msg.sender, heightRound, plannedStake.overlay, _height);
+        }
+
+        if (newOverlay != plannedStake.overlay) {
+            uint64 overlayRound = _enqueueUpdate(
+                msg.sender,
+                UpdateKind.ChangeOverlay,
+                WAIT_OVERLAY_CHANGE,
+                _setNonce,
+                0,
+                plannedStake.height
+            );
+            emit ServiceCommitmentUpdate(msg.sender, overlayRound, newOverlay, plannedStake.height);
         }
     }
 
-    /**
-     * @dev Withdraw node stake surplus
-     */
-    function withdrawFromStake() external {
-        uint256 _potentialStake = stakes[msg.sender].potentialStake;
-        uint256 _surplusStake = _potentialStake -
-            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake, stakes[msg.sender].height);
+    function withdraw(uint256 _amount) external whenNotPaused {
+        if (!addressNotFrozen(msg.sender)) revert Frozen();
+        if (_amount == 0) revert InvalidWithdrawalAmount();
 
-        if (_surplusStake > 0) {
-            stakes[msg.sender].potentialStake -= _surplusStake;
-            if (!ERC20(bzzToken).transfer(msg.sender, _surplusStake)) revert TransferFailed();
-            emit StakeWithdrawn(msg.sender, _surplusStake);
-        }
+        StakeState memory plannedStake = _previewStake(msg.sender, true);
+        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+        if (_amount >= plannedStake.balance) revert BelowMinimumStake();
+        if (plannedStake.balance - _amount < _minimumStakeForHeight(plannedStake.height)) revert BelowMinimumStake();
+
+        uint64 effectiveFromRound = _enqueueUpdate(
+            msg.sender,
+            UpdateKind.WithdrawTokens,
+            WAIT_WITHDRAWAL,
+            0,
+            _amount,
+            0
+        );
+        emit Withdrawal(msg.sender, effectiveFromRound, _amount);
     }
 
-    /**
-     * @dev Migrate stake only when the staking contract is paused,
-     * can only be called by the owner of the stake
-     */
+    function exit() external whenNotPaused {
+        if (!addressNotFrozen(msg.sender)) revert Frozen();
+
+        StakeState memory plannedStake = _previewStake(msg.sender, true);
+        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+
+        uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
+        emit Withdrawal(msg.sender, effectiveFromRound, plannedStake.balance);
+    }
+
+    function applyUpdates(address _owner) public {
+        _applyReadyUpdates(_owner);
+    }
+
     function migrateStake() external whenPaused {
-        // We take out all the stake so user can migrate stake to other contract
-        if (lastUpdatedBlockNumberOfAddress(msg.sender) != 0) {
-            if (!ERC20(bzzToken).transfer(msg.sender, stakes[msg.sender].potentialStake)) revert TransferFailed();
-            delete stakes[msg.sender];
+        _applyReadyUpdates(msg.sender);
+
+        uint256 payout = _stakes[msg.sender].balance;
+        ScheduledUpdate[] storage queue = _updateQueues[msg.sender];
+        uint256 head = _queueHeads[msg.sender];
+
+        for (uint256 i = head; i < queue.length; ) {
+            ScheduledUpdate storage scheduled = queue[i];
+            if (scheduled.kind == UpdateKind.CreateDeposit || scheduled.kind == UpdateKind.AddTokens) {
+                payout += scheduled.amount;
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        delete _stakes[msg.sender];
+        delete _updateQueues[msg.sender];
+        delete _queueHeads[msg.sender];
+
+        if (payout > 0) {
+            if (!ERC20(bzzToken).transfer(msg.sender, payout)) revert TransferFailed();
         }
     }
 
-    /**
-     * @dev Freeze an existing stake, can only be called by the redistributor
-     * @param _owner the addres selected
-     * @param _time penalty length in blocknumbers
-     */
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
-            stakes[_owner].lastUpdatedBlockNumber = block.number + _time;
-            emit StakeFrozen(_owner, stakes[_owner].overlay, _time);
+        _applyReadyUpdates(_owner);
+
+        if (_stakes[_owner].initialized) {
+            _stakes[_owner].frozenUntilBlock = block.number + _time;
+            emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
         }
     }
 
-    /**
-     * @dev Slash an existing stake, can only be called by the `redistributor`
-     * @param _owner the _owner adress selected
-     * @param _amount the amount to be slashed
-     */
     function slashDeposit(address _owner, uint256 _amount) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (stakes[_owner].lastUpdatedBlockNumber != 0) {
-            if (stakes[_owner].potentialStake > _amount) {
-                stakes[_owner].potentialStake -= _amount;
-                stakes[_owner].lastUpdatedBlockNumber = block.number;
+        _applyReadyUpdates(_owner);
+
+        StakeState storage stake = _stakes[_owner];
+        bytes32 previousOverlay = stake.overlay;
+
+        if (stake.initialized) {
+            if (stake.balance > _amount) {
+                stake.balance -= _amount;
+                stake.lastUpdatedBlockNumber = block.number;
+            } else if (_queueLength(_owner) > 0) {
+                stake.balance = 0;
+                stake.lastUpdatedBlockNumber = block.number;
             } else {
-                delete stakes[_owner];
+                delete _stakes[_owner];
             }
         }
-        emit StakeSlashed(_owner, stakes[_owner].overlay, _amount);
+
+        emit StakeSlashed(_owner, previousOverlay, _amount);
     }
 
     function changeNetworkId(uint64 _NetworkId) external {
@@ -241,115 +246,274 @@ contract StakeRegistry is AccessControl, Pausable {
         NetworkId = _NetworkId;
     }
 
-    /**
-     * @dev Pause the contract. The contract is provably stopped by renouncing
-     the pauser role and the admin role after pausing, can only be called by the `PAUSER`
-     */
     function pause() public {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _pause();
     }
 
-    /**
-     * @dev Unpause the contract, can only be called by the pauser when paused
-     */
     function unPause() public {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _unpause();
     }
 
-    ////////////////////////////////////////
-    //            STATE READING           //
-    ////////////////////////////////////////
-
-    /**
-     * @dev Checks to see if `address` is frozen.
-     * @param _owner owner of staked address
-     *
-     * Returns a boolean value indicating whether the operation succeeded.
-     */
-    function addressNotFrozen(address _owner) internal view returns (bool) {
-        return stakes[_owner].lastUpdatedBlockNumber < block.number;
+    function stakes(address _owner) public view returns (Stake memory) {
+        return _toStakeView(_previewStake(_owner, false));
     }
 
-    /**
-     * @dev Returns the current `effectiveStake` of `address`. previously usable stake
-     * @param _owner _owner of node
-     */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
-        return
-            addressNotFrozen(_owner)
-                ? calculateEffectiveStake(
-                    stakes[_owner].committedStake,
-                    stakes[_owner].potentialStake,
-                    stakes[_owner].height
-                )
-                : 0;
+        if (!addressNotFrozen(_owner)) return 0;
+
+        StakeState memory preview = _previewStake(_owner, false);
+        return preview.initialized ? preview.balance : 0;
     }
 
-    /**
-     * @dev Check the amount that is possible to withdraw as surplus
-     */
-    function withdrawableStake() public view returns (uint256) {
-        uint256 _potentialStake = stakes[msg.sender].potentialStake;
-        return
-            _potentialStake -
-            calculateEffectiveStake(stakes[msg.sender].committedStake, _potentialStake, stakes[msg.sender].height);
-    }
-
-    /**
-     * @dev Returns the `lastUpdatedBlockNumber` of `address`.
-     */
     function lastUpdatedBlockNumberOfAddress(address _owner) public view returns (uint256) {
-        return stakes[_owner].lastUpdatedBlockNumber;
+        return _stakes[_owner].initialized ? _stakes[_owner].lastUpdatedBlockNumber : 0;
     }
 
-    /**
-     * @dev Returns the currently used overlay of the address.
-     * @param _owner address of node
-     */
     function overlayOfAddress(address _owner) public view returns (bytes32) {
-        return stakes[_owner].overlay;
+        StakeState memory preview = _previewStake(_owner, false);
+        return preview.initialized ? preview.overlay : bytes32(0);
     }
 
-    /**
-     * @dev Returns the currently height of the address.
-     * @param _owner address of node
-     */
     function heightOfAddress(address _owner) public view returns (uint8) {
-        return stakes[_owner].height;
+        StakeState memory preview = _previewStake(_owner, false);
+        return preview.initialized ? preview.height : 0;
     }
 
-    function calculateEffectiveStake(
-        uint256 committedStake,
-        uint256 potentialStakeBalance,
-        uint8 height
-    ) internal view returns (uint256) {
-        // Calculate the product of committedStake and unitPrice to get price in BZZ
-        uint256 committedStakeBzz = (2 ** height) * committedStake * OracleContract.currentPrice();
+    function currentRound() public view returns (uint64) {
+        return uint64(block.number / ROUND_LENGTH);
+    }
 
-        // Return the minimum value between committedStakeBzz and potentialStakeBalance
-        if (committedStakeBzz < potentialStakeBalance) {
-            return committedStakeBzz;
+    function addressNotFrozen(address _owner) internal view returns (bool) {
+        StakeState storage stake = _stakes[_owner];
+        return !stake.initialized || stake.frozenUntilBlock < block.number;
+    }
+
+    function _applyReadyUpdates(address _owner) internal {
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        uint256 head = _queueHeads[_owner];
+        uint64 roundNumber = currentRound();
+
+        while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
+            _applyStoredUpdate(_owner, queue[head]);
+            delete queue[head];
+            unchecked {
+                ++head;
+            }
+        }
+
+        if (head == queue.length) {
+            delete _updateQueues[_owner];
+            delete _queueHeads[_owner];
         } else {
-            return potentialStakeBalance;
+            _queueHeads[_owner] = head;
         }
     }
 
-    /**
-     * @dev Please both Endians 🥚.
-     * @param input Eth address used for overlay calculation.
-     */
+    function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
+        StakeState storage stake = _stakes[_owner];
+
+        if (scheduled.kind == UpdateKind.CreateDeposit) {
+            stake.overlay = _deriveOverlay(_owner, scheduled.nonce);
+            stake.balance = scheduled.amount;
+            stake.height = scheduled.height;
+            stake.lastUpdatedBlockNumber = block.number;
+            stake.initialized = true;
+            return;
+        }
+
+        if (scheduled.kind == UpdateKind.AddTokens) {
+            stake.balance += scheduled.amount;
+            stake.lastUpdatedBlockNumber = block.number;
+            stake.initialized = true;
+            return;
+        }
+
+        if (scheduled.kind == UpdateKind.IncreaseHeight) {
+            if (stake.initialized && scheduled.height > stake.height) {
+                stake.height = scheduled.height;
+                stake.lastUpdatedBlockNumber = block.number;
+            }
+            return;
+        }
+
+        if (scheduled.kind == UpdateKind.ChangeOverlay) {
+            if (stake.initialized) {
+                stake.overlay = _deriveOverlay(_owner, scheduled.nonce);
+                stake.lastUpdatedBlockNumber = block.number;
+            }
+            return;
+        }
+
+        if (scheduled.kind == UpdateKind.WithdrawTokens) {
+            if (stake.initialized) {
+                if (scheduled.amount >= stake.balance) {
+                    stake.balance = 0;
+                } else {
+                    stake.balance -= scheduled.amount;
+                }
+                stake.lastUpdatedBlockNumber = block.number;
+
+                if (!ERC20(bzzToken).transfer(_owner, scheduled.amount)) revert TransferFailed();
+            }
+            return;
+        }
+
+        if (scheduled.kind == UpdateKind.ExitStake) {
+            uint256 balance = stake.balance;
+            delete _stakes[_owner];
+            if (balance > 0 && !ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
+        }
+    }
+
+    function _previewStake(address _owner, bool includeFutureUpdates) internal view returns (StakeState memory preview) {
+        preview = _stakes[_owner];
+
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        uint256 head = _queueHeads[_owner];
+        uint64 roundNumber = currentRound();
+
+        for (uint256 i = head; i < queue.length; ) {
+            ScheduledUpdate storage scheduled = queue[i];
+            if (!includeFutureUpdates && scheduled.effectiveFromRound > roundNumber) {
+                break;
+            }
+
+            preview = _applyPreviewUpdate(_owner, preview, scheduled);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _applyPreviewUpdate(
+        address _owner,
+        StakeState memory preview,
+        ScheduledUpdate storage scheduled
+    ) internal view returns (StakeState memory) {
+        if (scheduled.kind == UpdateKind.CreateDeposit) {
+            preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
+            preview.balance = scheduled.amount;
+            preview.height = scheduled.height;
+            preview.lastUpdatedBlockNumber = block.number;
+            preview.initialized = true;
+            return preview;
+        }
+
+        if (scheduled.kind == UpdateKind.AddTokens) {
+            preview.balance += scheduled.amount;
+            preview.lastUpdatedBlockNumber = block.number;
+            preview.initialized = true;
+            return preview;
+        }
+
+        if (scheduled.kind == UpdateKind.IncreaseHeight) {
+            if (preview.initialized && scheduled.height > preview.height) {
+                preview.height = scheduled.height;
+                preview.lastUpdatedBlockNumber = block.number;
+            }
+            return preview;
+        }
+
+        if (scheduled.kind == UpdateKind.ChangeOverlay) {
+            if (preview.initialized) {
+                preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
+                preview.lastUpdatedBlockNumber = block.number;
+            }
+            return preview;
+        }
+
+        if (scheduled.kind == UpdateKind.WithdrawTokens) {
+            if (preview.initialized) {
+                if (scheduled.amount >= preview.balance) {
+                    preview.balance = 0;
+                } else {
+                    preview.balance -= scheduled.amount;
+                }
+                preview.lastUpdatedBlockNumber = block.number;
+            }
+            return preview;
+        }
+
+        if (scheduled.kind == UpdateKind.ExitStake) {
+            delete preview;
+        }
+
+        return preview;
+    }
+
+    function _enqueueUpdate(
+        address _owner,
+        UpdateKind _kind,
+        uint64 _minimumWait,
+        bytes32 _nonce,
+        uint256 _amount,
+        uint8 _height
+    ) internal returns (uint64 effectiveFromRound) {
+        if (_queueLength(_owner) >= UPDATE_QUEUE_MAX_LENGTH) revert UpdateQueueFull();
+
+        uint64 candidateRound = currentRound() + _minimumWait;
+        uint64 lastRound = _lastScheduledRound(_owner);
+        effectiveFromRound = candidateRound > lastRound ? candidateRound : lastRound;
+
+        _updateQueues[_owner].push(
+            ScheduledUpdate({
+                kind: _kind,
+                effectiveFromRound: effectiveFromRound,
+                nonce: _nonce,
+                amount: _amount,
+                height: _height
+            })
+        );
+    }
+
+    function _lastScheduledRound(address _owner) internal view returns (uint64) {
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        if (_queueHeads[_owner] == queue.length) {
+            return 0;
+        }
+        return queue[queue.length - 1].effectiveFromRound;
+    }
+
+    function _queueLength(address _owner) internal view returns (uint256) {
+        return _updateQueues[_owner].length - _queueHeads[_owner];
+    }
+
+    function _pullTokens(address _owner, uint256 _amount) internal {
+        if (_amount == 0) revert InvalidWithdrawalAmount();
+        if (!ERC20(bzzToken).transferFrom(_owner, address(this), _amount)) revert TransferFailed();
+    }
+
+    function _minimumStakeForHeight(uint8 _height) internal pure returns (uint256) {
+        return MIN_STAKE * (2 ** _height);
+    }
+
+    function _deriveOverlay(address _owner, bytes32 _setNonce) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked(_owner, reverse(NetworkId), _setNonce));
+    }
+
+    function _toStakeView(StakeState memory _stake) internal pure returns (Stake memory) {
+        if (!_stake.initialized) {
+            return Stake({overlay: 0, balance: 0, lastUpdatedBlockNumber: 0, frozenUntilBlock: 0, height: 0});
+        }
+
+        return
+            Stake({
+                overlay: _stake.overlay,
+                balance: _stake.balance,
+                lastUpdatedBlockNumber: _stake.lastUpdatedBlockNumber,
+                frozenUntilBlock: _stake.frozenUntilBlock,
+                height: _stake.height
+            });
+    }
+
     function reverse(uint64 input) internal pure returns (uint64 v) {
         v = input;
 
-        // swap bytes
         v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
-
-        // swap 2-byte long pairs
         v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
-
-        // swap 4-byte long pairs
         v = (v >> 32) | (v << 32);
     }
 }
