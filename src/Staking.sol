@@ -17,9 +17,13 @@ interface IRedistribution {
  */
 
 contract StakeRegistry is AccessControl, Pausable {
+    // ----------------------------- State variables ------------------------------
+
     uint256 private constant ROUND_LENGTH = 152;
     uint256 private constant MIN_STAKE = 100000000000000000;
     uint256 private constant UPDATE_QUEUE_MAX_LENGTH = 10;
+
+    // ----------------------------- Type declarations ------------------------------
 
     enum UpdateKind {
         CreateDeposit,
@@ -68,6 +72,8 @@ contract StakeRegistry is AccessControl, Pausable {
     uint64 public immutable WAIT_WITHDRAWAL;
     address public redistributionContract;
 
+    // ----------------------------- Events ------------------------------
+
     event DepositCreated(
         address indexed owner,
         uint64 registeredFromRound,
@@ -81,6 +87,8 @@ contract StakeRegistry is AccessControl, Pausable {
     event Withdrawal(address indexed owner, uint64 registeredFromRound, uint256 amount);
     event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
     event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
+
+    // ----------------------------- Errors ------------------------------
 
     error TransferFailed();
     error Frozen();
@@ -117,6 +125,12 @@ contract StakeRegistry is AccessControl, Pausable {
     //           STATE CHANGING           //
     ////////////////////////////////////////
 
+    /**
+     * @notice Schedules a new deposit to become active after the base delay.
+     * @param _setNonce The nonce used to derive the overlay.
+     * @param _amount The amount of BZZ to lock.
+     * @param _height The initial staking height.
+     */
     function createDeposit(bytes32 _setNonce, uint256 _amount, uint8 _height) external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
@@ -139,6 +153,10 @@ contract StakeRegistry is AccessControl, Pausable {
         emit DepositCreated(msg.sender, effectiveFromRound, _amount, newOverlay, _height);
     }
 
+    /**
+     * @notice Schedules an increase of the caller's stake balance.
+     * @param _amount The amount of BZZ to add to the stake.
+     */
     function addTokens(uint256 _amount) external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
@@ -151,6 +169,10 @@ contract StakeRegistry is AccessControl, Pausable {
         emit TokensAdded(msg.sender, effectiveFromRound, _amount);
     }
 
+    /**
+     * @notice Schedules an overlay change after the configured overlay delay.
+     * @param _setNonce The nonce used to derive the new overlay.
+     */
     function changeOverlay(bytes32 _setNonce) external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
@@ -172,6 +194,10 @@ contract StakeRegistry is AccessControl, Pausable {
         emit OverlayChanged(msg.sender, effectiveFromRound, newOverlay);
     }
 
+    /**
+     * @notice Schedules a height increase once the base delay elapses.
+     * @param _height The new staking height.
+     */
     function increaseHeight(uint8 _height) external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
@@ -185,6 +211,10 @@ contract StakeRegistry is AccessControl, Pausable {
         emit HeightIncreased(msg.sender, effectiveFromRound, _height);
     }
 
+    /**
+     * @notice Schedules a partial withdrawal after the withdrawal delay.
+     * @param _amount The amount of BZZ to withdraw from the stake.
+     */
     function withdraw(uint256 _amount) external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
         if (_amount == 0) revert InvalidWithdrawalAmount();
@@ -205,6 +235,9 @@ contract StakeRegistry is AccessControl, Pausable {
         emit Withdrawal(msg.sender, effectiveFromRound, _amount);
     }
 
+    /**
+     * @notice Schedules a full exit after the withdrawal delay.
+     */
     function exit() external whenNotPaused {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
@@ -215,10 +248,18 @@ contract StakeRegistry is AccessControl, Pausable {
         emit Withdrawal(msg.sender, effectiveFromRound, plannedStake.balance);
     }
 
+    /**
+     * @notice Applies all updates that are ready for the given owner.
+     * @param _owner The address whose queue should be processed.
+     */
     function applyUpdates(address _owner) public {
         _applyReadyUpdates(_owner);
     }
 
+    /**
+     * @notice Withdraws active and queued stake while the contract is paused.
+     * @dev Used for migration flows where queued deposits and top ups must be returned.
+     */
     function migrateStake() external whenPaused {
         _applyReadyUpdates(msg.sender);
 
@@ -246,6 +287,11 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Freezes a stake and blocks queued withdrawals while the freeze lasts.
+     * @param _owner The staker to freeze.
+     * @param _time The freeze duration in blocks.
+     */
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
@@ -261,6 +307,11 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Slashes the active stake and reconciles queued withdrawals if needed.
+     * @param _owner The staker to slash.
+     * @param _amount The amount to slash from the active stake.
+     */
     function slashDeposit(address _owner, uint256 _amount) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
@@ -286,11 +337,19 @@ contract StakeRegistry is AccessControl, Pausable {
         emit StakeSlashed(_owner, previousOverlay, _amount);
     }
 
+    /**
+     * @notice Updates the Swarm network identifier used in overlay derivation.
+     * @param _NetworkId The new network id.
+     */
     function changeNetworkId(uint64 _NetworkId) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
         NetworkId = _NetworkId;
     }
 
+    /**
+     * @notice Relinks the redistribution contract after validating its interface and role.
+     * @param _redistributionContract The new redistribution contract address.
+     */
     function setRedistributionContract(address _redistributionContract) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
         if (
@@ -300,11 +359,17 @@ contract StakeRegistry is AccessControl, Pausable {
         redistributionContract = _redistributionContract;
     }
 
+    /**
+     * @notice Pauses staking mutations.
+     */
     function pause() public {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _pause();
     }
 
+    /**
+     * @notice Unpauses staking mutations.
+     */
     function unPause() public {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
         _unpause();
@@ -314,10 +379,16 @@ contract StakeRegistry is AccessControl, Pausable {
     //            STATE READING           //
     ////////////////////////////////////////
 
+    /**
+     * @notice Returns the currently visible stake state for an owner.
+     */
     function stakes(address _owner) public view returns (Stake memory) {
         return _toStakeView(_previewStake(_owner, false));
     }
 
+    /**
+     * @notice Returns the currently effective stake balance for an owner.
+     */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
         if (!addressNotFrozen(_owner)) return 0;
 
@@ -325,15 +396,24 @@ contract StakeRegistry is AccessControl, Pausable {
         return preview.initialized ? preview.balance : 0;
     }
 
+    /**
+     * @notice Returns the last block where the active stake was updated.
+     */
     function lastUpdatedBlockNumberOfAddress(address _owner) public view returns (uint256) {
         return _stakes[_owner].initialized ? _stakes[_owner].lastUpdatedBlockNumber : 0;
     }
 
+    /**
+     * @notice Returns the currently effective overlay for an owner.
+     */
     function overlayOfAddress(address _owner) public view returns (bytes32) {
         StakeState memory preview = _previewStake(_owner, false);
         return preview.initialized ? preview.overlay : bytes32(0);
     }
 
+    /**
+     * @notice Returns the currently effective height for an owner.
+     */
     function heightOfAddress(address _owner) public view returns (uint8) {
         StakeState memory preview = _previewStake(_owner, false);
         return preview.initialized ? preview.height : 0;
@@ -365,15 +445,25 @@ contract StakeRegistry is AccessControl, Pausable {
         return preview.initialized ? preview.height : 0;
     }
 
+    /**
+     * @notice Returns the current staking round derived from block height.
+     */
     function currentRound() public view returns (uint64) {
         return uint64(block.number / ROUND_LENGTH);
     }
 
+    /**
+     * @notice Returns true when the owner is not currently frozen.
+     */
     function addressNotFrozen(address _owner) internal view returns (bool) {
         StakeState storage stake = _stakes[_owner];
         return !stake.initialized || stake.frozenUntilBlock < block.number;
     }
 
+    /**
+     * @notice Applies all queued updates that are effective in the current round.
+     * @dev Withdrawals and exits are deferred while the node is frozen or active in the current round.
+     */
     function _applyReadyUpdates(address _owner) internal {
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
         uint256 head = _queueHeads[_owner];
@@ -398,6 +488,9 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Applies a single queued update to storage.
+     */
     function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
         StakeState storage stake = _stakes[_owner];
 
@@ -454,6 +547,9 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Returns true when a queued withdrawal or exit must stay pending for the current round.
+     */
     function _blocksQueuedWithdrawalExecution(address _owner, UpdateKind _kind) internal view returns (bool) {
         if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
             return false;
@@ -466,6 +562,9 @@ contract StakeRegistry is AccessControl, Pausable {
         return IRedistribution(redistributionContract).isParticipatingInCurrentRound(_owner);
     }
 
+    /**
+     * @notice Returns true when a queued withdrawal or exit would still be blocked in the target round.
+     */
     function _blocksQueuedWithdrawalExecutionAtRound(
         address _owner,
         UpdateKind _kind,
@@ -486,6 +585,9 @@ contract StakeRegistry is AccessControl, Pausable {
         return false;
     }
 
+    /**
+     * @notice Validates that the redistribution contract exposes the participation check.
+     */
     function _supportsParticipationCheck(address _redistributionContract) internal view returns (bool) {
         if (_redistributionContract.code.length == 0) {
             return false;
@@ -498,6 +600,9 @@ contract StakeRegistry is AccessControl, Pausable {
         return success;
     }
 
+    /**
+     * @notice Previews stake state using the current round, optionally including future queued updates.
+     */
     function _previewStake(
         address _owner,
         bool includeFutureUpdates
@@ -525,6 +630,9 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Previews stake state as it would look in a specific target round.
+     */
     function _previewStakeAtRound(address _owner, uint64 _targetRound) internal view returns (StakeState memory preview) {
         preview = _stakes[_owner];
 
@@ -548,6 +656,9 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Applies a single queued update to an in-memory preview state.
+     */
     function _applyPreviewUpdate(
         address _owner,
         StakeState memory preview,
@@ -604,6 +715,9 @@ contract StakeRegistry is AccessControl, Pausable {
         return preview;
     }
 
+    /**
+     * @notice Appends a new queued update and assigns the first valid effective round.
+     */
     function _enqueueUpdate(
         address _owner,
         UpdateKind _kind,
@@ -629,6 +743,9 @@ contract StakeRegistry is AccessControl, Pausable {
         );
     }
 
+    /**
+     * @notice Returns the effective round of the last queued update.
+     */
     function _lastScheduledRound(address _owner) internal view returns (uint64) {
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
         if (_queueHeads[_owner] == queue.length) {
@@ -637,10 +754,16 @@ contract StakeRegistry is AccessControl, Pausable {
         return queue[queue.length - 1].effectiveFromRound;
     }
 
+    /**
+     * @notice Returns the number of pending queued updates.
+     */
     function _queueLength(address _owner) internal view returns (uint256) {
         return _updateQueues[_owner].length - _queueHeads[_owner];
     }
 
+    /**
+     * @notice Returns true when the owner would be unfrozen by the target round.
+     */
     function _addressNotFrozenAtRound(address _owner, uint64 _targetRound) internal view returns (bool) {
         StakeState storage stake = _stakes[_owner];
         if (!stake.initialized) {
@@ -654,6 +777,10 @@ contract StakeRegistry is AccessControl, Pausable {
         return stake.frozenUntilBlock < uint256(_targetRound) * ROUND_LENGTH;
     }
 
+    /**
+     * @notice Shrinks queued withdrawals when slashing leaves less balance than they expect.
+     * @dev This preserves queue order while preventing later withdrawals from overpaying the owner.
+     */
     function _reconcileQueuedWithdrawals(address _owner) internal {
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
         uint256 head = _queueHeads[_owner];
@@ -701,19 +828,31 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
+    /**
+     * @notice Pulls BZZ into the staking contract.
+     */
     function _pullTokens(address _owner, uint256 _amount) internal {
         if (_amount == 0) revert InvalidWithdrawalAmount();
         if (!ERC20(bzzToken).transferFrom(_owner, address(this), _amount)) revert TransferFailed();
     }
 
+    /**
+     * @notice Returns the minimum stake required for a given height.
+     */
     function _minimumStakeForHeight(uint8 _height) internal pure returns (uint256) {
         return MIN_STAKE * (2 ** _height);
     }
 
+    /**
+     * @notice Derives an overlay from owner, network id and nonce.
+     */
     function _deriveOverlay(address _owner, bytes32 _setNonce) internal view returns (bytes32) {
         return keccak256(abi.encodePacked(_owner, reverse(NetworkId), _setNonce));
     }
 
+    /**
+     * @notice Converts internal stake state into the public view struct.
+     */
     function _toStakeView(StakeState memory _stake) internal pure returns (Stake memory) {
         if (!_stake.initialized) {
             return Stake({overlay: 0, balance: 0, lastUpdatedBlockNumber: 0, frozenUntilBlock: 0, height: 0});
@@ -729,6 +868,9 @@ contract StakeRegistry is AccessControl, Pausable {
             });
     }
 
+    /**
+     * @notice Reverses byte order for network id encoding in overlay derivation.
+     */
     function reverse(uint64 input) internal pure returns (uint64 v) {
         v = input;
 
