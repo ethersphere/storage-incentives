@@ -638,7 +638,10 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Previews stake state as it would look in a specific target round.
      */
-    function _previewStakeAtRound(address _owner, uint64 _targetRound) internal view returns (StakeState memory preview) {
+    function _previewStakeAtRound(
+        address _owner,
+        uint64 _targetRound
+    ) internal view returns (StakeState memory preview) {
         preview = _stakes[_owner];
 
         ScheduledUpdate[] storage queue = _updateQueues[_owner];

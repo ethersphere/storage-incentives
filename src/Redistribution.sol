@@ -824,7 +824,12 @@ contract Redistribution is AccessControl, Pausable {
 
         uint8 _depthResponsibility = _depth - Stakes.heightOfAddressAtRound(_owner, targetRound);
 
-        return inProximity(Stakes.overlayOfAddressAtRound(_owner, targetRound), currentRoundAnchor(), _depthResponsibility);
+        return
+            inProximity(
+                Stakes.overlayOfAddressAtRound(_owner, targetRound),
+                currentRoundAnchor(),
+                _depthResponsibility
+            );
     }
 
     function isParticipatingInCurrentRound(address _owner) external view returns (bool) {
