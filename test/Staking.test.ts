@@ -39,7 +39,6 @@ const errors = {
     onlyPauseCanUnPause: 'OnlyPauser()',
   },
   general: {
-    invalidRedistribution: 'InvalidRedistributionContract()',
     queueClosed: 'QueueClosed()',
   },
 };
@@ -90,6 +89,17 @@ async function advanceRounds(rounds = 2) {
   await mineNBlocks(roundLength * rounds);
 }
 
+async function advanceToRoundCommitPhase(redistribution: Contract, targetRound: any) {
+  while (true) {
+    const currentRound = await redistribution.currentRound();
+    const inCommitPhase = await redistribution.currentPhaseCommit();
+    if (currentRound.eq(targetRound) && inCommitPhase) {
+      return;
+    }
+    await mineNBlocks(1);
+  }
+}
+
 async function activateStake(contract: Contract, owner: string, nonce: string, amount: string, height: number) {
   await mintAndApprove(owner, contract.address, amount);
   await contract.createDeposit(nonce, amount, height);
@@ -108,21 +118,10 @@ describe('Staking', function () {
   });
 
   it('should deploy StakeRegistry with queue wait parameters', async function () {
-    const redistribution = await ethers.getContract('Redistribution');
     expect(stakeRegistry.address).to.be.properAddress;
     expect(await stakeRegistry.WAIT_BASE()).to.be.eq(2);
     expect(await stakeRegistry.WAIT_OVERLAY_CHANGE()).to.be.eq(2);
     expect(await stakeRegistry.WAIT_WITHDRAWAL()).to.be.eq(2);
-    expect(await stakeRegistry.redistributionContract()).to.be.eq(redistribution.address);
-  });
-
-  it('should only allow relinking redistribution to a valid redistributor contract', async function () {
-    const redistribution = await ethers.getContract('Redistribution');
-
-    await expect(stakeRegistry.setRedistributionContract(token.address)).to.be.revertedWith(
-      errors.general.invalidRedistribution
-    );
-    await expect(stakeRegistry.setRedistributionContract(redistribution.address)).to.not.be.reverted;
   });
 
   it('should schedule a new deposit and activate it after the base delay', async function () {
@@ -286,30 +285,48 @@ describe('Staking', function () {
     expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
   });
 
-  it('should keep queued withdrawal pending while the node is active in the current round', async function () {
+  it('should execute queued withdrawal while the node is active in the current round', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     const redistribution = await ethers.getContract('Redistribution', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
 
-    await srStaker0.withdraw(withdrawAmount);
-    await advanceRounds();
+    const withdrawalReceipt = await (await srStaker0.withdraw(withdrawAmount)).wait();
+    const withdrawalEvent = withdrawalReceipt.events?.find((event: any) => event.event === 'Withdrawal');
+    const effectiveRound = withdrawalEvent?.args?.effectiveFromRound ?? withdrawalEvent?.args?.[1];
+    await advanceToRoundCommitPhase(redistribution, effectiveRound);
 
     const currentRound = await redistribution.currentRound();
     await redistribution.commit(obfuscatedHash_0, currentRound);
 
-    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
-
     await srStaker0.applyUpdates(staker_0);
-    expect(await token.balanceOf(staker_0)).to.be.eq(0);
-    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
 
     await mineNBlocks(roundLength);
 
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
-    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+  });
+
+  it('should execute queued exit as soon as it becomes effective in the current round', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const redistribution = await ethers.getContract('Redistribution', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const exitReceipt = await (await srStaker0.exit()).wait();
+    const exitEvent = exitReceipt.events?.find((event: any) => event.event === 'Withdrawal');
+    const effectiveRound = exitEvent?.args?.effectiveFromRound ?? exitEvent?.args?.[1];
+    await advanceToRoundCommitPhase(redistribution, effectiveRound);
+
+    const currentRound = await redistribution.currentRound();
+    await expect(redistribution.commit(obfuscatedHash_0, currentRound)).to.be.revertedWith(errors.withdraw.notStaked);
 
     await srStaker0.applyUpdates(staker_0);
-    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+
+    const stakedAfter = await srStaker0.stakes(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect(stakedAfter.overlay).to.be.eq(zeroBytes32);
+    expect(stakedAfter.balance).to.be.eq(0);
   });
 
   it('should schedule exits and clear the stake on applyUpdates', async function () {

@@ -4,10 +4,6 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
-interface IRedistribution {
-    function isParticipatingInCurrentRound(address _owner) external view returns (bool);
-}
-
 /**
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
@@ -68,7 +64,6 @@ contract StakeRegistry is AccessControl, Pausable {
     uint64 public immutable WAIT_BASE;
     uint64 public immutable WAIT_OVERLAY_CHANGE;
     uint64 public immutable WAIT_WITHDRAWAL;
-    address public redistributionContract;
 
     // ----------------------------- Events ------------------------------
 
@@ -100,20 +95,16 @@ contract StakeRegistry is AccessControl, Pausable {
     error InvalidWithdrawalAmount();
     error UpdateQueueFull();
     error QueueClosed();
-    error InvalidRedistributionContract();
 
     constructor(
         address _bzzToken,
-        address _redistributionContract,
         uint64 _NetworkId,
         uint64 _waitBase,
         uint64 _waitOverlayChange,
         uint64 _waitWithdrawal
     ) {
-        if (_redistributionContract == address(0)) revert InvalidRedistributionContract();
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
-        redistributionContract = _redistributionContract;
         WAIT_BASE = _waitBase;
         WAIT_OVERLAY_CHANGE = _waitOverlayChange;
         WAIT_WITHDRAWAL = _waitWithdrawal;
@@ -346,19 +337,6 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Relinks the redistribution contract after validating its interface and role.
-     * @param _redistributionContract The new redistribution contract address.
-     */
-    function setRedistributionContract(address _redistributionContract) external {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
-        if (
-            !hasRole(REDISTRIBUTOR_ROLE, _redistributionContract) ||
-            !_supportsParticipationCheck(_redistributionContract)
-        ) revert InvalidRedistributionContract();
-        redistributionContract = _redistributionContract;
-    }
-
-    /**
      * @notice Pauses staking mutations.
      */
     function pause() public {
@@ -453,7 +431,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Applies all queued updates that are effective in the current round.
-     * @dev Withdrawals and exits are deferred while the node is frozen or active in the current round.
+     * @dev Withdrawals and exits are deferred only while the node is frozen.
      */
     function _applyReadyUpdates(address _owner) internal {
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
@@ -534,21 +512,19 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Returns true when a queued withdrawal or exit must stay pending for the current round.
+     * @dev Current-round participation does not block execution once the withdrawal or exit is effective.
      */
     function _blocksQueuedWithdrawalExecution(address _owner, UpdateKind _kind) internal view returns (bool) {
         if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
             return false;
         }
 
-        if (!addressNotFrozen(_owner)) {
-            return true;
-        }
-
-        return IRedistribution(redistributionContract).isParticipatingInCurrentRound(_owner);
+        return !addressNotFrozen(_owner);
     }
 
     /**
      * @notice Returns true when a queued withdrawal or exit would still be blocked in the target round.
+     * @dev Target-round previews only defer execution while the node remains frozen.
      */
     function _blocksQueuedWithdrawalExecutionAtRound(
         address _owner,
@@ -559,30 +535,7 @@ contract StakeRegistry is AccessControl, Pausable {
             return false;
         }
 
-        if (!_addressNotFrozenAtRound(_owner, _targetRound)) {
-            return true;
-        }
-
-        if (_targetRound <= currentRound()) {
-            return IRedistribution(redistributionContract).isParticipatingInCurrentRound(_owner);
-        }
-
-        return false;
-    }
-
-    /**
-     * @notice Validates that the redistribution contract exposes the participation check.
-     */
-    function _supportsParticipationCheck(address _redistributionContract) internal view returns (bool) {
-        if (_redistributionContract.code.length == 0) {
-            return false;
-        }
-
-        (bool success, ) = _redistributionContract.staticcall(
-            abi.encodeWithSelector(IRedistribution.isParticipatingInCurrentRound.selector, address(0))
-        );
-
-        return success;
+        return !_addressNotFrozenAtRound(_owner, _targetRound);
     }
 
     /**

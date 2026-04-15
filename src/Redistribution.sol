@@ -805,6 +805,8 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
+     * @dev This method is part of the external interface used by Bee nodes to pre-check
+     * eligibility, so it must remain available even when it is not referenced by on-chain code.
      * @param _owner The address of the applicant from.
      * @param _depth The storage depth the applicant intends to report.
      */
@@ -828,27 +830,6 @@ contract Redistribution is AccessControl, Pausable {
                 currentRoundAnchor(),
                 _depthResponsibility
             );
-    }
-
-    function isParticipatingInCurrentRound(address _owner) external view returns (bool) {
-        uint64 cr = currentRound();
-
-        if (currentCommitRound != cr) {
-            return false;
-        }
-
-        uint256 commitsArrayLength = currentCommits.length;
-        for (uint256 i = 0; i < commitsArrayLength; ) {
-            if (currentCommits[i].owner == _owner) {
-                return true;
-            }
-
-            unchecked {
-                ++i;
-            }
-        }
-
-        return false;
     }
 
     // ----------------------------- Reveal ------------------------------
