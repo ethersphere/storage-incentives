@@ -14,8 +14,6 @@ interface IPriceOracle {
 interface IStakeRegistry {
     function freezeDeposit(address _owner, uint256 _time) external;
 
-    function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
-
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
     function overlayOfAddressAtRound(address _owner, uint64 _targetRound) external view returns (bytes32);

@@ -154,10 +154,6 @@ describe('Staking', function () {
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
     expect(await srStaker0.overlayOfAddress(staker_0)).to.be.eq(overlay_0);
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
-    expect(await srStaker0.lastUpdatedBlockNumberOfAddress(staker_0)).to.be.eq(0);
-
-    await srStaker0.applyUpdates(staker_0);
-    expect(await srStaker0.lastUpdatedBlockNumberOfAddress(staker_0)).to.not.be.eq(0);
   });
 
   it('should not allow first stake below minimum for the requested height', async function () {
@@ -331,7 +327,6 @@ describe('Staking', function () {
     expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
     expect(stakedAfter.overlay).to.be.eq(zeroBytes32);
     expect(stakedAfter.balance).to.be.eq(0);
-    expect(await srStaker0.lastUpdatedBlockNumberOfAddress(staker_0)).to.be.eq(0);
   });
 
   it('should not allow new updates to be queued after exit is scheduled', async function () {
@@ -391,7 +386,6 @@ describe('Staking', function () {
 
     await stakeRegistryRedistributor.slashDeposit(staker_0, partialSlashBalance);
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
-    expect(await srStaker0.lastUpdatedBlockNumberOfAddress(staker_0)).to.be.eq(0);
   });
 
   it('should reduce queued withdrawals that exceed the post-slash stake', async function () {

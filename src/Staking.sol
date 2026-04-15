@@ -37,7 +37,6 @@ contract StakeRegistry is AccessControl, Pausable {
     struct Stake {
         bytes32 overlay;
         uint256 balance;
-        uint256 lastUpdatedBlockNumber;
         uint256 frozenUntilBlock;
         uint8 height;
     }
@@ -45,10 +44,8 @@ contract StakeRegistry is AccessControl, Pausable {
     struct StakeState {
         bytes32 overlay;
         uint256 balance;
-        uint256 lastUpdatedBlockNumber;
         uint256 frozenUntilBlock;
         uint8 height;
-        bool initialized;
     }
 
     struct ScheduledUpdate {
@@ -137,7 +134,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
-        if (plannedStake.initialized && plannedStake.balance > 0) revert AlreadyStaked();
+        if (_isInitialized(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
         if (_amount < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
 
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
@@ -163,7 +160,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
-        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         _pullTokens(msg.sender, _amount);
         uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _amount, 0);
@@ -179,7 +176,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
-        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
         if (newOverlay == plannedStake.overlay) return;
@@ -204,7 +201,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
-        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
         if (_height == plannedStake.height) return;
         if (plannedStake.balance < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
@@ -222,7 +219,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_amount == 0) revert InvalidWithdrawalAmount();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
-        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_amount >= plannedStake.balance) revert BelowMinimumStake();
         if (plannedStake.balance - _amount < _minimumStakeForHeight(plannedStake.height)) revert BelowMinimumStake();
 
@@ -244,7 +241,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!addressNotFrozen(msg.sender)) revert Frozen();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
-        if (!plannedStake.initialized || plannedStake.balance == 0) revert NotStaked();
+        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
         _queueClosed[msg.sender] = true;
@@ -299,14 +296,14 @@ contract StakeRegistry is AccessControl, Pausable {
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        if (!_stakes[_owner].initialized && _queueLength(_owner) == 0) {
+        if (!_isInitialized(_owner) && _queueLength(_owner) == 0) {
             return;
         }
 
         _stakes[_owner].frozenUntilBlock = block.number + _time;
         _applyReadyUpdates(_owner);
 
-        if (_stakes[_owner].initialized) {
+        if (_isInitialized(_owner)) {
             emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
         }
     }
@@ -324,13 +321,11 @@ contract StakeRegistry is AccessControl, Pausable {
         StakeState storage stake = _stakes[_owner];
         bytes32 previousOverlay = stake.overlay;
 
-        if (stake.initialized) {
+        if (_isInitialized(_owner)) {
             if (stake.balance > _amount) {
                 stake.balance -= _amount;
-                stake.lastUpdatedBlockNumber = block.number;
             } else if (_queueLength(_owner) > 0) {
                 stake.balance = 0;
-                stake.lastUpdatedBlockNumber = block.number;
             } else {
                 delete _stakes[_owner];
             }
@@ -397,14 +392,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!addressNotFrozen(_owner)) return 0;
 
         StakeState memory preview = _previewStake(_owner, false);
-        return preview.initialized ? preview.balance : 0;
-    }
-
-    /**
-     * @notice Returns the last block where the active stake was updated.
-     */
-    function lastUpdatedBlockNumberOfAddress(address _owner) public view returns (uint256) {
-        return _stakes[_owner].initialized ? _stakes[_owner].lastUpdatedBlockNumber : 0;
+        return _isInitialized(preview) ? preview.balance : 0;
     }
 
     /**
@@ -412,7 +400,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function overlayOfAddress(address _owner) public view returns (bytes32) {
         StakeState memory preview = _previewStake(_owner, false);
-        return preview.initialized ? preview.overlay : bytes32(0);
+        return _isInitialized(preview) ? preview.overlay : bytes32(0);
     }
 
     /**
@@ -420,7 +408,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function heightOfAddress(address _owner) public view returns (uint8) {
         StakeState memory preview = _previewStake(_owner, false);
-        return preview.initialized ? preview.height : 0;
+        return _isInitialized(preview) ? preview.height : 0;
     }
 
     /**
@@ -430,7 +418,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!_addressNotFrozenAtRound(_owner, _targetRound)) return 0;
 
         StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
-        return preview.initialized ? preview.balance : 0;
+        return _isInitialized(preview) ? preview.balance : 0;
     }
 
     /**
@@ -438,7 +426,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function overlayOfAddressAtRound(address _owner, uint64 _targetRound) public view returns (bytes32) {
         StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
-        return preview.initialized ? preview.overlay : bytes32(0);
+        return _isInitialized(preview) ? preview.overlay : bytes32(0);
     }
 
     /**
@@ -446,7 +434,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function heightOfAddressAtRound(address _owner, uint64 _targetRound) public view returns (uint8) {
         StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
-        return preview.initialized ? preview.height : 0;
+        return _isInitialized(preview) ? preview.height : 0;
     }
 
     /**
@@ -460,8 +448,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Returns true when the owner is not currently frozen.
      */
     function addressNotFrozen(address _owner) internal view returns (bool) {
-        StakeState storage stake = _stakes[_owner];
-        return !stake.initialized || stake.frozenUntilBlock < block.number;
+        return !_isInitialized(_owner) || _stakes[_owner].frozenUntilBlock < block.number;
     }
 
     /**
@@ -503,42 +490,35 @@ contract StakeRegistry is AccessControl, Pausable {
             stake.overlay = _deriveOverlay(_owner, scheduled.nonce);
             stake.balance = scheduled.amount;
             stake.height = scheduled.height;
-            stake.lastUpdatedBlockNumber = block.number;
-            stake.initialized = true;
             return;
         }
 
         if (scheduled.kind == UpdateKind.AddTokens) {
             stake.balance += scheduled.amount;
-            stake.lastUpdatedBlockNumber = block.number;
-            stake.initialized = true;
             return;
         }
 
         if (scheduled.kind == UpdateKind.IncreaseHeight) {
-            if (stake.initialized && scheduled.height > stake.height) {
+            if (_isInitialized(_owner) && scheduled.height > stake.height) {
                 stake.height = scheduled.height;
-                stake.lastUpdatedBlockNumber = block.number;
             }
             return;
         }
 
         if (scheduled.kind == UpdateKind.ChangeOverlay) {
-            if (stake.initialized) {
+            if (_isInitialized(_owner)) {
                 stake.overlay = _deriveOverlay(_owner, scheduled.nonce);
-                stake.lastUpdatedBlockNumber = block.number;
             }
             return;
         }
 
         if (scheduled.kind == UpdateKind.WithdrawTokens) {
-            if (stake.initialized) {
+            if (_isInitialized(_owner)) {
                 if (scheduled.amount >= stake.balance) {
                     stake.balance = 0;
                 } else {
                     stake.balance -= scheduled.amount;
                 }
-                stake.lastUpdatedBlockNumber = block.number;
 
                 if (!ERC20(bzzToken).transfer(_owner, scheduled.amount)) revert TransferFailed();
             }
@@ -676,42 +656,35 @@ contract StakeRegistry is AccessControl, Pausable {
             preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
             preview.balance = scheduled.amount;
             preview.height = scheduled.height;
-            preview.lastUpdatedBlockNumber = block.number;
-            preview.initialized = true;
             return preview;
         }
 
         if (scheduled.kind == UpdateKind.AddTokens) {
             preview.balance += scheduled.amount;
-            preview.lastUpdatedBlockNumber = block.number;
-            preview.initialized = true;
             return preview;
         }
 
         if (scheduled.kind == UpdateKind.IncreaseHeight) {
-            if (preview.initialized && scheduled.height > preview.height) {
+            if (_isInitialized(preview) && scheduled.height > preview.height) {
                 preview.height = scheduled.height;
-                preview.lastUpdatedBlockNumber = block.number;
             }
             return preview;
         }
 
         if (scheduled.kind == UpdateKind.ChangeOverlay) {
-            if (preview.initialized) {
+            if (_isInitialized(preview)) {
                 preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
-                preview.lastUpdatedBlockNumber = block.number;
             }
             return preview;
         }
 
         if (scheduled.kind == UpdateKind.WithdrawTokens) {
-            if (preview.initialized) {
+            if (_isInitialized(preview)) {
                 if (scheduled.amount >= preview.balance) {
                     preview.balance = 0;
                 } else {
                     preview.balance -= scheduled.amount;
                 }
-                preview.lastUpdatedBlockNumber = block.number;
             }
             return preview;
         }
@@ -774,16 +747,15 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Returns true when the owner would be unfrozen by the target round.
      */
     function _addressNotFrozenAtRound(address _owner, uint64 _targetRound) internal view returns (bool) {
-        StakeState storage stake = _stakes[_owner];
-        if (!stake.initialized) {
+        if (!_isInitialized(_owner)) {
             return true;
         }
 
         if (_targetRound <= currentRound()) {
-            return stake.frozenUntilBlock < block.number;
+            return _stakes[_owner].frozenUntilBlock < block.number;
         }
 
-        return stake.frozenUntilBlock < uint256(_targetRound) * ROUND_LENGTH;
+        return _stakes[_owner].frozenUntilBlock < uint256(_targetRound) * ROUND_LENGTH;
     }
 
     /**
@@ -802,30 +774,23 @@ contract StakeRegistry is AccessControl, Pausable {
                 preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
                 preview.balance = scheduled.amount;
                 preview.height = scheduled.height;
-                preview.lastUpdatedBlockNumber = block.number;
-                preview.initialized = true;
             } else if (scheduled.kind == UpdateKind.AddTokens) {
                 preview.balance += scheduled.amount;
-                preview.lastUpdatedBlockNumber = block.number;
-                preview.initialized = true;
             } else if (scheduled.kind == UpdateKind.IncreaseHeight) {
-                if (preview.initialized && scheduled.height > preview.height) {
+                if (_isInitialized(preview) && scheduled.height > preview.height) {
                     preview.height = scheduled.height;
-                    preview.lastUpdatedBlockNumber = block.number;
                 }
             } else if (scheduled.kind == UpdateKind.ChangeOverlay) {
-                if (preview.initialized) {
+                if (_isInitialized(preview)) {
                     preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
-                    preview.lastUpdatedBlockNumber = block.number;
                 }
             } else if (scheduled.kind == UpdateKind.WithdrawTokens) {
-                if (preview.initialized) {
+                if (_isInitialized(preview)) {
                     if (scheduled.amount > preview.balance) {
                         scheduled.amount = preview.balance;
                     }
 
                     preview.balance -= scheduled.amount;
-                    preview.lastUpdatedBlockNumber = block.number;
                 }
             } else if (scheduled.kind == UpdateKind.ExitStake) {
                 delete preview;
@@ -863,18 +828,31 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Converts internal stake state into the public view struct.
      */
     function _toStakeView(StakeState memory _stake) internal pure returns (Stake memory) {
-        if (!_stake.initialized) {
-            return Stake({overlay: 0, balance: 0, lastUpdatedBlockNumber: 0, frozenUntilBlock: 0, height: 0});
+        if (!_isInitialized(_stake)) {
+            return Stake({overlay: 0, balance: 0, frozenUntilBlock: 0, height: 0});
         }
 
         return
             Stake({
                 overlay: _stake.overlay,
                 balance: _stake.balance,
-                lastUpdatedBlockNumber: _stake.lastUpdatedBlockNumber,
                 frozenUntilBlock: _stake.frozenUntilBlock,
                 height: _stake.height
             });
+    }
+
+    /**
+     * @notice Returns true when the stored stake for an owner is initialized.
+     */
+    function _isInitialized(address _owner) internal view returns (bool) {
+        return _stakes[_owner].overlay != bytes32(0);
+    }
+
+    /**
+     * @notice Returns true when an in-memory stake state is initialized.
+     */
+    function _isInitialized(StakeState memory _stake) internal pure returns (bool) {
+        return _stake.overlay != bytes32(0);
     }
 
     /**
