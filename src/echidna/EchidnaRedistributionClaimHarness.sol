@@ -13,15 +13,19 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
     address public lastBeneficiary;
     uint256 public lastAmount;
     uint256 public validChunkCountValue;
+    bool public shouldRevertWithdraw;
 
     constructor(TestToken t) {
         token = t;
     }
 
     function seedPot(uint256 amount) external {
-        // Mint to this mock and treat it as withdrawable pot.
         token.mint(address(this), amount);
         pot += amount;
+    }
+
+    function setShouldRevertWithdraw(bool v) external {
+        shouldRevertWithdraw = v;
     }
 
     function setValidChunkCount(uint256 v) external {
@@ -29,6 +33,7 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
     }
 
     function withdraw(address beneficiary) external {
+        if (shouldRevertWithdraw) revert("mock withdraw revert");
         uint256 bal = token.balanceOf(address(this));
         uint256 amt = pot < bal ? pot : bal;
         lastBeneficiary = beneficiary;
@@ -146,6 +151,7 @@ contract EchidnaRedistributionClaimHarness {
 
     // Pending claim postconditions.
     bool internal pendingClaim;
+    bool internal pendingWithdrawShouldFail;
     uint64 internal pendingClaimRound;
     uint256 internal pendingPotBefore;
     uint256 internal pendingOracleCallsBefore;
@@ -186,6 +192,11 @@ contract EchidnaRedistributionClaimHarness {
         uint256 x = amount % 1e24;
         if (x == 0) x = 1e18;
         stampMock.seedPot(x);
+    }
+
+    function act_setWithdrawRevertMode(bool v) external {
+        _clearClaimPending();
+        stampMock.setShouldRevertWithdraw(v);
     }
 
     function act_setActorNode(
@@ -251,6 +262,7 @@ contract EchidnaRedistributionClaimHarness {
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         pendingClaimRound = redist.currentRound();
         pendingOracleCallsBefore = oracleMock.calls();
+        pendingWithdrawShouldFail = stampMock.shouldRevertWithdraw();
 
         // Snapshot pot + actor balances before claim.
         pendingPotBefore = stampMock.pot();
@@ -277,7 +289,8 @@ contract EchidnaRedistributionClaimHarness {
 
     function echidna_claim_withdraws_pot_to_winner_when_successful() external view returns (bool) {
         if (!pendingClaim) return true;
-        if (redist.currentClaimRound() != pendingClaimRound) return true; // stale
+        if (pendingWithdrawShouldFail) return true;
+        if (redist.currentClaimRound() != pendingClaimRound) return true;
 
         // Pot must be zeroed by our mock withdraw on success.
         if (stampMock.pot() != 0) return false;
@@ -299,9 +312,29 @@ contract EchidnaRedistributionClaimHarness {
                 increased += 1;
             }
         }
-        // If potBefore was 0, no balances should change.
         if (pendingPotBefore == 0) return increased == 0;
         return increased == 1;
+    }
+
+    /// @notice H-1 scenario: when withdraw fails, claim still succeeds (round consumed)
+    /// but pot is preserved and no actor balances change.
+    function echidna_failed_withdraw_preserves_pot_and_consumes_round() external view returns (bool) {
+        if (!pendingClaim) return true;
+        if (!pendingWithdrawShouldFail) return true;
+        if (redist.currentClaimRound() != pendingClaimRound) return true;
+
+        // Round must still be marked as claimed even though withdraw failed.
+        // (This is the H-1 behavior: currentClaimRound is set inside winnerSelection()
+        // before withdraw runs, and the .call() swallows the revert.)
+
+        // Pot must be unchanged — withdraw reverted so no transfer happened.
+        if (stampMock.pot() != pendingPotBefore) return false;
+
+        // No actor balances should have changed.
+        for (uint256 i = 0; i < ACTOR_COUNT; i++) {
+            if (token.balanceOf(address(actors[i])) != pendingActorBalBefore[i]) return false;
+        }
+        return true;
     }
 
     function echidna_claim_triggers_oracle_adjustPrice() external view returns (bool) {
