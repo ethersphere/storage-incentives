@@ -12,6 +12,7 @@ cd "$ROOT_DIR"
 
 IMAGE="${ECHIDNA_IMAGE:-ghcr.io/crytic/echidna/echidna:latest}"
 CONTRACT="${ECHIDNA_CONTRACT:-}"
+CONFIG="${ECHIDNA_CONFIG:-echidna/echidna.yaml}"
 
 # Compile on the host. The Echidna container image doesn't ship with Node/npx,
 # and without Hardhat artifacts CryticCompile will try (and fail) to run `npx hardhat compile`.
@@ -41,5 +42,5 @@ for c in "${CONTRACTS_TO_RUN[@]}"; do
     -v "$ROOT_DIR":/src \
     -w /src \
     "$IMAGE" \
-    -c "rm -rf crytic-export && echidna-test . --contract ${c} --config echidna/echidna.yaml"
+    -c "rm -rf crytic-export && echidna-test . --contract ${c} --config ${CONFIG}"
 done

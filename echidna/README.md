@@ -21,6 +21,7 @@ This repo currently contains multiple harnesses:
 - **PostageStamp harness**: `src/echidna/EchidnaPostageStampHarness.sol`
 - **Redistribution harness**: `src/echidna/EchidnaRedistributionHarness.sol`
 - **Redistribution claim-stub harness**: `src/echidna/EchidnaRedistributionClaimHarness.sol`
+- **Redistribution real-claim harness**: `src/echidna/EchidnaRedistributionRealClaimHarness.sol`
 - **System/integration harness**: `src/echidna/EchidnaSystemHarness.sol`
 
 ### What each harness deploys
@@ -67,6 +68,21 @@ The **redistribution claim-stub harness** deploys:
 
 This is meant to fuzz the **claim-phase state machine + pot withdrawal effects** end-to-end, without paying the cost of generating
 valid Merkle/SOC/postage proofs.
+
+The **redistribution real-claim harness** deploys:
+
+- the real `Redistribution` contract
+- the shared redistribution stake/oracle mocks
+- a fixture-aware postage mock that returns batch metadata matching the fixed proof bundles
+
+This harness stores one fixed CAC proof bundle and one fixed SOC proof bundle, both derived from the existing
+Hardhat proof fixtures, and then fuzzes:
+
+- the real `commit -> reveal -> claim` path needed to activate those fixtures
+- mutations of selected proof fields (reserve-commitment inclusion roots/branches, postage indices, SOC identifier)
+
+The goal is not to randomly discover valid proofs. Instead, it uses **known-good proofs as seed fixtures** and lets Echidna
+mutate the surrounding scenario and targeted proof bytes while the real on-chain verifier runs.
 
 The **system/integration harness** deploys:
 
@@ -121,6 +137,12 @@ Key actions per harness:
 - **Redistribution claim-stub harness**
   - Happy-path flow: `act_happyCommit`, `act_happyReveal`, `act_claimStub`
   - Pot seeding: `act_seedPot`
+
+- **Redistribution real-claim harness**
+  - Fixture selection: `act_useCacFixture`, `act_useSocFixture`
+  - Fixture setup: `act_prepareFixtureCommit`, `act_prepareFixtureReveal`, `act_claimActiveFixture`
+  - Pot seeding: `act_seedPot`
+  - Proof mutations: `act_mutateReserveCommitmentRoot`, `act_mutateOriginalChunkBranch`, `act_mutateTransformedChunkBranch`, `act_mutatePostageIndexLow`, `act_mutatePostageIndexHigh`, `act_mutateSocIdentifier`
 
 - **System/integration harness**
   - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`
@@ -180,6 +202,11 @@ High-signal properties per harness:
   - claim triggers an oracle `adjustPrice` call (`echidna_claim_triggers_oracle_adjustPrice`)
   - non-revealers are frozen during claim processing (`echidna_nonrevealers_frozen_after_claim_selection`)
 
+- **Redistribution real-claim harness**
+  - untouched CAC/SOC fixtures can complete the real `claim()` path (`echidna_unmutated_fixture_claim_succeeds`)
+  - corrupted proof fixtures do not successfully claim (`echidna_mutated_fixture_claim_does_not_succeed`)
+  - successful real claims trigger the expected withdraw/oracle side-effects (`echidna_successful_real_claim_effects_hold`)
+
 - **System/integration harness**
   - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
   - Stamp accounting: internal `pot` does not exceed the stamp contract’s BZZ balance (`echidna_stamp_internal_pot_not_above_contract_balance`)
@@ -219,6 +246,9 @@ yarn echidna
 
 By default, this runs **all** Echidna harness contracts in `src/echidna/`.
 
+By default, the runner uses `echidna/echidna.yaml`. You can override that with `ECHIDNA_CONFIG` if a harness needs its own
+corpus or tuned fuzzing parameters.
+
 To run only a specific harness contract:
 
 ```bash
@@ -227,7 +257,16 @@ ECHIDNA_CONTRACT=EchidnaPriceOracleHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaPostageStampHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaRedistributionClaimHarness yarn echidna
+ECHIDNA_CONTRACT=EchidnaRedistributionRealClaimHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
+```
+
+To run the real-claim harness with its isolated corpus/config:
+
+```bash
+ECHIDNA_CONTRACT=EchidnaRedistributionRealClaimHarness \
+ECHIDNA_CONFIG=echidna/echidna-real-claim.yaml \
+yarn echidna
 ```
 
 This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
@@ -237,10 +276,21 @@ This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
 Echidna may write artifacts such as:
 
 - `echidna/corpus/` (saved interesting inputs)
+- `echidna/corpus-real-claim/` (isolated corpus for the real-claim harness when using `echidna/echidna-real-claim.yaml`)
 - `echidna/coverage/`
 - `crytic-export/` (Crytic export artifacts)
 
 These are ignored by git via `.gitignore`.
+
+### Config files
+
+- `echidna/echidna.yaml`: shared default config used by all harnesses unless overridden
+- `echidna/echidna-real-claim.yaml`: isolated config for `EchidnaRedistributionRealClaimHarness`
+
+The dedicated real-claim config exists because that harness relies on fixed proof fixtures and benefits from:
+
+- an isolated corpus, so it does not replay unrelated sequences from other harnesses
+- a slightly shorter sequence budget, since it only needs to reach one deterministic `commit -> reveal -> claim` path and mutate proof fields around it
 
 ## How to extend this
 
