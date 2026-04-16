@@ -30,7 +30,6 @@ const errors = {
   },
   freeze: {
     noRole: 'OnlyRedistributor()',
-    currentlyFrozen: 'Frozen()',
   },
   pause: {
     noRole: 'OnlyPauser()',
@@ -364,8 +363,9 @@ describe('Staking', function () {
     await expect(srStaker0.exit()).to.be.revertedWith(errors.withdraw.notStaked);
   });
 
-  it('should freeze active stake and block mutations until the freeze expires', async function () {
+  it('should allow non-transfer updates to be queued and applied while the node is frozen', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const longFreezeTime = roundLength * 3;
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
 
     const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
@@ -373,17 +373,56 @@ describe('Staking', function () {
     await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
 
     const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-    await expect(stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime))
+    await expect(stakeRegistryRedistributor.freezeDeposit(staker_0, longFreezeTime))
       .to.emit(srStaker0, 'StakeFrozen')
-      .withArgs(staker_0, overlay_0, freezeTime);
+      .withArgs(staker_0, overlay_0, longFreezeTime);
 
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
 
-    await mintAndApprove(staker_0, srStaker0.address, updateStakeAmount_0);
-    await expect(srStaker0.addTokens(updateStakeAmount_0)).to.be.revertedWith(errors.freeze.currentlyFrozen);
+    await mintAndApprove(staker_0, srStaker0.address, topUpForHeight1);
+    await expect(srStaker0.addTokens(topUpForHeight1)).to.emit(srStaker0, 'TokensAdded');
+    await expect(srStaker0.changeOverlay(nonce_1_n_25)).to.emit(srStaker0, 'OverlayChanged');
+    await expect(srStaker0.increaseHeight(height_0_n_1)).to.emit(srStaker0, 'HeightIncreased');
 
-    await mineNBlocks(freezeTime + 1);
-    await expect(srStaker0.addTokens(updateStakeAmount_0)).to.not.be.reverted;
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
+    expect(await srStaker0.overlayOfAddress(staker_0)).to.not.be.eq(overlay_0);
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+
+    await mineNBlocks(longFreezeTime + 1);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
+    expect(await srStaker0.overlayOfAddress(staker_0)).to.not.be.eq(overlay_0);
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+  });
+
+  it('should allow withdrawals to be queued while frozen and execute them after the freeze expires', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const longFreezeTime = roundLength * 3;
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
+
+    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+    await stakeRegistryRedistributor.freezeDeposit(staker_0, longFreezeTime);
+
+    await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'Withdrawal');
+    await advanceRounds();
+
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mineNBlocks(longFreezeTime + 1);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
   });
 
   it('should slash active stake balances', async function () {

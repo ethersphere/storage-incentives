@@ -122,8 +122,6 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _height The initial staking height.
      */
     function createDeposit(bytes32 _setNonce, uint256 _amount, uint8 _height) external whenNotPaused {
-        if (!addressNotFrozen(msg.sender)) revert Frozen();
-
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (_isInitialized(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
         if (_amount < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
@@ -148,8 +146,6 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _amount The amount of BZZ to add to the stake.
      */
     function addTokens(uint256 _amount) external whenNotPaused {
-        if (!addressNotFrozen(msg.sender)) revert Frozen();
-
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
@@ -164,8 +160,6 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _setNonce The nonce used to derive the new overlay.
      */
     function changeOverlay(bytes32 _setNonce) external whenNotPaused {
-        if (!addressNotFrozen(msg.sender)) revert Frozen();
-
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
@@ -189,8 +183,6 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _height The new staking height.
      */
     function increaseHeight(uint8 _height) external whenNotPaused {
-        if (!addressNotFrozen(msg.sender)) revert Frozen();
-
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
@@ -206,7 +198,6 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _amount The amount of BZZ to withdraw from the stake.
      */
     function withdraw(uint256 _amount) external whenNotPaused {
-        if (!addressNotFrozen(msg.sender)) revert Frozen();
         if (_amount == 0) revert InvalidWithdrawalAmount();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
@@ -229,8 +220,6 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Schedules a full exit after the withdrawal delay.
      */
     function exit() external whenNotPaused {
-        if (!addressNotFrozen(msg.sender)) revert Frozen();
-
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
