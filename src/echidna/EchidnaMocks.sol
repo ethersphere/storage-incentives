@@ -15,7 +15,6 @@ contract EchidnaStakeRegistryMock is IStakeRegistry {
 
     mapping(address => Node) internal nodes;
     mapping(address => uint256) public freezeCount;
-    mapping(address => uint256) public lastFreezeTime;
 
     function setNode(
         address owner,
@@ -36,7 +35,6 @@ contract EchidnaStakeRegistryMock is IStakeRegistry {
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!nodes[_owner].exists) return;
         freezeCount[_owner] += 1;
-        lastFreezeTime[_owner] = _time;
         nodes[_owner].lastUpdated = block.number + _time;
     }
 
@@ -60,11 +58,9 @@ contract EchidnaStakeRegistryMock is IStakeRegistry {
 /// @notice Shared price oracle mock for redistribution harnesses.
 contract EchidnaPriceOracleMock is IPriceOracle {
     uint256 public calls;
-    uint16 public lastRedundancy;
 
-    function adjustPrice(uint16 redundancy) external returns (bool) {
+    function adjustPrice(uint16) external returns (bool) {
         calls += 1;
-        lastRedundancy = redundancy;
         return true;
     }
 }

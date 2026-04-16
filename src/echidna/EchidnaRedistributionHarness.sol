@@ -11,31 +11,8 @@ contract EchidnaPostageStampMock is IPostageStamp {
     address public lastBeneficiary;
     uint256 public validChunkCountValue;
 
-    // Minimal batch data for claim's stampFunction() access pattern.
-    mapping(bytes32 => Batch) internal _batches;
-
-    struct Batch {
-        address owner;
-        uint8 depth;
-        uint8 bucketDepth;
-        bool immutableFlag;
-        uint256 normalisedBalance;
-        uint256 lastUpdatedBlockNumber;
-    }
-
     function setValidChunkCount(uint256 v) external {
         validChunkCountValue = v;
-    }
-
-    function seedBatch(bytes32 id, address owner, uint8 depth, uint8 bucketDepth) external {
-        _batches[id] = Batch({
-            owner: owner,
-            depth: depth,
-            bucketDepth: bucketDepth,
-            immutableFlag: false,
-            normalisedBalance: 1,
-            lastUpdatedBlockNumber: block.number
-        });
     }
 
     function withdraw(address beneficiary) external {
@@ -49,31 +26,26 @@ contract EchidnaPostageStampMock is IPostageStamp {
         return validChunkCountValue;
     }
 
-    function batchOwner(bytes32 _batchId) external view returns (address) {
-        return _batches[_batchId].owner;
+    function batchOwner(bytes32) external pure returns (address) {
+        return address(0);
     }
-
-    function batchDepth(bytes32 _batchId) external view returns (uint8) {
-        return _batches[_batchId].depth;
+    function batchDepth(bytes32) external pure returns (uint8) {
+        return 0;
     }
-
-    function batchBucketDepth(bytes32 _batchId) external view returns (uint8) {
-        return _batches[_batchId].bucketDepth;
+    function batchBucketDepth(bytes32) external pure returns (uint8) {
+        return 0;
     }
-
     function remainingBalance(bytes32) external pure returns (uint256) {
         return 1;
     }
-
     function minimumInitialBalancePerChunk() external pure returns (uint256) {
         return 1;
     }
-
     function batches(
-        bytes32 id
+        bytes32
     )
         external
-        view
+        pure
         returns (
             address owner,
             uint8 depth,
@@ -83,8 +55,7 @@ contract EchidnaPostageStampMock is IPostageStamp {
             uint256 lastUpdatedBlockNumber
         )
     {
-        Batch memory b = _batches[id];
-        return (b.owner, b.depth, b.bucketDepth, b.immutableFlag, b.normalisedBalance, b.lastUpdatedBlockNumber);
+        return (address(0), 0, 0, false, 0, 0);
     }
 }
 
@@ -704,30 +675,6 @@ contract EchidnaRedistributionHarness {
         (overlay, owner, revealed, height, stake, obfuscatedHash, revealIndex) = abi.decode(
             data,
             (bytes32, address, bool, uint8, uint256, bytes32, uint256)
-        );
-    }
-
-    function _revealFull(
-        uint256 i
-    )
-        internal
-        view
-        returns (
-            bool ok,
-            bytes32 overlay,
-            address owner,
-            uint8 depth,
-            uint256 stake,
-            uint256 stakeDensity,
-            bytes32 hash
-        )
-    {
-        bytes memory data;
-        (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentReveals(uint256)", i));
-        if (!ok) return (false, bytes32(0), address(0), 0, 0, 0, bytes32(0));
-        (overlay, owner, depth, stake, stakeDensity, hash) = abi.decode(
-            data,
-            (bytes32, address, uint8, uint256, uint256, bytes32)
         );
     }
 

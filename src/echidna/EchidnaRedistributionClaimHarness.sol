@@ -10,7 +10,6 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
     TestToken internal immutable token;
 
     uint256 public pot;
-    uint256 public withdrawCalls;
     address public lastBeneficiary;
     uint256 public lastAmount;
     uint256 public validChunkCountValue;
@@ -32,7 +31,6 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
     function withdraw(address beneficiary) external {
         uint256 bal = token.balanceOf(address(this));
         uint256 amt = pot < bal ? pot : bal;
-        withdrawCalls += 1;
         lastBeneficiary = beneficiary;
         lastAmount = amt;
         pot = 0;
