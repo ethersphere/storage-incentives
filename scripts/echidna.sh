@@ -17,14 +17,13 @@ CONTRACT="${ECHIDNA_CONTRACT:-}"
 # and without Hardhat artifacts CryticCompile will try (and fail) to run `npx hardhat compile`.
 yarn -s hardhat compile --force >/dev/null
 
-CONTRACTS_DEFAULT=(
-  "EchidnaStakeRegistryHarness"
-  "EchidnaPriceOracleHarness"
-  "EchidnaPostageStampHarness"
-  "EchidnaRedistributionHarness"
-  "EchidnaRedistributionClaimHarness"
-  "EchidnaSystemHarness"
-)
+# Auto-discover harness contracts from src/echidna/Echidna*Harness.sol.
+CONTRACTS_DEFAULT=()
+for f in src/echidna/Echidna*Harness.sol; do
+  [[ -f "$f" ]] || continue
+  name="$(basename "$f" .sol)"
+  CONTRACTS_DEFAULT+=("$name")
+done
 
 if [[ -n "$CONTRACT" ]]; then
   CONTRACTS_TO_RUN=("$CONTRACT")

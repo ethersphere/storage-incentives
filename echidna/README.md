@@ -246,7 +246,7 @@ These are ignored by git via `.gitignore`.
 
 Typical next steps:
 
-- Add another harness under `src/echidna/` for other protocol contracts.
+- Add another harness under `src/echidna/` following the naming convention `Echidna*Harness.sol`. The runner script auto-discovers files matching that pattern, so no manual script edits are needed.
 - Keep actions non-reverting and model only the roles/privileges you want to include.
 - Start with a few **obviously true** invariants, then iterate:
   - If Echidna finds a counterexample, decide whether that is a **bug** or a **property mismatch**.

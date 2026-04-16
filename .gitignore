@@ -42,6 +42,4 @@ tenderly.log
 
 # Echidna fuzzing
 echidna/corpus/
-echidna/coverage/
-echidna/out/
 crytic-export/
