@@ -105,6 +105,7 @@ Harness action functions are intentionally written to be **mostly non-reverting*
 Key actions per harness:
 
 - **Staking harness**
+
   - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`, `act_actor_migrateStake`
   - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_changeNetworkId`
   - Redistributor actions: `act_redistributor_freeze`, `act_redistributor_slash`
@@ -112,12 +113,14 @@ Key actions per harness:
   - Funding: `act_fundActor`
 
 - **Oracle harness**
+
   - Admin actions: `act_admin_setPrice`, `act_admin_pause`, `act_admin_unpause`
   - Updater actions: `act_updater_adjustPrice`
   - Negative tests: `act_rando_try*`
   - PostageStamp mock behavior: `act_setStampRevertMode`
 
 - **PostageStamp harness**
+
   - Batch actions: `act_createBatch`, `act_topUp`, `act_increaseDepth`, `act_expireAll`
   - Price update: `act_oracle_setPrice`
   - Pot withdrawal: `act_redistributor_withdraw`
@@ -126,6 +129,7 @@ Key actions per harness:
   - Funding: `act_fundActor`
 
 - **Redistribution harness (base)**
+
   - Stake configuration: `act_setActorStake`
   - Game entrypoints: `act_commit`, `act_reveal`, `act_claim` (often reverts early; still useful to shake out panics/state bugs)
   - Happy-path flow: `act_happyCommit`, `act_happyReveal`
@@ -135,10 +139,12 @@ Key actions per harness:
   - Pause gating checks: `act_tryCommitWhilePaused`, `act_tryRevealWhilePaused`
 
 - **Redistribution claim-stub harness**
+
   - Happy-path flow: `act_happyCommit`, `act_happyReveal`, `act_claimStub`
   - Pot seeding: `act_seedPot`
 
 - **Redistribution real-claim harness**
+
   - Fixture selection: `act_useCacFixture`, `act_useSocFixture`
   - Fixture setup: `act_prepareFixtureCommit`, `act_prepareFixtureReveal`, `act_claimActiveFixture`
   - Pot seeding: `act_seedPot`
@@ -162,17 +168,20 @@ Common patterns used across harnesses:
 High-signal properties per harness:
 
 - **Staking harness**
+
   - Access control + “must never happen” flags (`echidna_never_performed_forbidden_calls`)
   - Registry accounting (ERC20 balance covers sum of potential stake)
   - Per-actor invariants (commitment monotonicity, effective stake/freeze semantics, overlay derivation)
   - Post-conditions for `manageStake(add>0)`, `freezeDeposit`, `slashDeposit`, `migrateStake`
 
 - **Oracle harness**
+
   - Access control (admin-only + updater-only) and “paused means no changes”
   - Price invariants: price never below minimum; lastAdjustedRound not in the future
   - Post-conditions for `setPrice` and `adjustPrice` (including skipped-round math), with overflow-aware modeling
 
 - **PostageStamp harness**
+
   - Access control (oracle-only price updates, redistributor-only withdraw, pauser-only pause/unpause)
   - Pause-mode negative tests (batch mutations must not succeed while paused)
   - Batch post-conditions (`createBatch`, `topUp`, `increaseDepth`) and expiry sanity (`expireAll`)
@@ -181,6 +190,7 @@ High-signal properties per harness:
   - Pot monotonicity: pot must never decrease except by a successful withdraw-to-zero (`echidna_pot_never_decreases_except_withdraw`)
 
 - **Redistribution harness (base)**
+
   - Access control “must never happen” flag (`echidna_never_performed_forbidden_calls`)
   - Pause gating: `echidna_never_succeeded_while_paused`
   - Phase sanity: exactly one of commit/reveal/claim is active (`echidna_phase_partitions_round`)
@@ -197,12 +207,14 @@ High-signal properties per harness:
     - `echidna_tracked_reveal_matches_storage`
 
 - **Redistribution claim-stub harness**
+
   - claim can only succeed once per round (`echidna_claim_only_once_per_round`)
   - successful claim withdraws the entire pot to the selected winner (`echidna_claim_withdraws_pot_to_winner_when_successful`)
   - claim triggers an oracle `adjustPrice` call (`echidna_claim_triggers_oracle_adjustPrice`)
   - non-revealers are frozen during claim processing (`echidna_nonrevealers_frozen_after_claim_selection`)
 
 - **Redistribution real-claim harness**
+
   - untouched CAC/SOC fixtures can complete the real `claim()` path (`echidna_unmutated_fixture_claim_succeeds`)
   - corrupted proof fixtures do not successfully claim (`echidna_mutated_fixture_claim_does_not_succeed`)
   - successful real claims trigger the expected withdraw/oracle side-effects (`echidna_successful_real_claim_effects_hold`)
@@ -301,4 +313,3 @@ Typical next steps:
 - Start with a few **obviously true** invariants, then iterate:
   - If Echidna finds a counterexample, decide whether that is a **bug** or a **property mismatch**.
   - Tighten properties only when you’re confident the protocol/design guarantees them.
-

@@ -98,20 +98,14 @@ contract EchidnaRedistributionRealClaimHarness {
 
     bytes32 internal constant FIXTURE_REVEAL_ANCHOR =
         0x3617319a054d772f909f7c479a2cebe5066e836a939412e32403c99029b92eff;
-    bytes32 internal constant FIXTURE_CLAIM_SEED =
-        0xa4541cb5a0f209fed7c786aac6865922446ed57fc0dcf8ad07c17afcd3c5efb8;
-    bytes32 internal constant FIXTURE_NONCE =
-        0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33;
+    bytes32 internal constant FIXTURE_CLAIM_SEED = 0xa4541cb5a0f209fed7c786aac6865922446ed57fc0dcf8ad07c17afcd3c5efb8;
+    bytes32 internal constant FIXTURE_NONCE = 0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33;
 
-    bytes32 internal constant CAC_BATCH_ID =
-        0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f;
-    bytes32 internal constant SOC_BATCH_ID =
-        0x6cccd65a68bc5f7c19a273e9567ebf4b968a13c9be74fc99ad90159730eff219;
+    bytes32 internal constant CAC_BATCH_ID = 0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f;
+    bytes32 internal constant SOC_BATCH_ID = 0x6cccd65a68bc5f7c19a273e9567ebf4b968a13c9be74fc99ad90159730eff219;
 
-    bytes32 internal constant CAC_HASH =
-        0xcf27be680f2dada5bcc45506997f54804e583650e48c28514ccc95234ef4f9f3;
-    bytes32 internal constant SOC_HASH =
-        0x9a6afe770410c1bd7cdc1f324cfcf73ba1b85e3860d4594522456be4fe6b1d80;
+    bytes32 internal constant CAC_HASH = 0xcf27be680f2dada5bcc45506997f54804e583650e48c28514ccc95234ef4f9f3;
+    bytes32 internal constant SOC_HASH = 0x9a6afe770410c1bd7cdc1f324cfcf73ba1b85e3860d4594522456be4fe6b1d80;
 
     uint8 internal constant CAC_DEPTH = 1;
     uint8 internal constant SOC_DEPTH = 0;
@@ -180,7 +174,9 @@ contract EchidnaRedistributionRealClaimHarness {
         stakeMock.setNode(address(this), FIXTURE_REVEAL_ANCHOR, 0, 1e18, _backdateLastUpdated());
 
         bytes32 obfuscated = redist.wrapCommit(FIXTURE_REVEAL_ANCHOR, activeDepth, activeHash, FIXTURE_NONCE);
-        (bool ok, ) = address(redist).call(abi.encodeWithSelector(redist.commit.selector, obfuscated, redist.currentRound()));
+        (bool ok, ) = address(redist).call(
+            abi.encodeWithSelector(redist.commit.selector, obfuscated, redist.currentRound())
+        );
         if (!ok) return;
 
         commitPrepared = true;
@@ -195,7 +191,9 @@ contract EchidnaRedistributionRealClaimHarness {
         if (redist.currentRound() != preparedRound) return;
         if (redist.currentCommitRound() != preparedRound) return;
 
-        (bool ok, ) = address(redist).call(abi.encodeWithSelector(redist.reveal.selector, activeDepth, activeHash, FIXTURE_NONCE));
+        (bool ok, ) = address(redist).call(
+            abi.encodeWithSelector(redist.reveal.selector, activeDepth, activeHash, FIXTURE_NONCE)
+        );
         if (!ok) return;
 
         claimReady = redist.currentSeed() == FIXTURE_CLAIM_SEED;
