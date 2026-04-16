@@ -228,6 +228,10 @@ contract EchidnaRedistributionHarness {
     // Actions
     // -----------------------------
 
+    /// @dev No-op that lets Echidna advance block.number without side effects,
+    /// helping the fuzzer walk through round phases.
+    function act_tick() external {}
+
     function act_setActorStake(
         uint8 actorId,
         bytes32 overlay,

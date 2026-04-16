@@ -146,6 +146,10 @@ contract EchidnaSystemHarness {
     // Integration actions
     // -----------------------------
 
+    /// @dev No-op that lets Echidna advance block.number without side effects,
+    /// helping the fuzzer walk through round phases.
+    function act_tick() external {}
+
     function act_actor_manageStake(uint8 actorId, bytes32 setNonce, uint256 addAmount, uint8 height) external {
         EchidnaSystemActor a = actors[uint256(actorId) % ACTOR_COUNT];
         uint8 h = uint8(height % 32);

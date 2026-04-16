@@ -10,10 +10,11 @@ testLimit: 25000
 # Keep this modest; increase locally if you want a smaller reproducer.
 shrinkLimit: 1000
 
-# Bound random time/block jumps between transactions.
-# This keeps PriceOracle.adjustPrice() (skippedRounds loop) from becoming extremely slow.
+# Bound random block jumps between transactions.
+# 38 = ROUND_LENGTH/4 (one phase width) so the fuzzer naturally walks through
+# commit → reveal → claim within the same redistribution round.
 maxTimeDelay: 0
-maxBlockDelay: 1000
+maxBlockDelay: 38
 
 # Persist interesting inputs between runs.
 corpusDir: echidna/corpus

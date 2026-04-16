@@ -179,6 +179,10 @@ contract EchidnaRedistributionClaimHarness {
     // Actions
     // -----------------------------
 
+    /// @dev No-op that lets Echidna advance block.number without side effects,
+    /// helping the fuzzer walk through round phases.
+    function act_tick() external {}
+
     function act_seedPot(uint256 amount) external {
         _clearClaimPending();
         uint256 x = amount % 1e24;
