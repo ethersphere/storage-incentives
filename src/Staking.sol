@@ -379,28 +379,28 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns the effective stake that would be active in the target round.
+     * @notice Returns the effective stake that would be active after the given round lookahead.
      */
-    function nodeEffectiveStakeAtRound(address _owner, uint64 _targetRound) public view returns (uint256) {
-        if (!_addressNotFrozenAtRound(_owner, _targetRound)) return 0;
+    function nodeEffectiveStakeLookahead(address _owner, uint64 _lookahead) public view returns (uint256) {
+        if (!_addressNotFrozenLookahead(_owner, _lookahead)) return 0;
 
-        StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
+        StakeState memory preview = _previewStakeLookahead(_owner, _lookahead);
         return _isInitialized(preview) ? preview.balance : 0;
     }
 
     /**
-     * @notice Returns the overlay that would be active in the target round.
+     * @notice Returns the overlay that would be active after the given round lookahead.
      */
-    function overlayOfAddressAtRound(address _owner, uint64 _targetRound) public view returns (bytes32) {
-        StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
+    function overlayOfAddressLookahead(address _owner, uint64 _lookahead) public view returns (bytes32) {
+        StakeState memory preview = _previewStakeLookahead(_owner, _lookahead);
         return _isInitialized(preview) ? preview.overlay : bytes32(0);
     }
 
     /**
-     * @notice Returns the height that would be active in the target round.
+     * @notice Returns the height that would be active after the given round lookahead.
      */
-    function heightOfAddressAtRound(address _owner, uint64 _targetRound) public view returns (uint8) {
-        StakeState memory preview = _previewStakeAtRound(_owner, _targetRound);
+    function heightOfAddressLookahead(address _owner, uint64 _lookahead) public view returns (uint8) {
+        StakeState memory preview = _previewStakeLookahead(_owner, _lookahead);
         return _isInitialized(preview) ? preview.height : 0;
     }
 
@@ -512,19 +512,19 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns true when a queued withdrawal or exit would still be blocked in the target round.
-     * @dev Target-round previews only defer execution while the node remains frozen.
+     * @notice Returns true when a queued withdrawal or exit would still be blocked after the given round lookahead.
+     * @dev Lookahead previews only defer execution while the node remains frozen.
      */
-    function _blocksQueuedWithdrawalExecutionAtRound(
+    function _blocksQueuedWithdrawalExecutionLookahead(
         address _owner,
         UpdateKind _kind,
-        uint64 _targetRound
+        uint64 _lookahead
     ) internal view returns (bool) {
         if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
             return false;
         }
 
-        return !_addressNotFrozenAtRound(_owner, _targetRound);
+        return !_addressNotFrozenLookahead(_owner, _lookahead);
     }
 
     /**
@@ -558,23 +558,24 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Previews stake state as it would look in a specific target round.
+     * @notice Previews stake state as it would look after the given round lookahead.
      */
-    function _previewStakeAtRound(
+    function _previewStakeLookahead(
         address _owner,
-        uint64 _targetRound
+        uint64 _lookahead
     ) internal view returns (StakeState memory preview) {
         preview = _stakes[_owner];
 
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
         uint256 head = _queueHeads[_owner];
+        uint64 targetRound = currentRound() + _lookahead;
 
         for (uint256 i = head; i < queue.length; ) {
             ScheduledUpdate storage scheduled = queue[i];
-            if (scheduled.effectiveFromRound > _targetRound) {
+            if (scheduled.effectiveFromRound > targetRound) {
                 break;
             }
-            if (_blocksQueuedWithdrawalExecutionAtRound(_owner, scheduled.kind, _targetRound)) {
+            if (_blocksQueuedWithdrawalExecutionLookahead(_owner, scheduled.kind, _lookahead)) {
                 break;
             }
 
@@ -686,18 +687,18 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns true when the owner would be unfrozen by the target round.
+     * @notice Returns true when the owner would be unfrozen after the given round lookahead.
      */
-    function _addressNotFrozenAtRound(address _owner, uint64 _targetRound) internal view returns (bool) {
+    function _addressNotFrozenLookahead(address _owner, uint64 _lookahead) internal view returns (bool) {
         if (!_isInitialized(_owner)) {
             return true;
         }
 
-        if (_targetRound <= currentRound()) {
+        if (_lookahead == 0) {
             return _stakes[_owner].frozenUntilBlock < block.number;
         }
 
-        return _stakes[_owner].frozenUntilBlock < uint256(_targetRound) * ROUND_LENGTH;
+        return _stakes[_owner].frozenUntilBlock < uint256(currentRound() + _lookahead) * ROUND_LENGTH;
     }
 
     /**

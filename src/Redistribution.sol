@@ -16,15 +16,15 @@ interface IStakeRegistry {
 
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
-    function overlayOfAddressAtRound(address _owner, uint64 _targetRound) external view returns (bytes32);
+    function overlayOfAddressLookahead(address _owner, uint64 _lookahead) external view returns (bytes32);
 
     function heightOfAddress(address _owner) external view returns (uint8);
 
-    function heightOfAddressAtRound(address _owner, uint64 _targetRound) external view returns (uint8);
+    function heightOfAddressLookahead(address _owner, uint64 _lookahead) external view returns (uint8);
 
     function nodeEffectiveStake(address _owner) external view returns (uint256);
 
-    function nodeEffectiveStakeAtRound(address _owner, uint64 _targetRound) external view returns (uint256);
+    function nodeEffectiveStakeLookahead(address _owner, uint64 _lookahead) external view returns (uint256);
 }
 
 /**
@@ -815,18 +815,18 @@ contract Redistribution is AccessControl, Pausable {
             revert WrongPhase();
         }
 
-        uint64 targetRound = currentPhaseClaim() ? currentRound() + 1 : currentRound();
-        uint256 _stake = Stakes.nodeEffectiveStakeAtRound(_owner, targetRound);
+        uint64 lookahead = currentPhaseClaim() ? 1 : 0;
+        uint256 _stake = Stakes.nodeEffectiveStakeLookahead(_owner, lookahead);
 
         if (_stake == 0) {
             revert NotStaked();
         }
 
-        uint8 _depthResponsibility = _depth - Stakes.heightOfAddressAtRound(_owner, targetRound);
+        uint8 _depthResponsibility = _depth - Stakes.heightOfAddressLookahead(_owner, lookahead);
 
         return
             inProximity(
-                Stakes.overlayOfAddressAtRound(_owner, targetRound),
+                Stakes.overlayOfAddressLookahead(_owner, lookahead),
                 currentRoundAnchor(),
                 _depthResponsibility
             );
