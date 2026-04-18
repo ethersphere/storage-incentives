@@ -39,6 +39,7 @@ const errors = {
   },
   general: {
     queueClosed: 'QueueClosed()',
+    frozenWithdrawal: 'FrozenWithdrawal()',
   },
 };
 
@@ -269,7 +270,7 @@ describe('Staking', function () {
     const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
     await stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime);
 
-    await srStaker0.applyUpdates(staker_0);
+    await expect(srStaker0.applyUpdates(staker_0)).to.be.revertedWith(errors.general.frozenWithdrawal);
     expect(await token.balanceOf(staker_0)).to.be.eq(0);
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
 
@@ -412,7 +413,7 @@ describe('Staking', function () {
     await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'Withdrawal');
     await advanceRounds();
 
-    await srStaker0.applyUpdates(staker_0);
+    await expect(srStaker0.applyUpdates(staker_0)).to.be.revertedWith(errors.general.frozenWithdrawal);
     expect(await token.balanceOf(staker_0)).to.be.eq(0);
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
 
