@@ -17,7 +17,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     uint256 private constant ROUND_LENGTH = 152;
     uint256 private constant MIN_STAKE = 100000000000000000;
-    uint256 private constant UPDATE_QUEUE_MAX_LENGTH = 10;
+    uint256 public constant UPDATE_QUEUE_MAX_LENGTH = 10;
 
     // ----------------------------- Type declarations ------------------------------
 
@@ -95,6 +95,8 @@ contract StakeRegistry is AccessControl, Pausable {
     error InvalidWithdrawalAmount();
     error UpdateQueueFull();
     error QueueClosed();
+    error FrozenWithdrawal();
+    error InvalidWaitConfiguration();
 
     constructor(
         address _bzzToken,
@@ -103,6 +105,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint64 _waitOverlayChange,
         uint64 _waitWithdrawal
     ) {
+        if (_waitOverlayChange < _waitBase || _waitWithdrawal < _waitBase) revert InvalidWaitConfiguration();
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
         WAIT_BASE = _waitBase;
@@ -146,6 +149,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _amount The amount of BZZ to add to the stake.
      */
     function addTokens(uint256 _amount) external whenNotPaused {
+        if (_queueClosed[msg.sender]) revert QueueClosed();
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
@@ -160,6 +164,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _setNonce The nonce used to derive the new overlay.
      */
     function changeOverlay(bytes32 _setNonce) external whenNotPaused {
+        if (_queueClosed[msg.sender]) revert QueueClosed();
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
@@ -183,6 +188,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _height The new staking height.
      */
     function increaseHeight(uint8 _height) external whenNotPaused {
+        if (_queueClosed[msg.sender]) revert QueueClosed();
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
@@ -199,6 +205,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function withdraw(uint256 _amount) external whenNotPaused {
         if (_amount == 0) revert InvalidWithdrawalAmount();
+        if (_queueClosed[msg.sender]) revert QueueClosed();
 
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
@@ -220,6 +227,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Schedules a full exit after the withdrawal delay.
      */
     function exit() external whenNotPaused {
+        if (_queueClosed[msg.sender]) revert QueueClosed();
         StakeState memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
@@ -429,7 +437,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
         while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
             if (_blocksQueuedWithdrawalExecution(_owner, queue[head].kind)) {
-                break;
+                revert FrozenWithdrawal();
             }
             _applyStoredUpdate(_owner, queue[head]);
             delete queue[head];
