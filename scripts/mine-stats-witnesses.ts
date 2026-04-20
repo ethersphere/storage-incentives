@@ -1,31 +1,36 @@
-import { expect } from './util/chai';
-import { ethers, getNamedAccounts, getUnnamedAccounts, deployments } from 'hardhat';
+/**
+ * Pre-mines all witness data for Stats.test.ts.
+ *
+ * Run with:  npx hardhat run scripts/mine-stats-witnesses.ts
+ *
+ * This uses worker threads to mine all 16 witnesses per trial in parallel,
+ * utilising every available CPU core. Each trial's result is saved to
+ * test/mined-witnesses/stats-NNN.json as soon as it completes. If files
+ * already exist AND match the expected anchor they are skipped, so the
+ * script can be interrupted and resumed safely.
+ */
+import { ethers, deployments } from 'hardhat';
+import { arrayify, hexlify } from 'ethers/lib/utils';
+import { Worker } from 'worker_threads';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import {
   mineNBlocks,
-  encodeAndHash,
   mintAndApprove,
-  createOverlay,
   ROUND_LENGTH,
   PHASE_LENGTH,
   copyBatchForClaim,
   mineToRevealPhase,
   mineToCommitPhase,
-} from './util/tools';
-import { BigNumber } from 'ethers';
-import { arrayify, hexlify } from 'ethers/lib/utils';
-import { getClaimProofs, makeSample, setWitnesses } from './util/proofs';
+  createOverlay,
+  encodeAndHash,
+} from '../test/util/tools';
 
-const { read, execute } = deployments;
-
-interface Outcome {
-  node: string;
-  stake: string;
-  wins: number;
-}
-
-// Named accounts used by tests.
-let deployer: string, stamper: string, oracle: string, pauser: string;
-let others: string[];
+const TRIALS = 100;
+const WITNESS_COUNT = 16;
+const NONCE_RANGE = 10_000_000;
+const WITNESSES_DIR = path.join(__dirname, '..', 'test', 'mined-witnesses');
 
 const STATS_PREVRANDAO_SEQUENCE = [
   '0xab7643607671cd4b0a8e15ead33e41de652a4007c4ac16d2146460d86c63ecf7',
@@ -130,154 +135,162 @@ const STATS_PREVRANDAO_SEQUENCE = [
   '0x25a2d5f187dcfc39d60c078aa72d5ffe3e30945e9a748fb9c50267ec1c55fe77',
 ];
 
-// Before the tests, assign accounts
-before(async function () {
-  const namedAccounts = await getNamedAccounts();
-  deployer = namedAccounts.deployer;
-  stamper = namedAccounts.stamper;
-  oracle = namedAccounts.oracle;
-  pauser = namedAccounts.pauser;
-  others = await getUnnamedAccounts();
-});
+type WitnessResult = { nonce: number; transformedAddress: string };
 
-async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: string[], trials: number) {
+function mineTrialWitnessesParallel(anchor: Uint8Array, depth: number): Promise<WitnessResult[]> {
+  const cpus = os.cpus().length;
+  const workerPath = path.join(__dirname, '..', 'test', 'util', 'mine-worker.js');
+
+  const promises: Promise<WitnessResult & { witnessIndex: number }>[] = [];
+  for (let i = 0; i < WITNESS_COUNT; i++) {
+    promises.push(
+      new Promise((resolve, reject) => {
+        const worker = new Worker(workerPath, {
+          workerData: {
+            anchor: Array.from(anchor),
+            depth,
+            startNonce: i * NONCE_RANGE,
+            witnessIndex: i,
+          },
+        });
+        worker.on('message', resolve);
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+          if (code !== 0) reject(new Error(`Worker ${i} exited with code ${code}`));
+        });
+      })
+    );
+  }
+
+  return Promise.all(promises).then((results) => {
+    results.sort((a, b) => {
+      const aVal = BigInt(a.transformedAddress);
+      const bVal = BigInt(b.transformedAddress);
+      return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+    });
+    return results.map(({ nonce, transformedAddress }) => ({ nonce, transformedAddress }));
+  });
+}
+
+function loadCachedAnchor(filename: string): string | null {
+  const filePath = path.join(WITNESSES_DIR, `${filename}.json`);
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    return raw.anchor ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function saveWitnesses(filename: string, anchor: string, witnesses: WitnessResult[]) {
+  const envelope = { anchor, witnesses };
+  fs.writeFileSync(path.join(WITNESSES_DIR, `${filename}.json`), JSON.stringify(envelope));
+}
+
+async function main() {
+  const { deployer, stamper, oracle, pauser } = await ethers.getNamedSigners();
+  const others = await ethers.getUnnamedSigners();
+  const { read, execute } = deployments;
+
+  await deployments.fixture();
+
+  const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+  await execute('PostageStamp', { from: deployer.address }, 'grantRole', priceOracleRole, oracle.address);
+  const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
+  await execute('StakeRegistry', { from: deployer.address }, 'grantRole', pauserRole, pauser.address);
+  const priceOracle = await ethers.getContract('PriceOracle', deployer.address);
+  await priceOracle.pause();
+
   const price1 = 100;
   const depth = '0x00';
   const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-  const reveal_nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+  const reveal_nonce = nonce;
+  const stakes = ['100000000000000000', '300000000000000000'];
+  const nodes = [others[0].address, others[1].address];
 
-  const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
+  const postageStampOracle = await ethers.getContract('PostageStamp', oracle.address);
   await postageStampOracle.setPrice(price1);
 
-  const postageStampAdmin = await ethers.getContract('PostageStamp', deployer);
+  const postageStampAdmin = await ethers.getContract('PostageStamp', deployer.address);
   await postageStampAdmin.setMinimumValidityBlocks(0);
 
-  const { postageDepth, initialBalance, batchId, batchOwner } = await copyBatchForClaim(
-    deployer,
-    '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f'
-  );
+  await copyBatchForClaim(deployer.address, '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f');
 
-  const batchSize = BigNumber.from(2).pow(BigNumber.from(postageDepth));
-  const transferAmount = BigNumber.from(2).mul(BigNumber.from(initialBalance)).mul(batchSize);
-
-  const postage = await ethers.getContract('PostageStamp', stamper);
-  await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
+  const bzzToken = await ethers.getContract('TestToken', deployer.address);
+  const postage = await ethers.getContract('PostageStamp');
+  const stamperAmount = '100000000000000000000000000000';
+  await bzzToken.mint(stamper.address, stamperAmount);
+  const stamperToken = await ethers.getContract('TestToken', stamper.address);
+  await stamperToken.approve(postage.address, stamperAmount);
 
   for (let i = 0; i < nodes.length; i++) {
     const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
-    await mintAndApprove(deployer, nodes[i], sr_node.address, stakes[i]);
+    await bzzToken.mint(nodes[i], stakes[i]);
+    const nodeToken = await ethers.getContract('TestToken', nodes[i]);
+    await nodeToken.approve(sr_node.address, stakes[i]);
     await sr_node.manageStake(nonce, stakes[i], 0);
-  }
-
-  const winDist: Outcome[] = [];
-  for (let i = 0; i < nodes.length; i++) {
-    winDist.push({ node: nodes[i], stake: stakes[i], wins: 0 });
   }
 
   let r_node = await ethers.getContract('Redistribution', nodes[0]);
 
-  // Mine to the start of a commit phase at least 3 full rounds ahead.
-  // This guarantees MustStake2Rounds is satisfied and there is plenty of
-  // room inside the commit phase for all players to submit.
   await mineToCommitPhase(3);
+  let bn = await ethers.provider.getBlockNumber();
+  console.log(`After setup: block=${bn}, round=${Math.floor(bn / ROUND_LENGTH)}, pos=${bn % ROUND_LENGTH}`);
 
-  for (let i = 0; i < trials; i++) {
+  const cpus = os.cpus().length;
+  console.log(`Mining witnesses for ${TRIALS} trials using ${cpus} CPU cores...\n`);
+
+  for (let trial = 0; trial < TRIALS; trial++) {
     await mineToCommitPhase();
 
     const anchor1 = arrayify(await r_node.currentSeed());
+    const anchorHex = hexlify(anchor1);
+    const numbering = String(trial).padStart(3, '0');
+    const filename = `stats-${numbering}`;
 
-    const numbering = String(i).padStart(3, '0');
-    const witnessChunks = await setWitnesses(`stats-${numbering}`, anchor1, Number(depth));
-    const sampleChunk = makeSample(witnessChunks);
+    const cachedAnchor = loadCachedAnchor(filename);
+    if (cachedAnchor === anchorHex) {
+      console.log(`Trial ${numbering}: cached (anchor match) ✓`);
+    } else {
+      const startTime = Date.now();
+      const witnesses = await mineTrialWitnessesParallel(anchor1, Number(depth));
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      saveWitnesses(filename, anchorHex, witnesses);
+      console.log(`Trial ${numbering}: mined ${WITNESS_COUNT} witnesses in ${elapsed}s ✓`);
+    }
 
-    const sampleHashString = hexlify(sampleChunk.address());
+    // Play the round so the seed chain advances correctly
+    const { makeSample } = await import('../test/util/proofs');
+    const witnessFile = JSON.parse(fs.readFileSync(path.join(WITNESSES_DIR, `${filename}.json`), 'utf-8'));
+    // We need to run the actual game so seed updates for next trial
+    const sampleHashString = '0x' + '00'.repeat(32); // placeholder
 
     for (let i = 0; i < nodes.length; i++) {
-      const r_node = await ethers.getContract('Redistribution', nodes[i]);
+      const rn = await ethers.getContract('Redistribution', nodes[i]);
       const overlay = createOverlay(nodes[i], depth, nonce);
       const obfuscatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
-      const currentRound = await r_node.currentRound();
-      await r_node.commit(obfuscatedHash, currentRound);
+      const currentRound = await rn.currentRound();
+      await rn.commit(obfuscatedHash, currentRound);
     }
 
     await mineToRevealPhase();
-    await ethers.provider.send('hardhat_setPrevRandao', [STATS_PREVRANDAO_SEQUENCE[i]]);
+    await ethers.provider.send('hardhat_setPrevRandao', [STATS_PREVRANDAO_SEQUENCE[trial]]);
 
     for (let i = 0; i < nodes.length; i++) {
-      const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      await r_node.reveal(depth, sampleHashString, reveal_nonce);
+      const rn = await ethers.getContract('Redistribution', nodes[i]);
+      await rn.reveal(depth, sampleHashString, reveal_nonce);
     }
-
-    const anchor2 = await r_node.currentSeed();
 
     await mineNBlocks(PHASE_LENGTH - nodes.length + 1);
 
-    let winnerIndex = 0;
-    for (let i = 0; i < winDist.length; i++) {
-      const overlay = createOverlay(winDist[i].node, depth, nonce);
-      if (await r_node.isWinner(overlay)) {
-        winDist[i].wins++;
-        winnerIndex = i;
-      }
-    }
-    r_node = await ethers.getContract('Redistribution', nodes[winnerIndex]);
-
-    const { proofParams } = await getClaimProofs(witnessChunks, sampleChunk, anchor1, anchor2, batchOwner, batchId);
-
-    await r_node.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
-
-    const sr = await ethers.getContract('StakeRegistry');
-
-    for (let i = 0; i < nodes.length; i++) {
-      expect(await sr.nodeEffectiveStake(nodes[i])).to.be.eq(effectiveStakes[i]);
-    }
-
+    // Skip claim - just advance to next round
     await mineNBlocks(PHASE_LENGTH * 2 - nodes.length);
   }
 
-  return winDist;
+  console.log(`\nDone! All ${TRIALS} witness files in test/mined-witnesses/`);
 }
 
-describe('Stats', async function () {
-  beforeEach(async function () {
-    await ethers.provider.send('hardhat_reset', []);
-    await deployments.fixture();
-    // Disable interval mining set by 010_deploy_cluster.ts (5s per block)
-    // so that witness mining doesn't cause phantom blocks
-    await ethers.provider.send('evm_setIntervalMining', [0]);
-    const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
-    await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
-
-    const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
-    await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
-
-    const priceOracle = await ethers.getContract('PriceOracle', deployer);
-    await priceOracle.pause(); // TODO: remove when price oracle is not paused by default.
-  });
-
-  describe('two player game', async function () {
-    const trials = 3;
-
-    it('is fair with 1:3 stake', async function () {
-      this.timeout(0); // witness mining may take a long time on first run
-      const allowed_variance = 0.5; // relaxed for small trial count, use 0.035 with trials=100
-      const stakes = ['100000000000000000', '300000000000000000'];
-      const effectiveStakes = ['99999999999984000', '300000000000000000'];
-      const nodes = [others[0], others[1]];
-
-      const dist = await nPlayerGames(nodes, stakes, effectiveStakes, trials);
-      let sumStakes = BigInt(0);
-      for (let i = 0; i < stakes.length; i++) {
-        sumStakes += BigInt(stakes[i]);
-      }
-
-      for (let i = 0; i < dist.length; i++) {
-        const actual =
-          parseInt((BigInt(dist[i].stake) / BigInt('100000000000000000')).toString()) /
-          parseInt((sumStakes / BigInt('100000000000000000')).toString());
-        const probable = dist[i].wins / trials;
-        expect(Math.abs(actual - probable)).be.lessThan(allowed_variance);
-      }
-    });
-  });
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
 });
