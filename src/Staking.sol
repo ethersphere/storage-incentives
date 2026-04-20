@@ -61,11 +61,7 @@ contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- Events ------------------------------
 
     event DepositCreated(
-        address indexed owner,
-        uint64 registeredFromRound,
-        uint256 amount,
-        bytes32 overlay,
-        uint8 height
+        address indexed owner, uint64 registeredFromRound, uint256 amount, bytes32 overlay, uint8 height
     );
     event TokensAdded(address indexed owner, uint64 registeredFromRound, uint256 amount);
     event OverlayChanged(address indexed owner, uint64 registeredFromRound, bytes32 overlay);
@@ -127,14 +123,8 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
         _pullTokens(msg.sender, _amount);
 
-        uint64 effectiveFromRound = _enqueueUpdate(
-            msg.sender,
-            UpdateKind.CreateDeposit,
-            WAIT_BASE,
-            _setNonce,
-            _amount,
-            _height
-        );
+        uint64 effectiveFromRound =
+            _enqueueUpdate(msg.sender, UpdateKind.CreateDeposit, WAIT_BASE, _setNonce, _amount, _height);
 
         emit DepositCreated(msg.sender, effectiveFromRound, _amount, newOverlay, _height);
     }
@@ -166,14 +156,8 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
         if (newOverlay == plannedStake.overlay) return;
 
-        uint64 effectiveFromRound = _enqueueUpdate(
-            msg.sender,
-            UpdateKind.ChangeOverlay,
-            WAIT_OVERLAY_CHANGE,
-            _setNonce,
-            0,
-            0
-        );
+        uint64 effectiveFromRound =
+            _enqueueUpdate(msg.sender, UpdateKind.ChangeOverlay, WAIT_OVERLAY_CHANGE, _setNonce, 0, 0);
 
         emit OverlayChanged(msg.sender, effectiveFromRound, newOverlay);
     }
@@ -207,14 +191,8 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_amount >= plannedStake.balance) revert BelowMinimumStake();
         if (plannedStake.balance - _amount < _minimumStakeForHeight(plannedStake.height)) revert BelowMinimumStake();
 
-        uint64 effectiveFromRound = _enqueueUpdate(
-            msg.sender,
-            UpdateKind.WithdrawTokens,
-            WAIT_WITHDRAWAL,
-            0,
-            _amount,
-            0
-        );
+        uint64 effectiveFromRound =
+            _enqueueUpdate(msg.sender, UpdateKind.WithdrawTokens, WAIT_WITHDRAWAL, 0, _amount, 0);
         emit Withdrawal(msg.sender, effectiveFromRound, _amount);
     }
 
@@ -236,7 +214,13 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _owner The address whose queue should be processed.
      */
     function applyUpdates(address _owner) public {
-        _applyReadyUpdates(_owner, true);
+        _applyReadyUpdates(_owner);
+        if (
+            _queueLength(_owner) > 0
+                && _blocksQueuedWithdrawalExecution(_owner, _updateQueues[_owner][_queueHeads[_owner]].kind)
+        ) {
+            revert FrozenWithdrawal();
+        }
     }
 
     /**
@@ -244,13 +228,13 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Used for migration flows where queued deposits and top ups must be returned.
      */
     function migrateStake() external whenPaused {
-        _applyReadyUpdates(msg.sender, false);
+        _applyReadyUpdates(msg.sender);
 
         uint256 payout = _stakes[msg.sender].balance;
         ScheduledUpdate[] storage queue = _updateQueues[msg.sender];
         uint256 head = _queueHeads[msg.sender];
 
-        for (uint256 i = head; i < queue.length; ) {
+        for (uint256 i = head; i < queue.length;) {
             ScheduledUpdate storage scheduled = queue[i];
             if (scheduled.kind == UpdateKind.CreateDeposit || scheduled.kind == UpdateKind.AddTokens) {
                 payout += scheduled.amount;
@@ -284,7 +268,7 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         _stakes[_owner].frozenUntilBlock = block.number + _time;
-        _applyReadyUpdates(_owner, false);
+        _applyReadyUpdates(_owner);
 
         if (_isInitialized(_owner)) {
             emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
@@ -299,7 +283,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function slashDeposit(address _owner, uint256 _amount) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
-        _applyReadyUpdates(_owner, false);
+        _applyReadyUpdates(_owner);
 
         Stake storage stake = _stakes[_owner];
         bytes32 previousOverlay = stake.overlay;
@@ -423,19 +407,15 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Applies all queued updates that are effective in the current round.
-     * @dev When _revertOnFrozen is true, reverts if a frozen withdrawal/exit is encountered.
-     *      When false, stops processing at the frozen entry (used by privileged callers).
+     * @dev Stops at the first frozen withdrawal/exit without reverting.
      */
-    function _applyReadyUpdates(address _owner, bool _revertOnFrozen) internal {
+    function _applyReadyUpdates(address _owner) internal {
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
         uint256 head = _queueHeads[_owner];
         uint64 roundNumber = currentRound();
 
         while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
-            if (_blocksQueuedWithdrawalExecution(_owner, queue[head].kind)) {
-                if (_revertOnFrozen) revert FrozenWithdrawal();
-                break;
-            }
+            if (_blocksQueuedWithdrawalExecution(_owner, queue[head].kind)) break;
             _applyStoredUpdate(_owner, queue[head]);
             delete queue[head];
             unchecked {
@@ -520,11 +500,11 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Returns true when a queued withdrawal or exit would still be blocked after the given round lookahead.
      * @dev Lookahead previews only defer execution while the node remains frozen.
      */
-    function _blocksQueuedWithdrawalExecutionLookahead(
-        address _owner,
-        UpdateKind _kind,
-        uint64 _lookahead
-    ) internal view returns (bool) {
+    function _blocksQueuedWithdrawalExecutionLookahead(address _owner, UpdateKind _kind, uint64 _lookahead)
+        internal
+        view
+        returns (bool)
+    {
         if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
             return false;
         }
@@ -542,7 +522,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 head = _queueHeads[_owner];
         uint64 roundNumber = currentRound();
 
-        for (uint256 i = head; i < queue.length; ) {
+        for (uint256 i = head; i < queue.length;) {
             ScheduledUpdate storage scheduled = queue[i];
             if (!includeFutureUpdates && scheduled.effectiveFromRound > roundNumber) {
                 break;
@@ -569,7 +549,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 head = _queueHeads[_owner];
         uint64 targetRound = currentRound() + _lookahead;
 
-        for (uint256 i = head; i < queue.length; ) {
+        for (uint256 i = head; i < queue.length;) {
             ScheduledUpdate storage scheduled = queue[i];
             if (scheduled.effectiveFromRound > targetRound) {
                 break;
@@ -589,11 +569,11 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Applies a single queued update to an in-memory preview state.
      */
-    function _applyPreviewUpdate(
-        address _owner,
-        Stake memory preview,
-        ScheduledUpdate storage scheduled
-    ) internal view returns (Stake memory) {
+    function _applyPreviewUpdate(address _owner, Stake memory preview, ScheduledUpdate storage scheduled)
+        internal
+        view
+        returns (Stake memory)
+    {
         if (scheduled.kind == UpdateKind.CreateDeposit) {
             preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
             preview.balance = scheduled.amount;
@@ -657,11 +637,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
         _updateQueues[_owner].push(
             ScheduledUpdate({
-                kind: _kind,
-                effectiveFromRound: effectiveFromRound,
-                nonce: _nonce,
-                amount: _amount,
-                height: _height
+                kind: _kind, effectiveFromRound: effectiveFromRound, nonce: _nonce, amount: _amount, height: _height
             })
         );
     }
@@ -708,7 +684,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 head = _queueHeads[_owner];
         Stake memory preview = _stakes[_owner];
 
-        for (uint256 i = head; i < queue.length; ) {
+        for (uint256 i = head; i < queue.length;) {
             ScheduledUpdate storage scheduled = queue[i];
 
             if (scheduled.kind == UpdateKind.CreateDeposit) {
