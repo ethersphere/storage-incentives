@@ -16,7 +16,9 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
     { from: deployer },
     'grantRole',
     redistributorRole,
-    (await get('Redistribution')).address
+    (
+      await get('Redistribution')
+    ).address
   );
 
   const currentPrice = await read('PriceOracle', 'currentPrice');

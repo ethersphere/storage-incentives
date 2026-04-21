@@ -1,5 +1,5 @@
 import { expect } from './util/chai';
-import { ethers, deployments, getNamedAccounts } from 'hardhat';
+import { ethers, getNamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
 
 let deployer: string;
@@ -126,28 +126,75 @@ describe('VersionedRegistryRouter', function () {
 
     it('should revert if proxy already registered', async function () {
       await registry.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address);
-      await expect(
-        registry.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address)
-      ).to.be.reverted;
+      await expect(registry.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address)).to.be.reverted;
     });
 
     it('should revert if proxy is zero address', async function () {
-      await expect(
-        registry.registerProxy(SAMPLE_PROXY_ID, zeroAddress)
-      ).to.be.reverted;
+      await expect(registry.registerProxy(SAMPLE_PROXY_ID, zeroAddress)).to.be.reverted;
+    });
+
+    it('should revert if proxy admin does not match registry proxyAdmin', async function () {
+      const ProxyAdminFactory = await ethers.getContractFactory('ProxyAdmin');
+      const otherAdmin = await ProxyAdminFactory.deploy();
+      await otherAdmin.deployed();
+
+      const ImplFactory = await ethers.getContractFactory('SampleImplementation');
+      const impl = await ImplFactory.deploy();
+      await impl.deployed();
+
+      const ProxyFactory = await ethers.getContractFactory('TransparentUpgradeableProxy');
+      const foreignProxy = await ProxyFactory.deploy(impl.address, otherAdmin.address, '0x');
+      await foreignProxy.deployed();
+
+      await expect(registry.registerProxy(SAMPLE_PROXY_ID, foreignProxy.address)).to.be.reverted;
     });
 
     it('should revert if caller lacks ROUTER_ADMIN_ROLE', async function () {
       const registryAsNode = registry.connect(await ethers.getSigner(node_0));
-      await expect(
-        registryAsNode.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address)
-      ).to.be.reverted;
+      await expect(registryAsNode.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address)).to.be.reverted;
     });
 
     it('should revert getProxyAddress for unregistered proxyId', async function () {
-      await expect(
-        registry.getProxyAddress(SAMPLE_PROXY_ID)
-      ).to.be.reverted;
+      await expect(registry.getProxyAddress(SAMPLE_PROXY_ID)).to.be.reverted;
+    });
+  });
+
+  // ====================================================================
+  // Proxy deprecation
+  // ====================================================================
+  describe('Proxy deprecation', function () {
+    beforeEach(async function () {
+      await setupFixture();
+      await registry.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address);
+    });
+
+    it('should deprecate and emit ProxyDeprecated', async function () {
+      await expect(registry.deprecateProxy(SAMPLE_PROXY_ID))
+        .to.emit(registry, 'ProxyDeprecated')
+        .withArgs(SAMPLE_PROXY_ID, sampleProxy.address);
+    });
+
+    it('should revert verifyProxy after deprecation', async function () {
+      const codehash = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, codehash);
+
+      expect(await registry.verifyProxy(SAMPLE_PROXY_ID)).to.equal(implV1.address);
+      await registry.deprecateProxy(SAMPLE_PROXY_ID);
+      await expect(registry.verifyProxy(SAMPLE_PROXY_ID)).to.be.reverted;
+    });
+
+    it('should revert if proxy not registered', async function () {
+      await expect(registry.deprecateProxy(STAKING_PROXY_ID)).to.be.reverted;
+    });
+
+    it('should revert if already deprecated', async function () {
+      await registry.deprecateProxy(SAMPLE_PROXY_ID);
+      await expect(registry.deprecateProxy(SAMPLE_PROXY_ID)).to.be.reverted;
+    });
+
+    it('should revert if caller lacks DEPRECATOR_ROLE', async function () {
+      const registryAsNode = registry.connect(await ethers.getSigner(node_0));
+      await expect(registryAsNode.deprecateProxy(SAMPLE_PROXY_ID)).to.be.reverted;
     });
   });
 
@@ -189,36 +236,32 @@ describe('VersionedRegistryRouter', function () {
       expect((await registry.getRelease(v2Id)).implementation).to.equal(implV2.address);
     });
 
-    it('should allow zero codehash (optional verification)', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
-      expect((await registry.getRelease(v1Id)).codehash).to.equal(zeroBytes32);
+    it('should revert if codehash is zero', async function () {
+      await expect(registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32)).to.be.reverted;
     });
 
     it('should revert if version already registered (Invariant 1)', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
-      await expect(
-        registry.registerRelease(v1Id, v1Semver, implV2.address, zeroBytes32)
-      ).to.be.reverted;
+      const ch1 = await getCodehash(implV1.address);
+      const ch2 = await getCodehash(implV2.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
+      await expect(registry.registerRelease(v1Id, v1Semver, implV2.address, ch2)).to.be.reverted;
     });
 
     it('should revert if implementation already registered (Invariant 2)', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
-      await expect(
-        registry.registerRelease(v2Id, v2Semver, implV1.address, zeroBytes32)
-      ).to.be.reverted;
+      const ch1 = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
+      await expect(registry.registerRelease(v2Id, v2Semver, implV1.address, ch1)).to.be.reverted;
     });
 
     it('should revert if implementation is zero address (Invariant 3)', async function () {
-      await expect(
-        registry.registerRelease(v1Id, v1Semver, zeroAddress, zeroBytes32)
-      ).to.be.reverted;
+      const ch1 = await getCodehash(implV1.address);
+      await expect(registry.registerRelease(v1Id, v1Semver, zeroAddress, ch1)).to.be.reverted;
     });
 
     it('should revert if caller lacks REGISTRAR_ROLE', async function () {
       const registryAsNode = registry.connect(await ethers.getSigner(node_0));
-      await expect(
-        registryAsNode.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32)
-      ).to.be.reverted;
+      const ch1 = await getCodehash(implV1.address);
+      await expect(registryAsNode.registerRelease(v1Id, v1Semver, implV1.address, ch1)).to.be.reverted;
     });
   });
 
@@ -228,7 +271,8 @@ describe('VersionedRegistryRouter', function () {
   describe('Registry — deprecateRelease', function () {
     beforeEach(async function () {
       await setupFixture();
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
+      const ch1 = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
     });
 
     it('should deprecate and emit ReleaseDeprecated', async function () {
@@ -275,7 +319,8 @@ describe('VersionedRegistryRouter', function () {
   describe('Registry — isImplementationApprovedForVersion', function () {
     beforeEach(async function () {
       await setupFixture();
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
+      const ch1 = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
     });
 
     it('should return true for matching pair', async function () {
@@ -313,19 +358,13 @@ describe('VersionedRegistryRouter', function () {
       expect(impl).to.equal(implV1.address);
     });
 
-    it('should verify with zero codehash (skip codehash check)', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
-
-      const impl = await registry.verifyProxy(SAMPLE_PROXY_ID);
-      expect(impl).to.equal(implV1.address);
-    });
-
     it('should revert if proxy implementation is not registered', async function () {
       await expect(registry.verifyProxy(SAMPLE_PROXY_ID)).to.be.reverted;
     });
 
     it('should revert if proxy implementation is deprecated', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
+      const codehash = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, codehash);
       await registry.deprecateRelease(v1Id);
       await expect(registry.verifyProxy(SAMPLE_PROXY_ID)).to.be.reverted;
     });
@@ -379,8 +418,7 @@ describe('VersionedRegistryRouter', function () {
       await registry.setRoutedSelector(setValueSelector, true);
 
       const calldata = iface.encodeFunctionData('setValue', [42]);
-      await expect(registry.forward(SAMPLE_PROXY_ID, calldata))
-        .to.emit(registry, 'Forwarded');
+      await expect(registry.forward(SAMPLE_PROXY_ID, calldata)).to.emit(registry, 'Forwarded');
 
       const proxied = await ethers.getContractAt('SampleImplementation', sampleProxy.address);
       expect(await proxied.value()).to.equal(42);
@@ -392,12 +430,15 @@ describe('VersionedRegistryRouter', function () {
       await expect(registry.forward(SAMPLE_PROXY_ID, calldata)).to.be.reverted;
     });
 
+    it('should revert if calldata is shorter than 4 bytes', async function () {
+      await expect(registry.forward(SAMPLE_PROXY_ID, '0x')).to.be.reverted;
+      await expect(registry.forward(SAMPLE_PROXY_ID, '0x010203')).to.be.reverted;
+    });
+
     it('should emit SelectorRouted when enabling', async function () {
       const iface = (await ethers.getContractFactory('SampleImplementation')).interface;
       const sel = iface.getSighash('setValue');
-      await expect(registry.setRoutedSelector(sel, true))
-        .to.emit(registry, 'SelectorRouted')
-        .withArgs(sel, true);
+      await expect(registry.setRoutedSelector(sel, true)).to.emit(registry, 'SelectorRouted').withArgs(sel, true);
     });
 
     it('should allow disabling a previously routed selector', async function () {
@@ -413,9 +454,7 @@ describe('VersionedRegistryRouter', function () {
     it('should revert setRoutedSelector without ROUTER_ADMIN_ROLE', async function () {
       const registryAsNode = registry.connect(await ethers.getSigner(node_0));
       const iface = (await ethers.getContractFactory('SampleImplementation')).interface;
-      await expect(
-        registryAsNode.setRoutedSelector(iface.getSighash('setValue'), true)
-      ).to.be.reverted;
+      await expect(registryAsNode.setRoutedSelector(iface.getSighash('setValue'), true)).to.be.reverted;
     });
   });
 
@@ -426,18 +465,29 @@ describe('VersionedRegistryRouter', function () {
     beforeEach(async function () {
       await setupFixture();
       await registry.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address);
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
+      const codehash = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, codehash);
     });
 
-    it('should forward without selector check', async function () {
+    it('should forward without selector check when caller is ROUTER_ADMIN_ROLE', async function () {
       const iface = (await ethers.getContractFactory('SampleImplementation')).interface;
       const calldata = iface.encodeFunctionData('setValue', [99]);
 
-      await expect(registry.forwardUnchecked(SAMPLE_PROXY_ID, calldata))
-        .to.emit(registry, 'Forwarded');
+      await expect(registry.forwardUnchecked(SAMPLE_PROXY_ID, calldata)).to.emit(registry, 'Forwarded');
 
       const proxied = await ethers.getContractAt('SampleImplementation', sampleProxy.address);
       expect(await proxied.value()).to.equal(99);
+    });
+
+    it('should revert when caller lacks ROUTER_ADMIN_ROLE', async function () {
+      const registryAsNode = registry.connect(await ethers.getSigner(node_0));
+      const iface = (await ethers.getContractFactory('SampleImplementation')).interface;
+      const calldata = iface.encodeFunctionData('setValue', [99]);
+      await expect(registryAsNode.forwardUnchecked(SAMPLE_PROXY_ID, calldata)).to.be.reverted;
+    });
+
+    it('should revert if calldata is shorter than 4 bytes', async function () {
+      await expect(registry.forwardUnchecked(SAMPLE_PROXY_ID, '0x')).to.be.reverted;
     });
 
     it('should still verify implementation registration', async function () {
@@ -456,25 +506,24 @@ describe('VersionedRegistryRouter', function () {
     beforeEach(setupFixture);
 
     it('should not allow same version with different implementation', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
-      await expect(
-        registry.registerRelease(v1Id, v1Semver, implV2.address, zeroBytes32)
-      ).to.be.reverted;
+      const ch1 = await getCodehash(implV1.address);
+      const ch2 = await getCodehash(implV2.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
+      await expect(registry.registerRelease(v1Id, v1Semver, implV2.address, ch2)).to.be.reverted;
     });
 
     it('should not allow same implementation under different version', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
-      await expect(
-        registry.registerRelease(v2Id, v2Semver, implV1.address, zeroBytes32)
-      ).to.be.reverted;
+      const ch1 = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
+      await expect(registry.registerRelease(v2Id, v2Semver, implV1.address, ch1)).to.be.reverted;
     });
 
     it('should not allow re-registering even after deprecation', async function () {
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
+      const ch1 = await getCodehash(implV1.address);
+      const ch2 = await getCodehash(implV2.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
       await registry.deprecateRelease(v1Id);
-      await expect(
-        registry.registerRelease(v1Id, '1.0.0-reuse', implV2.address, zeroBytes32)
-      ).to.be.reverted;
+      await expect(registry.registerRelease(v1Id, '1.0.0-reuse', implV2.address, ch2)).to.be.reverted;
     });
   });
 
@@ -530,8 +579,9 @@ describe('VersionedRegistryRouter', function () {
     });
 
     it('should reject proxy upgraded to unregistered implementation', async function () {
+      const ch1 = await getCodehash(implV1.address);
       await registry.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address);
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
 
       await ozProxyAdmin.upgrade(sampleProxy.address, implV2.address);
 
@@ -565,22 +615,28 @@ describe('VersionedRegistryRouter', function () {
   // Multi-proxy verification
   // ====================================================================
   describe('Multi-proxy: verifyAllProxies', function () {
+    let secondImpl: Contract;
+    let secondProxy: Contract;
+
     beforeEach(async function () {
       await setupFixture();
 
       const SecondImplFactory = await ethers.getContractFactory('SampleImplementation');
-      const secondImpl = await SecondImplFactory.deploy();
+      secondImpl = await SecondImplFactory.deploy();
       await secondImpl.deployed();
 
       const ProxyFactory = await ethers.getContractFactory('TransparentUpgradeableProxy');
-      const secondProxy = await ProxyFactory.deploy(secondImpl.address, ozProxyAdmin.address, '0x');
+      secondProxy = await ProxyFactory.deploy(secondImpl.address, ozProxyAdmin.address, '0x');
       await secondProxy.deployed();
+
+      const ch1 = await getCodehash(implV1.address);
+      const ch2 = await getCodehash(secondImpl.address);
 
       await registry.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address);
       await registry.registerProxy(STAKING_PROXY_ID, secondProxy.address);
 
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
-      await registry.registerRelease(v2Id, v2Semver, secondImpl.address, zeroBytes32);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
+      await registry.registerRelease(v2Id, v2Semver, secondImpl.address, ch2);
     });
 
     it('should verify all proxies when all implementations are registered', async function () {
@@ -590,7 +646,15 @@ describe('VersionedRegistryRouter', function () {
       expect(verified[1]).to.equal(STAKING_PROXY_ID);
     });
 
-    it('should revert if any proxy has unregistered implementation', async function () {
+    it('should skip deprecated proxies without reverting', async function () {
+      await registry.deprecateProxy(STAKING_PROXY_ID);
+      const verified = await registry.verifyAllProxies();
+      expect(verified.length).to.equal(2);
+      expect(verified[0]).to.equal(SAMPLE_PROXY_ID);
+      expect(verified[1]).to.equal(zeroBytes32);
+    });
+
+    it('should revert if any active proxy has unregistered implementation', async function () {
       const ThirdImplFactory = await ethers.getContractFactory('SampleImplementationV2');
       const thirdImpl = await ThirdImplFactory.deploy();
       await thirdImpl.deployed();
@@ -637,10 +701,12 @@ describe('VersionedRegistryRouter', function () {
       const REGISTRAR_ROLE = await registry.REGISTRAR_ROLE();
       await registry.grantRole(REGISTRAR_ROLE, admin);
 
+      const ch1 = await getCodehash(implV1.address);
       const registryAsAdmin = registry.connect(await ethers.getSigner(admin));
-      await expect(
-        registryAsAdmin.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32)
-      ).to.emit(registry, 'ReleaseRegistered');
+      await expect(registryAsAdmin.registerRelease(v1Id, v1Semver, implV1.address, ch1)).to.emit(
+        registry,
+        'ReleaseRegistered'
+      );
     });
 
     it('should allow admin to revoke REGISTRAR_ROLE', async function () {
@@ -648,20 +714,19 @@ describe('VersionedRegistryRouter', function () {
       await registry.grantRole(REGISTRAR_ROLE, admin);
       await registry.revokeRole(REGISTRAR_ROLE, admin);
 
+      const ch1 = await getCodehash(implV1.address);
       const registryAsAdmin = registry.connect(await ethers.getSigner(admin));
-      await expect(
-        registryAsAdmin.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32)
-      ).to.be.reverted;
+      await expect(registryAsAdmin.registerRelease(v1Id, v1Semver, implV1.address, ch1)).to.be.reverted;
     });
 
     it('should allow separate DEPRECATOR_ROLE from REGISTRAR_ROLE', async function () {
       const DEPRECATOR_ROLE = await registry.DEPRECATOR_ROLE();
       await registry.grantRole(DEPRECATOR_ROLE, admin);
-      await registry.registerRelease(v1Id, v1Semver, implV1.address, zeroBytes32);
+      const ch1 = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
 
       const registryAsAdmin = registry.connect(await ethers.getSigner(admin));
-      await expect(registryAsAdmin.deprecateRelease(v1Id))
-        .to.emit(registry, 'ReleaseDeprecated');
+      await expect(registryAsAdmin.deprecateRelease(v1Id)).to.emit(registry, 'ReleaseDeprecated');
     });
 
     it('should allow granting ROUTER_ADMIN_ROLE to manage proxies', async function () {
@@ -669,9 +734,10 @@ describe('VersionedRegistryRouter', function () {
       await registry.grantRole(ROUTER_ADMIN_ROLE, admin);
 
       const registryAsAdmin = registry.connect(await ethers.getSigner(admin));
-      await expect(
-        registryAsAdmin.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address)
-      ).to.emit(registry, 'ProxyRegistered');
+      await expect(registryAsAdmin.registerProxy(SAMPLE_PROXY_ID, sampleProxy.address)).to.emit(
+        registry,
+        'ProxyRegistered'
+      );
     });
   });
 });

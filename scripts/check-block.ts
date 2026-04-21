@@ -6,4 +6,9 @@ async function main() {
   console.log('Fixture block number:', blockNum);
 }
 
-main().then(() => process.exit(0)).catch(e => { console.error(e); process.exit(1); });
+main()
+  .then(() => process.exit(0))
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  });

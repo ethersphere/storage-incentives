@@ -7,7 +7,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts }) 
 
   const proxyAdmin = await get('DefaultProxyAdmin');
 
-  const result = await deploy('VersionedRegistryRouter', {
+  await deploy('VersionedRegistryRouter', {
     from: deployer,
     args: [proxyAdmin.address],
     log: true,

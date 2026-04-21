@@ -5,9 +5,7 @@ import { BigNumber } from 'ethers';
 const { keccak256Hash } = BmtUtils;
 type Message = BmtUtils.Message;
 
-const SAMPLE_MAX_VALUE = BigNumber.from(
-  '1284401000000000000000000000000000000000000000000000000000000000000000000'
-);
+const SAMPLE_MAX_VALUE = BigNumber.from('1284401000000000000000000000000000000000000000000000000000000000000000000');
 
 function numberToArray(n: number): Uint8Array {
   const buff = Buffer.alloc(32);

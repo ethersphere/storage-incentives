@@ -17,7 +17,6 @@ import fs from 'fs';
 import os from 'os';
 import {
   mineNBlocks,
-  mintAndApprove,
   ROUND_LENGTH,
   PHASE_LENGTH,
   copyBatchForClaim,
@@ -138,7 +137,6 @@ const STATS_PREVRANDAO_SEQUENCE = [
 type WitnessResult = { nonce: number; transformedAddress: string };
 
 function mineTrialWitnessesParallel(anchor: Uint8Array, depth: number): Promise<WitnessResult[]> {
-  const cpus = os.cpus().length;
   const workerPath = path.join(__dirname, '..', 'test', 'util', 'mine-worker.js');
 
   const promises: Promise<WitnessResult & { witnessIndex: number }>[] = [];
@@ -231,10 +229,10 @@ async function main() {
     await sr_node.manageStake(nonce, stakes[i], 0);
   }
 
-  let r_node = await ethers.getContract('Redistribution', nodes[0]);
+  const r_node = await ethers.getContract('Redistribution', nodes[0]);
 
   await mineToCommitPhase(3);
-  let bn = await ethers.provider.getBlockNumber();
+  const bn = await ethers.provider.getBlockNumber();
   console.log(`After setup: block=${bn}, round=${Math.floor(bn / ROUND_LENGTH)}, pos=${bn % ROUND_LENGTH}`);
 
   const cpus = os.cpus().length;
@@ -259,11 +257,10 @@ async function main() {
       console.log(`Trial ${numbering}: mined ${WITNESS_COUNT} witnesses in ${elapsed}s ✓`);
     }
 
-    // Play the round so the seed chain advances correctly
-    const { makeSample } = await import('../test/util/proofs');
-    const witnessFile = JSON.parse(fs.readFileSync(path.join(WITNESSES_DIR, `${filename}.json`), 'utf-8'));
-    // We need to run the actual game so seed updates for next trial
-    const sampleHashString = '0x' + '00'.repeat(32); // placeholder
+    // We need to run the actual game so seed updates for next trial.
+    // The mined sample data isn't needed here — a placeholder hash is enough
+    // because we never reach the claim phase.
+    const sampleHashString = '0x' + '00'.repeat(32);
 
     for (let i = 0; i < nodes.length; i++) {
       const rn = await ethers.getContract('Redistribution', nodes[i]);
