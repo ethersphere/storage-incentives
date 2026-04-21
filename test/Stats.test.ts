@@ -256,11 +256,11 @@ describe('Stats', async function () {
   });
 
   describe('two player game', async function () {
-    const trials = 3;
+    const trials = 100;
 
     it('is fair with 1:3 stake', async function () {
       this.timeout(0); // witness mining may take a long time on first run
-      const allowed_variance = 0.5; // relaxed for small trial count, use 0.035 with trials=100
+      const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
       const effectiveStakes = ['99999999999984000', '300000000000000000'];
       const nodes = [others[0], others[1]];

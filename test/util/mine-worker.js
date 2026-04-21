@@ -55,7 +55,9 @@ function mineCacWitness(anchor, depth, startNonce) {
         }
     }
 }
-const { anchor, depth, startNonce, witnessIndex } = worker_threads_1.workerData;
-const anchorBuf = new Uint8Array(anchor);
-const result = mineCacWitness(anchorBuf, depth, startNonce);
-worker_threads_1.parentPort?.postMessage({ witnessIndex, ...result });
+if (worker_threads_1.workerData) {
+    const { anchor, depth, startNonce, witnessIndex } = worker_threads_1.workerData;
+    const anchorBuf = new Uint8Array(anchor);
+    const result = mineCacWitness(anchorBuf, depth, startNonce);
+    worker_threads_1.parentPort?.postMessage({ witnessIndex, ...result });
+}

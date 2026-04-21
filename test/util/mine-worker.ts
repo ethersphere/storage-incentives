@@ -73,13 +73,15 @@ function mineCacWitness(
   }
 }
 
-const { anchor, depth, startNonce, witnessIndex } = workerData as {
-  anchor: number[];
-  depth: number;
-  startNonce: number;
-  witnessIndex: number;
-};
+if (workerData) {
+  const { anchor, depth, startNonce, witnessIndex } = workerData as {
+    anchor: number[];
+    depth: number;
+    startNonce: number;
+    witnessIndex: number;
+  };
 
-const anchorBuf = new Uint8Array(anchor);
-const result = mineCacWitness(anchorBuf, depth, startNonce);
-parentPort?.postMessage({ witnessIndex, ...result });
+  const anchorBuf = new Uint8Array(anchor);
+  const result = mineCacWitness(anchorBuf, depth, startNonce);
+  parentPort?.postMessage({ witnessIndex, ...result });
+}

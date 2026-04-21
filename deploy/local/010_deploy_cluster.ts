@@ -60,7 +60,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
     log('----------------------------------------------------');
   }
 
-  if (network.name == 'hardhat') {
+  if (network.name == 'hardhat' && process.env.HARDHAT_INTERVAL_MINING === 'true') {
     await network.provider.send('evm_setIntervalMining', [5000]);
     log('Mining blocks in localcluster config, 5 second delay for each block');
     log('----------------------------------------------------');
