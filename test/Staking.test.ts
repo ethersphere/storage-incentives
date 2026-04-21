@@ -256,7 +256,7 @@ describe('Staking', function () {
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
   });
 
-  it('should keep queued withdrawal pending while the node is frozen', async function () {
+  it('should apply mature withdrawal during freeze and block future ones', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
 
@@ -270,17 +270,13 @@ describe('Staking', function () {
     const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
     await stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime);
 
-    await expect(srStaker0.applyUpdates(staker_0)).to.be.revertedWith(errors.general.frozenWithdrawal);
-    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
 
     await mineNBlocks(freezeTime + 1);
 
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
-    expect(await token.balanceOf(staker_0)).to.be.eq(0);
-
-    await srStaker0.applyUpdates(staker_0);
-    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
   });
 
   it('should execute queued withdrawal while the node is active in the current round', async function () {

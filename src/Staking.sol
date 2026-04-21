@@ -267,8 +267,8 @@ contract StakeRegistry is AccessControl, Pausable {
             return;
         }
 
-        _stakes[_owner].frozenUntilBlock = block.number + _time;
         _applyReadyUpdates(_owner);
+        _stakes[_owner].frozenUntilBlock = block.number + _time;
 
         if (_isInitialized(_owner)) {
             emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
