@@ -42,5 +42,4 @@ tenderly.log
 
 # Echidna fuzzing
 echidna/corpus/
-echidna/corpus-real-claim/
 crytic-export/

@@ -273,14 +273,6 @@ ECHIDNA_CONTRACT=EchidnaRedistributionRealClaimHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
 ```
 
-To run the real-claim harness with its isolated corpus/config:
-
-```bash
-ECHIDNA_CONTRACT=EchidnaRedistributionRealClaimHarness \
-ECHIDNA_CONFIG=echidna/echidna-real-claim.yaml \
-yarn echidna
-```
-
 This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
 
 ### Output files
@@ -288,7 +280,6 @@ This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
 Echidna may write artifacts such as:
 
 - `echidna/corpus/` (saved interesting inputs)
-- `echidna/corpus-real-claim/` (isolated corpus for the real-claim harness when using `echidna/echidna-real-claim.yaml`)
 - `echidna/coverage/`
 - `crytic-export/` (Crytic export artifacts)
 
@@ -296,13 +287,7 @@ These are ignored by git via `.gitignore`.
 
 ### Config files
 
-- `echidna/echidna.yaml`: shared default config used by all harnesses unless overridden
-- `echidna/echidna-real-claim.yaml`: isolated config for `EchidnaRedistributionRealClaimHarness`
-
-The dedicated real-claim config exists because that harness relies on fixed proof fixtures and benefits from:
-
-- an isolated corpus, so it does not replay unrelated sequences from other harnesses
-- a slightly shorter sequence budget, since it only needs to reach one deterministic `commit -> reveal -> claim` path and mutate proof fields around it
+- `echidna/echidna.yaml`: default config for all harness runs (override with `ECHIDNA_CONFIG` if needed)
 
 ## How to extend this
 
