@@ -32,8 +32,28 @@ else
   CONTRACTS_TO_RUN=("${CONTRACTS_DEFAULT[@]}")
 fi
 
+# Optional CLI overrides (see `echidna-test --help`). Examples:
+#   ECHIDNA_TEST_LIMIT=50000 ECHIDNA_SEQ_LEN=300 yarn echidna
+#   ECHIDNA_WORKERS=8 ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
+# Use a string (not an array) so `set -u` never trips on empty `${arr[*]}` on older Bash.
+ECHIDNA_EXTRA_CLI=""
+if [[ -n "${ECHIDNA_TEST_LIMIT:-}" ]]; then
+  ECHIDNA_EXTRA_CLI+=" --test-limit ${ECHIDNA_TEST_LIMIT}"
+fi
+if [[ -n "${ECHIDNA_SEQ_LEN:-}" ]]; then
+  ECHIDNA_EXTRA_CLI+=" --seq-len ${ECHIDNA_SEQ_LEN}"
+fi
+if [[ -n "${ECHIDNA_WORKERS:-}" ]]; then
+  ECHIDNA_EXTRA_CLI+=" --workers ${ECHIDNA_WORKERS}"
+fi
+
 for c in "${CONTRACTS_TO_RUN[@]}"; do
   echo "==> echidna: running contract $c" >&2
+
+  # One corpus + coverage tree per harness so saved sequences stay relevant to
+  # that contract (shared corpus mixed unrelated call shapes and diluted learning).
+  CORPUS_DIR="echidna/corpus/by-contract/${c}"
+  mkdir -p "${ROOT_DIR}/${CORPUS_DIR}"
 
   # Drop stale Crytic output inside Docker (same uid as container root). A host
   # `rm -rf crytic-export` often fails after Docker created the dir as root.
@@ -42,5 +62,6 @@ for c in "${CONTRACTS_TO_RUN[@]}"; do
     -v "$ROOT_DIR":/src \
     -w /src \
     "$IMAGE" \
-    -c "rm -rf crytic-export && echidna-test . --contract ${c} --config ${CONFIG}"
+    -c "rm -rf crytic-export && echidna-test . --contract ${c} --config ${CONFIG} \
+      --corpus-dir ${CORPUS_DIR} --coverage-dir ${CORPUS_DIR}/coverage${ECHIDNA_EXTRA_CLI}"
 done

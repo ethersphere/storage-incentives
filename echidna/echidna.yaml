@@ -3,10 +3,10 @@ testMode: property
 # Longer sequences give the fuzzer enough steps to (a) reach block 305+
 # where staking passes MustStake2Rounds, and (b) walk through multiple
 # commit → reveal → claim cycles.
-seqLen: 200
+seqLen: 240
 
-# Start small; can be increased once it’s stable in CI.
-testLimit: 25000
+# Default budget; override per run with ECHIDNA_TEST_LIMIT (see scripts/echidna.sh).
+testLimit: 35000
 
 # Shrinking a counterexample can be *much* slower than fuzzing.
 # Keep this modest; increase locally if you want a smaller reproducer.
@@ -18,11 +18,14 @@ shrinkLimit: 1000
 maxTimeDelay: 0
 maxBlockDelay: 38
 
-# Persist interesting inputs between runs.
+# Persist interesting inputs between runs (scripts/echidna.sh uses a per-harness subdir).
 corpusDir: echidna/corpus
 
 # Useful while iterating on invariants.
 coverage: true
+
+# Explicit parallelism inside Docker (host CPU may allow more).
+workers: 4
 
 # Keep output readable in CI.
 format: text

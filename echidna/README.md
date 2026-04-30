@@ -279,11 +279,14 @@ This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
 
 Echidna may write artifacts such as:
 
-- `echidna/corpus/` (saved interesting inputs)
-- `echidna/coverage/`
+- `echidna/corpus/by-contract/<HarnessName>/` — per-harness corpus, coverage reproducers, and `covered.*.html` (the runner passes `--corpus-dir` / `--coverage-dir` here so sequences from one harness are not mixed with another)
 - `crytic-export/` (Crytic export artifacts)
 
+Older flat files under `echidna/corpus/` (if any) are from previous runs before per-harness dirs were used.
+
 These are ignored by git via `.gitignore`.
+
+Optional environment variables (see `scripts/echidna.sh`): `ECHIDNA_TEST_LIMIT`, `ECHIDNA_SEQ_LEN`, `ECHIDNA_WORKERS` to override the YAML for a single invocation.
 
 ### Config files
 
