@@ -300,6 +300,8 @@ contract EchidnaPriceOracleHarness {
 
         uint256 minUp = uint256(oracle.minimumPriceUpscaled());
         if (price < minUp) price = minUp;
+        uint256 maxUp = uint256(oracle.MAX_CURRENT_PRICE_UPSCALED());
+        if (price > maxUp) price = maxUp;
         if (price > type(uint64).max) return (false, 0);
         return (true, uint64(price));
     }
