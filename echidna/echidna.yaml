@@ -13,10 +13,10 @@ testLimit: 35000
 shrinkLimit: 1000
 
 # Bound random block jumps between transactions.
-# 38 = ROUND_LENGTH/4 (one phase width) so the fuzzer naturally walks through
-# commit → reveal → claim within the same redistribution round.
+# Up to a full round (ROUND_LENGTH) helps reach later `currentRound()` values with fewer txs;
+# sub-round delays still let the same sequence walk commit → reveal → claim.
 maxTimeDelay: 0
-maxBlockDelay: 38
+maxBlockDelay: 152
 
 # Persist interesting inputs between runs (scripts/echidna.sh uses a per-harness subdir).
 corpusDir: echidna/corpus
