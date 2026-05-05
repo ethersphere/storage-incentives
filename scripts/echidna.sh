@@ -32,8 +32,9 @@ else
   CONTRACTS_TO_RUN=("${CONTRACTS_DEFAULT[@]}")
 fi
 
-# Optional CLI overrides (see `echidna-test --help`). Examples:
-#   ECHIDNA_TEST_LIMIT=50000 ECHIDNA_SEQ_LEN=300 yarn echidna
+# Optional CLI overrides (see `echidna-test --help`). Defaults live in ECHIDNA_CONFIG (typically
+# echidna/echidna.yaml: testLimit 60000, seqLen 320). Examples:
+#   ECHIDNA_TEST_LIMIT=20000 ECHIDNA_SEQ_LEN=200 yarn echidna   # faster smoke
 #   ECHIDNA_WORKERS=8 ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
 # Use a string (not an array) so `set -u` never trips on empty `${arr[*]}` on older Bash.
 ECHIDNA_EXTRA_CLI=""

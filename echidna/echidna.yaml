@@ -1,12 +1,11 @@
 testMode: property
 
-# Longer sequences give the fuzzer enough steps to (a) reach block 305+
-# where staking passes MustStake2Rounds, and (b) walk through multiple
-# commit → reveal → claim cycles.
-seqLen: 240
+# Longer sequences help (a) reach high `block.number` / `currentRound()` for redistribution,
+# and (b) walk commit → reveal → claim in one campaign. Tuned with real-claim fixture harness in mind.
+seqLen: 320
 
-# Default budget; override per run with ECHIDNA_TEST_LIMIT (see scripts/echidna.sh).
-testLimit: 35000
+# Default budget per harness (one sequence = up to seqLen txs). Override with ECHIDNA_TEST_LIMIT.
+testLimit: 60000
 
 # Shrinking a counterexample can be *much* slower than fuzzing.
 # Keep this modest; increase locally if you want a smaller reproducer.

@@ -218,6 +218,7 @@ High-signal properties per harness:
   - untouched CAC/SOC fixtures can complete the real `claim()` path (`echidna_unmutated_fixture_claim_succeeds`)
   - corrupted proof fixtures do not successfully claim (`echidna_mutated_fixture_claim_does_not_succeed`)
   - successful real claims trigger the expected withdraw/oracle side-effects (`echidna_successful_real_claim_effects_hold`)
+  - **Coverage guard** (non-vacuous): after a warmup of many `act_*` transactions, at least one successful unmutated end-to-end `claim` must occur (`echidna_unmutated_fixture_end_to_end_must_succeed_at_least_once`). Echidna also evaluates properties on the post-deploy state before any transaction, so this property stays vacuously true until `fuzzActTxCount` crosses `MIN_FUZZ_TXS_BEFORE_FIXTURE_E2E_REQUIRED` (see `EchidnaRedistributionRealClaimHarness.sol`). With the repo defaults (`seqLen` 320, `testLimit` 60000), the warmup threshold is hit almost immediately relative to total work, then the fuzzer must keep finding the fixture path or the run fails.
 
 - **System/integration harness**
   - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
@@ -261,6 +262,16 @@ By default, this runs **all** Echidna harness contracts in `src/echidna/`.
 By default, the runner uses `echidna/echidna.yaml`. You can override that with `ECHIDNA_CONFIG` if a harness needs its own
 corpus or tuned fuzzing parameters.
 
+### Default campaign settings (`echidna/echidna.yaml`)
+
+| Setting        | Default | Notes |
+|----------------|---------|--------|
+| `testLimit`    | `60000` | Sequences tried per harness (each sequence uses at most `seqLen` calls). |
+| `seqLen`       | `320`   | Enough depth for redistribution rounds + fixture `commit`→`reveal`→`claim` exploration. |
+| `maxBlockDelay`| `152`   | Full `ROUND_LENGTH`; helps `currentRound()` advance without enormous sequences. |
+
+Shorter smoke runs: set `ECHIDNA_TEST_LIMIT` / `ECHIDNA_SEQ_LEN` when invoking `yarn echidna` (see `scripts/echidna.sh`). If you lower limits so total `act_*` traffic never reaches `MIN_FUZZ_TXS_BEFORE_FIXTURE_E2E_REQUIRED` on the **real-claim** harness, the strict end-to-end property never arms (by design).
+
 To run only a specific harness contract:
 
 ```bash
@@ -286,7 +297,7 @@ Older flat files under `echidna/corpus/` (if any) are from previous runs before 
 
 These are ignored by git via `.gitignore`.
 
-Optional environment variables (see `scripts/echidna.sh`): `ECHIDNA_TEST_LIMIT`, `ECHIDNA_SEQ_LEN`, `ECHIDNA_WORKERS` to override the YAML for a single invocation.
+Optional environment variables (see `scripts/echidna.sh`): `ECHIDNA_TEST_LIMIT`, `ECHIDNA_SEQ_LEN`, `ECHIDNA_WORKERS` to override the YAML for a single invocation (CLI wins over `echidna.yaml` when both apply).
 
 ### Config files
 
