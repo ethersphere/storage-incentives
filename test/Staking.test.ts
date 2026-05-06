@@ -11,7 +11,8 @@ let pauser: string;
 let staker_0: string;
 let staker_1: string;
 
-const roundLength = 152;
+/** Blocks per staking round; overwritten from `StakeRegistry.ROUND_LENGTH()` after fixture load. */
+let roundLength = 152;
 const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
 const freezeTime = 3;
 
@@ -40,6 +41,8 @@ const errors = {
   general: {
     queueClosed: 'QueueClosed()',
     frozenWithdrawal: 'FrozenWithdrawal()',
+    queueFull: 'UpdateQueueFull',
+    invalidWaitConfig: 'InvalidWaitConfiguration',
   },
 };
 
@@ -47,24 +50,18 @@ const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a54
 const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
 const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc99f9f91e915';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
-const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const obfuscatedHash_0 = nonce_0;
 const stakeAmount_0 = '100000000000000000';
 const doubleStakeAmount_0 = '200000000000000000';
 const tripleStakeAmount_0 = '300000000000000000';
-const topUpForHeight1 = '100000000000000000';
-const stakeAmount_1 = '100000000000000000';
-const updateStakeAmount_0 = '633633';
-const withdrawAmount = '100000000000000000';
-const doubleWithdrawAmount = '200000000000000000';
+const withdrawAmount = stakeAmount_0;
+const doubleWithdrawAmount = doubleStakeAmount_0;
 const slashAmount = '50000000000000000';
-const doubleSlashAmount = '200000000000000000';
-const partialSlashBalance = '50000000000000000';
+const doubleSlashAmount = doubleStakeAmount_0;
+const partialSlashBalance = slashAmount;
 const height_0 = 0;
 const height_0_n_1 = 1;
-const height_1 = 0;
-const height_1_n_1 = 1;
 
 before(async function () {
   const namedAccounts = await getNamedAccounts();
@@ -107,11 +104,21 @@ async function activateStake(contract: Contract, owner: string, nonce: string, a
   await contract.applyUpdates(owner);
 }
 
+async function getSignerFor(address: string) {
+  const signers = await ethers.getSigners();
+  const signer = signers.find((s) => s.address.toLowerCase() === address.toLowerCase());
+  if (!signer) {
+    throw new Error(`No unlocked signer for ${address}`);
+  }
+  return signer;
+}
+
 describe('Staking', function () {
   beforeEach(async function () {
     await deployments.fixture();
     token = await ethers.getContract('TestToken', deployer);
     stakeRegistry = await ethers.getContract('StakeRegistry');
+    roundLength = (await stakeRegistry.ROUND_LENGTH()).toNumber();
 
     const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
     await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
@@ -119,6 +126,7 @@ describe('Staking', function () {
 
   it('should deploy StakeRegistry with queue wait parameters', async function () {
     expect(stakeRegistry.address).to.be.properAddress;
+    expect(await stakeRegistry.ROUND_LENGTH()).to.be.eq(roundLength);
     expect(await stakeRegistry.WAIT_BASE()).to.be.eq(2);
     expect(await stakeRegistry.WAIT_OVERLAY_CHANGE()).to.be.eq(2);
     expect(await stakeRegistry.WAIT_WITHDRAWAL()).to.be.eq(2);
@@ -157,9 +165,9 @@ describe('Staking', function () {
 
   it('should not allow first stake below minimum for the requested height', async function () {
     const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
-    await mintAndApprove(staker_1, srStaker1.address, stakeAmount_1);
+    await mintAndApprove(staker_1, srStaker1.address, stakeAmount_0);
 
-    await expect(srStaker1.createDeposit(nonce_1, stakeAmount_1, height_1_n_1)).to.be.revertedWith(
+    await expect(srStaker1.createDeposit(nonce_0, stakeAmount_0, height_0_n_1)).to.be.revertedWith(
       errors.deposit.belowMinimum
     );
   });
@@ -168,8 +176,8 @@ describe('Staking', function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
 
-    await mintAndApprove(staker_0, srStaker0.address, topUpForHeight1);
-    await expect(srStaker0.addTokens(topUpForHeight1)).to.emit(srStaker0, 'TokensAdded');
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.addTokens(stakeAmount_0)).to.emit(srStaker0, 'TokensAdded');
     await expect(srStaker0.increaseHeight(height_0_n_1)).to.emit(srStaker0, 'HeightIncreased');
 
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
@@ -183,7 +191,7 @@ describe('Staking', function () {
 
   it('should schedule overlay changes and expose them after the overlay delay', async function () {
     const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
-    await activateStake(srStaker1, staker_1, nonce_1, stakeAmount_1, height_1);
+    await activateStake(srStaker1, staker_1, nonce_0, stakeAmount_0, height_0);
 
     await expect(srStaker1.changeOverlay(nonce_1_n_25)).to.emit(srStaker1, 'OverlayChanged');
     expect(await srStaker1.overlayOfAddress(staker_1)).to.be.eq(overlay_1);
@@ -201,20 +209,20 @@ describe('Staking', function () {
 
   it('should preview queued stake state with lookahead', async function () {
     const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
-    await activateStake(srStaker1, staker_1, nonce_1, stakeAmount_1, height_1);
+    await activateStake(srStaker1, staker_1, nonce_0, stakeAmount_0, height_0);
 
-    await mintAndApprove(staker_1, srStaker1.address, topUpForHeight1);
-    await srStaker1.addTokens(topUpForHeight1);
+    await mintAndApprove(staker_1, srStaker1.address, stakeAmount_0);
+    await srStaker1.addTokens(stakeAmount_0);
     await srStaker1.changeOverlay(nonce_1_n_25);
-    await srStaker1.increaseHeight(height_1_n_1);
+    await srStaker1.increaseHeight(height_0_n_1);
 
-    expect(await srStaker1.nodeEffectiveStakeLookahead(staker_1, 1)).to.be.eq(stakeAmount_1);
+    expect(await srStaker1.nodeEffectiveStakeLookahead(staker_1, 1)).to.be.eq(stakeAmount_0);
     expect(await srStaker1.overlayOfAddressLookahead(staker_1, 1)).to.be.eq(overlay_1);
-    expect(await srStaker1.heightOfAddressLookahead(staker_1, 1)).to.be.eq(height_1);
+    expect(await srStaker1.heightOfAddressLookahead(staker_1, 1)).to.be.eq(height_0);
 
     expect(await srStaker1.nodeEffectiveStakeLookahead(staker_1, 2)).to.be.eq(doubleStakeAmount_0);
     expect(await srStaker1.overlayOfAddressLookahead(staker_1, 2)).to.be.eq(overlay_1_n_25);
-    expect(await srStaker1.heightOfAddressLookahead(staker_1, 2)).to.be.eq(height_1_n_1);
+    expect(await srStaker1.heightOfAddressLookahead(staker_1, 2)).to.be.eq(height_0_n_1);
   });
 
   it('should keep effective stake equal to balance after oracle price changes', async function () {
@@ -347,7 +355,7 @@ describe('Staking', function () {
     await srStaker0.exit();
 
     await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
-    await expect(srStaker0.createDeposit(nonce_1, stakeAmount_0, height_0)).to.be.revertedWith(
+    await expect(srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0)).to.be.revertedWith(
       errors.general.queueClosed
     );
   });
@@ -377,8 +385,8 @@ describe('Staking', function () {
 
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
 
-    await mintAndApprove(staker_0, srStaker0.address, topUpForHeight1);
-    await expect(srStaker0.addTokens(topUpForHeight1)).to.emit(srStaker0, 'TokensAdded');
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.addTokens(stakeAmount_0)).to.emit(srStaker0, 'TokensAdded');
     await expect(srStaker0.changeOverlay(nonce_1_n_25)).to.emit(srStaker0, 'OverlayChanged');
     await expect(srStaker0.increaseHeight(height_0_n_1)).to.emit(srStaker0, 'HeightIncreased');
 
@@ -475,7 +483,9 @@ describe('Staking', function () {
 
     const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
     await stakeRegistryPauser.pause();
-    await srStaker0.migrateStake();
+    await expect(srStaker0.migrateStake())
+      .to.emit(srStaker0, 'StakeMigrated')
+      .withArgs(staker_0, stakeAmount_0);
 
     expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
@@ -493,5 +503,58 @@ describe('Staking', function () {
 
     await stakeRegistryPauser.unPause();
     await expect(srStaker0.createDeposit(nonce_0, stakeAmount_0, height_0)).to.not.be.reverted;
+  });
+
+  it('should reject staking constructor when waits are below base', async function () {
+    const tokenDeploy = await ethers.getContract('TestToken', deployer);
+    const netId = await stakeRegistry.networkId();
+    const Factory = await ethers.getContractFactory('StakeRegistry');
+    await expect(Factory.deploy(tokenDeploy.address, netId, 5, 4, 8)).to.be.revertedWith(
+      errors.general.invalidWaitConfig
+    );
+  });
+
+  it('should reject enqueue when the update queue is full', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+    for (let i = 0; i < 10; i++) {
+      await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+      await expect(srStaker0.addTokens(stakeAmount_0)).to.emit(srStaker0, 'TokensAdded');
+    }
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.addTokens(stakeAmount_0)).to.be.revertedWith(errors.general.queueFull);
+  });
+
+  it('should apply earlier-enqueued top-up while frozen before overlay change is due', async function () {
+    const Factory = await ethers.getContractFactory('StakeRegistry');
+    const srAlt = await Factory.deploy(
+      token.address,
+      await stakeRegistry.networkId(),
+      2,
+      10,
+      2
+    );
+    await srAlt.deployed();
+    await srAlt.grantRole(await srAlt.REDISTRIBUTOR_ROLE(), redistributor);
+
+    const srStaker = srAlt.connect(await getSignerFor(staker_0));
+    await mintAndApprove(staker_0, srAlt.address, doubleStakeAmount_0);
+    await srStaker.createDeposit(nonce_0, stakeAmount_0, height_0);
+    await advanceRounds();
+    await srAlt.applyUpdates(staker_0);
+
+    await mintAndApprove(staker_0, srAlt.address, stakeAmount_0);
+    await srStaker.addTokens(stakeAmount_0);
+    await srStaker.changeOverlay(nonce_1_n_25);
+
+    const srRedis = srAlt.connect(await getSignerFor(redistributor));
+    await srRedis.freezeDeposit(staker_0, roundLength * 25);
+
+    await advanceRounds(2);
+
+    await srAlt.applyUpdates(staker_0);
+
+    expect((await srAlt.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
+    expect(await srAlt.overlayOfAddress(staker_0)).to.be.eq(overlay_0);
   });
 });

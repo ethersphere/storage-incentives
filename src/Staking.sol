@@ -15,7 +15,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- State variables ------------------------------
 
-    uint256 private constant ROUND_LENGTH = 152;
+    uint256 public constant ROUND_LENGTH = 152;
     uint256 private constant MIN_STAKE = 100000000000000000;
     uint256 public constant UPDATE_QUEUE_MAX_LENGTH = 10;
 
@@ -60,7 +60,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
-    uint64 public NetworkId;
+    uint64 public networkId;
     address public immutable bzzToken;
     uint64 public immutable WAIT_BASE;
     uint64 public immutable WAIT_OVERLAY_CHANGE;
@@ -77,6 +77,7 @@ contract StakeRegistry is AccessControl, Pausable {
     event Withdrawal(address indexed owner, uint64 registeredFromRound, uint256 amount);
     event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
     event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
+    event StakeMigrated(address indexed owner, uint256 totalReturned);
 
     // ----------------------------- Errors ------------------------------
 
@@ -109,7 +110,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     constructor(
         address _bzzToken,
-        uint64 _NetworkId,
+        uint64 _networkId,
         uint64 _waitBase,
         uint64 _waitOverlayChange,
         uint64 _waitWithdrawal
@@ -117,7 +118,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_waitOverlayChange < _waitBase || _waitWithdrawal < _waitBase) {
             revert InvalidWaitConfiguration(_waitBase, _waitOverlayChange, _waitWithdrawal);
         }
-        NetworkId = _NetworkId;
+        networkId = _networkId;
         bzzToken = _bzzToken;
         WAIT_BASE = _waitBase;
         WAIT_OVERLAY_CHANGE = _waitOverlayChange;
@@ -289,6 +290,8 @@ contract StakeRegistry is AccessControl, Pausable {
         delete _queueHeads[msg.sender];
         delete _queueClosed[msg.sender];
 
+        emit StakeMigrated(msg.sender, payout);
+
         if (payout > 0) {
             if (!ERC20(bzzToken).transfer(msg.sender, payout)) revert TransferFailed();
         }
@@ -330,13 +333,14 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_isInitialized(_owner)) {
             if (stake.balance > _amount) {
                 stake.balance -= _amount;
+                _reconcileQueuedWithdrawals(_owner);
             } else if (_queueLength(_owner) > 0) {
                 stake.balance = 0;
+                _reconcileQueuedWithdrawals(_owner);
             } else {
+                // Deletes stake storage including freeze deadline; node may re-stake without residual freeze.
                 delete _stakes[_owner];
             }
-
-            _reconcileQueuedWithdrawals(_owner);
         }
 
         emit StakeSlashed(_owner, previousOverlay, _amount);
@@ -344,11 +348,11 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Updates the Swarm network identifier used in overlay derivation.
-     * @param _NetworkId The new network id.
+     * @param _networkId The new network id.
      */
-    function changeNetworkId(uint64 _NetworkId) external {
+    function changeNetworkId(uint64 _networkId) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
-        NetworkId = _NetworkId;
+        networkId = _networkId;
     }
 
     /**
@@ -382,7 +386,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Returns the currently effective stake balance for an owner.
      */
     function nodeEffectiveStake(address _owner) public view returns (uint256) {
-        if (!addressNotFrozen(_owner)) return 0;
+        if (!_addressNotFrozen(_owner)) return 0;
 
         Stake memory preview = _previewStake(_owner, false);
         return _isInitialized(preview) ? preview.balance : 0;
@@ -438,9 +442,9 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns true when the owner is not currently frozen.
+     * @dev True when the stake is absent or `frozenUntilBlock` is strictly before `block.number`.
      */
-    function addressNotFrozen(address _owner) internal view returns (bool) {
+    function _addressNotFrozen(address _owner) internal view returns (bool) {
         return !_isInitialized(_owner) || _stakes[_owner].frozenUntilBlock < block.number;
     }
 
@@ -529,7 +533,7 @@ contract StakeRegistry is AccessControl, Pausable {
             return false;
         }
 
-        return !addressNotFrozen(_owner);
+        return !_addressNotFrozen(_owner);
     }
 
     /**
@@ -684,7 +688,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function _lastScheduledRound(address _owner) internal view returns (uint64) {
         ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        if (_queueHeads[_owner] == queue.length) {
+        if (_queueLength(_owner) == 0) {
             return 0;
         }
         return queue[queue.length - 1].effectiveFromRound;
@@ -706,10 +710,10 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (_lookahead == 0) {
-            return _stakes[_owner].frozenUntilBlock < block.number;
+            return _addressNotFrozen(_owner);
         }
 
-        return _stakes[_owner].frozenUntilBlock < uint256(currentRound() + _lookahead) * ROUND_LENGTH;
+        return _stakes[_owner].frozenUntilBlock < (uint256(currentRound()) + uint256(_lookahead)) * ROUND_LENGTH;
     }
 
     /**
@@ -724,31 +728,13 @@ contract StakeRegistry is AccessControl, Pausable {
         for (uint256 i = head; i < queue.length;) {
             ScheduledUpdate storage scheduled = queue[i];
 
-            if (scheduled.kind == UpdateKind.CreateDeposit) {
-                preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
-                preview.balance = scheduled.amount;
-                preview.height = scheduled.height;
-            } else if (scheduled.kind == UpdateKind.AddTokens) {
-                preview.balance += scheduled.amount;
-            } else if (scheduled.kind == UpdateKind.IncreaseHeight) {
-                if (_isInitialized(preview) && scheduled.height > preview.height) {
-                    preview.height = scheduled.height;
+            if (scheduled.kind == UpdateKind.WithdrawTokens && _isInitialized(preview)) {
+                if (scheduled.amount > preview.balance) {
+                    scheduled.amount = preview.balance;
                 }
-            } else if (scheduled.kind == UpdateKind.ChangeOverlay) {
-                if (_isInitialized(preview)) {
-                    preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
-                }
-            } else if (scheduled.kind == UpdateKind.WithdrawTokens) {
-                if (_isInitialized(preview)) {
-                    if (scheduled.amount > preview.balance) {
-                        scheduled.amount = preview.balance;
-                    }
-
-                    preview.balance -= scheduled.amount;
-                }
-            } else if (scheduled.kind == UpdateKind.ExitStake) {
-                delete preview;
             }
+
+            preview = _applyPreviewUpdate(_owner, preview, scheduled);
 
             unchecked {
                 ++i;
@@ -775,7 +761,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Derives an overlay from owner, network id and nonce.
      */
     function _deriveOverlay(address _owner, bytes32 _setNonce) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked(_owner, reverse(NetworkId), _setNonce));
+        return keccak256(abi.encodePacked(_owner, reverse(networkId), _setNonce));
     }
 
     /**
