@@ -29,13 +29,9 @@ const errors = {
 };
 
 describe('PriceOracle', function () {
-  let minimumPrice: number;
-
   describe('when deploying contract', function () {
     beforeEach(async function () {
       await deployments.fixture();
-      const priceOracle = await ethers.getContract('PriceOracle');
-      minimumPrice = await priceOracle.minimumPrice();
     });
 
     it('should deploy PriceOracle', async function () {
@@ -179,7 +175,6 @@ describe('PriceOracle', function () {
     describe('automatic update', function () {
       let minPriceString: string;
       let priceOracle: Contract, postageStamp: Contract;
-      let priceBaseString: string;
       let priceBase: number;
 
       beforeEach(async function () {
@@ -196,7 +191,6 @@ describe('PriceOracle', function () {
 
         // Set price base
         priceBase = await priceOracle.priceBase();
-        priceBaseString = priceBase.toString();
       });
 
       it('if redundany factor is 0', async function () {

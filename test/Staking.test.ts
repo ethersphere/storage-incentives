@@ -1,6 +1,6 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
-import { BigNumber, Contract } from 'ethers';
+import { BigNumber, Contract, ContractTransaction, Event } from 'ethers';
 import { mineNBlocks } from './util/tools';
 
 const { read, execute } = deployments;
@@ -87,7 +87,7 @@ async function advanceRounds(rounds = 2) {
   await mineNBlocks(roundLength * rounds);
 }
 
-async function advanceToRoundCommitPhase(redistribution: Contract, targetRound: any) {
+async function advanceToRoundCommitPhase(redistribution: Contract, targetRound: BigNumber) {
   while (true) {
     const currentRound = await redistribution.currentRound();
     const inCommitPhase = await redistribution.currentPhaseCommit();
@@ -115,17 +115,26 @@ async function getSignerFor(address: string) {
 }
 
 /** Effective staking round from enqueue events (ABI may expose `registeredFromRound`). */
-function effectiveRoundFromEvent(ev: any): BigNumber {
-  return ev.args?.effectiveFromRound ?? ev.args?.registeredFromRound ?? ev.args?.[1];
+function effectiveRoundFromEvent(ev: Event | undefined): BigNumber {
+  if (!ev?.args) {
+    throw new Error('expected event with args');
+  }
+  const args = ev.args as readonly unknown[] & {
+    effectiveFromRound?: BigNumber;
+    registeredFromRound?: BigNumber;
+  };
+  const fromNamed = args.effectiveFromRound ?? args.registeredFromRound;
+  return fromNamed !== undefined ? fromNamed : (args[1] as BigNumber);
 }
 
 /** Custom errors with arguments often fail Chai `revertedWith` exact matching in waffle; match substring instead. */
-async function expectRevertReasonSubstring(txPromise: Promise<any>, substring: string) {
+async function expectRevertReasonSubstring(txPromise: Promise<ContractTransaction>, substring: string) {
   try {
     await txPromise;
     expect.fail(`expected revert containing ${substring}`);
-  } catch (e: any) {
-    const combined = `${e.message ?? ''}${e.error?.message ?? ''}`;
+  } catch (e: unknown) {
+    const err = e as { message?: string; error?: { message?: string } };
+    const combined = `${err.message ?? ''}${err.error?.message ?? ''}`;
     expect(combined).to.include(substring);
   }
 }
@@ -310,7 +319,7 @@ describe('Staking', function () {
     await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
 
     const withdrawalReceipt = await (await srStaker0.withdraw(withdrawAmount)).wait();
-    const withdrawalEvent = withdrawalReceipt.events?.find((event: any) => event.event === 'Withdrawal');
+    const withdrawalEvent = withdrawalReceipt.events?.find((event: Event) => event.event === 'Withdrawal');
     const effectiveRound = withdrawalEvent?.args?.effectiveFromRound ?? withdrawalEvent?.args?.[1];
     await advanceToRoundCommitPhase(redistribution, effectiveRound);
 
@@ -333,7 +342,7 @@ describe('Staking', function () {
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
 
     const exitReceipt = await (await srStaker0.exit()).wait();
-    const exitEvent = exitReceipt.events?.find((event: any) => event.event === 'Withdrawal');
+    const exitEvent = exitReceipt.events?.find((event: Event) => event.event === 'Withdrawal');
     const effectiveRound = exitEvent?.args?.effectiveFromRound ?? exitEvent?.args?.[1];
     await advanceToRoundCommitPhase(redistribution, effectiveRound);
 
@@ -503,9 +512,7 @@ describe('Staking', function () {
 
     const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
     await stakeRegistryPauser.pause();
-    await expect(srStaker0.migrateStake())
-      .to.emit(srStaker0, 'StakeMigrated')
-      .withArgs(staker_0, stakeAmount_0);
+    await expect(srStaker0.migrateStake()).to.emit(srStaker0, 'StakeMigrated').withArgs(staker_0, stakeAmount_0);
 
     expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
@@ -532,7 +539,7 @@ describe('Staking', function () {
       const fromCall = await sr.callStatic.createDeposit(nonce_0, stakeAmount_0, height_0);
       const tx = await sr.createDeposit(nonce_0, stakeAmount_0, height_0);
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: any) => e.event === 'DepositCreated');
+      const ev = receipt.events!.find((e: Event) => e.event === 'DepositCreated');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
@@ -543,7 +550,7 @@ describe('Staking', function () {
       const fromCall = await sr.callStatic.addTokens(stakeAmount_0);
       const tx = await sr.addTokens(stakeAmount_0);
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: any) => e.event === 'TokensAdded');
+      const ev = receipt.events!.find((e: Event) => e.event === 'TokensAdded');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
@@ -553,7 +560,7 @@ describe('Staking', function () {
       const fromCall = await sr.callStatic.changeOverlay(nonce_1_n_25);
       const tx = await sr.changeOverlay(nonce_1_n_25);
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: any) => e.event === 'OverlayChanged');
+      const ev = receipt.events!.find((e: Event) => e.event === 'OverlayChanged');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
@@ -563,7 +570,7 @@ describe('Staking', function () {
       const fromCall = await sr.callStatic.increaseHeight(height_0_n_1);
       const tx = await sr.increaseHeight(height_0_n_1);
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: any) => e.event === 'HeightIncreased');
+      const ev = receipt.events!.find((e: Event) => e.event === 'HeightIncreased');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
@@ -573,7 +580,7 @@ describe('Staking', function () {
       const fromCall = await sr.callStatic.withdraw(withdrawAmount);
       const tx = await sr.withdraw(withdrawAmount);
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: any) => e.event === 'Withdrawal');
+      const ev = receipt.events!.find((e: Event) => e.event === 'Withdrawal');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
@@ -583,7 +590,7 @@ describe('Staking', function () {
       const fromCall = await sr.callStatic.exit();
       const tx = await sr.exit();
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: any) => e.event === 'Withdrawal');
+      const ev = receipt.events!.find((e: Event) => e.event === 'Withdrawal');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
@@ -593,7 +600,7 @@ describe('Staking', function () {
       expect(await sr.callStatic.changeOverlay(nonce_0)).to.eq(0);
       const tx = await sr.changeOverlay(nonce_0);
       const receipt = await tx.wait();
-      expect(receipt.events?.some((e: any) => e.event === 'OverlayChanged')).to.eq(false);
+      expect(receipt.events?.some((e: Event) => e.event === 'OverlayChanged')).to.eq(false);
     });
 
     it('should return 0 and emit nothing when height is unchanged', async function () {
@@ -602,7 +609,7 @@ describe('Staking', function () {
       expect(await sr.callStatic.increaseHeight(height_0_n_1)).to.eq(0);
       const tx = await sr.increaseHeight(height_0_n_1);
       const receipt = await tx.wait();
-      expect(receipt.events?.some((e: any) => e.event === 'HeightIncreased')).to.eq(false);
+      expect(receipt.events?.some((e: Event) => e.event === 'HeightIncreased')).to.eq(false);
     });
 
     it('should assign non-decreasing effective rounds when stacking addTokens without mining', async function () {
@@ -613,7 +620,7 @@ describe('Staking', function () {
         await mintAndApprove(staker_0, sr.address, stakeAmount_0);
         const tx = await sr.addTokens(stakeAmount_0);
         const receipt = await tx.wait();
-        const ev = receipt.events!.find((e: any) => e.event === 'TokensAdded');
+        const ev = receipt.events!.find((e: Event) => e.event === 'TokensAdded');
         rounds.push(effectiveRoundFromEvent(ev));
       }
       for (let i = 1; i < rounds.length; i++) {
@@ -706,13 +713,7 @@ describe('Staking', function () {
 
   it('should apply earlier-enqueued top-up while frozen before overlay change is due', async function () {
     const Factory = await ethers.getContractFactory('StakeRegistry');
-    const srAlt = await Factory.deploy(
-      token.address,
-      await stakeRegistry.networkId(),
-      2,
-      10,
-      2
-    );
+    const srAlt = await Factory.deploy(token.address, await stakeRegistry.networkId(), 2, 10, 2);
     await srAlt.deployed();
     await srAlt.grantRole(await srAlt.REDISTRIBUTOR_ROLE(), redistributor);
 

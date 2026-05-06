@@ -50,12 +50,9 @@ const errors = {
 };
 
 describe('PostageStamp', function () {
-  let minimumPrice: number;
   describe('when deploying contract', function () {
     beforeEach(async function () {
       await deployments.fixture();
-      const priceOracle = await ethers.getContract('PriceOracle');
-      minimumPrice = await priceOracle.minimumPrice();
     });
 
     it('should have minimum bucket depth set to 16', async function () {
@@ -232,9 +229,6 @@ describe('PostageStamp', function () {
         );
         const batch0 = computeBatchId(stamper, nonce0);
         expect(batch0).equal(await postageStampStamper.firstBatchId());
-
-        const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
-        const expectedNormalisedBalance1 = initialPaymentPerChunk1 + blocksElapsed * price0;
 
         const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
         await postageStampStamper.createBatch(
