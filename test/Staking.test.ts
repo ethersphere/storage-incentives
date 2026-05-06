@@ -22,7 +22,7 @@ const errors = {
     heightDecrease: 'HeightDecreaseNotAllowed()',
   },
   withdraw: {
-    invalid: 'InvalidWithdrawalAmount()',
+    invalidWithdrawalAmount: 'InvalidWithdrawalAmount',
     notStaked: 'NotStaked()',
   },
   slash: {
@@ -32,10 +32,10 @@ const errors = {
     noRole: 'OnlyRedistributor()',
   },
   pause: {
-    noRole: 'OnlyPauser()',
+    noRole: 'Unauthorized()',
     currentlyPaused: 'Pausable: paused',
     notCurrentlyPaused: 'Pausable: not paused',
-    onlyPauseCanUnPause: 'OnlyPauser()',
+    onlyPauseCanUnPause: 'Unauthorized()',
   },
   general: {
     queueClosed: 'QueueClosed()',
@@ -354,8 +354,11 @@ describe('Staking', function () {
 
   it('should not allow invalid withdrawals', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
-    await expect(srStaker0.withdraw(0)).to.be.revertedWith(errors.withdraw.invalid);
+    await expect(srStaker0.withdraw(0)).to.be.revertedWith(errors.withdraw.invalidWithdrawalAmount);
     await expect(srStaker0.exit()).to.be.revertedWith(errors.withdraw.notStaked);
+
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+    await expect(srStaker0.withdraw(stakeAmount_0)).to.be.revertedWith(errors.withdraw.invalidWithdrawalAmount);
   });
 
   it('should allow non-transfer updates to be queued and applied while the node is frozen', async function () {

@@ -30,6 +30,14 @@ contract StakeRegistry is AccessControl, Pausable {
         ExitStake
     }
 
+    /// @dev Why `withdraw` was rejected before anything was queued.
+    enum WithdrawalAmountIssue {
+        /// Amount is zero; withdraw only accepts positive partial pulls (see `exit()` for full unwind).
+        Zero,
+        /// Amount is greater than or equal to current stake; use `exit()` to schedule a full withdrawal after delay.
+        FullBalanceRequiresExit
+    }
+
     struct Stake {
         bytes32 overlay;
         uint256 balance;
@@ -75,12 +83,13 @@ contract StakeRegistry is AccessControl, Pausable {
     error TransferFailed();
     error Unauthorized();
     error OnlyRedistributor();
-    error OnlyPauser();
     error BelowMinimumStake();
     error NotStaked();
     error AlreadyStaked();
     error HeightDecreaseNotAllowed();
-    error InvalidWithdrawalAmount();
+    error InvalidAmount();
+    /// @notice See `WithdrawalAmountIssue` for meaning of `reason`.
+    error InvalidWithdrawalAmount(WithdrawalAmountIssue reason);
     error UpdateQueueFull();
     error QueueClosed();
     error FrozenWithdrawal();
@@ -192,12 +201,14 @@ contract StakeRegistry is AccessControl, Pausable {
      * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
     function withdraw(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_amount == 0) revert InvalidWithdrawalAmount();
+        if (_amount == 0) revert InvalidWithdrawalAmount(WithdrawalAmountIssue.Zero);
         if (_queueClosed[msg.sender]) revert QueueClosed();
 
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
-        if (_amount >= plannedStake.balance) revert BelowMinimumStake();
+        if (_amount >= plannedStake.balance) {
+            revert InvalidWithdrawalAmount(WithdrawalAmountIssue.FullBalanceRequiresExit);
+        }
         if (plannedStake.balance - _amount < _minimumStakeForHeight(plannedStake.height)) revert BelowMinimumStake();
 
         effectiveFromRound =
@@ -225,9 +236,11 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function applyUpdates(address _owner) public {
         _applyReadyUpdates(_owner);
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        uint256 head = _queueHeads[_owner];
         if (
-            _queueLength(_owner) > 0
-                && _blocksQueuedWithdrawalExecution(_owner, _updateQueues[_owner][_queueHeads[_owner]].kind)
+            head < queue.length && queue[head].effectiveFromRound <= currentRound()
+                && _blocksQueuedWithdrawalExecution(_owner, queue[head].kind)
         ) {
             revert FrozenWithdrawal();
         }
@@ -326,7 +339,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Pauses staking mutations.
      */
     function pause() public {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
         _pause();
     }
 
@@ -334,7 +347,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Unpauses staking mutations.
      */
     function unPause() public {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert OnlyPauser();
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
         _unpause();
     }
 
@@ -476,13 +489,10 @@ contract StakeRegistry is AccessControl, Pausable {
 
         if (scheduled.kind == UpdateKind.WithdrawTokens) {
             if (_isInitialized(_owner)) {
-                if (scheduled.amount >= stake.balance) {
-                    stake.balance = 0;
-                } else {
-                    stake.balance -= scheduled.amount;
-                }
+                uint256 paid = scheduled.amount > stake.balance ? stake.balance : scheduled.amount;
+                stake.balance -= paid;
 
-                if (!ERC20(bzzToken).transfer(_owner, scheduled.amount)) revert TransferFailed();
+                if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
             }
             return;
         }
@@ -733,7 +743,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Pulls BZZ into the staking contract.
      */
     function _pullTokens(address _owner, uint256 _amount) internal {
-        if (_amount == 0) revert InvalidWithdrawalAmount();
+        if (_amount == 0) revert InvalidAmount();
         if (!ERC20(bzzToken).transferFrom(_owner, address(this), _amount)) revert TransferFailed();
     }
 
