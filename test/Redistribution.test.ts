@@ -185,7 +185,7 @@ const errors = {
     noBalance: 'ERC20: insufficient allowance',
     noZeroAddress: 'owner cannot be the zero address',
     onlyOwner: 'Unauthorized()',
-    belowMinimum: 'BelowMinimumStake()',
+    belowMinimum: 'BelowMinimumStake',
   },
   general: {
     onlyPauser: 'OnlyPauser()',

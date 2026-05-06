@@ -18,7 +18,7 @@ const freezeTime = 3;
 const errors = {
   deposit: {
     noBalance: 'ERC20: insufficient allowance',
-    belowMinimum: 'BelowMinimumStake()',
+    belowMinimum: 'BelowMinimumStake',
     heightDecrease: 'HeightDecreaseNotAllowed()',
   },
   withdraw: {

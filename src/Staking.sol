@@ -80,20 +80,32 @@ contract StakeRegistry is AccessControl, Pausable {
 
     // ----------------------------- Errors ------------------------------
 
+    /// @notice ERC20 `transfer` / `transferFrom` returned false for `bzzToken`.
     error TransferFailed();
+    /// @notice Caller is not `DEFAULT_ADMIN_ROLE` (e.g. pause, unpause, `changeNetworkId`).
     error Unauthorized();
+    /// @notice Caller lacks `REDISTRIBUTOR_ROLE` (`freezeDeposit`, `slashDeposit`).
     error OnlyRedistributor();
-    error BelowMinimumStake();
+    /// @notice Stake amount `have` is below protocol minimum `need` for the operation (deposit, height, or post-withdraw remainder).
+    error BelowMinimumStake(uint256 have, uint256 need);
+    /// @notice No active stake (or preview balance zero) for this action.
     error NotStaked();
+    /// @notice Address already has stake or a pending deposit that establishes one.
     error AlreadyStaked();
+    /// @notice `increaseHeight` cannot lower staking height.
     error HeightDecreaseNotAllowed();
+    /// @notice Pulled token amount must be non-zero (`createDeposit`, `addTokens`).
     error InvalidAmount();
-    /// @notice See `WithdrawalAmountIssue` for meaning of `reason`.
+    /// @notice `withdraw` rejected before enqueueing; see `WithdrawalAmountIssue`.
     error InvalidWithdrawalAmount(WithdrawalAmountIssue reason);
-    error UpdateQueueFull();
+    /// @notice Update queue has `queuedCount` pending items; cannot exceed `limit`.
+    error UpdateQueueFull(uint256 queuedCount, uint256 limit);
+    /// @notice An exit is scheduled; no further mutations allowed until processed or migrated.
     error QueueClosed();
+    /// @notice Cannot finish applying updates while the head item is a due withdrawal/exit and the stake is frozen.
     error FrozenWithdrawal();
-    error InvalidWaitConfiguration();
+    /// @notice Overlay or withdrawal wait rounds must be at least `waitBase` (`waitOverlayChange` / `waitWithdrawal` were below).
+    error InvalidWaitConfiguration(uint64 waitBase, uint64 waitOverlayChange, uint64 waitWithdrawal);
 
     constructor(
         address _bzzToken,
@@ -103,7 +115,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint64 _waitWithdrawal
     ) {
         if (_waitOverlayChange < _waitBase || _waitWithdrawal < _waitBase) {
-            revert InvalidWaitConfiguration();
+            revert InvalidWaitConfiguration(_waitBase, _waitOverlayChange, _waitWithdrawal);
         }
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
@@ -132,7 +144,8 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (_isInitialized(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
-        if (_amount < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
+        uint256 minStake = _minimumStakeForHeight(_height);
+        if (_amount < minStake) revert BelowMinimumStake(_amount, minStake);
 
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
         _pullTokens(msg.sender, _amount);
@@ -189,7 +202,8 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
         if (_height == plannedStake.height) return 0;
-        if (plannedStake.balance < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
+        uint256 minForHeight = _minimumStakeForHeight(_height);
+        if (plannedStake.balance < minForHeight) revert BelowMinimumStake(plannedStake.balance, minForHeight);
 
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.IncreaseHeight, WAIT_BASE, 0, 0, _height);
         emit HeightIncreased(msg.sender, effectiveFromRound, _height);
@@ -209,7 +223,9 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_amount >= plannedStake.balance) {
             revert InvalidWithdrawalAmount(WithdrawalAmountIssue.FullBalanceRequiresExit);
         }
-        if (plannedStake.balance - _amount < _minimumStakeForHeight(plannedStake.height)) revert BelowMinimumStake();
+        uint256 minAfterWithdraw = _minimumStakeForHeight(plannedStake.height);
+        uint256 balanceAfter = plannedStake.balance - _amount;
+        if (balanceAfter < minAfterWithdraw) revert BelowMinimumStake(balanceAfter, minAfterWithdraw);
 
         effectiveFromRound =
             _enqueueUpdate(msg.sender, UpdateKind.WithdrawTokens, WAIT_WITHDRAWAL, 0, _amount, 0);
@@ -649,7 +665,8 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 _amount,
         uint8 _height
     ) internal returns (uint64 effectiveFromRound) {
-        if (_queueLength(_owner) >= UPDATE_QUEUE_MAX_LENGTH) revert UpdateQueueFull();
+        uint256 queued = _queueLength(_owner);
+        if (queued >= UPDATE_QUEUE_MAX_LENGTH) revert UpdateQueueFull(queued, UPDATE_QUEUE_MAX_LENGTH);
 
         uint64 candidateRound = currentRound() + _minimumWait;
         uint64 lastRound = _lastScheduledRound(_owner);
