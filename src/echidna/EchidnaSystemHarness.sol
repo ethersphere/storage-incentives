@@ -286,28 +286,6 @@ contract EchidnaSystemHarness {
         return uint32(lp) == oracle.currentPrice();
     }
 
-    function echidna_oracle_price_never_below_minimum() external view returns (bool) {
-        // Both representations should respect the minimum.
-        if (oracle.currentPriceUpScaled() < oracle.minimumPriceUpscaled()) return false;
-        if (oracle.currentPrice() < oracle.minimumPrice()) return false;
-        return true;
-    }
-
-    function echidna_stamp_lastPrice_never_below_oracle_minimum_when_set() external view returns (bool) {
-        uint64 lp = stamp.lastPrice();
-        if (lp == 0) return true;
-        return lp >= uint64(oracle.minimumPrice());
-    }
-
-    function echidna_stake_balance_covers_sum_potential() external view returns (bool) {
-        uint256 sumPotential = 0;
-        for (uint256 i = 0; i < ACTOR_COUNT; i++) {
-            (, , uint256 potentialStake, , ) = stake.stakes(address(actors[i]));
-            sumPotential += potentialStake;
-        }
-        return token.balanceOf(address(stake)) >= sumPotential;
-    }
-
     function echidna_stamp_internal_pot_not_above_contract_balance() external view returns (bool) {
         // Raw `pot` tracks accrued liability; it must not exceed ERC20 balance held by the stamp contract.
         // (`totalPot()` caps at balance but is non-view; this is the meaningful accounting check.)

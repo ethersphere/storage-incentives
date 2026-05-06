@@ -220,9 +220,10 @@ High-signal properties per harness:
   - successful real claims trigger the expected withdraw/oracle side-effects (`echidna_successful_real_claim_effects_hold`)
   - **Coverage guard** (non-vacuous): after a warmup of many `act_*` transactions, at least one successful unmutated end-to-end `claim` must occur (`echidna_unmutated_fixture_end_to_end_must_succeed_at_least_once`). Echidna also evaluates properties on the post-deploy state before any transaction, so this property stays vacuously true until `fuzzActTxCount` crosses `MIN_FUZZ_TXS_BEFORE_FIXTURE_E2E_REQUIRED` (see `EchidnaRedistributionRealClaimHarness.sol`). With the repo defaults (`seqLen` 320, `testLimit` 60000), the warmup threshold is hit almost immediately relative to total work, then the fuzzer must keep finding the fixture path or the run fails.
 
-- **System/integration harness**
+- **System/integration harness** (only invariants that require real cross-contract wiring; single-contract checks live in their unit harness)
   - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
   - Stamp accounting: internal `pot` does not exceed the stamp contract’s BZZ balance (`echidna_stamp_internal_pot_not_above_contract_balance`)
+  - Role isolation under real wiring: only the granted updater can `adjustPrice` (`echidna_unauthorized_oracle_adjust_never_succeeds`)
   - Redistribution happy-path consistency: tracked commit/reveal values appear in `Redistribution` storage
 
 These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
