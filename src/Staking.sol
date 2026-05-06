@@ -113,8 +113,13 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _setNonce The nonce used to derive the overlay.
      * @param _amount The amount of BZZ to lock.
      * @param _height The initial staking height.
+     * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
-    function createDeposit(bytes32 _setNonce, uint256 _amount, uint8 _height) external whenNotPaused {
+    function createDeposit(bytes32 _setNonce, uint256 _amount, uint8 _height)
+        external
+        whenNotPaused
+        returns (uint64 effectiveFromRound)
+    {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (_isInitialized(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
@@ -123,7 +128,7 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
         _pullTokens(msg.sender, _amount);
 
-        uint64 effectiveFromRound =
+        effectiveFromRound =
             _enqueueUpdate(msg.sender, UpdateKind.CreateDeposit, WAIT_BASE, _setNonce, _amount, _height);
 
         emit DepositCreated(msg.sender, effectiveFromRound, _amount, newOverlay, _height);
@@ -132,14 +137,15 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Schedules an increase of the caller's stake balance.
      * @param _amount The amount of BZZ to add to the stake.
+     * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
-    function addTokens(uint256 _amount) external whenNotPaused {
+    function addTokens(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         _pullTokens(msg.sender, _amount);
-        uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _amount, 0);
+        effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _amount, 0);
 
         emit TokensAdded(msg.sender, effectiveFromRound, _amount);
     }
@@ -147,16 +153,17 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Schedules an overlay change after the configured overlay delay.
      * @param _setNonce The nonce used to derive the new overlay.
+     * @return effectiveFromRound Round when the queued update becomes effective (matches event); 0 if unchanged.
      */
-    function changeOverlay(bytes32 _setNonce) external whenNotPaused {
+    function changeOverlay(bytes32 _setNonce) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
-        if (newOverlay == plannedStake.overlay) return;
+        if (newOverlay == plannedStake.overlay) return 0;
 
-        uint64 effectiveFromRound =
+        effectiveFromRound =
             _enqueueUpdate(msg.sender, UpdateKind.ChangeOverlay, WAIT_OVERLAY_CHANGE, _setNonce, 0, 0);
 
         emit OverlayChanged(msg.sender, effectiveFromRound, newOverlay);
@@ -165,24 +172,26 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Schedules a height increase once the base delay elapses.
      * @param _height The new staking height.
+     * @return effectiveFromRound Round when the queued update becomes effective (matches event); 0 if unchanged.
      */
-    function increaseHeight(uint8 _height) external whenNotPaused {
+    function increaseHeight(uint8 _height) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
-        if (_height == plannedStake.height) return;
+        if (_height == plannedStake.height) return 0;
         if (plannedStake.balance < _minimumStakeForHeight(_height)) revert BelowMinimumStake();
 
-        uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.IncreaseHeight, WAIT_BASE, 0, 0, _height);
+        effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.IncreaseHeight, WAIT_BASE, 0, 0, _height);
         emit HeightIncreased(msg.sender, effectiveFromRound, _height);
     }
 
     /**
      * @notice Schedules a partial withdrawal after the withdrawal delay.
      * @param _amount The amount of BZZ to withdraw from the stake.
+     * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
-    function withdraw(uint256 _amount) external whenNotPaused {
+    function withdraw(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_amount == 0) revert InvalidWithdrawalAmount();
         if (_queueClosed[msg.sender]) revert QueueClosed();
 
@@ -191,20 +200,21 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_amount >= plannedStake.balance) revert BelowMinimumStake();
         if (plannedStake.balance - _amount < _minimumStakeForHeight(plannedStake.height)) revert BelowMinimumStake();
 
-        uint64 effectiveFromRound =
+        effectiveFromRound =
             _enqueueUpdate(msg.sender, UpdateKind.WithdrawTokens, WAIT_WITHDRAWAL, 0, _amount, 0);
         emit Withdrawal(msg.sender, effectiveFromRound, _amount);
     }
 
     /**
      * @notice Schedules a full exit after the withdrawal delay.
+     * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
-    function exit() external whenNotPaused {
+    function exit() external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
-        uint64 effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
+        effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
         _queueClosed[msg.sender] = true;
         emit Withdrawal(msg.sender, effectiveFromRound, plannedStake.balance);
     }
