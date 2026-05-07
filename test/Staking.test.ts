@@ -386,6 +386,26 @@ describe('Staking', function () {
     );
   });
 
+  it('should allow redeposit after exit is fully applied', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await srStaker0.exit();
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+    expect((await srStaker0.stakes(staker_0)).overlay).to.be.eq(zeroBytes32);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0)).to.emit(srStaker0, 'DepositCreated');
+
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    const redeposit = await srStaker0.stakes(staker_0);
+    expect(redeposit.overlay).to.not.be.eq(zeroBytes32);
+    expect(redeposit.overlay).to.not.be.eq(overlay_0);
+  });
+
   it('should not allow invalid withdrawals', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await expectRevertReasonSubstring(srStaker0.withdraw(0), errors.withdraw.invalidWithdrawalAmountZero);
