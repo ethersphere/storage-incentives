@@ -24,7 +24,7 @@ const errors = {
   },
   withdraw: {
     invalidWithdrawalAmountZero: 'InvalidWithdrawalAmount(0)',
-    invalidWithdrawalAmountFullBalance: 'InvalidWithdrawalAmount(1)',
+    invalidWithdrawalAmountExceedsBalance: 'InvalidWithdrawalAmount(1)',
     notStaked: 'NotStaked()',
   },
   slash: {
@@ -392,9 +392,12 @@ describe('Staking', function () {
     await expect(srStaker0.exit()).to.be.revertedWith(errors.withdraw.notStaked);
 
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+    await expectRevertReasonSubstring(srStaker0.withdraw(stakeAmount_0), errors.deposit.belowMinimum);
+
+    const overdraw = BigNumber.from(stakeAmount_0).add(1).toString();
     await expectRevertReasonSubstring(
-      srStaker0.withdraw(stakeAmount_0),
-      errors.withdraw.invalidWithdrawalAmountFullBalance
+      srStaker0.withdraw(overdraw),
+      errors.withdraw.invalidWithdrawalAmountExceedsBalance
     );
   });
 

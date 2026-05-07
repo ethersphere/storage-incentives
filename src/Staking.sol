@@ -32,10 +32,10 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /// @dev Why `withdraw` was rejected before anything was queued.
     enum WithdrawalAmountIssue {
-        /// Amount is zero; withdraw only accepts positive partial pulls (see `exit()` for full unwind).
+        /// Amount is zero; `withdraw` only accepts positive pulls (see `exit()` for full unwind).
         Zero,
-        /// Amount is greater than or equal to current stake; use `exit()` to schedule a full withdrawal after delay.
-        FullBalanceRequiresExit
+        /// Amount is greater than the previewed stake balance.
+        ExceedsBalance
     }
 
     struct Stake {
@@ -101,7 +101,7 @@ contract StakeRegistry is AccessControl, Pausable {
     error HeightDecreaseNotAllowed();
     /// @notice Pulled token amount must be non-zero (`createDeposit`, `addTokens`).
     error InvalidAmount();
-    /// @notice `withdraw` rejected before enqueueing; see `WithdrawalAmountIssue`.
+    /// @notice `withdraw` rejected before enqueueing; see `WithdrawalAmountIssue`. For a remainder below minimum (including withdrawing the entire balance here), see `BelowMinimumStake`; use `exit()` for a scheduled full unwind.
     error InvalidWithdrawalAmount(WithdrawalAmountIssue reason);
     /// @notice Update queue has `queuedCount` pending items; cannot exceed `limit`.
     error UpdateQueueFull(uint256 queuedCount, uint256 limit);
@@ -222,6 +222,7 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Schedules a partial withdrawal after the withdrawal delay.
      * @param _amount The amount of BZZ to withdraw from the stake.
+     * @dev A full unwind must use `exit()`, not `withdraw(balance)`. Overdrawing reverts with `ExceedsBalance`; leaving a remainder below the height minimum reverts with `BelowMinimumStake`.
      * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
     function withdraw(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
@@ -230,8 +231,8 @@ contract StakeRegistry is AccessControl, Pausable {
 
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
-        if (_amount >= plannedStake.balance) {
-            revert InvalidWithdrawalAmount(WithdrawalAmountIssue.FullBalanceRequiresExit);
+        if (_amount > plannedStake.balance) {
+            revert InvalidWithdrawalAmount(WithdrawalAmountIssue.ExceedsBalance);
         }
         uint256 minAfterWithdraw = _minimumStakeForHeight(plannedStake.height);
         uint256 balanceAfter = plannedStake.balance - _amount;
