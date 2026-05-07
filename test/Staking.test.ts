@@ -740,4 +740,114 @@ describe('Staking', function () {
     expect((await srAlt.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
     expect(await srAlt.overlayOfAddress(staker_0)).to.be.eq(overlay_0);
   });
+
+  describe('queue FIFO and mixed delays', function () {
+    /** WAIT_BASE / WAIT_OVERLAY_CHANGE / WAIT_WITHDRAWAL — overlay and withdrawal waits > base so effective rounds spread out. */
+    async function deployStakeRegistryAlt(
+      waitBase: number,
+      waitOverlay: number,
+      waitWithdrawal: number
+    ): Promise<Contract> {
+      const Factory = await ethers.getContractFactory('StakeRegistry');
+      const srAlt = await Factory.deploy(
+        token.address,
+        await stakeRegistry.networkId(),
+        waitBase,
+        waitOverlay,
+        waitWithdrawal
+      );
+      await srAlt.deployed();
+      await srAlt.grantRole(await srAlt.REDISTRIBUTOR_ROLE(), redistributor);
+      return srAlt;
+    }
+
+    it('applies addTokens, withdraw, and changeOverlay in effective-round order when waits differ', async function () {
+      const waitBase = 2;
+      const waitWithdrawal = 6;
+      const waitOverlay = 10;
+      const srAlt = await deployStakeRegistryAlt(waitBase, waitOverlay, waitWithdrawal);
+      const srStaker = srAlt.connect(await getSignerFor(staker_1));
+
+      expect(await srAlt.WAIT_BASE()).to.eq(waitBase);
+      expect(await srAlt.WAIT_OVERLAY_CHANGE()).to.eq(waitOverlay);
+      expect(await srAlt.WAIT_WITHDRAWAL()).to.eq(waitWithdrawal);
+
+      await mintAndApprove(staker_1, srAlt.address, doubleStakeAmount_0);
+      await srStaker.createDeposit(nonce_0, doubleStakeAmount_0, height_0);
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_1);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(doubleStakeAmount_0);
+      expect(await token.balanceOf(staker_1)).to.be.eq(0);
+
+      await mintAndApprove(staker_1, srAlt.address, stakeAmount_0);
+      await srStaker.addTokens(stakeAmount_0);
+      await srStaker.withdraw(withdrawAmount);
+      await srStaker.changeOverlay(nonce_1_n_25);
+
+      // First maturity: top-up only (round + waitBase).
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_1);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(BigNumber.from(doubleStakeAmount_0).add(stakeAmount_0));
+      expect(await srAlt.overlayOfAddress(staker_1)).to.be.eq(overlay_1);
+      expect(await token.balanceOf(staker_1)).to.be.eq(0);
+
+      // Second: queued withdrawal (stacked after top-up; maturity round + waitWithdrawal).
+      await advanceRounds(waitWithdrawal - waitBase);
+      await srAlt.applyUpdates(staker_1);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(doubleStakeAmount_0);
+      expect(await token.balanceOf(staker_1)).to.be.eq(BigNumber.from(withdrawAmount));
+      expect(await srAlt.overlayOfAddress(staker_1)).to.be.eq(overlay_1);
+
+      // Third: overlay (candidate round + waitOverlay vs last scheduled round).
+      await advanceRounds(waitOverlay - waitWithdrawal);
+      await srAlt.applyUpdates(staker_1);
+      expect(await srAlt.overlayOfAddress(staker_1)).to.be.eq(overlay_1_n_25);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(doubleStakeAmount_0);
+    });
+
+    it('applies addTokens then withdraw then addTokens in queue order when shares the same effective round', async function () {
+      const waitBase = 2;
+      const waitWithdrawal = 6;
+      const waitOverlay = 10;
+      const srAlt = await deployStakeRegistryAlt(waitBase, waitOverlay, waitWithdrawal);
+      const srStaker = srAlt.connect(await getSignerFor(staker_0));
+
+      await mintAndApprove(staker_0, srAlt.address, doubleStakeAmount_0);
+      await srStaker.createDeposit(nonce_0, doubleStakeAmount_0, height_0);
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_0);
+      expect(await token.balanceOf(staker_0)).to.be.eq(0);
+
+      await mintAndApprove(staker_0, srAlt.address, doubleStakeAmount_0);
+      await srStaker.addTokens(stakeAmount_0);
+      await srStaker.withdraw(withdrawAmount);
+      await srStaker.addTokens(stakeAmount_0);
+
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_0);
+      expect((await srAlt.stakes(staker_0)).balance).to.be.eq(BigNumber.from(doubleStakeAmount_0).add(stakeAmount_0));
+
+      await advanceRounds(waitWithdrawal - waitBase);
+      await srAlt.applyUpdates(staker_0);
+      expect((await srAlt.stakes(staker_0)).balance).to.be.eq(BigNumber.from(doubleStakeAmount_0).add(stakeAmount_0));
+      expect(await token.balanceOf(staker_0)).to.be.eq(BigNumber.from(withdrawAmount));
+    });
+
+    it('applies addTokens, withdraw, and increaseHeight in strict FIFO in one round when fixture waits are uniform', async function () {
+      const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+      await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+      await srStaker0.addTokens(stakeAmount_0);
+      await srStaker0.withdraw(withdrawAmount);
+      await srStaker0.increaseHeight(height_0_n_1);
+
+      await advanceRounds(2);
+      await srStaker0.applyUpdates(staker_0);
+
+      expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
+      expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+      expect(await token.balanceOf(staker_0)).to.be.eq(BigNumber.from(withdrawAmount));
+    });
+  });
 });
