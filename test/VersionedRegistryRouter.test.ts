@@ -740,4 +740,267 @@ describe('VersionedRegistryRouter', function () {
       );
     });
   });
+
+  // ====================================================================
+  // verifyImplementation (by implementation address)
+  // ====================================================================
+  describe('Registry — verifyImplementation', function () {
+    beforeEach(async function () {
+      await setupFixture();
+      const ch1 = await getCodehash(implV1.address);
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, ch1);
+    });
+
+    it('should return version id for registered active implementation', async function () {
+      expect(await registry.verifyImplementation(implV1.address)).to.equal(v1Id);
+    });
+
+    it('should revert for zero address', async function () {
+      await expect(registry.verifyImplementation(zeroAddress)).to.be.reverted;
+    });
+
+    it('should revert if implementation not registered', async function () {
+      await expect(registry.verifyImplementation(implV2.address)).to.be.reverted;
+    });
+
+    it('should revert if release is deprecated', async function () {
+      await registry.deprecateRelease(v1Id);
+      await expect(registry.verifyImplementation(implV1.address)).to.be.reverted;
+    });
+
+    it('should revert if stored codehash does not match bytecode', async function () {
+      await setupFixture();
+      const badCodehash = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('wrong-code'));
+      await registry.registerRelease(v1Id, v1Semver, implV1.address, badCodehash);
+      await expect(registry.verifyImplementation(implV1.address)).to.be.reverted;
+    });
+  });
+
+  // ====================================================================
+  // RegistryGuardedTransparentUpgradeableProxy
+  // ====================================================================
+  describe('RegistryGuardedTransparentUpgradeableProxy', function () {
+    const GUARDED_PROXY_ID = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('GuardedSample'));
+
+    async function deployGuardedStack() {
+      const signer = await ethers.getSigner(deployer);
+      const ProxyAdminFactory = await ethers.getContractFactory('ProxyAdmin', signer);
+      const localAdmin = await ProxyAdminFactory.deploy();
+      await localAdmin.deployed();
+
+      const ImplFactory = await ethers.getContractFactory('SampleImplementation', signer);
+      const localImpl = await ImplFactory.deploy();
+      await localImpl.deployed();
+
+      const RegistryFactory = await ethers.getContractFactory('VersionedRegistryRouter', signer);
+      const localRegistry = await RegistryFactory.deploy(localAdmin.address);
+      await localRegistry.deployed();
+
+      const GuardedFactory = await ethers.getContractFactory('RegistryGuardedTransparentUpgradeableProxy', signer);
+      const guarded = await GuardedFactory.deploy(
+        localImpl.address,
+        localAdmin.address,
+        '0x',
+        localRegistry.address,
+        GUARDED_PROXY_ID
+      );
+      await guarded.deployed();
+
+      return { localAdmin, localImpl, localRegistry, guarded };
+    }
+
+    it('should revert constructor when registry is zero address', async function () {
+      const signer = await ethers.getSigner(deployer);
+      const ImplFactory = await ethers.getContractFactory('SampleImplementation', signer);
+      const localImpl = await ImplFactory.deploy();
+      await localImpl.deployed();
+      const ProxyAdminFactory = await ethers.getContractFactory('ProxyAdmin', signer);
+      const localAdmin = await ProxyAdminFactory.deploy();
+      await localAdmin.deployed();
+      const GuardedFactory = await ethers.getContractFactory('RegistryGuardedTransparentUpgradeableProxy', signer);
+      await expect(
+        GuardedFactory.deploy(localImpl.address, localAdmin.address, '0x', zeroAddress, GUARDED_PROXY_ID)
+      ).to.be.revertedWith('ZeroRegistry()');
+    });
+
+    it('should delegate and preserve msg.sender', async function () {
+      const { localImpl, localRegistry, guarded } = await deployGuardedStack();
+      const ch = await getCodehash(localImpl.address);
+      await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch);
+      await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+      const proxied = await ethers.getContractAt('SampleImplementation', guarded.address);
+      const node = await ethers.getSigner(node_0);
+      await expect(proxied.connect(node).setValue(99)).to.emit(proxied, 'ValueSet').withArgs(99, node_0);
+      expect(await proxied.value()).to.equal(99);
+      expect(await proxied.lastCaller()).to.equal(node_0);
+    });
+
+    it('should revert fallback when implementation is not registered in registry', async function () {
+      const { localRegistry, guarded } = await deployGuardedStack();
+      await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+      const proxied = await ethers.getContractAt('SampleImplementation', guarded.address);
+      await expect(proxied.setValue(1)).to.be.reverted;
+    });
+
+    it('should revert fallback after proxy upgraded to unregistered implementation', async function () {
+      const signer = await ethers.getSigner(deployer);
+      const { localAdmin, localImpl, localRegistry, guarded } = await deployGuardedStack();
+      const ch = await getCodehash(localImpl.address);
+      await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch);
+      await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+      const ImplV2Factory = await ethers.getContractFactory('SampleImplementationV2', signer);
+      const rogueImpl = await ImplV2Factory.deploy();
+      await rogueImpl.deployed();
+      await localAdmin.upgrade(guarded.address, rogueImpl.address);
+
+      const proxied = await ethers.getContractAt('SampleImplementationV2', guarded.address);
+      await expect(proxied.setValue(1)).to.be.reverted;
+    });
+
+    it('should revert fallback when release is deprecated', async function () {
+      const { localImpl, localRegistry, guarded } = await deployGuardedStack();
+      const ch = await getCodehash(localImpl.address);
+      await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch);
+      await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+      await localRegistry.deprecateRelease(v1Id);
+
+      const proxied = await ethers.getContractAt('SampleImplementation', guarded.address);
+      await expect(proxied.setValue(1)).to.be.reverted;
+    });
+
+    it('should revert fallback when proxy entry is deprecated', async function () {
+      const { localImpl, localRegistry, guarded } = await deployGuardedStack();
+      const ch = await getCodehash(localImpl.address);
+      await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch);
+      await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+      await localRegistry.deprecateProxy(GUARDED_PROXY_ID);
+
+      const proxied = await ethers.getContractAt('SampleImplementation', guarded.address);
+      await expect(proxied.setValue(1)).to.be.reverted;
+    });
+
+    it('should allow user calls after admin upgrade when new implementation is registered', async function () {
+      const signer = await ethers.getSigner(deployer);
+      const { localAdmin, localImpl, localRegistry, guarded } = await deployGuardedStack();
+      const ch1 = await getCodehash(localImpl.address);
+      await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch1);
+
+      const ImplV2Factory = await ethers.getContractFactory('SampleImplementationV2', signer);
+      const nextImpl = await ImplV2Factory.deploy();
+      await nextImpl.deployed();
+      const ch2 = await getCodehash(nextImpl.address);
+      await localRegistry.registerRelease(v2Id, v2Semver, nextImpl.address, ch2);
+      await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+      await localAdmin.upgrade(guarded.address, nextImpl.address);
+
+      const proxied = await ethers.getContractAt('SampleImplementationV2', guarded.address);
+      await expect(proxied.setValue(42)).to.emit(proxied, 'ValueSet').withArgs(42, deployer);
+      expect(await proxied.value()).to.equal(42);
+    });
+
+    // ================================================================
+    // pinnedExecute — caller-pinned implementation
+    // ================================================================
+    describe('pinnedExecute', function () {
+      const sampleIface = new ethers.utils.Interface([
+        'function setValue(uint256)',
+        'event ValueSet(uint256 value, address caller)',
+      ]);
+      const guardedIface = new ethers.utils.Interface([
+        'function pinnedExecute(address expectedImpl, bytes data) payable',
+        'event PinnedExecuted(address indexed caller, address indexed expectedImpl)',
+      ]);
+
+      async function callPinned(
+        guarded: Contract,
+        expectedImpl: string,
+        innerCallData: string,
+        from: string,
+        value = 0
+      ) {
+        const data = guardedIface.encodeFunctionData('pinnedExecute', [expectedImpl, innerCallData]);
+        const signer = await ethers.getSigner(from);
+        return signer.sendTransaction({ to: guarded.address, data, value });
+      }
+
+      it('should delegate when expected implementation matches and registry passes', async function () {
+        const { localImpl, localRegistry, guarded } = await deployGuardedStack();
+        const ch = await getCodehash(localImpl.address);
+        await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch);
+        await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+        const inner = sampleIface.encodeFunctionData('setValue', [123]);
+        await expect(callPinned(guarded, localImpl.address, inner, node_0))
+          .to.emit(guarded, 'PinnedExecuted')
+          .withArgs(node_0, localImpl.address);
+
+        const proxied = await ethers.getContractAt('SampleImplementation', guarded.address);
+        expect(await proxied.value()).to.equal(123);
+        expect(await proxied.lastCaller()).to.equal(node_0);
+      });
+
+      it('should revert with PinMismatch when proxy points elsewhere', async function () {
+        const signer = await ethers.getSigner(deployer);
+        const { localAdmin, localImpl, localRegistry, guarded } = await deployGuardedStack();
+        const ch1 = await getCodehash(localImpl.address);
+        await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch1);
+
+        const ImplV2Factory = await ethers.getContractFactory('SampleImplementationV2', signer);
+        const nextImpl = await ImplV2Factory.deploy();
+        await nextImpl.deployed();
+        const ch2 = await getCodehash(nextImpl.address);
+        await localRegistry.registerRelease(v2Id, v2Semver, nextImpl.address, ch2);
+        await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+        await localAdmin.upgrade(guarded.address, nextImpl.address);
+
+        const inner = sampleIface.encodeFunctionData('setValue', [1]);
+        await expect(callPinned(guarded, localImpl.address, inner, node_0)).to.be.reverted;
+      });
+
+      it('should revert when registry would reject the live implementation', async function () {
+        const { localImpl, localRegistry, guarded } = await deployGuardedStack();
+        await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+        const inner = sampleIface.encodeFunctionData('setValue', [1]);
+        await expect(callPinned(guarded, localImpl.address, inner, node_0)).to.be.reverted;
+      });
+
+      it('should revert when admin calls pinnedExecute', async function () {
+        const { localAdmin, localImpl, localRegistry, guarded } = await deployGuardedStack();
+        const ch = await getCodehash(localImpl.address);
+        await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch);
+        await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+        const inner = sampleIface.encodeFunctionData('setValue', [1]);
+        const data = guardedIface.encodeFunctionData('pinnedExecute', [localImpl.address, inner]);
+        await expect(localAdmin.callStatic.upgrade(guarded.address, localImpl.address)).to.not.be.reverted;
+        // ProxyAdmin owner = deployer; deployer is not the proxy admin (which is localAdmin contract).
+        // To exercise admin path we send the tx directly from the localAdmin contract — simulated by
+        // checking that any call to pinnedExecute via the admin contract reverts. Easiest: route call
+        // through a low-level call from a signer impersonating the ProxyAdmin contract address.
+        await ethers.provider.send('hardhat_impersonateAccount', [localAdmin.address]);
+        const adminSigner = await ethers.getSigner(localAdmin.address);
+        await ethers.provider.send('hardhat_setBalance', [localAdmin.address, '0xde0b6b3a7640000']);
+        await expect(adminSigner.sendTransaction({ to: guarded.address, data })).to.be.reverted;
+        await ethers.provider.send('hardhat_stopImpersonatingAccount', [localAdmin.address]);
+      });
+
+      it('should bubble up implementation revert when delegated call reverts', async function () {
+        const { localImpl, localRegistry, guarded } = await deployGuardedStack();
+        const ch = await getCodehash(localImpl.address);
+        await localRegistry.registerRelease(v1Id, v1Semver, localImpl.address, ch);
+        await localRegistry.registerProxy(GUARDED_PROXY_ID, guarded.address);
+
+        // SampleImplementation has no `nonexistent()`; delegatecall to a missing selector hits an empty
+        // fallback or reverts. We construct a 4-byte selector that doesn't exist on the impl.
+        const bogusSelector = '0xdeadbeef';
+        await expect(callPinned(guarded, localImpl.address, bogusSelector, node_0)).to.be.reverted;
+      });
+    });
+  });
 });

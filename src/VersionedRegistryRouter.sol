@@ -182,14 +182,10 @@ contract VersionedRegistryRouter is AccessControl {
         return proxyAdmin.getProxyImplementation(entry.proxy);
     }
 
-    function verifyProxy(bytes32 proxyId) public view returns (address implementation) {
-        ProxyEntry storage entry = proxies[proxyId];
-        if (!entry.exists) revert ProxyNotFound(proxyId);
-        if (entry.deprecated) revert ProxyDeprecatedError(proxyId);
-
-        implementation = proxyAdmin.getProxyImplementation(entry.proxy);
-
-        bytes32 versionId = versionByImplementation[implementation];
+    /// @dev Shared tail of {verifyProxy}: implementation must be registered, not deprecated, and match stored codehash.
+    function _verifyRegisteredActiveImplementation(address implementation) internal view returns (bytes32 versionId) {
+        if (implementation == address(0)) revert ZeroAddress();
+        versionId = versionByImplementation[implementation];
         if (versionId == bytes32(0)) revert ImplementationNotRegistered(implementation);
 
         ReleaseInfo storage release = releaseByVersion[versionId];
@@ -201,6 +197,23 @@ contract VersionedRegistryRouter is AccessControl {
             actual := extcodehash(implementation)
         }
         if (actual != release.codehash) revert CodehashMismatch(release.codehash, actual);
+    }
+
+    /**
+     * @notice Returns the version id after verifying `implementation` is registered, not deprecated, and codehash matches.
+     * @dev Uses the same rules as the implementation check inside {verifyProxy}; does not check proxy-entry deprecation.
+     */
+    function verifyImplementation(address implementation) public view returns (bytes32 versionId) {
+        return _verifyRegisteredActiveImplementation(implementation);
+    }
+
+    function verifyProxy(bytes32 proxyId) public view returns (address implementation) {
+        ProxyEntry storage entry = proxies[proxyId];
+        if (!entry.exists) revert ProxyNotFound(proxyId);
+        if (entry.deprecated) revert ProxyDeprecatedError(proxyId);
+
+        implementation = proxyAdmin.getProxyImplementation(entry.proxy);
+        _verifyRegisteredActiveImplementation(implementation);
     }
 
     /**
