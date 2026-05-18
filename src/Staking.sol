@@ -10,6 +10,8 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @dev Allows users to stake tokens in order to be eligible for the Redistribution Schelling co-ordination game.
  * Stakes are frozen or slashed by the Redistribution contract in response to violations of the
  * protocol.
+ * @dev Freeze penalties are stored per account (`freezeUntilBlock`); they are not cleared by exit,
+ * migration, or stake deletion. A new deposit after exit still cannot participate until the freeze ends.
  */
 
 contract StakeRegistry is AccessControl, Pausable {
@@ -41,7 +43,6 @@ contract StakeRegistry is AccessControl, Pausable {
     struct Stake {
         bytes32 overlay;
         uint256 balance;
-        uint256 frozenUntilBlock;
         uint8 height;
     }
 
@@ -54,6 +55,8 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     mapping(address => Stake) private _stakes;
+    /// @notice End block of the protocol freeze for this account (exclusive: unfrozen when `block.number` > this value). Persists across exit and migration.
+    mapping(address => uint256) public freezeUntilBlock;
     mapping(address => ScheduledUpdate[]) private _updateQueues;
     mapping(address => uint256) private _queueHeads;
     mapping(address => bool) private _queueClosed;
@@ -308,19 +311,32 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Freezes a stake and blocks queued withdrawals while the freeze lasts.
+     * @notice Extends the account freeze and blocks queued withdrawals while the freeze lasts.
      * @param _owner The staker to freeze.
-     * @param _time The freeze duration in blocks.
+     * @param _time The freeze duration in blocks from `block.number`.
+     * @dev If an existing freeze ends later than `block.number + _time`, it is kept (monotonic). The
+     * deadline is stored per account and survives exit, `migrateStake`, and stake deletion.
      */
     function freezeDeposit(address _owner, uint256 _time) external {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
+        uint256 until = block.number + _time;
+
+        // No stake and no queue: only record account-level penalty.
         if (!_isInitialized(_owner) && _queueLength(_owner) == 0) {
+            if (freezeUntilBlock[_owner] < until) {
+                freezeUntilBlock[_owner] = until;
+            }
             return;
         }
 
+        // Apply updates that were already due under the *previous* freeze window first, so a mature
+        // withdrawal in the same transaction is not blocked by the new penalty start.
         _applyReadyUpdates(_owner);
-        _stakes[_owner].frozenUntilBlock = block.number + _time;
+
+        if (freezeUntilBlock[_owner] < until) {
+            freezeUntilBlock[_owner] = until;
+        }
 
         if (_isInitialized(_owner)) {
             emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
@@ -348,7 +364,6 @@ contract StakeRegistry is AccessControl, Pausable {
                 stake.balance = 0;
                 _reconcileQueuedWithdrawals(_owner);
             } else {
-                // Deletes stake storage including freeze deadline; node may re-stake without residual freeze.
                 delete _stakes[_owner];
             }
         }
@@ -452,10 +467,10 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev True when the stake is absent or `frozenUntilBlock` is strictly before `block.number`.
+     * @dev True when `freezeUntilBlock[_owner] < block.number` (current block is past the penalty window).
      */
     function _addressNotFrozen(address _owner) internal view returns (bool) {
-        return !_isInitialized(_owner) || _stakes[_owner].frozenUntilBlock < block.number;
+        return freezeUntilBlock[_owner] < block.number;
     }
 
     /**
@@ -719,15 +734,11 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Returns true when the owner would be unfrozen after the given round lookahead.
      */
     function _addressNotFrozenLookahead(address _owner, uint64 _lookahead) internal view returns (bool) {
-        if (!_isInitialized(_owner)) {
-            return true;
-        }
-
         if (_lookahead == 0) {
             return _addressNotFrozen(_owner);
         }
 
-        return _stakes[_owner].frozenUntilBlock < (uint256(currentRound()) + uint256(_lookahead)) * ROUND_LENGTH;
+        return freezeUntilBlock[_owner] < (uint256(currentRound()) + uint256(_lookahead)) * ROUND_LENGTH;
     }
 
     /**
