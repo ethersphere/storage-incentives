@@ -276,7 +276,7 @@ describe('Staking', function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
 
-    await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'Withdrawal');
+    await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'WithdrawalQueued');
     expect(await token.balanceOf(staker_0)).to.be.eq(0);
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
 
@@ -319,7 +319,7 @@ describe('Staking', function () {
     await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
 
     const withdrawalReceipt = await (await srStaker0.withdraw(withdrawAmount)).wait();
-    const withdrawalEvent = withdrawalReceipt.events?.find((event: Event) => event.event === 'Withdrawal');
+    const withdrawalEvent = withdrawalReceipt.events?.find((event: Event) => event.event === 'WithdrawalQueued');
     const effectiveRound = withdrawalEvent?.args?.effectiveFromRound ?? withdrawalEvent?.args?.[1];
     await advanceToRoundCommitPhase(redistribution, effectiveRound);
 
@@ -342,7 +342,7 @@ describe('Staking', function () {
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
 
     const exitReceipt = await (await srStaker0.exit()).wait();
-    const exitEvent = exitReceipt.events?.find((event: Event) => event.event === 'Withdrawal');
+    const exitEvent = exitReceipt.events?.find((event: Event) => event.event === 'WithdrawalQueued');
     const effectiveRound = exitEvent?.args?.effectiveFromRound ?? exitEvent?.args?.[1];
     await advanceToRoundCommitPhase(redistribution, effectiveRound);
 
@@ -361,7 +361,7 @@ describe('Staking', function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
 
-    await expect(srStaker0.exit()).to.emit(srStaker0, 'Withdrawal');
+    await expect(srStaker0.exit()).to.emit(srStaker0, 'WithdrawalQueued');
 
     await advanceRounds();
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
@@ -519,7 +519,7 @@ describe('Staking', function () {
     const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
     await stakeRegistryRedistributor.freezeDeposit(staker_0, longFreezeTime);
 
-    await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'Withdrawal');
+    await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'WithdrawalQueued');
     await advanceRounds();
 
     await expect(srStaker0.applyUpdates(staker_0)).to.be.revertedWith(errors.general.frozenWithdrawal);
@@ -576,6 +576,43 @@ describe('Staking', function () {
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
   });
 
+  it('should lower height after slash when balance no longer meets the previous minimum', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0_n_1);
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await stakeRegistryDeployer.grantRole(await stakeRegistryDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+
+    await srRedis.slashDeposit(staker_0, slashAmount);
+
+    expect((await srStaker0.stakes(staker_0)).balance).to.eq(BigNumber.from(doubleStakeAmount_0).sub(slashAmount));
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0);
+  });
+
+  it('should reject staking height above MAX_STAKING_HEIGHT', async function () {
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    const maxH = Number(await srStaker1.MAX_STAKING_HEIGHT());
+    await mintAndApprove(staker_1, srStaker1.address, stakeAmount_0);
+    await expectRevertReasonSubstring(srStaker1.createDeposit(nonce_0, stakeAmount_0, maxH + 1), 'StakingHeightTooLarge');
+  });
+
+  it('should not allow freeze or slash while staking is paused', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const srDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await srDeployer.grantRole(await srDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+
+    const srPauser = await ethers.getContract('StakeRegistry', pauser);
+    await srPauser.pause();
+
+    await expect(srRedis.freezeDeposit(staker_0, freezeTime)).to.be.revertedWith(errors.pause.currentlyPaused);
+    await expect(srRedis.slashDeposit(staker_0, slashAmount)).to.be.revertedWith(errors.pause.currentlyPaused);
+  });
+
   it('should not allow stake migration while unpaused and should include queued deposits when paused', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
@@ -601,7 +638,7 @@ describe('Staking', function () {
       errors.pause.currentlyPaused
     );
 
-    await stakeRegistryPauser.unPause();
+    await stakeRegistryPauser.unpause();
     await expect(srStaker0.createDeposit(nonce_0, stakeAmount_0, height_0)).to.not.be.reverted;
   });
 
@@ -647,23 +684,23 @@ describe('Staking', function () {
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
-    it('should match withdraw callStatic return to Withdrawal round', async function () {
+    it('should match withdraw callStatic return to WithdrawalQueued round', async function () {
       const sr = await ethers.getContract('StakeRegistry', staker_0);
       await activateStake(sr, staker_0, nonce_0, doubleStakeAmount_0, height_0);
       const fromCall = await sr.callStatic.withdraw(withdrawAmount);
       const tx = await sr.withdraw(withdrawAmount);
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: Event) => e.event === 'Withdrawal');
+      const ev = receipt.events!.find((e: Event) => e.event === 'WithdrawalQueued');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
-    it('should match exit callStatic return to Withdrawal round', async function () {
+    it('should match exit callStatic return to WithdrawalQueued round', async function () {
       const sr = await ethers.getContract('StakeRegistry', staker_1);
       await activateStake(sr, staker_1, nonce_0, stakeAmount_0, height_0);
       const fromCall = await sr.callStatic.exit();
       const tx = await sr.exit();
       const receipt = await tx.wait();
-      const ev = receipt.events!.find((e: Event) => e.event === 'Withdrawal');
+      const ev = receipt.events!.find((e: Event) => e.event === 'WithdrawalQueued');
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 

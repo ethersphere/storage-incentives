@@ -20,6 +20,8 @@ contract StakeRegistry is AccessControl, Pausable {
     uint256 public constant ROUND_LENGTH = 152;
     uint256 private constant MIN_STAKE = 100000000000000000;
     uint256 public constant UPDATE_QUEUE_MAX_LENGTH = 10;
+    /// @notice Maximum staking height; prevents `2**height` overflow in `MIN_STAKE * (2 ** height)`.
+    uint8 public constant MAX_STAKING_HEIGHT = 128;
 
     // ----------------------------- Type declarations ------------------------------
 
@@ -81,17 +83,18 @@ contract StakeRegistry is AccessControl, Pausable {
     event TokensAdded(address indexed owner, uint64 registeredFromRound, uint256 amount);
     event OverlayChanged(address indexed owner, uint64 registeredFromRound, bytes32 overlay);
     event HeightIncreased(address indexed owner, uint64 registeredFromRound, uint8 height);
-    event Withdrawal(address indexed owner, uint64 registeredFromRound, uint256 amount);
-    event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
-    event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
+    /// @notice A partial or full withdrawal was scheduled; tokens move only when the item is applied.
+    event WithdrawalQueued(address indexed owner, uint64 effectiveFromRound, uint256 amount);
+    /// @notice BZZ was transferred to `owner` when a queued withdrawal or exit was applied (`executedInRound` is the round at execution).
+    event Withdrawal(address indexed owner, uint64 executedInRound, uint256 amount);
+    event StakeSlashed(address indexed owner, bytes32 overlay, uint256 amount);
+    event StakeFrozen(address indexed frozen, bytes32 overlay, uint256 time);
     event StakeMigrated(address indexed owner, uint256 totalReturned);
 
     // ----------------------------- Errors ------------------------------
 
     /// @notice ERC20 `transfer` / `transferFrom` returned false for `bzzToken`.
     error TransferFailed();
-    /// @notice Caller is not `DEFAULT_ADMIN_ROLE` (e.g. pause, unpause, `changeNetworkId`).
-    error Unauthorized();
     /// @notice Caller lacks `REDISTRIBUTOR_ROLE` (`freezeDeposit`, `slashDeposit`).
     error OnlyRedistributor();
     /// @notice Stake amount `have` is below protocol minimum `need` for the operation (deposit, height, or post-withdraw remainder).
@@ -114,6 +117,8 @@ contract StakeRegistry is AccessControl, Pausable {
     error FrozenWithdrawal();
     /// @notice Overlay or withdrawal wait rounds must be at least `waitBase` (`waitOverlayChange` / `waitWithdrawal` were below).
     error InvalidWaitConfiguration(uint64 waitBase, uint64 waitOverlayChange, uint64 waitWithdrawal);
+    /// @notice `height` exceeds `MAX_STAKING_HEIGHT` (stake math would overflow).
+    error StakingHeightTooLarge(uint8 height, uint8 maxHeight);
 
     constructor(
         address _bzzToken,
@@ -156,7 +161,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_amount < minStake) revert BelowMinimumStake(_amount, minStake);
 
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
-        _pullTokens(msg.sender, _amount);
+        _pullTokens(_amount);
 
         effectiveFromRound = _enqueueUpdate(
             msg.sender,
@@ -180,7 +185,7 @@ contract StakeRegistry is AccessControl, Pausable {
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
-        _pullTokens(msg.sender, _amount);
+        _pullTokens(_amount);
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _amount, 0);
 
         emit TokensAdded(msg.sender, effectiveFromRound, _amount);
@@ -226,7 +231,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Schedules a partial withdrawal after the withdrawal delay.
      * @param _amount The amount of BZZ to withdraw from the stake.
      * @dev A full unwind must use `exit()`, not `withdraw(balance)`. Overdrawing reverts with `ExceedsBalance`; leaving a remainder below the height minimum reverts with `BelowMinimumStake`.
-     * @return effectiveFromRound Round when the queued update becomes effective (matches event).
+     * @return effectiveFromRound Round when the queued update becomes effective (matches `WithdrawalQueued`).
      */
     function withdraw(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_amount == 0) revert InvalidWithdrawalAmount(WithdrawalAmountIssue.Zero);
@@ -242,12 +247,12 @@ contract StakeRegistry is AccessControl, Pausable {
         if (balanceAfter < minAfterWithdraw) revert BelowMinimumStake(balanceAfter, minAfterWithdraw);
 
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.WithdrawTokens, WAIT_WITHDRAWAL, 0, _amount, 0);
-        emit Withdrawal(msg.sender, effectiveFromRound, _amount);
+        emit WithdrawalQueued(msg.sender, effectiveFromRound, _amount);
     }
 
     /**
      * @notice Schedules a full exit after the withdrawal delay.
-     * @return effectiveFromRound Round when the queued update becomes effective (matches event).
+     * @return effectiveFromRound Round when the queued update becomes effective (matches `WithdrawalQueued`).
      */
     function exit() external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
@@ -256,7 +261,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
         _queueClosed[msg.sender] = true;
-        emit Withdrawal(msg.sender, effectiveFromRound, plannedStake.balance);
+        emit WithdrawalQueued(msg.sender, effectiveFromRound, plannedStake.balance);
     }
 
     /**
@@ -317,7 +322,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev If an existing freeze ends later than `block.number + _time`, it is kept (monotonic). The
      * deadline is stored per account and survives exit, `migrateStake`, and stake deletion.
      */
-    function freezeDeposit(address _owner, uint256 _time) external {
+    function freezeDeposit(address _owner, uint256 _time) external whenNotPaused {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
         uint256 until = block.number + _time;
@@ -348,7 +353,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _owner The staker to slash.
      * @param _amount The amount to slash from the active stake.
      */
-    function slashDeposit(address _owner, uint256 _amount) external {
+    function slashDeposit(address _owner, uint256 _amount) external whenNotPaused {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
 
         _applyReadyUpdates(_owner);
@@ -360,6 +365,7 @@ contract StakeRegistry is AccessControl, Pausable {
             if (stake.balance > _amount) {
                 stake.balance -= _amount;
                 _reconcileQueuedWithdrawals(_owner);
+                _syncHeightToBalance(stake);
             } else if (_queueLength(_owner) > 0) {
                 stake.balance = 0;
                 _reconcileQueuedWithdrawals(_owner);
@@ -372,18 +378,24 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
+     * @notice Updates the Swarm network identifier used in overlay derivation.
+     * @param _networkId The new network id.
+     */
+    function changeNetworkId(uint64 _networkId) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        networkId = _networkId;
+    }
+
+    /**
      * @notice Pauses staking mutations.
      */
-    function pause() public {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
+    function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _pause();
     }
 
     /**
      * @notice Unpauses staking mutations.
      */
-    function unPause() public {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
+    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
         _unpause();
     }
 
@@ -528,7 +540,10 @@ contract StakeRegistry is AccessControl, Pausable {
                 uint256 paid = scheduled.amount > stake.balance ? stake.balance : scheduled.amount;
                 stake.balance -= paid;
 
-                if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
+                if (paid > 0) {
+                    if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
+                    emit Withdrawal(_owner, currentRound(), paid);
+                }
             }
             return;
         }
@@ -536,7 +551,10 @@ contract StakeRegistry is AccessControl, Pausable {
         if (scheduled.kind == UpdateKind.ExitStake) {
             uint256 balance = stake.balance;
             delete _stakes[_owner];
-            if (balance > 0 && !ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
+            if (balance > 0) {
+                if (!ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
+                emit Withdrawal(_owner, currentRound(), balance);
+            }
         }
     }
 
@@ -759,17 +777,32 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Pulls BZZ into the staking contract.
+     * @notice Pulls BZZ from `msg.sender` into the staking contract.
      */
-    function _pullTokens(address _owner, uint256 _amount) internal {
+    function _pullTokens(uint256 _amount) internal {
         if (_amount == 0) revert InvalidAmount();
-        if (!ERC20(bzzToken).transferFrom(_owner, address(this), _amount)) revert TransferFailed();
+        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
+    }
+
+    /**
+     * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible.
+     */
+    function _syncHeightToBalance(Stake storage stake) internal {
+        if (stake.overlay == bytes32(0)) return;
+        uint8 h = stake.height;
+        while (h > 0 && stake.balance < _minimumStakeForHeight(h)) {
+            unchecked {
+                h--;
+            }
+        }
+        stake.height = h;
     }
 
     /**
      * @notice Returns the minimum stake required for a given height.
      */
     function _minimumStakeForHeight(uint8 _height) internal pure returns (uint256) {
+        if (_height > MAX_STAKING_HEIGHT) revert StakingHeightTooLarge(_height, MAX_STAKING_HEIGHT);
         return MIN_STAKE * (2 ** _height);
     }
 
