@@ -68,6 +68,8 @@ This project includes the following smart contracts and their metadata:
     - HitchensOrderStatisticsTreeLib
   - Test Token
 
+**`StakeRegistry` / `applyUpdates` (bots & backends):** `applyUpdates(address)` applies the ready prefix of each owner’s update queue. If the next pending item at the queue head is a **due** `WithdrawTokens` or `ExitStake` and payouts are blocked by an active freeze, the call **reverts** with `FrozenWithdrawal()` and the **whole transaction rolls back** (no partial commit from that call). Integrators should treat that as retry-after-unfreeze, or rely on paths that advance the queue internally under different constraints (redistributor-triggered txs, paused migration flows). Inline NatSpec next to `applyUpdates` matches this behaviour.
+
 - Metadata ([Testnet](./testnet_deployed.json),[Mainnet](./mainnet_deployed.json))
   - **Chain ID**: Chain ID of the blockchain.
   - **Network ID**: Network ID.

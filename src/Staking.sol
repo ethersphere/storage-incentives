@@ -117,7 +117,8 @@ contract StakeRegistry is AccessControl, Pausable {
     error UpdateQueueFull(uint256 queuedCount, uint256 limit);
     /// @notice An exit is scheduled; no further mutations allowed until processed or migrated.
     error QueueClosed();
-    /// @notice Cannot finish applying updates while the head item is a due withdrawal/exit and the stake is frozen.
+    /// @notice Thrown only by `applyUpdates`: head queue item is due `WithdrawTokens`/`ExitStake` but frozen.
+    /// @dev Full tx revert; see `applyUpdates` NatSpec — no checkpointed partial progress from that call.
     error FrozenWithdrawal();
     /// @notice Overlay or withdrawal wait rounds must be at least `waitBase` (`waitOverlayChange` / `waitWithdrawal` were below).
     error InvalidWaitConfiguration(uint64 waitBase, uint64 waitOverlayChange, uint64 waitWithdrawal);
@@ -275,6 +276,12 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Applies all updates that are ready for the given owner.
      * @param _owner The address whose queue should be processed.
+     * @dev Integrators / bots / backends: `_applyReadyUpdates` runs first. If the next pending item at `head`
+     *      is a due withdrawal or exit and execution is blocked by freeze, this function reverts with
+     *      `FrozenWithdrawal()` — the **entire transaction** reverts, so no partial state from this call persists.
+     *      When that happens (e.g. user frozen with a matured withdrawal queued), callers may retry after
+     *      unfreeze, or advance the queue indirectly via functions that invoke `_applyReadyUpdates` internally
+     *      under different rules (`freezeDeposit`, `slashDeposit`, `migrateStake` when paused).
      */
     function applyUpdates(address _owner) public {
         _applyReadyUpdates(_owner);

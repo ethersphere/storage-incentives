@@ -598,7 +598,10 @@ describe('Staking', function () {
     const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
     const maxH = Number(await srStaker1.MAX_STAKING_HEIGHT());
     await mintAndApprove(staker_1, srStaker1.address, stakeAmount_0);
-    await expectRevertReasonSubstring(srStaker1.createDeposit(nonce_0, stakeAmount_0, maxH + 1), 'StakingHeightTooLarge');
+    await expectRevertReasonSubstring(
+      srStaker1.createDeposit(nonce_0, stakeAmount_0, maxH + 1),
+      'StakingHeightTooLarge'
+    );
   });
 
   it('should not allow freeze or slash while staking is paused', async function () {
