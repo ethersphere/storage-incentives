@@ -372,15 +372,6 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Updates the Swarm network identifier used in overlay derivation.
-     * @param _networkId The new network id.
-     */
-    function changeNetworkId(uint64 _networkId) external {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert Unauthorized();
-        networkId = _networkId;
-    }
-
-    /**
      * @notice Pauses staking mutations.
      */
     function pause() public {
