@@ -44,8 +44,7 @@ contract PriceOracle is AccessControl {
     /// @dev Upper bound for upscaled price so `(currentPriceUpScaled >> 10)` fits in `uint32`.
     /// Without this, `currentPrice()`'s `uint32(... >> 10)` truncates and can disagree with
     /// `currentPriceUpScaled` and under-report vs `minimumPrice()`.
-    uint64 public constant MAX_CURRENT_PRICE_UPSCALED =
-        uint64(uint256(type(uint32).max) << 10);
+    uint64 public constant MAX_CURRENT_PRICE_UPSCALED = uint64(uint256(type(uint32).max) << 10);
 
     // ----------------------------- Events ------------------------------
 
