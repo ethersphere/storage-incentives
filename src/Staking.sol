@@ -18,7 +18,8 @@ contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- State variables ------------------------------
 
     uint256 public constant ROUND_LENGTH = 152;
-    uint256 private constant MIN_STAKE = 100000000000000000;
+    /// @notice Minimum BZZ base unit at staking height 0 (`MIN_STAKE * 2**height` for higher heights).
+    uint256 public constant MIN_STAKE = 100000000000000000;
     uint256 public constant UPDATE_QUEUE_MAX_LENGTH = 10;
     /// @notice Maximum staking height; prevents `2**height` overflow in `MIN_STAKE * (2 ** height)`.
     uint8 public constant MAX_STAKING_HEIGHT = 128;
@@ -42,6 +43,7 @@ contract StakeRegistry is AccessControl, Pausable {
         ExceedsBalance
     }
 
+    /// @dev Committed stake is indicated by `overlay != bytes32(0)` (see `_hasCommittedStake`).
     struct Stake {
         bytes32 overlay;
         uint256 balance;
@@ -88,7 +90,9 @@ contract StakeRegistry is AccessControl, Pausable {
     /// @notice BZZ was transferred to `owner` when a queued withdrawal or exit was applied (`executedInRound` is the round at execution).
     event Withdrawal(address indexed owner, uint64 executedInRound, uint256 amount);
     event StakeSlashed(address indexed owner, bytes32 overlay, uint256 amount);
-    event StakeFrozen(address indexed frozen, bytes32 overlay, uint256 time);
+    event StakeFrozen(address indexed frozen, bytes32 indexed overlay, uint256 durationBlocks);
+    /// @notice Account-level freeze recorded when there is no stake/queue (overlay zero in `StakeFrozen`).
+    event AccountFreezeExtended(address indexed account, uint256 freezeUntilBlock);
     event StakeMigrated(address indexed owner, uint256 totalReturned);
 
     // ----------------------------- Errors ------------------------------
@@ -119,6 +123,8 @@ contract StakeRegistry is AccessControl, Pausable {
     error InvalidWaitConfiguration(uint64 waitBase, uint64 waitOverlayChange, uint64 waitWithdrawal);
     /// @notice `height` exceeds `MAX_STAKING_HEIGHT` (stake math would overflow).
     error StakingHeightTooLarge(uint8 height, uint8 maxHeight);
+    /// @notice `changeOverlay` was called with a nonce that produces the current overlay.
+    error OverlayUnchanged();
 
     constructor(
         address _bzzToken,
@@ -156,7 +162,7 @@ contract StakeRegistry is AccessControl, Pausable {
     ) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (_isInitialized(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
+        if (_hasCommittedStake(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
         uint256 minStake = _minimumStakeForHeight(_height);
         if (_amount < minStake) revert BelowMinimumStake(_amount, minStake);
 
@@ -183,7 +189,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function addTokens(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         _pullTokens(_amount);
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _amount, 0);
@@ -194,15 +200,16 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Schedules an overlay change after the configured overlay delay.
      * @param _setNonce The nonce used to derive the new overlay.
-     * @return effectiveFromRound Round when the queued update becomes effective (matches event); 0 if unchanged.
+     * @return effectiveFromRound Round when the queued update becomes effective (matches `OverlayChanged`).
+     * @dev Reverts with `OverlayUnchanged` if the derived overlay equals the current one (no sentinel return value).
      */
     function changeOverlay(bytes32 _setNonce) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
-        if (newOverlay == plannedStake.overlay) return 0;
+        if (newOverlay == plannedStake.overlay) revert OverlayUnchanged();
 
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ChangeOverlay, WAIT_OVERLAY_CHANGE, _setNonce, 0, 0);
 
@@ -217,7 +224,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function increaseHeight(uint8 _height) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
         if (_height == plannedStake.height) return 0;
         uint256 minForHeight = _minimumStakeForHeight(_height);
@@ -230,7 +237,7 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Schedules a partial withdrawal after the withdrawal delay.
      * @param _amount The amount of BZZ to withdraw from the stake.
-     * @dev A full unwind must use `exit()`, not `withdraw(balance)`. Overdrawing reverts with `ExceedsBalance`; leaving a remainder below the height minimum reverts with `BelowMinimumStake`.
+     * @dev A full unwind must use `exit()`, not `withdraw(balance)`. Overdrawing reverts with `ExceedsBalance`; leaving a remainder below the height minimum reverts with `BelowMinimumStake`. Effective round stacking follows `_enqueueUpdate` (FIFO vs delay rounds).
      * @return effectiveFromRound Round when the queued update becomes effective (matches `WithdrawalQueued`).
      */
     function withdraw(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
@@ -238,7 +245,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (_queueClosed[msg.sender]) revert QueueClosed();
 
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_amount > plannedStake.balance) {
             revert InvalidWithdrawalAmount(WithdrawalAmountIssue.ExceedsBalance);
         }
@@ -252,12 +259,13 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Schedules a full exit after the withdrawal delay.
+     * @dev Uses the same effective-round stacking as `withdraw()`; see `_enqueueUpdate`.
      * @return effectiveFromRound Round when the queued update becomes effective (matches `WithdrawalQueued`).
      */
     function exit() external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_queueClosed[msg.sender]) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_isInitialized(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
         _queueClosed[msg.sender] = true;
@@ -275,7 +283,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (
             head < queue.length &&
             queue[head].effectiveFromRound <= currentRound() &&
-            _blocksQueuedWithdrawalExecution(_owner, queue[head].kind)
+            _queuedWithdrawalExecutionFrozen(_owner, queue[head].kind, 0)
         ) {
             revert FrozenWithdrawal();
         }
@@ -328,9 +336,10 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 until = block.number + _time;
 
         // No stake and no queue: only record account-level penalty.
-        if (!_isInitialized(_owner) && _queueLength(_owner) == 0) {
+        if (!_hasCommittedStake(_owner) && _queueLength(_owner) == 0) {
             if (freezeUntilBlock[_owner] < until) {
                 freezeUntilBlock[_owner] = until;
+                emit AccountFreezeExtended(_owner, freezeUntilBlock[_owner]);
             }
             return;
         }
@@ -343,7 +352,7 @@ contract StakeRegistry is AccessControl, Pausable {
             freezeUntilBlock[_owner] = until;
         }
 
-        if (_isInitialized(_owner)) {
+        if (_hasCommittedStake(_owner)) {
             emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
         }
     }
@@ -355,13 +364,14 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function slashDeposit(address _owner, uint256 _amount) external whenNotPaused {
         if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
+        if (_amount == 0) revert InvalidAmount();
 
         _applyReadyUpdates(_owner);
 
         Stake storage stake = _stakes[_owner];
         bytes32 previousOverlay = stake.overlay;
 
-        if (_isInitialized(_owner)) {
+        if (previousOverlay != bytes32(0)) {
             if (stake.balance > _amount) {
                 stake.balance -= _amount;
                 _reconcileQueuedWithdrawals(_owner);
@@ -374,7 +384,9 @@ contract StakeRegistry is AccessControl, Pausable {
             }
         }
 
-        emit StakeSlashed(_owner, previousOverlay, _amount);
+        if (previousOverlay != bytes32(0)) {
+            emit StakeSlashed(_owner, previousOverlay, _amount);
+        }
     }
 
     /**
@@ -417,7 +429,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!_addressNotFrozen(_owner)) return 0;
 
         Stake memory preview = _previewStake(_owner, false);
-        return _isInitialized(preview) ? preview.balance : 0;
+        return _hasCommittedStake(preview) ? preview.balance : 0;
     }
 
     /**
@@ -425,7 +437,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function overlayOfAddress(address _owner) public view returns (bytes32) {
         Stake memory preview = _previewStake(_owner, false);
-        return _isInitialized(preview) ? preview.overlay : bytes32(0);
+        return _hasCommittedStake(preview) ? preview.overlay : bytes32(0);
     }
 
     /**
@@ -433,7 +445,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function heightOfAddress(address _owner) public view returns (uint8) {
         Stake memory preview = _previewStake(_owner, false);
-        return _isInitialized(preview) ? preview.height : 0;
+        return _hasCommittedStake(preview) ? preview.height : 0;
     }
 
     /**
@@ -443,7 +455,7 @@ contract StakeRegistry is AccessControl, Pausable {
         if (!_addressNotFrozenLookahead(_owner, _lookahead)) return 0;
 
         Stake memory preview = _previewStakeLookahead(_owner, _lookahead);
-        return _isInitialized(preview) ? preview.balance : 0;
+        return _hasCommittedStake(preview) ? preview.balance : 0;
     }
 
     /**
@@ -451,7 +463,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function overlayOfAddressLookahead(address _owner, uint64 _lookahead) public view returns (bytes32) {
         Stake memory preview = _previewStakeLookahead(_owner, _lookahead);
-        return _isInitialized(preview) ? preview.overlay : bytes32(0);
+        return _hasCommittedStake(preview) ? preview.overlay : bytes32(0);
     }
 
     /**
@@ -459,7 +471,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function heightOfAddressLookahead(address _owner, uint64 _lookahead) public view returns (uint8) {
         Stake memory preview = _previewStakeLookahead(_owner, _lookahead);
-        return _isInitialized(preview) ? preview.height : 0;
+        return _hasCommittedStake(preview) ? preview.height : 0;
     }
 
     /**
@@ -486,7 +498,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint64 roundNumber = currentRound();
 
         while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
-            if (_blocksQueuedWithdrawalExecution(_owner, queue[head].kind)) break;
+            if (_queuedWithdrawalExecutionFrozen(_owner, queue[head].kind, 0)) break;
             _applyStoredUpdate(_owner, queue[head]);
             delete queue[head];
             unchecked {
@@ -507,39 +519,11 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Applies a single queued update to storage.
      */
     function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
-        Stake storage stake = _stakes[_owner];
-
-        if (scheduled.kind == UpdateKind.CreateDeposit) {
-            stake.overlay = _deriveOverlay(_owner, scheduled.nonce);
-            stake.balance = scheduled.amount;
-            stake.height = scheduled.height;
-            return;
-        }
-
-        if (scheduled.kind == UpdateKind.AddTokens) {
-            stake.balance += scheduled.amount;
-            return;
-        }
-
-        if (scheduled.kind == UpdateKind.IncreaseHeight) {
-            if (_isInitialized(_owner) && scheduled.height > stake.height) {
-                stake.height = scheduled.height;
-            }
-            return;
-        }
-
-        if (scheduled.kind == UpdateKind.ChangeOverlay) {
-            if (_isInitialized(_owner)) {
-                stake.overlay = _deriveOverlay(_owner, scheduled.nonce);
-            }
-            return;
-        }
-
         if (scheduled.kind == UpdateKind.WithdrawTokens) {
-            if (_isInitialized(_owner)) {
+            Stake storage stake = _stakes[_owner];
+            if (stake.overlay != bytes32(0)) {
                 uint256 paid = scheduled.amount > stake.balance ? stake.balance : scheduled.amount;
                 stake.balance -= paid;
-
                 if (paid > 0) {
                     if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
                     emit Withdrawal(_owner, currentRound(), paid);
@@ -549,41 +533,39 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (scheduled.kind == UpdateKind.ExitStake) {
-            uint256 balance = stake.balance;
+            Stake storage stakeRef = _stakes[_owner];
+            uint256 balance = stakeRef.balance;
             delete _stakes[_owner];
             if (balance > 0) {
                 if (!ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
                 emit Withdrawal(_owner, currentRound(), balance);
             }
+            return;
         }
+
+        Stake storage stRef = _stakes[_owner];
+        Stake memory s = Stake({overlay: stRef.overlay, balance: stRef.balance, height: stRef.height});
+        s = _applyPreviewUpdate(_owner, s, scheduled);
+        stRef.overlay = s.overlay;
+        stRef.balance = s.balance;
+        stRef.height = s.height;
     }
 
     /**
-     * @notice Returns true when a queued withdrawal or exit must stay pending for the current round.
-     * @dev Current-round participation does not block execution once the withdrawal or exit is effective.
+     * @dev Whether a due withdrawal/exit is blocked by freeze when evaluating unfrozen state at `_lookaheadRounds`:
+     *      `_lookaheadRounds == 0` uses `_addressNotFrozen` (strict `block.number`). `_lookaheadRounds > 0`
+     *      uses the first block of round `currentRound() + _lookaheadRounds`. Those bases differ, so
+     *      behavior is not a simple extension of the `_lookaheadRounds == 0` case at round boundaries.
      */
-    function _blocksQueuedWithdrawalExecution(address _owner, UpdateKind _kind) internal view returns (bool) {
-        if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
-            return false;
-        }
-
-        return !_addressNotFrozen(_owner);
-    }
-
-    /**
-     * @notice Returns true when a queued withdrawal or exit would still be blocked after the given round lookahead.
-     * @dev Lookahead previews only defer execution while the node remains frozen.
-     */
-    function _blocksQueuedWithdrawalExecutionLookahead(
+    function _queuedWithdrawalExecutionFrozen(
         address _owner,
         UpdateKind _kind,
-        uint64 _lookahead
+        uint64 _lookaheadRounds
     ) internal view returns (bool) {
         if (_kind != UpdateKind.WithdrawTokens && _kind != UpdateKind.ExitStake) {
             return false;
         }
-
-        return !_addressNotFrozenLookahead(_owner, _lookahead);
+        return !_addressNotFrozenLookahead(_owner, _lookaheadRounds);
     }
 
     /**
@@ -601,7 +583,7 @@ contract StakeRegistry is AccessControl, Pausable {
             if (!includeFutureUpdates && scheduled.effectiveFromRound > roundNumber) {
                 break;
             }
-            if (!includeFutureUpdates && _blocksQueuedWithdrawalExecution(_owner, scheduled.kind)) {
+            if (!includeFutureUpdates && _queuedWithdrawalExecutionFrozen(_owner, scheduled.kind, 0)) {
                 break;
             }
 
@@ -628,7 +610,7 @@ contract StakeRegistry is AccessControl, Pausable {
             if (scheduled.effectiveFromRound > targetRound) {
                 break;
             }
-            if (_blocksQueuedWithdrawalExecutionLookahead(_owner, scheduled.kind, _lookahead)) {
+            if (_queuedWithdrawalExecutionFrozen(_owner, scheduled.kind, _lookahead)) {
                 break;
             }
 
@@ -642,6 +624,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Applies a single queued update to an in-memory preview state.
+     * @dev Must match non-transfer semantics applied in `_applyStoredUpdate` for the same `kind` (excluding token transfers).
      */
     function _applyPreviewUpdate(
         address _owner,
@@ -661,21 +644,21 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (scheduled.kind == UpdateKind.IncreaseHeight) {
-            if (_isInitialized(preview) && scheduled.height > preview.height) {
+            if (_hasCommittedStake(preview) && scheduled.height > preview.height) {
                 preview.height = scheduled.height;
             }
             return preview;
         }
 
         if (scheduled.kind == UpdateKind.ChangeOverlay) {
-            if (_isInitialized(preview)) {
+            if (_hasCommittedStake(preview)) {
                 preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
             }
             return preview;
         }
 
         if (scheduled.kind == UpdateKind.WithdrawTokens) {
-            if (_isInitialized(preview)) {
+            if (_hasCommittedStake(preview)) {
                 if (scheduled.amount >= preview.balance) {
                     preview.balance = 0;
                 } else {
@@ -694,6 +677,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Appends a new queued update and assigns the first valid effective round.
+     * @dev `effectiveFromRound` is `max(currentRound() + _minimumWait, lastQueuedRound)` so FIFO is preserved when waits differ; a withdrawal/exit may become effective later than `_minimumWait` rounds after prior queue items.
      */
     function _enqueueUpdate(
         address _owner,
@@ -740,14 +724,17 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns true when the owner would be unfrozen after the given round lookahead.
+     * @notice True if `freezeUntilBlock` is strictly before the reference block for this lookahead.
+     * @dev `_lookaheadRounds == 0`: reference is current `block.number` (same as `_addressNotFrozen`).
+     *      `_lookaheadRounds > 0`: reference is the first block of staking round `currentRound() + _lookaheadRounds`
+     *      (not `block.number + _lookaheadRounds * ROUND_LENGTH`), so preview semantics are round-anchored.
      */
-    function _addressNotFrozenLookahead(address _owner, uint64 _lookahead) internal view returns (bool) {
-        if (_lookahead == 0) {
+    function _addressNotFrozenLookahead(address _owner, uint64 _lookaheadRounds) internal view returns (bool) {
+        if (_lookaheadRounds == 0) {
             return _addressNotFrozen(_owner);
         }
 
-        return freezeUntilBlock[_owner] < (uint256(currentRound()) + uint256(_lookahead)) * ROUND_LENGTH;
+        return freezeUntilBlock[_owner] < (uint256(currentRound()) + uint256(_lookaheadRounds)) * ROUND_LENGTH;
     }
 
     /**
@@ -762,7 +749,7 @@ contract StakeRegistry is AccessControl, Pausable {
         for (uint256 i = head; i < queue.length; ) {
             ScheduledUpdate storage scheduled = queue[i];
 
-            if (scheduled.kind == UpdateKind.WithdrawTokens && _isInitialized(preview)) {
+            if (scheduled.kind == UpdateKind.WithdrawTokens && _hasCommittedStake(preview)) {
                 if (scheduled.amount > preview.balance) {
                     scheduled.amount = preview.balance;
                 }
@@ -814,16 +801,15 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns true when the stored stake for an owner is initialized.
+     * @notice True when the on-chain stake record is committed for `owner`.
+     * @dev Commitment is indicated by `overlay != bytes32(0)`; collision with keccak256 output is negligible.
      */
-    function _isInitialized(address _owner) internal view returns (bool) {
+    function _hasCommittedStake(address _owner) internal view returns (bool) {
         return _stakes[_owner].overlay != bytes32(0);
     }
 
-    /**
-     * @notice Returns true when an in-memory stake state is initialized.
-     */
-    function _isInitialized(Stake memory _stake) internal pure returns (bool) {
+    /// @notice Same commitment predicate for an in-memory stake (e.g. queue preview).
+    function _hasCommittedStake(Stake memory _stake) internal pure returns (bool) {
         return _stake.overlay != bytes32(0);
     }
 

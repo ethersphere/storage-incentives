@@ -29,6 +29,7 @@ const errors = {
   },
   slash: {
     noRole: 'OnlyRedistributor()',
+    invalidAmount: 'InvalidAmount()',
   },
   freeze: {
     noRole: 'OnlyRedistributor()',
@@ -40,7 +41,7 @@ const errors = {
     onlyPauseCanUnPause: 'Unauthorized()',
   },
   general: {
-    queueClosed: 'QueueClosed()',
+    overlayUnchanged: 'OverlayUnchanged()',
     frozenWithdrawal: 'FrozenWithdrawal()',
     queueFull: 'UpdateQueueFull',
     invalidWaitConfig: 'InvalidWaitConfiguration',
@@ -542,6 +543,8 @@ describe('Staking', function () {
     await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
 
     const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+    await expect(stakeRegistryRedistributor.slashDeposit(staker_0, '0')).to.be.revertedWith(errors.slash.invalidAmount);
+
     await expect(stakeRegistryRedistributor.slashDeposit(staker_0, slashAmount))
       .to.emit(srStaker0, 'StakeSlashed')
       .withArgs(staker_0, overlay_0, slashAmount);
@@ -704,13 +707,10 @@ describe('Staking', function () {
       expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
-    it('should return 0 and emit nothing when overlay is unchanged', async function () {
+    it('should revert when overlay is unchanged', async function () {
       const sr = await ethers.getContract('StakeRegistry', staker_0);
       await activateStake(sr, staker_0, nonce_0, stakeAmount_0, height_0);
-      expect(await sr.callStatic.changeOverlay(nonce_0)).to.eq(0);
-      const tx = await sr.changeOverlay(nonce_0);
-      const receipt = await tx.wait();
-      expect(receipt.events?.some((e: Event) => e.event === 'OverlayChanged')).to.eq(false);
+      await expect(sr.changeOverlay(nonce_0)).to.be.revertedWith(errors.general.overlayUnchanged);
     });
 
     it('should return 0 and emit nothing when height is unchanged', async function () {
