@@ -88,26 +88,10 @@ contract EchidnaRedistributionActor {
     function callWinnerSelection() external returns (bool ok) {
         (ok, ) = address(redist).call(abi.encodeWithSelector(redist.exposedWinnerSelection.selector));
     }
-
-    function tryPause() external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.pause.selector));
-    }
-
-    function tryUnpause() external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.unPause.selector));
-    }
-
-    function trySetSampleMaxValue(uint256 v) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.setSampleMaxValue.selector, v));
-    }
-
-    function trySetFreezingParams(uint8 a, uint8 b, uint8 c) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.setFreezingParams.selector, a, b, c));
-    }
 }
 
 /// @notice Base Echidna harness for Redistribution.
-/// @dev Focuses on wiring dependencies, access control, and basic internal consistency.
+/// @dev Focuses on commit/reveal state-machine consistency and winnerSelection postconditions.
 contract EchidnaRedistributionHarness {
     EchidnaStakeRegistryMock internal immutable stakeMock;
     EchidnaPostageStampMock internal immutable stampMock;
@@ -119,10 +103,6 @@ contract EchidnaRedistributionHarness {
     uint256 internal constant MAX_COMMIT_REVEAL_SCAN = 25;
     EchidnaRedistributionActor[3] internal actors;
 
-    // Forbidden-call flags.
-    bool internal unauthorizedAdminCallSucceeded;
-    bool internal commitSucceededWhilePaused;
-    bool internal revealSucceededWhilePaused;
     bool internal winnerSelectionSucceededTwiceSameRound;
 
     // Pending winnerSelection postconditions.
@@ -262,30 +242,6 @@ contract EchidnaRedistributionHarness {
         redist.setFreezingParams(a, b, c);
     }
 
-    function act_rando_tryPause(uint8 actorId) external {
-        _clearWinnerSelectionPending();
-        bool ok = actors[uint256(actorId) % ACTOR_COUNT].tryPause();
-        if (ok) unauthorizedAdminCallSucceeded = true;
-    }
-
-    function act_rando_tryUnpause(uint8 actorId) external {
-        _clearWinnerSelectionPending();
-        bool ok = actors[uint256(actorId) % ACTOR_COUNT].tryUnpause();
-        if (ok) unauthorizedAdminCallSucceeded = true;
-    }
-
-    function act_rando_trySetSampleMaxValue(uint8 actorId, uint256 v) external {
-        _clearWinnerSelectionPending();
-        bool ok = actors[uint256(actorId) % ACTOR_COUNT].trySetSampleMaxValue(v);
-        if (ok) unauthorizedAdminCallSucceeded = true;
-    }
-
-    function act_rando_trySetFreezingParams(uint8 actorId, uint8 a, uint8 b, uint8 c) external {
-        _clearWinnerSelectionPending();
-        bool ok = actors[uint256(actorId) % ACTOR_COUNT].trySetFreezingParams(a, b, c);
-        if (ok) unauthorizedAdminCallSucceeded = true;
-    }
-
     // -----------------------------
     // Advanced actions (aim for successful commit/reveal)
     // -----------------------------
@@ -366,48 +322,6 @@ contract EchidnaRedistributionHarness {
         trackedHasReveal[idx] = true;
     }
 
-    function act_tryCommitWhilePaused(uint8 actorId, bytes32 reserveHash, bytes32 nonce) external {
-        _clearWinnerSelectionPending();
-        if (!redist.paused()) return;
-        if (!redist.currentPhaseCommit()) return;
-        if (block.number % 152 == (152 / 4) - 1) return;
-
-        uint256 idx = uint256(actorId) % ACTOR_COUNT;
-        EchidnaRedistributionActor a = actors[idx];
-
-        bytes32 anchor = redist.currentRoundAnchor();
-        bytes32 overlay = keccak256(abi.encodePacked("paused-overlay", idx, anchor));
-        uint8 h = 0;
-        uint8 d = 0;
-        stakeMock.setNode(address(a), overlay, h, 1e18, _backdateLastUpdated());
-
-        bytes32 obfuscated = redist.wrapCommit(overlay, d, reserveHash, nonce);
-        bool ok = a.callCommit(obfuscated, redist.currentRound());
-        if (ok) commitSucceededWhilePaused = true;
-    }
-
-    function act_tryRevealWhilePaused(uint8 actorId) external {
-        _clearWinnerSelectionPending();
-        if (!redist.paused()) return;
-        if (!redist.currentPhaseReveal()) return;
-
-        uint256 idx = uint256(actorId) % ACTOR_COUNT;
-        if (!trackedHasCommit[idx]) return;
-        if (redist.currentRound() != trackedRound[idx]) return;
-        if (redist.currentCommitRound() != trackedRound[idx]) return;
-
-        EchidnaRedistributionActor a = actors[idx];
-        stakeMock.setNode(
-            address(a),
-            trackedOverlay[idx],
-            trackedHeight[idx],
-            trackedStake[idx],
-            _backdateLastUpdated()
-        );
-        bool ok = a.callReveal(trackedDepth[idx], trackedReserveHash[idx], trackedNonce[idx]);
-        if (ok) revealSucceededWhilePaused = true;
-    }
-
     function act_winnerSelection(uint8 actorId) external {
         _clearWinnerSelectionPending();
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
@@ -441,22 +355,6 @@ contract EchidnaRedistributionHarness {
     // -----------------------------
     // Properties
     // -----------------------------
-
-    function echidna_never_performed_forbidden_calls() external view returns (bool) {
-        return !unauthorizedAdminCallSucceeded;
-    }
-
-    function echidna_never_succeeded_while_paused() external view returns (bool) {
-        return !commitSucceededWhilePaused && !revealSucceededWhilePaused;
-    }
-
-    function echidna_phase_partitions_round() external view returns (bool) {
-        bool c = redist.currentPhaseCommit();
-        bool r = redist.currentPhaseReveal();
-        bool cl = redist.currentPhaseClaim();
-        // Exactly one phase must be true for any block.
-        return (c && !r && !cl) || (!c && r && !cl) || (!c && !r && cl);
-    }
 
     function echidna_reveal_entries_imply_matching_commit() external view returns (bool) {
         // For each reveal entry, there must exist a commit marked revealed with matching overlay/owner and revealIndex pointing here.
@@ -510,11 +408,6 @@ contract EchidnaRedistributionHarness {
             if (stakeMock.lastUpdatedBlockNumberOfAddress(ow) <= block.number) return false;
         }
         return true;
-    }
-
-    function echidna_round_counters_not_in_future() external view returns (bool) {
-        uint64 cr = redist.currentRound();
-        return redist.currentCommitRound() <= cr && redist.currentRevealRound() <= cr;
     }
 
     function echidna_commit_overlays_unique() external view returns (bool) {

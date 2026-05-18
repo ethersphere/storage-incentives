@@ -14,6 +14,10 @@ IMAGE="${ECHIDNA_IMAGE:-ghcr.io/crytic/echidna/echidna:latest}"
 CONTRACT="${ECHIDNA_CONTRACT:-}"
 CONFIG="${ECHIDNA_CONFIG:-echidna/echidna.yaml}"
 
+# Crytic-compile reads artifacts/build-info when using --hardhat-ignore-compile inside Docker (no Node/npx).
+# Stale build-info from deleted Solidity sources causes "Unknown file" failures.
+rm -rf artifacts/build-info
+
 # Compile on the host. The Echidna container image doesn't ship with Node/npx,
 # and without Hardhat artifacts CryticCompile will try (and fail) to run `npx hardhat compile`.
 yarn -s hardhat compile --force >/dev/null
@@ -64,5 +68,6 @@ for c in "${CONTRACTS_TO_RUN[@]}"; do
     -w /src \
     "$IMAGE" \
     -c "rm -rf crytic-export && echidna-test . --contract ${c} --config ${CONFIG} \
-      --corpus-dir ${CORPUS_DIR} --coverage-dir ${CORPUS_DIR}/coverage${ECHIDNA_EXTRA_CLI}"
+      --corpus-dir ${CORPUS_DIR} --coverage-dir ${CORPUS_DIR}/coverage${ECHIDNA_EXTRA_CLI} \
+      --crytic-args '--hardhat-ignore-compile'"
 done

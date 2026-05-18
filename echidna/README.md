@@ -21,8 +21,11 @@ This repo currently contains multiple harnesses:
 - **PostageStamp harness**: `src/echidna/EchidnaPostageStampHarness.sol`
 - **Redistribution harness**: `src/echidna/EchidnaRedistributionHarness.sol`
 - **Redistribution claim-stub harness**: `src/echidna/EchidnaRedistributionClaimHarness.sol`
-- **Redistribution real-claim harness**: `src/echidna/EchidnaRedistributionRealClaimHarness.sol`
 - **System/integration harness**: `src/echidna/EchidnaSystemHarness.sol`
+
+> The real `claim()` proof-verification path is covered by the Hardhat suite (`test/Redistribution.test.ts`),
+> not by Echidna. Echidna can't generate valid Merkle/SOC/postage proofs, so fuzzing that path adds little signal
+> over targeted unit tests with known-good fixtures.
 
 ### What each harness deploys
 
@@ -68,21 +71,6 @@ The **redistribution claim-stub harness** deploys:
 
 This is meant to fuzz the **claim-phase state machine + pot withdrawal effects** end-to-end, without paying the cost of generating
 valid Merkle/SOC/postage proofs.
-
-The **redistribution real-claim harness** deploys:
-
-- the real `Redistribution` contract
-- the shared redistribution stake/oracle mocks
-- a fixture-aware postage mock that returns batch metadata matching the fixed proof bundles
-
-This harness stores one fixed CAC proof bundle and one fixed SOC proof bundle, both derived from the existing
-Hardhat proof fixtures, and then fuzzes:
-
-- the real `commit -> reveal -> claim` path needed to activate those fixtures
-- mutations of selected proof fields (reserve-commitment inclusion roots/branches, postage indices, SOC identifier)
-
-The goal is not to randomly discover valid proofs. Instead, it uses **known-good proofs as seed fixtures** and lets Echidna
-mutate the surrounding scenario and targeted proof bytes while the real on-chain verifier runs.
 
 The **system/integration harness** deploys:
 
@@ -135,20 +123,11 @@ Key actions per harness:
   - Happy-path flow: `act_happyCommit`, `act_happyReveal`
   - Winner selection (fuzz-only exposure): `act_winnerSelection`
   - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_setSampleMaxValue`, `act_admin_setFreezingParams`
-  - Negative tests: `act_rando_try*` (unauthorized attempts)
-  - Pause gating checks: `act_tryCommitWhilePaused`, `act_tryRevealWhilePaused`
 
 - **Redistribution claim-stub harness**
 
   - Happy-path flow: `act_happyCommit`, `act_happyReveal`, `act_claimStub`
   - Pot seeding: `act_seedPot`
-
-- **Redistribution real-claim harness**
-
-  - Fixture selection: `act_useCacFixture`, `act_useSocFixture`
-  - Fixture setup: `act_prepareFixtureCommit`, `act_prepareFixtureReveal`, `act_claimActiveFixture`
-  - Pot seeding: `act_seedPot`
-  - Proof mutations: `act_mutateReserveCommitmentRoot`, `act_mutateOriginalChunkBranch`, `act_mutateTransformedChunkBranch`, `act_mutatePostageIndexLow`, `act_mutatePostageIndexHigh`, `act_mutateSocIdentifier`
 
 - **System/integration harness**
   - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`
@@ -191,13 +170,9 @@ High-signal properties per harness:
 
 - **Redistribution harness (base)**
 
-  - Access control “must never happen” flag (`echidna_never_performed_forbidden_calls`)
-  - Pause gating: `echidna_never_succeeded_while_paused`
-  - Phase sanity: exactly one of commit/reveal/claim is active (`echidna_phase_partitions_round`)
-  - Round bookkeeping sanity (`currentCommitRound/currentRevealRound` never in the future)
   - Commit/reveal internal consistency:
-    - committed overlays remain unique
-    - if a commit is marked as revealed, its `revealIndex` points to a reveal with the same overlay/owner
+    - committed overlays remain unique (`echidna_commit_overlays_unique`)
+    - if a commit is marked as revealed, its `revealIndex` points to a reveal with the same overlay/owner (`echidna_revealed_commit_indices_valid`)
     - every reveal entry must correspond to a revealed commit (`echidna_reveal_entries_imply_matching_commit`)
   - Claim-phase state machine (using a fuzz-only exposed `winnerSelection()`):
     - winner selection cannot succeed twice in the same round (`echidna_winnerSelection_only_once_per_round`)
@@ -206,19 +181,17 @@ High-signal properties per harness:
     - `echidna_tracked_commit_matches_storage`
     - `echidna_tracked_reveal_matches_storage`
 
+  Trivial library-level checks (access control via `AccessControl`, pause gating via `Pausable`, phase
+  arithmetic from `block.number`, and `currentCommitRound`/`currentRevealRound` monotonicity) are
+  intentionally **not** fuzzed here — they're deterministic and already covered by `test/Redistribution.test.ts`.
+
 - **Redistribution claim-stub harness**
 
   - claim can only succeed once per round (`echidna_claim_only_once_per_round`)
   - successful claim withdraws the entire pot to the selected winner (`echidna_claim_withdraws_pot_to_winner_when_successful`)
+  - **H-1 scenario**: if the postage `withdraw()` reverts, the pot is preserved but the round is still consumed (`echidna_failed_withdraw_preserves_pot_and_consumes_round`)
   - claim triggers an oracle `adjustPrice` call (`echidna_claim_triggers_oracle_adjustPrice`)
   - non-revealers are frozen during claim processing (`echidna_nonrevealers_frozen_after_claim_selection`)
-
-- **Redistribution real-claim harness**
-
-  - untouched CAC/SOC fixtures can complete the real `claim()` path (`echidna_unmutated_fixture_claim_succeeds`)
-  - corrupted proof fixtures do not successfully claim (`echidna_mutated_fixture_claim_does_not_succeed`)
-  - successful real claims trigger the expected withdraw/oracle side-effects (`echidna_successful_real_claim_effects_hold`)
-  - **Coverage guard** (non-vacuous): after a warmup of many `act_*` transactions, at least one successful unmutated end-to-end `claim` must occur (`echidna_unmutated_fixture_end_to_end_must_succeed_at_least_once`). Echidna also evaluates properties on the post-deploy state before any transaction, so this property stays vacuously true until `fuzzActTxCount` crosses `MIN_FUZZ_TXS_BEFORE_FIXTURE_E2E_REQUIRED` (see `EchidnaRedistributionRealClaimHarness.sol`). With the repo defaults (`seqLen` 320, `testLimit` 60000), the warmup threshold is hit almost immediately relative to total work, then the fuzzer must keep finding the fixture path or the run fails.
 
 - **System/integration harness** (only invariants that require real cross-contract wiring; single-contract checks live in their unit harness)
   - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
@@ -268,10 +241,10 @@ corpus or tuned fuzzing parameters.
 | Setting        | Default | Notes |
 |----------------|---------|--------|
 | `testLimit`    | `60000` | Sequences tried per harness (each sequence uses at most `seqLen` calls). |
-| `seqLen`       | `320`   | Enough depth for redistribution rounds + fixture `commit`→`reveal`→`claim` exploration. |
+| `seqLen`       | `320`   | Enough depth for redistribution rounds and `commit`→`reveal`→`claim` exploration. |
 | `maxBlockDelay`| `152`   | Full `ROUND_LENGTH`; helps `currentRound()` advance without enormous sequences. |
 
-Shorter smoke runs: set `ECHIDNA_TEST_LIMIT` / `ECHIDNA_SEQ_LEN` when invoking `yarn echidna` (see `scripts/echidna.sh`). If you lower limits so total `act_*` traffic never reaches `MIN_FUZZ_TXS_BEFORE_FIXTURE_E2E_REQUIRED` on the **real-claim** harness, the strict end-to-end property never arms (by design).
+Shorter smoke runs: set `ECHIDNA_TEST_LIMIT` / `ECHIDNA_SEQ_LEN` when invoking `yarn echidna` (see `scripts/echidna.sh`).
 
 To run only a specific harness contract:
 
@@ -281,7 +254,6 @@ ECHIDNA_CONTRACT=EchidnaPriceOracleHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaPostageStampHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaRedistributionClaimHarness yarn echidna
-ECHIDNA_CONTRACT=EchidnaRedistributionRealClaimHarness yarn echidna
 ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
 ```
 
