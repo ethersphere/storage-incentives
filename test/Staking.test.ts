@@ -44,6 +44,7 @@ const errors = {
     overlayUnchanged: 'OverlayUnchanged()',
     frozenWithdrawal: 'FrozenWithdrawal()',
     queueFull: 'UpdateQueueFull',
+    queueClosed: 'QueueClosed()',
     invalidWaitConfig: 'InvalidWaitConfiguration',
   },
 };
