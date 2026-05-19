@@ -438,6 +438,37 @@ describe('Staking', function () {
     expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
   });
 
+  it('should keep account freeze across migrateStake and block effective stake until it expires', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const longFreezeTime = roundLength * 3;
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await stakeRegistryDeployer.grantRole(await stakeRegistryDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+    await srRedis.freezeDeposit(staker_0, longFreezeTime);
+    expect(await srStaker0.freezeUntilBlock(staker_0)).to.be.gt(0);
+
+    const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+    await stakeRegistryPauser.pause();
+    await expect(srStaker0.migrateStake()).to.emit(srStaker0, 'StakeMigrated').withArgs(staker_0, stakeAmount_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect((await srStaker0.stakes(staker_0)).overlay).to.be.eq(zeroBytes32);
+    expect(await srStaker0.freezeUntilBlock(staker_0)).to.be.gt(0);
+
+    await stakeRegistryPauser.unpause();
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0);
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mineNBlocks(longFreezeTime + 1);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+  });
+
   it('should not shorten an existing freeze when a shorter freeze is applied', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
