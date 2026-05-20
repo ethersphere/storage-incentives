@@ -418,6 +418,147 @@ contract StakeRegistry is AccessControl, Pausable {
         _unpause();
     }
 
+    /**
+     * @notice Applies all queued updates that are effective in the current round.
+     * @dev Stops at the first frozen withdrawal/exit without reverting.
+     */
+    function _applyReadyUpdates(address _owner) internal {
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        uint256 head = _queueHeads[_owner];
+        uint64 roundNumber = currentRound();
+
+        while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
+            if (_queuedWithdrawalExecutionFrozen(_owner, queue[head].kind, 0)) break;
+            _applyStoredUpdate(_owner, queue[head]);
+            delete queue[head];
+            unchecked {
+                ++head;
+            }
+        }
+
+        if (head == queue.length) {
+            delete _updateQueues[_owner];
+            delete _queueHeads[_owner];
+            delete _queueClosed[_owner];
+        } else {
+            _queueHeads[_owner] = head;
+        }
+    }
+
+    /**
+     * @notice Applies a single queued update to storage.
+     */
+    function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
+        if (scheduled.kind == UpdateKind.WithdrawTokens) {
+            Stake storage stake = _stakes[_owner];
+            if (stake.overlay != bytes32(0)) {
+                uint256 paid = scheduled.amount > stake.balance ? stake.balance : scheduled.amount;
+                stake.balance -= paid;
+                if (paid > 0) {
+                    if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
+                    emit Withdrawal(_owner, currentRound(), paid);
+                }
+            }
+            return;
+        }
+
+        if (scheduled.kind == UpdateKind.ExitStake) {
+            Stake storage stakeRef = _stakes[_owner];
+            uint256 balance = stakeRef.balance;
+            delete _stakes[_owner];
+            if (balance > 0) {
+                if (!ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
+                emit Withdrawal(_owner, currentRound(), balance);
+            }
+            return;
+        }
+
+        Stake storage stRef = _stakes[_owner];
+        Stake memory s = Stake({overlay: stRef.overlay, balance: stRef.balance, height: stRef.height});
+        s = _applyPreviewUpdate(_owner, s, scheduled);
+        stRef.overlay = s.overlay;
+        stRef.balance = s.balance;
+        stRef.height = s.height;
+    }
+
+    /**
+     * @notice Appends a new queued update and assigns the first valid effective round.
+     * @dev `effectiveFromRound` is `max(currentRound() + _minimumWait, lastQueuedRound)` so FIFO is preserved when waits differ; a withdrawal/exit may become effective later than `_minimumWait` rounds after prior queue items.
+     */
+    function _enqueueUpdate(
+        address _owner,
+        UpdateKind _kind,
+        uint64 _minimumWait,
+        bytes32 _nonce,
+        uint256 _amount,
+        uint8 _height
+    ) internal returns (uint64 effectiveFromRound) {
+        uint256 queued = _queueLength(_owner);
+        if (queued >= UPDATE_QUEUE_MAX_LENGTH) revert UpdateQueueFull(queued, UPDATE_QUEUE_MAX_LENGTH);
+
+        uint64 candidateRound = currentRound() + _minimumWait;
+        uint64 lastRound = _lastScheduledRound(_owner);
+        effectiveFromRound = candidateRound > lastRound ? candidateRound : lastRound;
+
+        _updateQueues[_owner].push(
+            ScheduledUpdate({
+                kind: _kind,
+                effectiveFromRound: effectiveFromRound,
+                nonce: _nonce,
+                amount: _amount,
+                height: _height
+            })
+        );
+    }
+
+    /**
+     * @notice Shrinks queued withdrawals when slashing leaves less balance than they expect.
+     * @dev This preserves queue order while preventing later withdrawals from overpaying the owner.
+     */
+    function _reconcileQueuedWithdrawals(address _owner) internal {
+        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        uint256 head = _queueHeads[_owner];
+        Stake memory preview = _stakes[_owner];
+
+        for (uint256 i = head; i < queue.length; ) {
+            ScheduledUpdate storage scheduled = queue[i];
+
+            if (scheduled.kind == UpdateKind.WithdrawTokens && _hasCommittedStake(preview)) {
+                if (scheduled.amount > preview.balance) {
+                    scheduled.amount = preview.balance;
+                }
+            }
+
+            preview = _applyPreviewUpdate(_owner, preview, scheduled);
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /**
+     * @notice Pulls BZZ from `msg.sender` into the staking contract.
+     */
+    function _pullTokens(uint256 _amount) internal {
+        if (_amount == 0) revert InvalidAmount();
+        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
+    }
+
+    /**
+     * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible.
+     */
+    function _syncHeightToBalance(Stake storage stake) internal {
+        if (stake.overlay == bytes32(0)) return;
+        uint8 h = stake.height;
+        while (h > 0 && stake.balance < _minimumStakeForHeight(h)) {
+            unchecked {
+                h--;
+            }
+        }
+        stake.height = h;
+    }
+
     ////////////////////////////////////////
     //            STATE READING           //
     ////////////////////////////////////////
@@ -493,69 +634,6 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function _addressNotFrozen(address _owner) internal view returns (bool) {
         return freezeUntilBlock[_owner] < block.number;
-    }
-
-    /**
-     * @notice Applies all queued updates that are effective in the current round.
-     * @dev Stops at the first frozen withdrawal/exit without reverting.
-     */
-    function _applyReadyUpdates(address _owner) internal {
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        uint256 head = _queueHeads[_owner];
-        uint64 roundNumber = currentRound();
-
-        while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
-            if (_queuedWithdrawalExecutionFrozen(_owner, queue[head].kind, 0)) break;
-            _applyStoredUpdate(_owner, queue[head]);
-            delete queue[head];
-            unchecked {
-                ++head;
-            }
-        }
-
-        if (head == queue.length) {
-            delete _updateQueues[_owner];
-            delete _queueHeads[_owner];
-            delete _queueClosed[_owner];
-        } else {
-            _queueHeads[_owner] = head;
-        }
-    }
-
-    /**
-     * @notice Applies a single queued update to storage.
-     */
-    function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
-        if (scheduled.kind == UpdateKind.WithdrawTokens) {
-            Stake storage stake = _stakes[_owner];
-            if (stake.overlay != bytes32(0)) {
-                uint256 paid = scheduled.amount > stake.balance ? stake.balance : scheduled.amount;
-                stake.balance -= paid;
-                if (paid > 0) {
-                    if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
-                    emit Withdrawal(_owner, currentRound(), paid);
-                }
-            }
-            return;
-        }
-
-        if (scheduled.kind == UpdateKind.ExitStake) {
-            Stake storage stakeRef = _stakes[_owner];
-            uint256 balance = stakeRef.balance;
-            delete _stakes[_owner];
-            if (balance > 0) {
-                if (!ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
-                emit Withdrawal(_owner, currentRound(), balance);
-            }
-            return;
-        }
-
-        Stake storage stRef = _stakes[_owner];
-        Stake memory s = Stake({overlay: stRef.overlay, balance: stRef.balance, height: stRef.height});
-        s = _applyPreviewUpdate(_owner, s, scheduled);
-        stRef.overlay = s.overlay;
-        stRef.balance = s.balance;
-        stRef.height = s.height;
     }
 
     /**
@@ -683,36 +761,6 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Appends a new queued update and assigns the first valid effective round.
-     * @dev `effectiveFromRound` is `max(currentRound() + _minimumWait, lastQueuedRound)` so FIFO is preserved when waits differ; a withdrawal/exit may become effective later than `_minimumWait` rounds after prior queue items.
-     */
-    function _enqueueUpdate(
-        address _owner,
-        UpdateKind _kind,
-        uint64 _minimumWait,
-        bytes32 _nonce,
-        uint256 _amount,
-        uint8 _height
-    ) internal returns (uint64 effectiveFromRound) {
-        uint256 queued = _queueLength(_owner);
-        if (queued >= UPDATE_QUEUE_MAX_LENGTH) revert UpdateQueueFull(queued, UPDATE_QUEUE_MAX_LENGTH);
-
-        uint64 candidateRound = currentRound() + _minimumWait;
-        uint64 lastRound = _lastScheduledRound(_owner);
-        effectiveFromRound = candidateRound > lastRound ? candidateRound : lastRound;
-
-        _updateQueues[_owner].push(
-            ScheduledUpdate({
-                kind: _kind,
-                effectiveFromRound: effectiveFromRound,
-                nonce: _nonce,
-                amount: _amount,
-                height: _height
-            })
-        );
-    }
-
-    /**
      * @notice Returns the effective round of the last queued update.
      */
     function _lastScheduledRound(address _owner) internal view returns (uint64) {
@@ -742,54 +790,6 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         return freezeUntilBlock[_owner] < (uint256(currentRound()) + uint256(_lookaheadRounds)) * ROUND_LENGTH;
-    }
-
-    /**
-     * @notice Shrinks queued withdrawals when slashing leaves less balance than they expect.
-     * @dev This preserves queue order while preventing later withdrawals from overpaying the owner.
-     */
-    function _reconcileQueuedWithdrawals(address _owner) internal {
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        uint256 head = _queueHeads[_owner];
-        Stake memory preview = _stakes[_owner];
-
-        for (uint256 i = head; i < queue.length; ) {
-            ScheduledUpdate storage scheduled = queue[i];
-
-            if (scheduled.kind == UpdateKind.WithdrawTokens && _hasCommittedStake(preview)) {
-                if (scheduled.amount > preview.balance) {
-                    scheduled.amount = preview.balance;
-                }
-            }
-
-            preview = _applyPreviewUpdate(_owner, preview, scheduled);
-
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
-    /**
-     * @notice Pulls BZZ from `msg.sender` into the staking contract.
-     */
-    function _pullTokens(uint256 _amount) internal {
-        if (_amount == 0) revert InvalidAmount();
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
-    }
-
-    /**
-     * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible.
-     */
-    function _syncHeightToBalance(Stake storage stake) internal {
-        if (stake.overlay == bytes32(0)) return;
-        uint8 h = stake.height;
-        while (h > 0 && stake.balance < _minimumStakeForHeight(h)) {
-            unchecked {
-                h--;
-            }
-        }
-        stake.height = h;
     }
 
     /**
