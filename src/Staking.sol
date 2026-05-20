@@ -449,8 +449,11 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Applies a single queued update to storage.
+     * @dev Three paths: partial withdrawal (transfer + balance), full exit (delete stake + transfer),
+     *      or stake mutation via `_applyPreviewUpdate` (deposit, add, height, overlay).
      */
     function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
+        // Path 1: partial withdrawal — pay out capped at current balance (may be slashed since queued).
         if (scheduled.kind == UpdateKind.WithdrawTokens) {
             Stake storage stake = _stakes[_owner];
             if (stake.overlay != bytes32(0)) {
@@ -464,6 +467,7 @@ contract StakeRegistry is AccessControl, Pausable {
             return;
         }
 
+        // Path 2: full exit — delete stake and return all remaining BZZ.
         if (scheduled.kind == UpdateKind.ExitStake) {
             Stake storage stakeRef = _stakes[_owner];
             uint256 balance = stakeRef.balance;
@@ -475,6 +479,7 @@ contract StakeRegistry is AccessControl, Pausable {
             return;
         }
 
+        // Path 3: stake mutations — CreateDeposit, AddTokens, IncreaseHeight, ChangeOverlay (no token transfer).
         Stake storage stRef = _stakes[_owner];
         Stake memory s = Stake({overlay: stRef.overlay, balance: stRef.balance, height: stRef.height});
         s = _applyPreviewUpdate(_owner, s, scheduled);
