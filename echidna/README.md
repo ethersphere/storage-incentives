@@ -1,287 +1,102 @@
 # Echidna fuzzing in this repo
 
-This directory contains a **minimal, stateful fuzz-testing setup** using [Echidna](https://github.com/crytic/echidna).
+Stateful fuzzing with [Echidna](https://github.com/crytic/echidna): deploy a **harness**, call its `act_*` functions in random **sequences**, and check that `echidna_*` **properties** stay `true`. A failing property prints a **reproducer** (call sequence + inputs).
 
-Echidna works by:
+Source: `src/echidna/` (harnesses), `echidna/echidna.yaml` (defaults), `scripts/echidna.sh` (Docker runner).
 
-- Deploying a “harness” contract.
-- Calling its public/external **action functions** with many randomized inputs, building **sequences** of calls.
-- After (and during) those sequences, checking that `echidna_*` **property functions** always return `true`.
+## Concepts
 
-If a property returns `false`, Echidna prints a **reproducer** (a short sequence of calls/inputs that triggers the failure).
+| Piece | Role |
+|-------|------|
+| `act_*` | Fuzz actions — drive state on deployed contracts. |
+| `echidna_*` | Invariants — must always return `true`. |
+| `Echidna*Actor` | Separate `msg.sender` for role tests; usually `.call()` so expected reverts don’t abort the `act_*` step. |
+| `act_happy*` | Pre-conditioned inputs (tracked preimages, mock stake, phase/round) so commit/reveal are **likely** to succeed. |
+| Harness stack | `act_claimStub` → actor `callClaimStub` → `RedistributionClaimStub.claimStub()`. |
 
-## What we are testing right now
+**Mocks** trim dependencies to what the unit under test needs (e.g. oracle harness: postage `setPrice` + optional revert only). **System harness** uses real cross-contract wiring.
 
-### Harness
+**If a property fails:** real on-chain bug, too-strong property, or bad harness setup (roles/assumptions). Continuing after an expected revert only means the **next** fuzz step runs on unchanged storage — not that the protocol ignored the revert.
 
-This repo currently contains multiple harnesses:
+## Harnesses
 
-- **Staking harness**: `src/echidna/EchidnaStakeRegistryHarness.sol`
-- **Oracle harness**: `src/echidna/EchidnaPriceOracleHarness.sol`
-- **PostageStamp harness**: `src/echidna/EchidnaPostageStampHarness.sol`
-- **Redistribution harness**: `src/echidna/EchidnaRedistributionHarness.sol`
-- **Redistribution claim-stub harness**: `src/echidna/EchidnaRedistributionClaimHarness.sol`
-- **System/integration harness**: `src/echidna/EchidnaSystemHarness.sol`
+| Harness | File | Under test | Focus |
+|---------|------|------------|--------|
+| Staking | `EchidnaStakeRegistryHarness.sol` | `StakeRegistry` | stake, freeze, slash, migrate, roles |
+| Oracle | `EchidnaPriceOracleHarness.sol` | `PriceOracle` | price, pause, `adjustPrice`, postage callback fail/revert |
+| Postage | `EchidnaPostageStampHarness.sol` | `PostageStamp` | batches, pot, expiry, roles |
+| Redistribution (base) | `EchidnaRedistributionHarness.sol` | `RedistributionExposed` | commit/reveal ledger, `winnerSelection`, dummy `claim()` |
+| Redistribution (claim) | `EchidnaRedistributionClaimHarness.sol` | `RedistributionClaimStub` | claim-phase pot, withdraw, rounds, H-1 |
+| System | `EchidnaSystemHarness.sol` | full wired stack | cross-contract invariants only |
 
-> The real `claim()` proof-verification path is covered by the Hardhat suite (`test/Redistribution.test.ts`),
-> not by Echidna. Echidna can't generate valid Merkle/SOC/postage proofs, so fuzzing that path adds little signal
-> over targeted unit tests with known-good fixtures.
+**Support (not Echidna targets):** `RedistributionExposed.sol` (`winnerSelection`, safe array lengths); `EchidnaMocks.sol` (stake + oracle mocks for redistribution harnesses).
 
-### What each harness deploys
+**Proof verification:** real `claim()` with Merkle/SOC/postage proofs → Hardhat `test/Redistribution.test.ts`. Echidna cannot generate valid proofs; base harness uses dummy calldata (`act_claim`) only to stress panics/guards.
 
-The **staking harness** deploys:
+### Redistribution: base vs claim-stub
 
-- `TestToken` (a mintable ERC20 preset used as BZZ stand-in)
-- `StakeRegistry` (from `src/Staking.sol`)
-- a small constant-price oracle used by `StakeRegistry`
+| | Base | Claim-stub |
+|--|------|------------|
+| Deploy | `RedistributionExposed` + mocks (withdraw counter, no token pot) | `RedistributionClaimStub` + `TestToken` + pot mock (balance, optional withdraw revert) |
+| Claim | `act_claim` → real `claim()`, proofs almost always revert | `act_claimStub` → `claimStub()` = `winnerSelection()` + `withdraw` (no proof checks) |
+| Winner | `act_winnerSelection` | inside `claimStub()` |
+| Happy path | `act_happyCommit` → `act_happyReveal` | + `act_claimStub` |
+| Also | random commit/reveal, admin tuning | `act_seedPot`, `act_setWithdrawRevertMode` |
 
-It also deploys several **actor contracts** (`EchidnaStakeActor`) which behave like independent users (each has its own address and token balance), plus a dedicated actor that receives the `REDISTRIBUTOR_ROLE` so we can fuzz freeze/slash flows.
+```text
+Base:   commit ─ reveal ─ [winnerSelection] ─ act_claim(dummy → revert)
+Claim:  happy commit ─ happy reveal ─ claimStub (winner + pot)
+System: real contracts; happy commit/reveal only
+```
 
-The **oracle harness** deploys:
+## Actions (by harness)
 
-- `PriceOracle` (from `src/PriceOracle.sol`)
-- a `PostageStamp` mock that can succeed or revert on `setPrice(uint256)`
-- an updater actor (has `PRICE_UPDATER_ROLE`) and a random actor (no roles) to fuzz access control
+Written to be **mostly non-reverting** (bounded inputs, low-level calls) so sequences stay long.
 
-The **postage stamp harness** deploys:
+- **Staking:** `act_actor_manageStake`, `withdrawSurplus`, `migrateStake`; admin pause/unpause/networkId; redistributor freeze/slash; `act_actor_try*`; `act_fundActor`
+- **Oracle:** `act_admin_setPrice`, pause/unpause; `act_updater_adjustPrice`; `act_rando_try*`; `act_setStampRevertMode`
+- **Postage:** `act_createBatch`, `topUp`, `increaseDepth`, `expireAll`; `act_oracle_setPrice`; `act_redistributor_withdraw`; pauser pause/unpause; `act_rando_try*`; `act_fundActor`
+- **Redistribution (base):** `act_commit`, `reveal`, `claim`; `act_happyCommit`, `happyReveal`; `act_winnerSelection`; `act_setActorStake`; admin pause/unpause/sample/freezing
+- **Redistribution (claim):** `act_happyCommit`, `happyReveal`, `claimStub`; `act_seedPot`, `setWithdrawRevertMode`, `setActorNode`; `act_tick`
+- **System:** stake/postage/oracle actions above + `act_redist_happyCommit`, `happyReveal`
 
-- `TestToken` (ERC20 used as BZZ stand-in)
-- `PostageStamp` (from `src/PostageStamp.sol`)
-- actor contracts with roles:
-  - a price oracle actor (has `PRICE_ORACLE_ROLE`)
-  - a redistributor actor (has `REDISTRIBUTOR_ROLE`)
-  - a pauser actor (has `PAUSER_ROLE`)
+## Properties (by harness)
 
-The **redistribution harness** (base) deploys:
+Patterns: **must-never-happen** (auth), **global invariants**, **post-conditions** on last successful action (`pending*` flags).
 
-- `Redistribution` (from `src/Redistribution.sol`)
-- mocks for its dependencies:
-  - `IStakeRegistry` (overlay/height/effective stake + `freezeDeposit` tracking)
-  - `IPostageStamp` (tracks `withdraw()` calls; provides minimal `batches()`/`validChunkCount()` access)
-  - `IPriceOracle` (tracks `adjustPrice()` calls)
-- a small set of actor contracts (independent `msg.sender`s) to fuzz access control and commit/reveal/claim entrypoints
+- **Staking:** `echidna_never_performed_forbidden_calls`; registry balance vs potential stake; per-actor stake/overlay/freeze; post-conditions for manageStake/freeze/slash/migrate
+- **Oracle:** forbidden calls; price ≥ minimum; `lastAdjustedRound` not in future; post-conditions for `setPrice` / `adjustPrice`
+- **Postage:** forbidden calls; batch post-conditions; `expireAll`; withdraw/pot; `echidna_pot_never_decreases_except_withdraw`
+- **Redistribution (base):** `echidna_commit_overlays_unique`, `revealed_commit_indices_valid`, `reveal_entries_imply_matching_commit`, `winnerSelection_only_once_per_round`, `last_winnerSelection_freezes_nonrevealed`, `tracked_commit_matches_storage`, `tracked_reveal_matches_storage`  
+  _(AccessControl/Pausable/phase math: Hardhat, not fuzzed here.)_
+- **Redistribution (claim):** `echidna_claim_only_once_per_round`, `claim_withdraws_pot_to_winner_when_successful`, `failed_withdraw_preserves_pot_and_consumes_round`, `claim_triggers_oracle_adjustPrice`, `nonrevealers_frozen_after_claim_selection`
+- **System:** oracle price ↔ stamp `lastPrice`; stamp pot ≤ balance; unauthorized oracle adjust fails; tracked commit/reveal in storage
 
-It also includes “happy-path” actions (`act_happyCommit`, `act_happyReveal`) that try to **increase the rate of successful**
-`commit → reveal` sequences by pre-conditioning the mocked stake/overlay inputs (so we can assert stronger post-conditions).
+## Triage example
 
-The **redistribution claim-stub harness** deploys:
+`manageStake` with `_addAmount == 0` can change `height` without recomputing `committedStake` — so \( committedStake \cdot 2^{height} \le potentialStake \) is **not** a valid invariant (property failed correctly during bring-up).
 
-- a fuzz-only `RedistributionClaimStub` that runs the real `winnerSelection()` but exposes `claimStub()` which **bypasses**
-  inclusion/SOC/stamp proof verification and directly calls `withdraw(winner)` on a small pot mock.
-
-This is meant to fuzz the **claim-phase state machine + pot withdrawal effects** end-to-end, without paying the cost of generating
-valid Merkle/SOC/postage proofs.
-
-The **system/integration harness** deploys:
-
-- `TestToken`
-- `PostageStamp`
-- `PriceOracle` (wired as the `PRICE_ORACLE_ROLE` on `PostageStamp`)
-- `StakeRegistry` (wired to `PriceOracle.currentPrice()`)
-- `Redistribution` (wired to `StakeRegistry`, `PostageStamp`, `PriceOracle`)
-
-and grants:
-
-- `StakeRegistry.REDISTRIBUTOR_ROLE` to `Redistribution` (so it can `freezeDeposit`)
-- `PostageStamp.REDISTRIBUTOR_ROLE` to `Redistribution` (so it can `withdraw`)
-- `PriceOracle.PRICE_UPDATER_ROLE` to one actor (to fuzz `adjustPrice`)
-
-### Actions (what Echidna mutates)
-
-Harness action functions are intentionally written to be **mostly non-reverting**, so Echidna can explore longer state sequences.
-
-Key actions per harness:
-
-- **Staking harness**
-
-  - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`, `act_actor_migrateStake`
-  - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_changeNetworkId`
-  - Redistributor actions: `act_redistributor_freeze`, `act_redistributor_slash`
-  - Negative tests: `act_actor_try*` (unauthorized attempts)
-  - Funding: `act_fundActor`
-
-- **Oracle harness**
-
-  - Admin actions: `act_admin_setPrice`, `act_admin_pause`, `act_admin_unpause`
-  - Updater actions: `act_updater_adjustPrice`
-  - Negative tests: `act_rando_try*`
-  - PostageStamp mock behavior: `act_setStampRevertMode`
-
-- **PostageStamp harness**
-
-  - Batch actions: `act_createBatch`, `act_topUp`, `act_increaseDepth`, `act_expireAll`
-  - Price update: `act_oracle_setPrice`
-  - Pot withdrawal: `act_redistributor_withdraw`
-  - Pause/unpause: `act_pauser_pause`, `act_pauser_unpause`
-  - Negative tests: `act_rando_try*`
-  - Funding: `act_fundActor`
-
-- **Redistribution harness (base)**
-
-  - Stake configuration: `act_setActorStake`
-  - Game entrypoints: `act_commit`, `act_reveal`, `act_claim` (often reverts early; still useful to shake out panics/state bugs)
-  - Happy-path flow: `act_happyCommit`, `act_happyReveal`
-  - Winner selection (fuzz-only exposure): `act_winnerSelection`
-  - Admin actions: `act_admin_pause`, `act_admin_unpause`, `act_admin_setSampleMaxValue`, `act_admin_setFreezingParams`
-
-- **Redistribution claim-stub harness**
-
-  - Happy-path flow: `act_happyCommit`, `act_happyReveal`, `act_claimStub`
-  - Pot seeding: `act_seedPot`
-
-- **System/integration harness**
-  - Stake actions: `act_actor_manageStake`, `act_actor_withdrawSurplus`
-  - Postage actions: `act_actor_createBatch`, `act_actor_topUp`, `act_actor_increaseDepth`, `act_actor_expireAll`
-  - Oracle actions: `act_admin_setOraclePrice`, `act_updater_adjustOraclePrice`, `act_rando_tryAdjustOraclePrice`
-  - Redistribution flow: `act_redist_happyCommit`, `act_redist_happyReveal`
-
-### Properties (what must always hold)
-
-Each harness defines `echidna_*` properties that Echidna checks continuously.
-
-Common patterns used across harnesses:
-
-- **Authorization (“must never happen”)**: calls that should be role-gated must never succeed for unauthorized actors.
-- **Post-conditions**: for successful state transitions, the immediate post-state must match expected math and accounting.
-
-High-signal properties per harness:
-
-- **Staking harness**
-
-  - Access control + “must never happen” flags (`echidna_never_performed_forbidden_calls`)
-  - Registry accounting (ERC20 balance covers sum of potential stake)
-  - Per-actor invariants (commitment monotonicity, effective stake/freeze semantics, overlay derivation)
-  - Post-conditions for `manageStake(add>0)`, `freezeDeposit`, `slashDeposit`, `migrateStake`
-
-- **Oracle harness**
-
-  - Access control (admin-only + updater-only) and “paused means no changes”
-  - Price invariants: price never below minimum; lastAdjustedRound not in the future
-  - Post-conditions for `setPrice` and `adjustPrice` (including skipped-round math), with overflow-aware modeling
-
-- **PostageStamp harness**
-
-  - Access control (oracle-only price updates, redistributor-only withdraw, pauser-only pause/unpause)
-  - Pause-mode negative tests (batch mutations must not succeed while paused)
-  - Batch post-conditions (`createBatch`, `topUp`, `increaseDepth`) and expiry sanity (`expireAll`)
-  - Pot/withdraw post-conditions (beneficiary receives exactly the withdrawn amount; `pot` resets)
-  - Non-interference checks for unrelated tracked batches during targeted operations (now checks multiple other batches)
-  - Pot monotonicity: pot must never decrease except by a successful withdraw-to-zero (`echidna_pot_never_decreases_except_withdraw`)
-
-- **Redistribution harness (base)**
-
-  - Commit/reveal internal consistency:
-    - committed overlays remain unique (`echidna_commit_overlays_unique`)
-    - if a commit is marked as revealed, its `revealIndex` points to a reveal with the same overlay/owner (`echidna_revealed_commit_indices_valid`)
-    - every reveal entry must correspond to a revealed commit (`echidna_reveal_entries_imply_matching_commit`)
-  - Claim-phase state machine (using a fuzz-only exposed `winnerSelection()`):
-    - winner selection cannot succeed twice in the same round (`echidna_winnerSelection_only_once_per_round`)
-    - successful winner selection freezes all non-revealers (`echidna_last_winnerSelection_freezes_nonrevealed`)
-  - Happy-path post-conditions (only asserted for the currently active commit round):
-    - `echidna_tracked_commit_matches_storage`
-    - `echidna_tracked_reveal_matches_storage`
-
-  Trivial library-level checks (access control via `AccessControl`, pause gating via `Pausable`, phase
-  arithmetic from `block.number`, and `currentCommitRound`/`currentRevealRound` monotonicity) are
-  intentionally **not** fuzzed here — they're deterministic and already covered by `test/Redistribution.test.ts`.
-
-- **Redistribution claim-stub harness**
-
-  - claim can only succeed once per round (`echidna_claim_only_once_per_round`)
-  - successful claim withdraws the entire pot to the selected winner (`echidna_claim_withdraws_pot_to_winner_when_successful`)
-  - **H-1 scenario**: if the postage `withdraw()` reverts, the pot is preserved but the round is still consumed (`echidna_failed_withdraw_preserves_pot_and_consumes_round`)
-  - claim triggers an oracle `adjustPrice` call (`echidna_claim_triggers_oracle_adjustPrice`)
-  - non-revealers are frozen during claim processing (`echidna_nonrevealers_frozen_after_claim_selection`)
-
-- **System/integration harness** (only invariants that require real cross-contract wiring; single-contract checks live in their unit harness)
-  - Oracle↔stamp invariant: `PostageStamp.lastPrice` tracks `PriceOracle.currentPrice()` after updates
-  - Stamp accounting: internal `pot` does not exceed the stamp contract’s BZZ balance (`echidna_stamp_internal_pot_not_above_contract_balance`)
-  - Role isolation under real wiring: only the granted updater can `adjustPrice` (`echidna_unauthorized_oracle_adjust_never_succeeds`)
-  - Redistribution happy-path consistency: tracked commit/reveal values appear in `Redistribution` storage
-
-These are “sanity properties”: they’re meant to detect obvious bugs and unintended state corruption early.
-
-## What we expect (and what can go wrong)
-
-### When a property fails
-
-A failure means one of two things:
-
-- **Real bug**: there is a reachable sequence of calls that violates an intended invariant.
-- **Bad/too-strong property**: the property is not actually guaranteed by the contract’s design.
-
-Example of the second case (we hit this during bring-up):
-
-- It is possible to change `height` with `_addAmount == 0` in `StakeRegistry.manageStake()`.
-- In that case `committedStake` is **not recomputed**, so a property like
-  \( committedStake \cdot 2^{height} \le potentialStake \)
-  is **not guaranteed** and will correctly fail.
-
-### Common sources of “false positives”
-
-- **Role-gated functions**: if an invariant assumes some privileged function cannot be called, make sure the harness never grants itself those roles (or explicitly models them).
-- **Reverts shortening sequences**: if actions revert too often, Echidna explores fewer interesting states. Prefer bounding inputs and using low-level calls (as the current harness does).
-- **Time/block effects**: some contracts depend on `block.number`. Echidna can advance time with `--delay`/`--wait`, but invariants should be designed with that in mind.
+Other false-positive sources: harness grants roles it shouldn’t; property assumes unreachable state; too many action reverts (weak exploration).
 
 ## How to run
 
-From repo root:
-
 ```bash
-yarn echidna
+yarn echidna   # all harnesses; needs Docker
 ```
 
-By default, this runs **all** Echidna harness contracts in `src/echidna/`.
+| Setting | Default | Override env |
+|---------|---------|----------------|
+| `testLimit` | 60000 | `ECHIDNA_TEST_LIMIT` |
+| `seqLen` | 320 | `ECHIDNA_SEQ_LEN` |
+| `maxBlockDelay` | 152 | — |
+| workers | yaml | `ECHIDNA_WORKERS` |
 
-By default, the runner uses `echidna/echidna.yaml`. You can override that with `ECHIDNA_CONFIG` if a harness needs its own
-corpus or tuned fuzzing parameters.
+Single harness: `ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna` (also: `EchidnaStakeRegistryHarness`, `EchidnaPriceOracleHarness`, `EchidnaPostageStampHarness`, `EchidnaRedistributionClaimHarness`, `EchidnaSystemHarness`).
 
-### Default campaign settings (`echidna/echidna.yaml`)
+Config: `echidna/echidna.yaml` (`ECHIDNA_CONFIG` to override). Corpus/coverage: `echidna/corpus/by-contract/<HarnessName>/` (gitignored). Crytic: `crytic-export/`.
 
-| Setting        | Default | Notes |
-|----------------|---------|--------|
-| `testLimit`    | `60000` | Sequences tried per harness (each sequence uses at most `seqLen` calls). |
-| `seqLen`       | `320`   | Enough depth for redistribution rounds and `commit`→`reveal`→`claim` exploration. |
-| `maxBlockDelay`| `152`   | Full `ROUND_LENGTH`; helps `currentRound()` advance without enormous sequences. |
+## Extend
 
-Shorter smoke runs: set `ECHIDNA_TEST_LIMIT` / `ECHIDNA_SEQ_LEN` when invoking `yarn echidna` (see `scripts/echidna.sh`).
-
-To run only a specific harness contract:
-
-```bash
-ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness yarn echidna
-ECHIDNA_CONTRACT=EchidnaPriceOracleHarness yarn echidna
-ECHIDNA_CONTRACT=EchidnaPostageStampHarness yarn echidna
-ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna
-ECHIDNA_CONTRACT=EchidnaRedistributionClaimHarness yarn echidna
-ECHIDNA_CONTRACT=EchidnaSystemHarness yarn echidna
-```
-
-This uses Docker and the image `ghcr.io/crytic/echidna/echidna:latest`.
-
-### Output files
-
-Echidna may write artifacts such as:
-
-- `echidna/corpus/by-contract/<HarnessName>/` — per-harness corpus, coverage reproducers, and `covered.*.html` (the runner passes `--corpus-dir` / `--coverage-dir` here so sequences from one harness are not mixed with another)
-- `crytic-export/` (Crytic export artifacts)
-
-Older flat files under `echidna/corpus/` (if any) are from previous runs before per-harness dirs were used.
-
-These are ignored by git via `.gitignore`.
-
-Optional environment variables (see `scripts/echidna.sh`): `ECHIDNA_TEST_LIMIT`, `ECHIDNA_SEQ_LEN`, `ECHIDNA_WORKERS` to override the YAML for a single invocation (CLI wins over `echidna.yaml` when both apply).
-
-### Config files
-
-- `echidna/echidna.yaml`: default config for all harness runs (override with `ECHIDNA_CONFIG` if needed)
-
-## How to extend this
-
-Typical next steps:
-
-- Add another harness under `src/echidna/` following the naming convention `Echidna*Harness.sol`. The runner script auto-discovers files matching that pattern, so no manual script edits are needed.
-- Keep actions non-reverting and model only the roles/privileges you want to include.
-- Start with a few **obviously true** invariants, then iterate:
-  - If Echidna finds a counterexample, decide whether that is a **bug** or a **property mismatch**.
-  - Tighten properties only when you’re confident the protocol/design guarantees them.
+1. Add `src/echidna/Echidna*Harness.sol` — auto-discovered by `scripts/echidna.sh`.
+2. Prefer non-reverting `act_*`, explicit roles, a few solid properties first.
+3. On counterexample: bug vs property vs harness — then fix code or narrow the invariant.
