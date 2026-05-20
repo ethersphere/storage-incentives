@@ -428,6 +428,8 @@ contract StakeRegistry is AccessControl, Pausable {
         uint64 roundNumber = currentRound();
 
         while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
+            // Exit the loop (do not skip to the next item): leave the due withdrawal/exit at `head`
+            // unapplied so FIFO is preserved; `_queueHeads` is updated below for retry on a later call.
             if (_queuedWithdrawalExecutionFrozen(_owner, queue[head].kind, 0)) break;
             _applyStoredUpdate(_owner, queue[head]);
             delete queue[head];
