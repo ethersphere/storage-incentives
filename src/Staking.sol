@@ -480,7 +480,7 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Applies a single queued update to storage.
      * @dev Three paths: partial withdrawal (transfer + balance), full exit (delete stake + transfer),
-     *      or stake mutation via `_applyPreviewUpdate` (deposit, add, height, overlay).
+     *      or stake mutation via `_simulateUpdate` (deposit, add, height, overlay).
      */
     function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
         // Path 1: partial withdrawal — pay out capped at current balance (may be slashed since queued).
@@ -512,7 +512,7 @@ contract StakeRegistry is AccessControl, Pausable {
         // Path 3: stake mutations — CreateDeposit, AddTokens, IncreaseHeight, ChangeOverlay (no token transfer).
         Stake storage stRef = _stakes[_owner];
         Stake memory s = Stake({overlay: stRef.overlay, balance: stRef.balance, height: stRef.height});
-        s = _applyPreviewUpdate(_owner, s, scheduled);
+        s = _simulateUpdate(_owner, s, scheduled);
         stRef.overlay = s.overlay;
         stRef.balance = s.balance;
         stRef.height = s.height;
@@ -573,15 +573,13 @@ contract StakeRegistry is AccessControl, Pausable {
                 }
             }
 
-            preview = _applyPreviewUpdate(_owner, preview, scheduled);
+            preview = _simulateUpdate(_owner, preview, scheduled);
 
             unchecked {
                 ++i;
             }
         }
     }
-
-
 
     /**
      * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible, happens in slashing
@@ -710,7 +708,7 @@ contract StakeRegistry is AccessControl, Pausable {
                 break;
             }
 
-            preview = _applyPreviewUpdate(_owner, preview, scheduled);
+            preview = _simulateUpdate(_owner, preview, scheduled);
 
             unchecked {
                 ++i;
@@ -737,7 +735,7 @@ contract StakeRegistry is AccessControl, Pausable {
                 break;
             }
 
-            preview = _applyPreviewUpdate(_owner, preview, scheduled);
+            preview = _simulateUpdate(_owner, preview, scheduled);
 
             unchecked {
                 ++i;
@@ -746,10 +744,10 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Applies a single queued update to an in-memory preview state.
-     * @dev Must match non-transfer semantics applied in `_applyStoredUpdate` for the same `kind` (excluding token transfers).
+     * @notice Simulates a single queued update on in-memory stake state.
+     * @dev Does not write storage. Must match non-transfer semantics in `_applyStoredUpdate` for the same `kind`.
      */
-    function _applyPreviewUpdate(
+    function _simulateUpdate(
         address _owner,
         Stake memory preview,
         ScheduledUpdate storage scheduled
