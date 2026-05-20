@@ -126,6 +126,8 @@ contract StakeRegistry is AccessControl, Pausable {
     error StakingHeightTooLarge(uint8 height, uint8 maxHeight);
     /// @notice `changeOverlay` was called with a nonce that produces the current overlay.
     error OverlayUnchanged();
+    /// @notice Parallel arrays passed to a batch admin helper have different lengths.
+    error ArrayLengthMismatch();
 
     constructor(
         address _bzzToken,
@@ -331,6 +333,34 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
+     * @notice Seeds `freezeUntilBlock` on a successor registry during contract migration.
+     * @param _accounts Accounts whose freeze deadlines should be carried over.
+     * @param _untilBlocks Matching `freezeUntilBlock` values from the predecessor contract.
+     * @dev Only extends each account's freeze (monotonic, same rule as `freezeDeposit`). Intended for
+     *      admin migration tooling after nodes call `migrateStake` on the old contract and before they
+     *      restake here; stake and queue state are not imported.
+     */
+    function importFreezeUntilBlocks(
+        address[] calldata _accounts,
+        uint256[] calldata _untilBlocks
+    ) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        if (_accounts.length != _untilBlocks.length) revert ArrayLengthMismatch();
+
+        for (uint256 i = 0; i < _accounts.length; ) {
+            address account = _accounts[i];
+            uint256 until = _untilBlocks[i];
+            if (freezeUntilBlock[account] < until) {
+                freezeUntilBlock[account] = until;
+                emit AccountFreezeExtended(account, freezeUntilBlock[account]);
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    /**
      * @notice Extends the account freeze and blocks queued withdrawals while the freeze lasts.
      * @param _owner The staker to freeze.
      * @param _time The freeze duration in blocks from `block.number`.
@@ -517,6 +547,13 @@ contract StakeRegistry is AccessControl, Pausable {
             })
         );
     }
+    /**
+     * @notice Pulls BZZ from `msg.sender` into the staking contract.
+     */
+    function _pullTokens(uint256 _amount) internal {
+        if (_amount == 0) revert InvalidAmount();
+        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
+    }
 
     /**
      * @notice Shrinks queued withdrawals when slashing leaves less balance than they expect.
@@ -544,16 +581,10 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
-    /**
-     * @notice Pulls BZZ from `msg.sender` into the staking contract.
-     */
-    function _pullTokens(uint256 _amount) internal {
-        if (_amount == 0) revert InvalidAmount();
-        if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
-    }
+
 
     /**
-     * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible.
+     * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible, happens in slashing
      */
     function _syncHeightToBalance(Stake storage stake) internal {
         if (stake.overlay == bytes32(0)) return;
