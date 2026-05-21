@@ -58,12 +58,17 @@ contract StakeRegistry is AccessControl, Pausable {
         uint8 height;
     }
 
-    mapping(address => Stake) private _stakes;
-    /// @notice End block of the protocol freeze for this account (exclusive: unfrozen when `block.number` > this value). Persists across exit and migration.
-    mapping(address => uint256) public freezeUntilBlock;
-    mapping(address => ScheduledUpdate[]) private _updateQueues;
-    mapping(address => uint256) private _queueHeads;
-    mapping(address => bool) private _queueClosed;
+    /// @dev Per-account stake, freeze penalty, and update queue share one lifecycle bucket; never `delete` the whole struct — use `_clearStake` / `_clearQueue` so `freezeUntilBlock` survives.
+    struct Account {
+        Stake stake;
+        /// @notice End block of the protocol freeze (exclusive: unfrozen when `block.number` > this value). Persists across exit and migration.
+        uint256 freezeUntilBlock;
+        ScheduledUpdate[] updateQueue;
+        uint64 queueHead;
+        bool queueClosed;
+    }
+
+    mapping(address => Account) private _accounts;
 
     bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
@@ -163,7 +168,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 _amount,
         uint8 _height
     ) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_queueClosed[msg.sender]) revert QueueClosed();
+        if (_accounts[msg.sender].queueClosed) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (_hasCommittedStake(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
         uint256 minStake = _minimumStakeForHeight(_height);
@@ -190,7 +195,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
     function addTokens(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_queueClosed[msg.sender]) revert QueueClosed();
+        if (_accounts[msg.sender].queueClosed) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
@@ -207,7 +212,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Reverts with `OverlayUnchanged` if the derived overlay equals the current one (no sentinel return value).
      */
     function changeOverlay(bytes32 _setNonce) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_queueClosed[msg.sender]) revert QueueClosed();
+        if (_accounts[msg.sender].queueClosed) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
@@ -225,7 +230,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @return effectiveFromRound Round when the queued update becomes effective (matches event); 0 if unchanged.
      */
     function increaseHeight(uint8 _height) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_queueClosed[msg.sender]) revert QueueClosed();
+        if (_accounts[msg.sender].queueClosed) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
@@ -245,7 +250,7 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function withdraw(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
         if (_amount == 0) revert InvalidWithdrawalAmount(WithdrawalAmountIssue.Zero);
-        if (_queueClosed[msg.sender]) revert QueueClosed();
+        if (_accounts[msg.sender].queueClosed) revert QueueClosed();
 
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
@@ -266,12 +271,12 @@ contract StakeRegistry is AccessControl, Pausable {
      * @return effectiveFromRound Round when the queued update becomes effective (matches `WithdrawalQueued`).
      */
     function exit() external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_queueClosed[msg.sender]) revert QueueClosed();
+        if (_accounts[msg.sender].queueClosed) revert QueueClosed();
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
 
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
-        _queueClosed[msg.sender] = true;
+        _accounts[msg.sender].queueClosed = true;
         emit WithdrawalQueued(msg.sender, effectiveFromRound, plannedStake.balance);
     }
 
@@ -287,8 +292,9 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function applyUpdates(address _owner) public {
         _applyReadyUpdates(_owner);
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        uint256 head = _queueHeads[_owner];
+        Account storage account = _accounts[_owner];
+        ScheduledUpdate[] storage queue = account.updateQueue;
+        uint256 head = account.queueHead;
         if (
             head < queue.length &&
             queue[head].effectiveFromRound <= currentRound() &&
@@ -305,9 +311,10 @@ contract StakeRegistry is AccessControl, Pausable {
     function migrateStake() external whenPaused {
         _applyReadyUpdates(msg.sender);
 
-        uint256 payout = _stakes[msg.sender].balance;
-        ScheduledUpdate[] storage queue = _updateQueues[msg.sender];
-        uint256 head = _queueHeads[msg.sender];
+        Account storage account = _accounts[msg.sender];
+        uint256 payout = account.stake.balance;
+        ScheduledUpdate[] storage queue = account.updateQueue;
+        uint256 head = account.queueHead;
 
         for (uint256 i = head; i < queue.length; ) {
             ScheduledUpdate storage scheduled = queue[i];
@@ -320,10 +327,7 @@ contract StakeRegistry is AccessControl, Pausable {
             }
         }
 
-        delete _stakes[msg.sender];
-        delete _updateQueues[msg.sender];
-        delete _queueHeads[msg.sender];
-        delete _queueClosed[msg.sender];
+        _clearStakeAndQueue(msg.sender);
 
         emit StakeMigrated(msg.sender, payout);
 
@@ -334,24 +338,24 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice Seeds `freezeUntilBlock` on a successor registry during contract migration.
-     * @param _accounts Accounts whose freeze deadlines should be carried over.
-     * @param _untilBlocks Matching `freezeUntilBlock` values from the predecessor contract.
+     * @param accounts Accounts whose freeze deadlines should be carried over.
+     * @param untilBlocks Matching `freezeUntilBlock` values from the predecessor contract.
      * @dev Only extends each account's freeze (monotonic, same rule as `freezeDeposit`). Intended for
      *      admin migration tooling after nodes call `migrateStake` on the old contract and before they
      *      restake here; stake and queue state are not imported.
      */
     function importFreezeUntilBlocks(
-        address[] calldata _accounts,
-        uint256[] calldata _untilBlocks
+        address[] calldata accounts,
+        uint256[] calldata untilBlocks
     ) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        if (_accounts.length != _untilBlocks.length) revert ArrayLengthMismatch();
+        if (accounts.length != untilBlocks.length) revert ArrayLengthMismatch();
 
-        for (uint256 i = 0; i < _accounts.length; ) {
-            address account = _accounts[i];
-            uint256 until = _untilBlocks[i];
-            if (freezeUntilBlock[account] < until) {
-                freezeUntilBlock[account] = until;
-                emit AccountFreezeExtended(account, freezeUntilBlock[account]);
+        for (uint256 i = 0; i < accounts.length; ) {
+            address account = accounts[i];
+            uint256 until = untilBlocks[i];
+            if (_accounts[account].freezeUntilBlock < until) {
+                _accounts[account].freezeUntilBlock = until;
+                emit AccountFreezeExtended(account, _accounts[account].freezeUntilBlock);
             }
 
             unchecked {
@@ -374,9 +378,9 @@ contract StakeRegistry is AccessControl, Pausable {
 
         // No stake and no queue: only record account-level penalty.
         if (!_hasCommittedStake(_owner) && _queueLength(_owner) == 0) {
-            if (freezeUntilBlock[_owner] < until) {
-                freezeUntilBlock[_owner] = until;
-                emit AccountFreezeExtended(_owner, freezeUntilBlock[_owner]);
+            if (_accounts[_owner].freezeUntilBlock < until) {
+                _accounts[_owner].freezeUntilBlock = until;
+                emit AccountFreezeExtended(_owner, _accounts[_owner].freezeUntilBlock);
             }
             return;
         }
@@ -385,12 +389,12 @@ contract StakeRegistry is AccessControl, Pausable {
         // withdrawal in the same transaction is not blocked by the new penalty start.
         _applyReadyUpdates(_owner);
 
-        if (freezeUntilBlock[_owner] < until) {
-            freezeUntilBlock[_owner] = until;
+        if (_accounts[_owner].freezeUntilBlock < until) {
+            _accounts[_owner].freezeUntilBlock = until;
         }
 
         if (_hasCommittedStake(_owner)) {
-            emit StakeFrozen(_owner, _stakes[_owner].overlay, _time);
+            emit StakeFrozen(_owner, _accounts[_owner].stake.overlay, _time);
         }
     }
 
@@ -405,7 +409,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
         _applyReadyUpdates(_owner);
 
-        Stake storage stake = _stakes[_owner];
+        Stake storage stake = _accounts[_owner].stake;
         bytes32 previousOverlay = stake.overlay;
 
         if (previousOverlay != bytes32(0)) {
@@ -417,7 +421,7 @@ contract StakeRegistry is AccessControl, Pausable {
                 stake.balance = 0;
                 _reconcileQueuedWithdrawals(_owner);
             } else {
-                delete _stakes[_owner];
+                _clearStake(_owner);
             }
         }
 
@@ -452,14 +456,31 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Applies all queued updates that are effective in the current round.
      * @dev Stops at the first frozen withdrawal/exit without reverting.
      */
+    function _clearStake(address _owner) internal {
+        delete _accounts[_owner].stake;
+    }
+
+    function _clearQueue(address _owner) internal {
+        Account storage account = _accounts[_owner];
+        delete account.updateQueue;
+        account.queueHead = 0;
+        account.queueClosed = false;
+    }
+
+    function _clearStakeAndQueue(address _owner) internal {
+        _clearStake(_owner);
+        _clearQueue(_owner);
+    }
+
     function _applyReadyUpdates(address _owner) internal {
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        uint256 head = _queueHeads[_owner];
+        Account storage account = _accounts[_owner];
+        ScheduledUpdate[] storage queue = account.updateQueue;
+        uint256 head = account.queueHead;
         uint64 roundNumber = currentRound();
 
         while (head < queue.length && queue[head].effectiveFromRound <= roundNumber) {
             // Exit the loop (do not skip to the next item): leave the due withdrawal/exit at `head`
-            // unapplied so FIFO is preserved; `_queueHeads` is updated below for retry on a later call.
+            // unapplied so FIFO is preserved; `queueHead` is updated below for retry on a later call.
             if (_queuedWithdrawalExecutionFrozen(_owner, queue[head].kind, 0)) break;
             _applyStoredUpdate(_owner, queue[head]);
             delete queue[head];
@@ -469,11 +490,9 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         if (head == queue.length) {
-            delete _updateQueues[_owner];
-            delete _queueHeads[_owner];
-            delete _queueClosed[_owner];
+            _clearQueue(_owner);
         } else {
-            _queueHeads[_owner] = head;
+            account.queueHead = uint64(head);
         }
     }
 
@@ -485,7 +504,7 @@ contract StakeRegistry is AccessControl, Pausable {
     function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
         // Path 1: partial withdrawal — pay out capped at current balance (may be slashed since queued).
         if (scheduled.kind == UpdateKind.WithdrawTokens) {
-            Stake storage stake = _stakes[_owner];
+            Stake storage stake = _accounts[_owner].stake;
             if (stake.overlay != bytes32(0)) {
                 uint256 paid = scheduled.amount > stake.balance ? stake.balance : scheduled.amount;
                 stake.balance -= paid;
@@ -499,9 +518,9 @@ contract StakeRegistry is AccessControl, Pausable {
 
         // Path 2: full exit — delete stake and return all remaining BZZ.
         if (scheduled.kind == UpdateKind.ExitStake) {
-            Stake storage stakeRef = _stakes[_owner];
+            Stake storage stakeRef = _accounts[_owner].stake;
             uint256 balance = stakeRef.balance;
-            delete _stakes[_owner];
+            _clearStake(_owner);
             if (balance > 0) {
                 if (!ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
                 emit Withdrawal(_owner, currentRound(), balance);
@@ -510,7 +529,7 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         // Path 3: stake mutations — CreateDeposit, AddTokens, IncreaseHeight, ChangeOverlay (no token transfer).
-        Stake storage stRef = _stakes[_owner];
+        Stake storage stRef = _accounts[_owner].stake;
         Stake memory s = Stake({overlay: stRef.overlay, balance: stRef.balance, height: stRef.height});
         s = _simulateUpdate(_owner, s, scheduled);
         stRef.overlay = s.overlay;
@@ -537,7 +556,7 @@ contract StakeRegistry is AccessControl, Pausable {
         uint64 lastRound = _lastScheduledRound(_owner);
         effectiveFromRound = candidateRound > lastRound ? candidateRound : lastRound;
 
-        _updateQueues[_owner].push(
+        _accounts[_owner].updateQueue.push(
             ScheduledUpdate({
                 kind: _kind,
                 effectiveFromRound: effectiveFromRound,
@@ -560,9 +579,10 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev This preserves queue order while preventing later withdrawals from overpaying the owner.
      */
     function _reconcileQueuedWithdrawals(address _owner) internal {
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        uint256 head = _queueHeads[_owner];
-        Stake memory preview = _stakes[_owner];
+        Account storage account = _accounts[_owner];
+        ScheduledUpdate[] storage queue = account.updateQueue;
+        uint256 head = account.queueHead;
+        Stake memory preview = account.stake;
 
         for (uint256 i = head; i < queue.length; ) {
             ScheduledUpdate storage scheduled = queue[i];
@@ -598,6 +618,13 @@ contract StakeRegistry is AccessControl, Pausable {
     ////////////////////////////////////////
     //            STATE READING           //
     ////////////////////////////////////////
+
+    /**
+     * @notice Returns the end block of the protocol freeze for an account.
+     */
+    function freezeUntilBlock(address _owner) external view returns (uint256) {
+        return _accounts[_owner].freezeUntilBlock;
+    }
 
     /**
      * @notice Returns the currently visible stake state for an owner.
@@ -666,10 +693,10 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @dev True when `freezeUntilBlock[_owner] < block.number` (current block is past the penalty window).
+     * @dev True when `_accounts[_owner].freezeUntilBlock < block.number` (current block is past the penalty window).
      */
     function _addressNotFrozen(address _owner) internal view returns (bool) {
-        return freezeUntilBlock[_owner] < block.number;
+        return _accounts[_owner].freezeUntilBlock < block.number;
     }
 
     /**
@@ -693,10 +720,11 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Previews stake state using the current round, optionally including future queued updates.
      */
     function _previewStake(address _owner, bool includeFutureUpdates) internal view returns (Stake memory preview) {
-        preview = _stakes[_owner];
+        Account storage account = _accounts[_owner];
+        preview = account.stake;
 
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        uint256 head = _queueHeads[_owner];
+        ScheduledUpdate[] storage queue = account.updateQueue;
+        uint256 head = account.queueHead;
         uint64 roundNumber = currentRound();
 
         for (uint256 i = head; i < queue.length; ) {
@@ -720,10 +748,11 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Previews stake state as it would look after the given round lookahead.
      */
     function _previewStakeLookahead(address _owner, uint64 _lookahead) internal view returns (Stake memory preview) {
-        preview = _stakes[_owner];
+        Account storage account = _accounts[_owner];
+        preview = account.stake;
 
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
-        uint256 head = _queueHeads[_owner];
+        ScheduledUpdate[] storage queue = account.updateQueue;
+        uint256 head = account.queueHead;
         uint64 targetRound = currentRound() + _lookahead;
 
         for (uint256 i = head; i < queue.length; ) {
@@ -800,7 +829,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Returns the effective round of the last queued update.
      */
     function _lastScheduledRound(address _owner) internal view returns (uint64) {
-        ScheduledUpdate[] storage queue = _updateQueues[_owner];
+        ScheduledUpdate[] storage queue = _accounts[_owner].updateQueue;
         if (_queueLength(_owner) == 0) {
             return 0;
         }
@@ -811,7 +840,8 @@ contract StakeRegistry is AccessControl, Pausable {
      * @notice Returns the number of pending queued updates.
      */
     function _queueLength(address _owner) internal view returns (uint256) {
-        return _updateQueues[_owner].length - _queueHeads[_owner];
+        Account storage account = _accounts[_owner];
+        return account.updateQueue.length - account.queueHead;
     }
 
     /**
@@ -825,7 +855,7 @@ contract StakeRegistry is AccessControl, Pausable {
             return _addressNotFrozen(_owner);
         }
 
-        return freezeUntilBlock[_owner] < (uint256(currentRound()) + uint256(_lookaheadRounds)) * ROUND_LENGTH;
+        return _accounts[_owner].freezeUntilBlock < (uint256(currentRound()) + uint256(_lookaheadRounds)) * ROUND_LENGTH;
     }
 
     /**
@@ -848,7 +878,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Commitment is indicated by `overlay != bytes32(0)`; collision with keccak256 output is negligible.
      */
     function _hasCommittedStake(address _owner) internal view returns (bool) {
-        return _stakes[_owner].overlay != bytes32(0);
+        return _accounts[_owner].stake.overlay != bytes32(0);
     }
 
     /// @notice Same commitment predicate for an in-memory stake (e.g. queue preview).
