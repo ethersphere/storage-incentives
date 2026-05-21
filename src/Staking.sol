@@ -855,7 +855,8 @@ contract StakeRegistry is AccessControl, Pausable {
             return _addressNotFrozen(_owner);
         }
 
-        return _accounts[_owner].freezeUntilBlock < (uint256(currentRound()) + uint256(_lookaheadRounds)) * ROUND_LENGTH;
+        return
+            _accounts[_owner].freezeUntilBlock < (uint256(currentRound()) + uint256(_lookaheadRounds)) * ROUND_LENGTH;
     }
 
     /**
