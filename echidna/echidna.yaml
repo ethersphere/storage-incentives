@@ -1,0 +1,30 @@
+testMode: property
+
+# Longer sequences help (a) reach high `block.number` / `currentRound()` for redistribution,
+# and (b) walk commit → reveal → claim in one campaign. Tuned with real-claim fixture harness in mind.
+seqLen: 320
+
+# Default budget per harness (one sequence = up to seqLen txs). Override with ECHIDNA_TEST_LIMIT.
+testLimit: 60000
+
+# Shrinking a counterexample can be *much* slower than fuzzing.
+# Keep this modest; increase locally if you want a smaller reproducer.
+shrinkLimit: 1000
+
+# Bound random block jumps between transactions.
+# Up to a full round (ROUND_LENGTH) helps reach later `currentRound()` values with fewer txs;
+# sub-round delays still let the same sequence walk commit → reveal → claim.
+maxTimeDelay: 0
+maxBlockDelay: 152
+
+# Persist interesting inputs between runs (scripts/echidna.sh uses a per-harness subdir).
+corpusDir: echidna/corpus
+
+# Useful while iterating on invariants.
+coverage: true
+
+# Explicit parallelism inside Docker (host CPU may allow more).
+workers: 4
+
+# Keep output readable in CI.
+format: text
