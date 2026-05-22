@@ -2,8 +2,7 @@
  * Summarize Echidna LCOV coverage with action-only metrics.
  *
  * Echidna records coverage during fuzz transactions (act_*). echidna_* property
- * checks run afterward via eth_call and do not appear in coverage, which makes
- * raw file percentages look worse than action exploration really is.
+ * checks run afterward via eth_call and are omitted from this summary.
  *
  * Usage:
  *   yarn ts-node scripts/echidna-coverage-summary.ts
@@ -24,8 +23,6 @@ interface Summary {
   lcov: string;
   fileTotal: CoverageTriple;
   actions: CoverageTriple;
-  properties: CoverageTriple;
-  propertiesLine: number;
 }
 
 function discoverHarnesses(): string[] {
@@ -44,7 +41,7 @@ function harnessContractStart(lines: string[], harness: string): number {
   throw new Error(`contract ${harness} not found in src/echidna/${harness}.sol`);
 }
 
-function propertiesSectionStart(lines: string[], harnessStart: number): number {
+function actionsSectionEnd(lines: string[], harnessStart: number): number {
   for (let i = harnessStart; i <= lines.length; i++) {
     const line = lines[i - 1].trim();
     if (line.startsWith('//') && line.includes('Properties')) return i;
@@ -110,16 +107,14 @@ function summarize(harness: string, coverageDir: string): Summary | null {
 
   const lines = fs.readFileSync(srcPath, 'utf8').split('\n');
   const harnessStart = harnessContractStart(lines, harness);
-  const propStart = propertiesSectionStart(lines, harnessStart);
+  const actionsEnd = actionsSectionEnd(lines, harnessStart);
   const hits = parseLcovHits(lcovPath, harness);
 
   return {
     harness,
     lcov: path.basename(lcovPath),
     fileTotal: coveragePct(hits, 1, lines.length),
-    actions: coveragePct(hits, harnessStart, propStart - 1),
-    properties: coveragePct(hits, propStart, lines.length),
-    propertiesLine: propStart,
+    actions: coveragePct(hits, harnessStart, actionsEnd - 1),
   };
 }
 
@@ -131,9 +126,6 @@ function printSummary(result: Summary): void {
   console.log(`==> echidna coverage: ${result.harness} (${result.lcov})`);
   console.log(`    harness file total: ${fmtPct(result.fileTotal)}`);
   console.log(`    actions only:       ${fmtPct(result.actions)}`);
-  console.log(
-    `    properties block:   ${fmtPct(result.properties)}  (from line ${result.propertiesLine}; not measured during fuzz txs)`
-  );
 }
 
 function parseArgs(argv: string[]): { harnesses: string[]; coverageDir?: string } {
@@ -166,8 +158,7 @@ function main(): number {
 
   let exitCode = 0;
   for (const harness of harnesses) {
-    const coverageDir =
-      globalCoverageDir ?? path.join(ROOT, 'echidna', 'corpus', 'by-contract', harness, 'coverage');
+    const coverageDir = globalCoverageDir ?? path.join(ROOT, 'echidna', 'corpus', 'by-contract', harness, 'coverage');
 
     try {
       const result = summarize(harness, coverageDir);
