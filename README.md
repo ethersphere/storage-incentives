@@ -111,6 +111,14 @@ To get started with this project, follow these steps:
 2. Run `yarn install` at the root of the repo to install all dependencies.
 3. Add a `.env` file in your root directory, where you'll store your sensitive information for deployment. An example file [`.env.example`](./.env.example) is provided for reference.
 
+## Fuzz testing (Echidna)
+
+Harness layout, properties, and troubleshooting are documented in [echidna/README.md](./echidna/README.md). Run (Docker required):
+
+```bash
+yarn echidna
+```
+
 ## Run
 
 ### [Tests](./test)

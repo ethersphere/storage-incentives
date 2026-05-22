@@ -1,6 +1,6 @@
 /**
  * Copy Batch Task - Use copyBatch function from PostageStamp contract
- * 
+ *
  * Usage:
  *   npx hardhat copy \
  *     --owner 0x1234... \
@@ -10,7 +10,7 @@
  *     --batchid 0xabcd... \
  *     --immutable false \
  *     --contract 0x5678...
- * 
+ *
  * Parameters:
  *   --owner: The account's address
  *   --initialbalance: Initial balance for the batch
@@ -19,7 +19,7 @@
  *   --batchid: Batch ID
  *   --immutable: Whether batch is immutable (true/false)
  *   --contract: PostageStamp contract address
- * 
+ *
  * This task:
  * - Estimates gas for the copyBatch transaction
  * - Adds 20% buffer to estimated gas
