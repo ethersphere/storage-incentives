@@ -70,4 +70,7 @@ for c in "${CONTRACTS_TO_RUN[@]}"; do
     -c "rm -rf crytic-export && echidna-test . --contract ${c} --config ${CONFIG} \
       --corpus-dir ${CORPUS_DIR} --coverage-dir ${CORPUS_DIR}/coverage${ECHIDNA_EXTRA_CLI} \
       --crytic-args '--hardhat-ignore-compile'"
+
+  yarn -s ts-node "${ROOT_DIR}/scripts/echidna-coverage-summary.ts" "${c}" \
+    --coverage-dir "${ROOT_DIR}/${CORPUS_DIR}/coverage" || true
 done
