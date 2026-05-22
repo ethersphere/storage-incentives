@@ -1381,8 +1381,7 @@ describe('PostageStamp', function () {
 
         const currentTotalOutPayment = parseInt(await postageStampStamper.currentTotalOutPayment());
         const lastPrice = parseInt(await postageStampStamper.lastPrice());
-        const expectedNormalisedBalance =
-          batch.initialPaymentPerChunk + currentTotalOutPayment + lastPrice;
+        const expectedNormalisedBalance = batch.initialPaymentPerChunk + currentTotalOutPayment + lastPrice;
 
         await expect(
           postageStampStamper.copyBatch(
