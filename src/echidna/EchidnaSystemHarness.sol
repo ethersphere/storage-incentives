@@ -27,9 +27,7 @@ contract EchidnaSystemActor {
     }
 
     function callCreateDeposit(bytes32 setNonce, uint256 amount, uint8 height) external returns (bool ok) {
-        (ok, ) = address(stake).call(
-            abi.encodeWithSelector(stake.createDeposit.selector, setNonce, amount, height)
-        );
+        (ok, ) = address(stake).call(abi.encodeWithSelector(stake.createDeposit.selector, setNonce, amount, height));
     }
 
     function callApplyUpdates() external returns (bool ok) {

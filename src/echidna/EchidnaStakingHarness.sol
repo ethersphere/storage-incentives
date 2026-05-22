@@ -106,13 +106,7 @@ contract EchidnaStakingHarness {
 
         token = new TestToken("TestToken", "TT", initialSupply);
         trackedNetworkId = 10;
-        registry = new StakeRegistry(
-            address(token),
-            trackedNetworkId,
-            WAIT_BASE,
-            WAIT_OVERLAY,
-            WAIT_WITHDRAWAL
-        );
+        registry = new StakeRegistry(address(token), trackedNetworkId, WAIT_BASE, WAIT_OVERLAY, WAIT_WITHDRAWAL);
 
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {
             actors[i] = new EchidnaStakingActor(token, registry);
