@@ -566,8 +566,7 @@ contract PostageStamp is AccessControl, Pausable {
     }
 
     function minimumInitialBalancePerChunk() public view returns (uint256) {
-        // Cast to uint256 before multiplying to avoid uint64 overflow.
-        return uint256(minimumValidityBlocks) * uint256(lastPrice);
+        return minimumValidityBlocks * lastPrice;
     }
 
     /**
