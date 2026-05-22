@@ -1161,6 +1161,9 @@ describe('PostageStamp', function () {
 
     describe('when copyBatch creates a batch', function () {
       beforeEach(async function () {
+        postageStampStamper = await ethers.getContract('PostageStamp', stamper);
+        token = await ethers.getContract('TestToken', deployer);
+
         const postageStampDeployer = await ethers.getContract('PostageStamp', deployer);
         const admin = await postageStampStamper.DEFAULT_ADMIN_ROLE();
         await postageStampDeployer.grantRole(admin, stamper);
@@ -1376,6 +1379,11 @@ describe('PostageStamp', function () {
         const price = 100;
         await setPrice(price);
 
+        const currentTotalOutPayment = parseInt(await postageStampStamper.currentTotalOutPayment());
+        const lastPrice = parseInt(await postageStampStamper.lastPrice());
+        const expectedNormalisedBalance =
+          batch.initialPaymentPerChunk + currentTotalOutPayment + lastPrice;
+
         await expect(
           postageStampStamper.copyBatch(
             stamper,
@@ -1390,14 +1398,14 @@ describe('PostageStamp', function () {
           .withArgs(
             batch.id,
             transferAmount,
-            price + batch.initialPaymentPerChunk,
+            expectedNormalisedBalance,
             stamper,
             batch.depth,
             batch.bucketDepth,
             batch.immutable
           );
         const stamp = await postageStampStamper.batches(batch.id);
-        expect(stamp[4]).to.equal(price + batch.initialPaymentPerChunk);
+        expect(stamp[4]).to.equal(expectedNormalisedBalance);
       });
 
       it('should include pending totalOutpayment in the normalised balance', async function () {
