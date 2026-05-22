@@ -83,6 +83,8 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
 }
 
 contract RedistributionClaimStub is Redistribution {
+    event WithdrawFailed(address indexed winner);
+
     constructor(
         address staking,
         address postageContract,

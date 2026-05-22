@@ -53,6 +53,18 @@ contract EchidnaStakeRegistryMock is IStakeRegistry {
     function nodeEffectiveStake(address _owner) external view returns (uint256) {
         return nodes[_owner].effectiveStake;
     }
+
+    function overlayOfAddressLookahead(address _owner, uint64) external view returns (bytes32) {
+        return nodes[_owner].overlay;
+    }
+
+    function heightOfAddressLookahead(address _owner, uint64) external view returns (uint8) {
+        return nodes[_owner].height;
+    }
+
+    function nodeEffectiveStakeLookahead(address _owner, uint64) external view returns (uint256) {
+        return nodes[_owner].effectiveStake;
+    }
 }
 
 /// @notice Shared price oracle mock for redistribution harnesses.
