@@ -4,6 +4,41 @@ Stateful fuzzing with [Echidna](https://github.com/crytic/echidna): deploy a **h
 
 Source: `src/echidna/` (harnesses), `echidna/echidna.yaml` (defaults), `scripts/echidna.sh` (Docker runner).
 
+## How a campaign works (newcomers)
+
+Echidna does **not** run all actions at once. Each **sequence** is one fresh harness deploy, then up to **`seqLen` steps** (default **320**). Each step = **one** `act_*` call with pseudo-random arguments. Between steps Echidna may advance `block.number` by up to **`maxBlockDelay`** (default **152**, one redistribution round).
+
+Example sequence:
+
+```text
+deploy harness
+→ act_happyCommit(0, …)
+→ act_tick()
+→ act_updater_adjustPrice(3)
+→ act_rando_tryAdjustPrice(1, 2)
+→ act_happyReveal(0)
+→ … (up to 320 steps)
+```
+
+After **every** step, **all** `echidna_*` properties (invariants) are checked. They must return `true`. If one fails, Echidna saves that prefix as a **reproducer**:
+
+```text
+act_A()  →  check all echidna_*  ✓
+act_B()  →  check all echidna_*  ✓
+act_C()  →  check all echidna_*  ✗  →  FAIL, report sequence A → B → C
+```
+
+Echidna then tries many such sequences (**`testLimit`**, default **60 000**). Each sequence starts from a **new deploy** (constructor runs again). Which action runs next is guided by randomness + coverage/corpus—not a fixed script.
+
+| Term | Meaning |
+|------|---------|
+| **One sequence** | Up to 320 txs on one deployment |
+| **One tx** | One `act_*` (or other callable on the harness) |
+| **Properties** | Invariants checked **after each tx**, not only at the end |
+| **Campaign** | 60 000 sequences × up to 320 steps (per harness) |
+
+**Actions** = moves in a long random game. **Properties** = rules that must hold after every move.
+
 ## Concepts
 
 | Piece | Role |
