@@ -671,13 +671,8 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Updates the source of randomness. Uses block.difficulty in pre-merge chains, this is substituted
      * to block.prevrandao in post merge chains.
      */
-    function updateRandomness() internal virtual {
-        seed = _nextSeedValue();
-    }
-
-    /// @dev Extracted for fuzz harnesses that must pin post-reveal randomness to fixture data.
-    function _nextSeedValue() internal view virtual returns (bytes32) {
-        return keccak256(abi.encode(seed, block.prevrandao));
+    function updateRandomness() private {
+        seed = keccak256(abi.encode(seed, block.prevrandao));
     }
 
     /**
