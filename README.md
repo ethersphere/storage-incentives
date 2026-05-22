@@ -2,6 +2,16 @@
 
 This repository contains the smart contracts for Swarm's storage incentives.
 
+## 📚 Documentation
+
+Comprehensive documentation is available in the [`docs/`](docs/) directory:
+- [Overview](./docs/OVERVIEW.md) - System architecture and mechanics
+- [PostageStamp](./docs/POSTAGE_STAMP.md) - Postage stamp batch management
+- [PriceOracle](./docs/PRICE_ORACLE.md) - Dynamic pricing system
+- [StakeRegistry](./docs/STAKING.md) - Staking for node operators
+- [Redistribution](./docs/REDISTRIBUTION.md) - Schelling game details
+- [Deployment Guide](./docs/DEPLOYMENT.md) - How to deploy contracts
+
 # Overview
 
 In order to distribute to upload content to the Swarm network, _batches_ of _postage stamps_ are purchased by nodes. These _stamps_ are then attached to content that is divided into 4kb chunks and then uploaded to the Swarm network. In order to distribute the proceeds from the sales of these _batches_, a [Schelling Co-ordination Game](https://en.wikipedia.org/wiki/Coordination_game) is implemented using the smart contracts contained in this repository, in order to identify nodes storing the canonical subset of valid chunks that fall within the radius of responsibility of each node in a _neighbourhood_ at the time of their application. Correct identification of this hash qualifies a node to apply to receive a reward comprising value arising from _expired_ _batches_.
