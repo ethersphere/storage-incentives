@@ -12,21 +12,19 @@ interface IPriceOracle {
 }
 
 interface IStakeRegistry {
-    struct Stake {
-        bytes32 overlay;
-        uint256 stakeAmount;
-        uint256 lastUpdatedBlockNumber;
-    }
-
     function freezeDeposit(address _owner, uint256 _time) external;
-
-    function lastUpdatedBlockNumberOfAddress(address _owner) external view returns (uint256);
 
     function overlayOfAddress(address _owner) external view returns (bytes32);
 
+    function overlayOfAddressLookahead(address _owner, uint64 _lookahead) external view returns (bytes32);
+
     function heightOfAddress(address _owner) external view returns (uint8);
 
+    function heightOfAddressLookahead(address _owner, uint64 _lookahead) external view returns (uint8);
+
     function nodeEffectiveStake(address _owner) external view returns (uint256);
+
+    function nodeEffectiveStakeLookahead(address _owner, uint64 _lookahead) external view returns (uint256);
 }
 
 /**
@@ -201,11 +199,6 @@ contract Redistribution is AccessControl, Pausable {
     event PriceAdjustmentSkipped(uint16 redundancyCount);
 
     /**
-     * @dev Withdraw not successful in claim
-     */
-    event WithdrawFailed(address owner);
-
-    /**
      * @dev Logs that an overlay has revealed
      */
     event Revealed(
@@ -230,7 +223,6 @@ contract Redistribution is AccessControl, Pausable {
     error CommitRoundOver(); // Commit phase in this round is over
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
     error NotMatchingOwner(); // Sender of commit is not matching the overlay address
-    error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
     error NotStaked(); // Node didn't add any staking
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
     error AlreadyCommitted(); // Node already committed in this round
@@ -293,15 +285,10 @@ contract Redistribution is AccessControl, Pausable {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
-        uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
         uint8 _height = Stakes.heightOfAddress(msg.sender);
 
-        if (_lastUpdate == 0) {
+        if (_stake == 0) {
             revert NotStaked();
-        }
-
-        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
-            revert MustStake2Rounds();
         }
 
         if (cr > _roundNumber) {
@@ -482,13 +469,7 @@ contract Redistribution is AccessControl, Pausable {
 
         estimateSize(entryProofLast.proofSegments[0]);
 
-        // Do the check if the withdraw was success
-        (bool success, ) = address(PostageContract).call(
-            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
-        );
-        if (!success) {
-            emit WithdrawFailed(winnerSelected.owner);
-        }
+        PostageContract.withdraw(winnerSelected.owner);
 
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
@@ -824,26 +805,31 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Determine if a the owner of a given overlay can participate in the upcoming round.
+     * @dev This method is part of the external interface used by Bee nodes to pre-check
+     * eligibility, so it must remain available even when it is not referenced by on-chain code.
      * @param _owner The address of the applicant from.
      * @param _depth The storage depth the applicant intends to report.
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
-        uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(_owner);
-        uint8 _depthResponsibility = _depth - Stakes.heightOfAddress(_owner);
-
         if (currentPhaseReveal()) {
             revert WrongPhase();
         }
 
-        if (_lastUpdate == 0) {
+        uint64 lookahead = currentPhaseClaim() ? 1 : 0;
+        uint256 _stake = Stakes.nodeEffectiveStakeLookahead(_owner, lookahead);
+
+        if (_stake == 0) {
             revert NotStaked();
         }
 
-        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH) {
-            revert MustStake2Rounds();
-        }
+        uint8 _depthResponsibility = _depth - Stakes.heightOfAddressLookahead(_owner, lookahead);
 
-        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depthResponsibility);
+        return
+            inProximity(
+                Stakes.overlayOfAddressLookahead(_owner, lookahead),
+                currentRoundAnchor(),
+                _depthResponsibility
+            );
     }
 
     // ----------------------------- Reveal ------------------------------
