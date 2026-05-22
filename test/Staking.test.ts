@@ -666,69 +666,6 @@ describe('Staking', function () {
     expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
   });
 
-  describe('contract migration freeze import', function () {
-    it('should import freezeUntilBlock and block effective stake after restake on successor registry', async function () {
-      const longFreezeTime = roundLength * 3;
-      const Factory = await ethers.getContractFactory('StakeRegistry');
-      const srOld = await Factory.deploy(token.address, await stakeRegistry.networkId(), 2, 10, 2);
-      await srOld.deployed();
-      await srOld.grantRole(await srOld.REDISTRIBUTOR_ROLE(), redistributor);
-
-      const srOldStaker = srOld.connect(await getSignerFor(staker_0));
-      await mintAndApprove(staker_0, srOld.address, stakeAmount_0);
-      await srOldStaker.createDeposit(nonce_0, stakeAmount_0, height_0);
-      await advanceRounds();
-      await srOld.applyUpdates(staker_0);
-
-      const srOldRedis = srOld.connect(await getSignerFor(redistributor));
-      await srOldRedis.freezeDeposit(staker_0, longFreezeTime);
-      const importedUntil = await srOld.freezeUntilBlock(staker_0);
-
-      const srNew = await Factory.deploy(token.address, await stakeRegistry.networkId(), 2, 10, 2);
-      await srNew.deployed();
-      const srNewAdmin = srNew.connect(await getSignerFor(deployer));
-      await expect(srNewAdmin.importFreezeUntilBlocks([staker_0], [importedUntil]))
-        .to.emit(srNew, 'AccountFreezeExtended')
-        .withArgs(staker_0, importedUntil);
-      expect(await srNew.freezeUntilBlock(staker_0)).to.eq(importedUntil);
-
-      const srNewStaker = srNew.connect(await getSignerFor(staker_0));
-      await mintAndApprove(staker_0, srNew.address, stakeAmount_0);
-      await srNewStaker.createDeposit(nonce_1_n_25, stakeAmount_0, height_0);
-      await advanceRounds();
-      await srNew.applyUpdates(staker_0);
-
-      expect((await srNew.stakes(staker_0)).balance).to.eq(stakeAmount_0);
-      expect(await srNew.nodeEffectiveStake(staker_0)).to.eq(0);
-
-      await mineNBlocks(longFreezeTime + 1);
-      expect(await srNew.nodeEffectiveStake(staker_0)).to.eq(stakeAmount_0);
-    });
-
-    it('should reject importFreezeUntilBlocks from non-admin and on array length mismatch', async function () {
-      const srAdmin = stakeRegistry.connect(await getSignerFor(deployer));
-      const srStaker = stakeRegistry.connect(await getSignerFor(staker_0));
-      const until = (await ethers.provider.getBlock('latest'))!.number + 100;
-
-      await expect(srStaker.importFreezeUntilBlocks([staker_0], [until])).to.be.revertedWith('AccessControl');
-      await expect(srAdmin.importFreezeUntilBlocks([staker_0], [until, until + 1])).to.be.revertedWith(
-        'ArrayLengthMismatch()'
-      );
-    });
-
-    it('should not shorten an existing freeze when importing a lower deadline', async function () {
-      const srAdmin = stakeRegistry.connect(await getSignerFor(deployer));
-      const laterUntil = (await ethers.provider.getBlock('latest'))!.number + 500;
-      const earlierUntil = laterUntil - 200;
-
-      await srAdmin.importFreezeUntilBlocks([staker_0], [laterUntil]);
-      expect(await stakeRegistry.freezeUntilBlock(staker_0)).to.eq(laterUntil);
-
-      await srAdmin.importFreezeUntilBlocks([staker_0], [earlierUntil]);
-      expect(await stakeRegistry.freezeUntilBlock(staker_0)).to.eq(laterUntil);
-    });
-  });
-
   it('should not allow staking while paused and should allow it again after unpause', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
