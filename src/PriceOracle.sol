@@ -41,6 +41,11 @@ contract PriceOracle is AccessControl {
     // The length of a round in blocks.
     uint8 private constant ROUND_LENGTH = 152;
 
+    /// @dev Upper bound for upscaled price so `(currentPriceUpScaled >> 10)` fits in `uint32`.
+    /// Without this, `currentPrice()`'s `uint32(... >> 10)` truncates and can disagree with
+    /// `currentPriceUpScaled` and under-report vs `minimumPrice()`.
+    uint64 public constant MAX_CURRENT_PRICE_UPSCALED = uint64(uint256(type(uint32).max) << 10);
+
     // ----------------------------- Events ------------------------------
 
     /**
@@ -78,13 +83,9 @@ contract PriceOracle is AccessControl {
             revert CallerNotAdmin();
         }
 
-        uint64 _currentPriceUpScaled = _price << 10;
-        uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
-
-        // Enforce minimum price
-        if (_currentPriceUpScaled < _minimumPriceUpscaled) {
-            _currentPriceUpScaled = _minimumPriceUpscaled;
-        }
+        // Cast before shifting to avoid uint32 overflow/truncation.
+        uint64 _currentPriceUpScaled = uint64(_price) << 10;
+        _currentPriceUpScaled = _clampPriceUpscaled(_currentPriceUpScaled);
         currentPriceUpScaled = _currentPriceUpScaled;
 
         // Check if the setting of price in postagestamp succeded
@@ -124,7 +125,6 @@ contract PriceOracle is AccessControl {
             }
 
             uint64 _currentPriceUpScaled = currentPriceUpScaled;
-            uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
             uint32 _priceBase = priceBase;
 
             // Set the number of rounds that were skipped, we substract 1 as lastAdjustedRound is set below and default result is 1
@@ -142,10 +142,7 @@ contract PriceOracle is AccessControl {
                 }
             }
 
-            // Enforce minimum price
-            if (_currentPriceUpScaled < _minimumPriceUpscaled) {
-                _currentPriceUpScaled = _minimumPriceUpscaled;
-            }
+            _currentPriceUpScaled = _clampPriceUpscaled(_currentPriceUpScaled);
 
             currentPriceUpScaled = _currentPriceUpScaled;
             lastAdjustedRound = currentRoundNumber;
@@ -181,6 +178,18 @@ contract PriceOracle is AccessControl {
     ////////////////////////////////////////
     //            STATE READING           //
     ////////////////////////////////////////
+
+    /// @notice Clamp upscaled price to [minimumPriceUpscaled, MAX_CURRENT_PRICE_UPSCALED].
+    function _clampPriceUpscaled(uint64 priceUpScaled) private view returns (uint64) {
+        uint64 minU = uint64(minimumPriceUpscaled);
+        if (priceUpScaled < minU) {
+            priceUpScaled = minU;
+        }
+        if (priceUpScaled > MAX_CURRENT_PRICE_UPSCALED) {
+            priceUpScaled = MAX_CURRENT_PRICE_UPSCALED;
+        }
+        return priceUpScaled;
+    }
 
     /**
      * @notice Return the number of the current round.
