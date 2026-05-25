@@ -1,18 +1,17 @@
 import { DeployFunction } from 'hardhat-deploy/types';
+import { ethers } from 'hardhat';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
-  const { get, read, execute, log } = deployments;
+  const { get, execute, log, read } = deployments;
   const { deployer } = await getNamedAccounts();
 
   log('Setting Staking roles');
-  // As currently we are reusing staking, and there is multisig wallet as ADMIN
-  // we either need to add deployer temporarly as ADMIN or do this manually over multisig
 
-  const redisAddress = (await get('Redistribution')).address;
-  const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
+  const adminRole = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
   if (await read('StakeRegistry', 'hasRole', adminRole, deployer)) {
-    const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
+    const redisRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
+    const redisAddress = (await get('Redistribution')).address;
     await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
   } else {
     log(

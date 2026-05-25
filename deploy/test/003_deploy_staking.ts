@@ -2,16 +2,25 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { deploy, log, get } = deployments;
+  const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
   const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
-  const token = await get('TestToken');
-  const oracleAddress = (await get('PriceOracle')).address;
 
-  const args = [token.address, swarmNetworkID, oracleAddress];
+  const token = await get('TestToken');
+  const oracle = await get('PriceOracle');
+
   await deploy('StakeRegistry', {
     from: deployer,
-    args: args,
+    proxy: {
+      proxyContract: 'TransparentUpgradeableProxy',
+      viaAdminContract: 'DefaultProxyAdmin',
+      execute: {
+        init: {
+          methodName: 'initialize',
+          args: [token.address, swarmNetworkID, oracle.address],
+        },
+      },
+    },
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
   });

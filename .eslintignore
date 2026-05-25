@@ -6,3 +6,7 @@ coverage/
 node_modules/
 *.yaml
 *.json
+
+# CommonJS runtime sibling of mine-worker.ts; loaded directly by worker_threads
+# so it must stay as plain CJS (require() etc.).
+test/util/mine-worker.js

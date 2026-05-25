@@ -25,6 +25,11 @@ type WitnessDataStore = {
   socProofAttached?: SocProofAttachmentStore;
 };
 
+type WitnessCacheEnvelope = {
+  anchor: string;
+  witnesses: WitnessDataStore[];
+};
+
 type WitnessChunks = { ogChunk: Chunk; transformedChunk: Chunk; socProofAttached?: SocProof };
 type WitnessProof = {
   proofSegments: Uint8Array[];
@@ -351,13 +356,14 @@ function sortWitnesses(witnesses: WitnessData[]): WitnessData[] {
  * @param socType if true then the witnesses will be single owner chunks. Default: false
  */
 export async function mineWitnesses(anchor: Uint8Array, depth: number, socType = false): Promise<WitnessData[]> {
+  if (!socType) {
+    return mineWitnessesParallel(anchor, depth);
+  }
   const witnessChunks: WitnessData[] = [];
   let startNonce = 0;
   for (let i = 0; i < WITNESS_COUNT; i++) {
     console.log('mine witness', i);
-    const witness = socType
-      ? await mineSocWitness(anchor, depth, startNonce)
-      : mineCacWitness(anchor, depth, startNonce);
+    const witness = await mineSocWitness(anchor, depth, startNonce);
     witnessChunks.push(witness);
     startNonce = witness.nonce + 1;
   }
@@ -365,10 +371,63 @@ export async function mineWitnesses(anchor: Uint8Array, depth: number, socType =
   return sortWitnesses(witnessChunks);
 }
 
-export function loadWitnesses(filename: string): WitnessData[] {
-  const witnessDataStore: WitnessDataStore[] = JSON.parse(
-    new TextDecoder().decode(fs.readFileSync(path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`)))
-  ) as WitnessDataStore[];
+async function mineWitnessesParallel(anchor: Uint8Array, depth: number): Promise<WitnessData[]> {
+  const { Worker } = await import('worker_threads');
+  const os = await import('os');
+  const cpus = os.cpus().length;
+  const workerPath = path.join(__dirname, 'mine-worker.js');
+  const NONCE_RANGE = 10_000_000;
+
+  console.log(`Mining ${WITNESS_COUNT} witnesses in parallel across ${Math.min(cpus, WITNESS_COUNT)} cores...`);
+
+  const promises: Promise<{ witnessIndex: number; nonce: number; transformedAddress: string }>[] = [];
+  for (let i = 0; i < WITNESS_COUNT; i++) {
+    promises.push(
+      new Promise((resolve, reject) => {
+        const worker = new Worker(workerPath, {
+          workerData: {
+            anchor: Array.from(anchor),
+            depth,
+            startNonce: i * NONCE_RANGE,
+            witnessIndex: i,
+          },
+        });
+        worker.on('message', resolve);
+        worker.on('error', reject);
+        worker.on('exit', (code) => {
+          if (code !== 0) reject(new Error(`Worker ${i} exited with code ${code}`));
+        });
+      })
+    );
+  }
+
+  const results = await Promise.all(promises);
+  console.log(`All ${WITNESS_COUNT} witnesses mined.`);
+
+  const witnessChunks: WitnessData[] = results.map((r) => ({
+    nonce: r.nonce,
+    transformedAddress: arrayify(r.transformedAddress),
+  }));
+
+  return sortWitnesses(witnessChunks);
+}
+
+export function loadWitnesses(filename: string, expectedAnchor?: string): WitnessData[] {
+  const filePath = path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`);
+  const raw = JSON.parse(new TextDecoder().decode(fs.readFileSync(filePath)));
+
+  let witnessDataStore: WitnessDataStore[];
+  if (raw.anchor !== undefined) {
+    const envelope = raw as WitnessCacheEnvelope;
+    if (expectedAnchor && envelope.anchor !== expectedAnchor) {
+      throw new Error(`Anchor mismatch: cached=${envelope.anchor}, expected=${expectedAnchor}`);
+    }
+    witnessDataStore = envelope.witnesses;
+  } else if (expectedAnchor) {
+    throw new Error(`Legacy cache without anchor, regenerating for anchor=${expectedAnchor}`);
+  } else {
+    witnessDataStore = raw as WitnessDataStore[];
+  }
 
   const witnessData: WitnessData[] = witnessDataStore.map((e) => {
     const witnessData: WitnessData = {
@@ -390,26 +449,24 @@ export function loadWitnesses(filename: string): WitnessData[] {
   return sortWitnesses(witnessData);
 }
 
-export function saveWitnesses(witnessChunks: WitnessData[], filename: string) {
+export function saveWitnesses(witnessChunks: WitnessData[], filename: string, anchor?: string) {
   console.log('save witnesses');
-  fs.writeFileSync(
-    path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`),
-    JSON.stringify(
-      witnessChunks.map<WitnessDataStore>((a) => {
-        const witnessData: WitnessDataStore = { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
-        if (a.socProofAttached) {
-          witnessData.socProofAttached = {
-            chunkAddr: hexlify(a.socProofAttached.chunkAddr),
-            identifier: hexlify(a.socProofAttached.identifier),
-            signature: a.socProofAttached.signature,
-            signer: a.socProofAttached.signer,
-          };
-        }
+  const witnesses = witnessChunks.map<WitnessDataStore>((a) => {
+    const witnessData: WitnessDataStore = { transformedAddress: hexlify(a.transformedAddress), nonce: a.nonce };
+    if (a.socProofAttached) {
+      witnessData.socProofAttached = {
+        chunkAddr: hexlify(a.socProofAttached.chunkAddr),
+        identifier: hexlify(a.socProofAttached.identifier),
+        signature: a.socProofAttached.signature,
+        signer: a.socProofAttached.signer,
+      };
+    }
 
-        return witnessData;
-      })
-    )
-  );
+    return witnessData;
+  });
+
+  const envelope: WitnessCacheEnvelope = { anchor: anchor || '', witnesses };
+  fs.writeFileSync(path.join(__dirname, '..', 'mined-witnesses', `${filename}.json`), JSON.stringify(envelope));
 }
 
 /**
@@ -427,11 +484,13 @@ export async function setWitnesses(
   depth: number,
   socType = false
 ): Promise<WitnessData[]> {
+  const anchorHex = hexlify(anchor);
   try {
-    return loadWitnesses(suffix);
+    return loadWitnesses(suffix, anchorHex);
   } catch (e) {
+    console.log(`Cache miss for ${suffix} (${(e as Error).message}), mining witnesses...`);
     const witnessChunks = await mineWitnesses(anchor, Number(depth), socType);
-    saveWitnesses(witnessChunks, suffix);
+    saveWitnesses(witnessChunks, suffix, anchorHex);
 
     return witnessChunks;
   }
