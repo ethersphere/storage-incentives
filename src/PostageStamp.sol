@@ -162,10 +162,12 @@ contract PostageStamp is AccessControl, Pausable {
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
      * @param _minimumBucketDepth The minimum bucket depth of batches that can be purchased.
+     * @param _minimumValidityBlocks The minimum validity period in blocks (e.g., 17280 for 5s blocks, 43200 for 2s blocks).
      */
-    constructor(address _bzzToken, uint8 _minimumBucketDepth) {
+    constructor(address _bzzToken, uint8 _minimumBucketDepth, uint64 _minimumValidityBlocks) {
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
+        minimumValidityBlocks = _minimumValidityBlocks;
         PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE_ROLE");
         PAUSER_ROLE = keccak256("PAUSER_ROLE");
         REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");

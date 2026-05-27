@@ -39,7 +39,7 @@ contract PriceOracle is AccessControl {
     bytes32 public immutable PRICE_UPDATER_ROLE;
 
     // The length of a round in blocks.
-    uint8 private constant ROUND_LENGTH = 152;
+    uint256 private immutable ROUND_LENGTH;
 
     // ----------------------------- Events ------------------------------
 
@@ -57,9 +57,14 @@ contract PriceOracle is AccessControl {
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
-    constructor(address _postageStamp) {
+    /**
+     * @param _postageStamp the address of the linked PostageStamp contract.
+     * @param roundLength the length of a round in blocks (e.g., 152 for 5s blocks, 380 for 2s blocks).
+     */
+    constructor(address _postageStamp, uint256 roundLength) {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         postageStamp = IPostageStamp(_postageStamp);
+        ROUND_LENGTH = roundLength;
         lastAdjustedRound = currentRound();
         PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER_ROLE");
         emit PriceUpdate(currentPrice());

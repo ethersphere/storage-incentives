@@ -29,6 +29,7 @@ deployedContracts.sh
 *_deployed.json
 !mainnet_deployed.json
 !testnet_deployed.json
+!base_deployed.json
 
 # Misc
 contractsInfo.json

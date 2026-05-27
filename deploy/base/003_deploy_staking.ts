@@ -2,12 +2,14 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { deploy, get, log } = deployments;
+  const { deploy, log, get } = deployments;
   const { deployer } = await getNamedAccounts();
+  const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
+  const token = await get('TestToken');
+  const oracleAddress = (await get('PriceOracle')).address;
 
-  const roundLength = networkConfig[network.name]?.roundLength || 152;
-  const args = [(await get('PostageStamp')).address, roundLength];
-  await deploy('PriceOracle', {
+  const args = [token.address, swarmNetworkID, oracleAddress];
+  await deploy('StakeRegistry', {
     from: deployer,
     args: args,
     log: true,
@@ -18,4 +20,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['oracle', 'contracts'];
+func.tags = ['staking', 'contracts'];

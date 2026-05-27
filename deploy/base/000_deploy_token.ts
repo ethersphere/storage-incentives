@@ -2,20 +2,26 @@ import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
-  const { deploy, get, log } = deployments;
+  const { deploy, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const roundLength = networkConfig[network.name]?.roundLength || 152;
-  const args = [(await get('PostageStamp')).address, roundLength];
-  await deploy('PriceOracle', {
+  log('----------------------------------------------------');
+  log('Deployer address at ', deployer);
+  log('----------------------------------------------------');
+
+  // Deploy new TestToken for Base (similar to testnet)
+  const args = ['Test BZZ Token', 'tBZZ', '1250000000000000000000000'];
+
+  const token = await deploy('TestToken', {
     from: deployer,
     args: args,
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
   });
 
+  log('TestToken deployed at:', token.address);
   log('----------------------------------------------------');
 };
 
 export default func;
-func.tags = ['oracle', 'contracts'];
+func.tags = ['token', 'contracts'];

@@ -153,7 +153,7 @@ contract Redistribution is AccessControl, Pausable {
     Reveal public winner;
 
     // The length of a round in blocks.
-    uint256 private constant ROUND_LENGTH = 152;
+    uint256 private immutable ROUND_LENGTH;
 
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
@@ -267,11 +267,13 @@ contract Redistribution is AccessControl, Pausable {
      * @param staking the address of the linked Staking contract.
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
+     * @param roundLength the length of a round in blocks (e.g., 152 for 5s blocks, 380 for 2s blocks).
      */
-    constructor(address staking, address postageContract, address oracleContract) {
+    constructor(address staking, address postageContract, address oracleContract, uint256 roundLength) {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
+        ROUND_LENGTH = roundLength;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 

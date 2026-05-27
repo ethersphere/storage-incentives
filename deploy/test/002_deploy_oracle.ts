@@ -12,7 +12,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     oldOraclePrice = await read('PriceOracle', 'currentPrice');
   }
 
-  const args = [(await get('PostageStamp')).address];
+  const roundLength = networkConfig[network.name]?.roundLength || 152;
+  const args = [(await get('PostageStamp')).address, roundLength];
   await deploy('PriceOracle', {
     from: deployer,
     args: args,

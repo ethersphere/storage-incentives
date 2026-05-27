@@ -17,6 +17,7 @@ import './tasks';
 
 const PRIVATE_RPC_MAINNET = !process.env.PRIVATE_RPC_MAINNET ? undefined : process.env.PRIVATE_RPC_MAINNET;
 const PRIVATE_RPC_TESTNET = !process.env.PRIVATE_RPC_TESTNET ? undefined : process.env.PRIVATE_RPC_TESTNET;
+const PRIVATE_RPC_BASE = !process.env.PRIVATE_RPC_BASE ? undefined : process.env.PRIVATE_RPC_BASE;
 
 const walletSecret = process.env.WALLET_SECRET === undefined ? 'undefined' : process.env.WALLET_SECRET;
 if (walletSecret === 'undefined') {
@@ -24,8 +25,8 @@ if (walletSecret === 'undefined') {
 }
 const accounts = walletSecret.length === 64 ? [walletSecret] : { mnemonic: walletSecret };
 
-const mainnetEtherscanKey = process.env.MAINNET_ETHERSCAN_KEY;
-const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
+// Etherscan API V2 - Single API key for all chains
+const etherscanApiKey = process.env.ETHERSCAN_API_KEY;
 
 // Config for hardhat.
 const config: HardhatUserConfig = {
@@ -187,19 +188,27 @@ const config: HardhatUserConfig = {
       chainId: 100,
       deploy: ['deploy/main/'],
     },
+    base: {
+      url: PRIVATE_RPC_BASE ? PRIVATE_RPC_BASE : 'https://mainnet.base.org',
+      accounts,
+      chainId: 8453,
+      deploy: ['deploy/base/'],
+    },
   },
   etherscan: {
+    // Etherscan API V2 - Single unified API key for all supported chains
     apiKey: {
-      mainnet: mainnetEtherscanKey || '',
-      testnet: testnetEtherscanKey || '',
-      testnetlight: testnetEtherscanKey || '',
+      mainnet: etherscanApiKey || '',
+      testnet: etherscanApiKey || '',
+      testnetlight: etherscanApiKey || '',
+      base: etherscanApiKey || '',
     },
     customChains: [
       {
         network: 'testnet',
         chainId: 11155111,
         urls: {
-          apiURL: 'https://api-sepolia.etherscan.io/api',
+          apiURL: 'https://api.etherscan.io/v2/api?chainid=11155111',
           browserURL: 'https://sepolia.etherscan.io/',
         },
       },
@@ -207,7 +216,7 @@ const config: HardhatUserConfig = {
         network: 'testnetlight',
         chainId: 11155111,
         urls: {
-          apiURL: 'https://api-sepolia.etherscan.io/api',
+          apiURL: 'https://api.etherscan.io/v2/api?chainid=11155111',
           browserURL: 'https://sepolia.etherscan.io/',
         },
       },
@@ -215,8 +224,16 @@ const config: HardhatUserConfig = {
         network: 'mainnet',
         chainId: 100,
         urls: {
-          apiURL: 'https://api.gnosisscan.io/api',
+          apiURL: 'https://api.etherscan.io/v2/api?chainid=100',
           browserURL: 'https://gnosisscan.io/',
+        },
+      },
+      {
+        network: 'base',
+        chainId: 8453,
+        urls: {
+          apiURL: 'https://api.etherscan.io/v2/api?chainid=8453',
+          browserURL: 'https://basescan.org/',
         },
       },
     ],
