@@ -688,21 +688,30 @@ contract StakeRegistry is AccessControl, Pausable {
 
         UpdateQueue storage queue = account.queue;
         uint256 head = queue.head;
-        uint64 roundNumber = currentRound();
 
-        for (uint256 i = head; i < queue.items.length; ) {
-            ScheduledUpdate storage scheduled = queue.items[i];
-            if (!includeFutureUpdates && scheduled.effectiveFromRound > roundNumber) {
-                break;
+        if (includeFutureUpdates) {
+            for (uint256 i = head; i < queue.items.length; ) {
+                preview = _simulateUpdate(_owner, preview, queue.items[i]);
+                unchecked {
+                    ++i;
+                }
             }
-            if (!includeFutureUpdates && _queuedWithdrawalExecutionFrozen(_owner, scheduled.kind, 0)) {
-                break;
-            }
+        } else {
+            uint64 roundNumber = currentRound();
+            for (uint256 i = head; i < queue.items.length; ) {
+                ScheduledUpdate storage scheduled = queue.items[i];
+                if (
+                    scheduled.effectiveFromRound > roundNumber ||
+                    _queuedWithdrawalExecutionFrozen(_owner, scheduled.kind, 0)
+                ) {
+                    break;
+                }
 
-            preview = _simulateUpdate(_owner, preview, scheduled);
+                preview = _simulateUpdate(_owner, preview, scheduled);
 
-            unchecked {
-                ++i;
+                unchecked {
+                    ++i;
+                }
             }
         }
     }
@@ -720,10 +729,10 @@ contract StakeRegistry is AccessControl, Pausable {
 
         for (uint256 i = head; i < queue.items.length; ) {
             ScheduledUpdate storage scheduled = queue.items[i];
-            if (scheduled.effectiveFromRound > targetRound) {
-                break;
-            }
-            if (_queuedWithdrawalExecutionFrozen(_owner, scheduled.kind, _lookahead)) {
+            if (
+                scheduled.effectiveFromRound > targetRound ||
+                _queuedWithdrawalExecutionFrozen(_owner, scheduled.kind, _lookahead)
+            ) {
                 break;
             }
 

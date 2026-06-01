@@ -53,10 +53,6 @@ contract EchidnaStakingActor {
         (ok, ) = address(registry).call(abi.encodeWithSelector(registry.unpause.selector));
     }
 
-    function tryChangeNetworkId(uint64 newNetworkId) external returns (bool ok) {
-        (ok, ) = address(registry).call(abi.encodeWithSelector(registry.changeNetworkId.selector, newNetworkId));
-    }
-
     function tryFreezeDeposit(address owner, uint256 time) external returns (bool ok) {
         (ok, ) = address(registry).call(abi.encodeWithSelector(registry.freezeDeposit.selector, owner, time));
     }
@@ -82,7 +78,6 @@ contract EchidnaStakingHarness {
     EchidnaStakingActor[3] internal actors;
     EchidnaStakingActor internal redistributor;
 
-    uint64 internal trackedNetworkId;
     bytes32[3] internal lastSetNonceByActor;
 
     bool internal unauthorizedAdminCallSucceeded;
@@ -106,8 +101,7 @@ contract EchidnaStakingHarness {
         initialSupply = 1_000_000_000_000_000_000_000_000;
 
         token = new TestToken("TestToken", "TT", initialSupply);
-        trackedNetworkId = 10;
-        registry = new StakeRegistry(address(token), trackedNetworkId, WAIT_BASE, WAIT_OVERLAY, WAIT_WITHDRAWAL);
+        registry = new StakeRegistry(address(token), 10, WAIT_BASE, WAIT_OVERLAY, WAIT_WITHDRAWAL);
 
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {
             actors[i] = new EchidnaStakingActor(token, registry);
@@ -333,13 +327,6 @@ contract EchidnaStakingHarness {
         _checkDigestsUnchanged(d0, d1, d2);
     }
 
-    function act_admin_changeNetworkId(uint64 newNetworkId) external {
-        _clearPendingChecks();
-        // Overlay derivation uses networkId; preview digests may change without a bug.
-        registry.changeNetworkId(newNetworkId);
-        trackedNetworkId = newNetworkId;
-    }
-
     function act_redistributor_freeze(uint8 targetActorId, uint32 time) external {
         _clearPendingChecks();
 
@@ -384,16 +371,6 @@ contract EchidnaStakingHarness {
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
         bool ok = _actor(actorId).tryUnpause();
-        if (ok) unauthorizedAdminCallSucceeded = true;
-        _checkDigestsUnchanged(d0, d1, d2);
-    }
-
-    function act_actor_tryChangeNetworkId(uint8 actorId, uint64 newNetworkId) external {
-        _clearPendingChecks();
-        bytes32 d0 = _stakeDigest(address(actors[0]));
-        bytes32 d1 = _stakeDigest(address(actors[1]));
-        bytes32 d2 = _stakeDigest(address(actors[2]));
-        bool ok = _actor(actorId).tryChangeNetworkId(newNetworkId);
         if (ok) unauthorizedAdminCallSucceeded = true;
         _checkDigestsUnchanged(d0, d1, d2);
     }
