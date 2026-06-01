@@ -463,12 +463,12 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Three paths: partial withdrawal (transfer + balance), full exit (delete stake + transfer),
      *      or stake mutation via `_simulateUpdate` (deposit, add, height, overlay).
      */
-    function _applyStoredUpdate(address _owner, ScheduledUpdate storage scheduled) internal {
+    function _applyStoredUpdate(address _owner, ScheduledUpdate storage _scheduled) internal {
         // Path 1: partial withdrawal — pay out capped at current balance (may be slashed since queued).
-        if (scheduled.kind == UpdateKind.WithdrawTokens) {
+        if (_scheduled.kind == UpdateKind.WithdrawTokens) {
             Stake storage stake = _accounts[_owner].stake;
             if (stake.overlay != bytes32(0)) {
-                uint256 paid = scheduled.amount > stake.balance ? stake.balance : scheduled.amount;
+                uint256 paid = _scheduled.amount > stake.balance ? stake.balance : _scheduled.amount;
                 stake.balance -= paid;
                 if (paid > 0) {
                     if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
@@ -479,7 +479,7 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         // Path 2: full exit — delete stake and return all remaining BZZ.
-        if (scheduled.kind == UpdateKind.ExitStake) {
+        if (_scheduled.kind == UpdateKind.ExitStake) {
             uint256 balance = _accounts[_owner].stake.balance;
             _clearStake(_owner);
             if (balance > 0) {
@@ -491,7 +491,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
         // Path 3: stake mutations — CreateDeposit, AddTokens, IncreaseHeight, ChangeOverlay (no token transfer).
         Stake memory s = _accounts[_owner].stake;
-        s = _simulateUpdate(_owner, s, scheduled);
+        s = _simulateUpdate(_owner, s, _scheduled);
         _accounts[_owner].stake = s;
     }
 
@@ -561,15 +561,15 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible, happens in slashing
      */
-    function _syncHeightToBalance(Stake storage stake) internal {
-        if (stake.overlay == bytes32(0)) return;
-        uint8 h = stake.height;
-        while (h > 0 && stake.balance < _minimumStakeForHeight(h)) {
+    function _syncHeightToBalance(Stake storage _stake) internal {
+        if (_stake.overlay == bytes32(0)) return;
+        uint8 h = _stake.height;
+        while (h > 0 && _stake.balance < _minimumStakeForHeight(h)) {
             unchecked {
                 h--;
             }
         }
-        stake.height = h;
+        _stake.height = h;
     }
 
     ////////////////////////////////////////
@@ -676,14 +676,14 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Previews stake state using the current round, optionally including future queued updates.
      */
-    function _previewStake(address _owner, bool includeFutureUpdates) internal view returns (Stake memory preview) {
+    function _previewStake(address _owner, bool _includeFutureUpdates) internal view returns (Stake memory preview) {
         Account storage account = _accounts[_owner];
         preview = account.stake;
 
         UpdateQueue storage queue = account.queue;
         uint256 head = queue.head;
 
-        if (includeFutureUpdates) {
+        if (_includeFutureUpdates) {
             for (uint256 i = head; i < queue.items.length; ) {
                 preview = _simulateUpdate(_owner, preview, queue.items[i]);
                 unchecked {
@@ -744,51 +744,51 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function _simulateUpdate(
         address _owner,
-        Stake memory preview,
-        ScheduledUpdate storage scheduled
+        Stake memory _preview,
+        ScheduledUpdate storage _scheduled
     ) internal view returns (Stake memory) {
-        if (scheduled.kind == UpdateKind.CreateDeposit) {
-            preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
-            preview.balance = scheduled.amount;
-            preview.height = scheduled.height;
-            return preview;
+        if (_scheduled.kind == UpdateKind.CreateDeposit) {
+            _preview.overlay = _deriveOverlay(_owner, _scheduled.nonce);
+            _preview.balance = _scheduled.amount;
+            _preview.height = _scheduled.height;
+            return _preview;
         }
 
-        if (scheduled.kind == UpdateKind.AddTokens) {
-            preview.balance += scheduled.amount;
-            return preview;
+        if (_scheduled.kind == UpdateKind.AddTokens) {
+            _preview.balance += _scheduled.amount;
+            return _preview;
         }
 
-        if (scheduled.kind == UpdateKind.IncreaseHeight) {
-            if (_hasCommittedStake(preview) && scheduled.height > preview.height) {
-                preview.height = scheduled.height;
+        if (_scheduled.kind == UpdateKind.IncreaseHeight) {
+            if (_hasCommittedStake(_preview) && _scheduled.height > _preview.height) {
+                _preview.height = _scheduled.height;
             }
-            return preview;
+            return _preview;
         }
 
-        if (scheduled.kind == UpdateKind.ChangeOverlay) {
-            if (_hasCommittedStake(preview)) {
-                preview.overlay = _deriveOverlay(_owner, scheduled.nonce);
+        if (_scheduled.kind == UpdateKind.ChangeOverlay) {
+            if (_hasCommittedStake(_preview)) {
+                _preview.overlay = _deriveOverlay(_owner, _scheduled.nonce);
             }
-            return preview;
+            return _preview;
         }
 
-        if (scheduled.kind == UpdateKind.WithdrawTokens) {
-            if (_hasCommittedStake(preview)) {
-                if (scheduled.amount >= preview.balance) {
-                    preview.balance = 0;
+        if (_scheduled.kind == UpdateKind.WithdrawTokens) {
+            if (_hasCommittedStake(_preview)) {
+                if (_scheduled.amount >= _preview.balance) {
+                    _preview.balance = 0;
                 } else {
-                    preview.balance -= scheduled.amount;
+                    _preview.balance -= _scheduled.amount;
                 }
             }
-            return preview;
+            return _preview;
         }
 
-        if (scheduled.kind == UpdateKind.ExitStake) {
-            delete preview;
+        if (_scheduled.kind == UpdateKind.ExitStake) {
+            delete _preview;
         }
 
-        return preview;
+        return _preview;
     }
 
     /**
@@ -840,8 +840,8 @@ contract StakeRegistry is AccessControl, Pausable {
         return keccak256(abi.encodePacked(_owner, reverse(networkId), _setNonce));
     }
 
-    function _requirePreviewStaked(Stake memory plannedStake) internal pure {
-        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+    function _requirePreviewStaked(Stake memory _plannedStake) internal pure {
+        if (!_hasCommittedStake(_plannedStake) || _plannedStake.balance == 0) revert NotStaked();
     }
 
     /**
@@ -859,8 +859,8 @@ contract StakeRegistry is AccessControl, Pausable {
     /**
      * @notice Reverses byte order for network id encoding in overlay derivation.
      */
-    function reverse(uint64 input) internal pure returns (uint64 v) {
-        v = input;
+    function reverse(uint64 _input) internal pure returns (uint64 v) {
+        v = _input;
 
         v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
         v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
