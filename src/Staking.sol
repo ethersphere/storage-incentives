@@ -399,9 +399,6 @@ contract StakeRegistry is AccessControl, Pausable {
             } else {
                 _clearStake(_owner);
             }
-        }
-
-        if (previousOverlay != bytes32(0)) {
             emit StakeSlashed(_owner, previousOverlay, _amount);
         }
     }
