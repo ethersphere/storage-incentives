@@ -156,6 +156,16 @@ contract StakeRegistry is AccessControl, Pausable {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
+    modifier whenQueueOpen() {
+        if (_accounts[msg.sender].queue.closed) revert QueueClosed();
+        _;
+    }
+
+    modifier onlyRedistributor() {
+        if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
+        _;
+    }
+
     ////////////////////////////////////////
     //           STATE CHANGING           //
     ////////////////////////////////////////
@@ -171,8 +181,7 @@ contract StakeRegistry is AccessControl, Pausable {
         bytes32 _setNonce,
         uint256 _amount,
         uint8 _height
-    ) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_accounts[msg.sender].queue.closed) revert QueueClosed();
+    ) external whenNotPaused whenQueueOpen returns (uint64 effectiveFromRound) {
         Stake memory plannedStake = _previewStake(msg.sender, true);
         if (_hasCommittedStake(plannedStake) && plannedStake.balance > 0) revert AlreadyStaked();
         uint256 minStake = _minimumStakeForHeight(_height);
@@ -198,10 +207,9 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _amount The amount of BZZ to add to the stake.
      * @return effectiveFromRound Round when the queued update becomes effective (matches event).
      */
-    function addTokens(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_accounts[msg.sender].queue.closed) revert QueueClosed();
+    function addTokens(uint256 _amount) external whenNotPaused whenQueueOpen returns (uint64 effectiveFromRound) {
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        _requirePreviewStaked(plannedStake);
 
         _pullTokens(_amount);
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.AddTokens, WAIT_BASE, 0, _amount, 0);
@@ -215,10 +223,9 @@ contract StakeRegistry is AccessControl, Pausable {
      * @return effectiveFromRound Round when the queued update becomes effective (matches `OverlayChanged`).
      * @dev Reverts with `OverlayUnchanged` if the derived overlay equals the current one (no sentinel return value).
      */
-    function changeOverlay(bytes32 _setNonce) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_accounts[msg.sender].queue.closed) revert QueueClosed();
+    function changeOverlay(bytes32 _setNonce) external whenNotPaused whenQueueOpen returns (uint64 effectiveFromRound) {
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        _requirePreviewStaked(plannedStake);
 
         bytes32 newOverlay = _deriveOverlay(msg.sender, _setNonce);
         if (newOverlay == plannedStake.overlay) revert OverlayUnchanged();
@@ -233,10 +240,9 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _height The new staking height.
      * @return effectiveFromRound Round when the queued update becomes effective (matches event); 0 if unchanged.
      */
-    function increaseHeight(uint8 _height) external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_accounts[msg.sender].queue.closed) revert QueueClosed();
+    function increaseHeight(uint8 _height) external whenNotPaused whenQueueOpen returns (uint64 effectiveFromRound) {
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        _requirePreviewStaked(plannedStake);
         if (_height < plannedStake.height) revert HeightDecreaseNotAllowed();
         if (_height == plannedStake.height) return 0;
         uint256 minForHeight = _minimumStakeForHeight(_height);
@@ -252,12 +258,11 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev A full unwind must use `exit()`, not `withdraw(balance)`. Overdrawing reverts with `ExceedsBalance`; leaving a remainder below the height minimum reverts with `BelowMinimumStake`. Effective round stacking follows `_enqueueUpdate` (FIFO vs delay rounds).
      * @return effectiveFromRound Round when the queued update becomes effective (matches `WithdrawalQueued`).
      */
-    function withdraw(uint256 _amount) external whenNotPaused returns (uint64 effectiveFromRound) {
+    function withdraw(uint256 _amount) external whenNotPaused whenQueueOpen returns (uint64 effectiveFromRound) {
         if (_amount == 0) revert InvalidWithdrawalAmount(WithdrawalAmountIssue.Zero);
-        if (_accounts[msg.sender].queue.closed) revert QueueClosed();
 
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        _requirePreviewStaked(plannedStake);
         if (_amount > plannedStake.balance) {
             revert InvalidWithdrawalAmount(WithdrawalAmountIssue.ExceedsBalance);
         }
@@ -274,10 +279,9 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev Uses the same effective-round stacking as `withdraw()`; see `_enqueueUpdate`.
      * @return effectiveFromRound Round when the queued update becomes effective (matches `WithdrawalQueued`).
      */
-    function exit() external whenNotPaused returns (uint64 effectiveFromRound) {
-        if (_accounts[msg.sender].queue.closed) revert QueueClosed();
+    function exit() external whenNotPaused whenQueueOpen returns (uint64 effectiveFromRound) {
         Stake memory plannedStake = _previewStake(msg.sender, true);
-        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
+        _requirePreviewStaked(plannedStake);
 
         effectiveFromRound = _enqueueUpdate(msg.sender, UpdateKind.ExitStake, WAIT_WITHDRAWAL, 0, 0, 0);
         _accounts[msg.sender].queue.closed = true;
@@ -346,9 +350,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @dev If an existing freeze ends later than `block.number + _time`, it is kept (monotonic). The
      * deadline is stored per account and survives exit and stake deletion.
      */
-    function freezeDeposit(address _owner, uint256 _time) external whenNotPaused {
-        if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
-
+    function freezeDeposit(address _owner, uint256 _time) external whenNotPaused onlyRedistributor {
         uint256 until = block.number + _time;
 
         // No stake and no queue: only record account-level penalty.
@@ -378,8 +380,7 @@ contract StakeRegistry is AccessControl, Pausable {
      * @param _owner The staker to slash.
      * @param _amount The amount to slash from the active stake.
      */
-    function slashDeposit(address _owner, uint256 _amount) external whenNotPaused {
-        if (!hasRole(REDISTRIBUTOR_ROLE, msg.sender)) revert OnlyRedistributor();
+    function slashDeposit(address _owner, uint256 _amount) external whenNotPaused onlyRedistributor {
         if (_amount == 0) revert InvalidAmount();
 
         _applyReadyUpdates(_owner);
@@ -840,6 +841,10 @@ contract StakeRegistry is AccessControl, Pausable {
      */
     function _deriveOverlay(address _owner, bytes32 _setNonce) internal view returns (bytes32) {
         return keccak256(abi.encodePacked(_owner, reverse(networkId), _setNonce));
+    }
+
+    function _requirePreviewStaked(Stake memory plannedStake) internal pure {
+        if (!_hasCommittedStake(plannedStake) || plannedStake.balance == 0) revert NotStaked();
     }
 
     /**
