@@ -134,6 +134,7 @@ contract EchidnaRedistributionClaimActor {
 contract EchidnaRedistributionClaimHarness {
     uint256 internal constant ACTOR_COUNT = 3;
     uint256 internal constant ROUND_LENGTH = Constants.ROUND_LENGTH;
+    uint256 internal constant PHASE_LENGTH = Constants.PHASE_LENGTH;
 
     TestToken internal immutable token;
     EchidnaStakeRegistryMock internal immutable stakeMock;
@@ -220,7 +221,7 @@ contract EchidnaRedistributionClaimHarness {
     function act_happyCommit(uint8 actorId, bytes32 hash, bytes32 nonce) external {
         _clearClaimPending();
         if (!redist.currentPhaseCommit()) return;
-        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) return;
+        if (block.number % ROUND_LENGTH == PHASE_LENGTH - 1) return;
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaRedistributionClaimActor a = actors[idx];

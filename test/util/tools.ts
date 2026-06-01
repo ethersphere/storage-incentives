@@ -8,12 +8,13 @@ import { Utils as BmtUtils } from '@fairdatasociety/bmt-js';
 export const equalBytes = BmtUtils.equalBytes;
 
 export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
-export const PHASE_LENGTH = 38;
-/** Must match `Constants.ROUND_LENGTH` in `src/Util/Constants.sol`. */
+/** Must match `Constants.*` in `src/Util/Constants.sol`. */
 export const ROUND_LENGTH = 152;
+export const PHASE_LENGTH = ROUND_LENGTH / 4;
 export const WITNESS_COUNT = 16;
-export const SEGMENT_COUNT_IN_CHUNK = 128;
+export const MAX_CHUNK_PAYLOAD_SIZE = 4096;
 export const SEGMENT_BYTE_LENGTH = 32;
+export const SEGMENT_COUNT_IN_CHUNK = MAX_CHUNK_PAYLOAD_SIZE / SEGMENT_BYTE_LENGTH;
 const zeroAddress = '0x0000000000000000000000000000000000000000';
 
 type AwaitedTransaction = ContractTransaction & {

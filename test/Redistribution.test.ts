@@ -16,6 +16,7 @@ import {
   WITNESS_COUNT,
   skippedRoundsIncrease,
   ROUND_LENGTH,
+  PHASE_LENGTH,
 } from './util/tools';
 import { proximity } from './util/tools';
 import { node5_proof1, node5_soc_proof1 } from './claim-proofs';
@@ -36,7 +37,7 @@ import { randomBytes } from 'crypto';
 import { constructPostageStamp } from './util/postage';
 
 const { read, execute } = deployments;
-const phaseLength = 38;
+const phaseLength = PHASE_LENGTH;
 const roundLength = ROUND_LENGTH;
 
 const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];

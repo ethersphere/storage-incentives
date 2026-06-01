@@ -153,6 +153,7 @@ contract Redistribution is AccessControl, Pausable {
 
     // The length of a round in blocks.
     uint256 private constant ROUND_LENGTH = Constants.ROUND_LENGTH;
+    uint256 private constant PHASE_LENGTH = Constants.PHASE_LENGTH;
 
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
@@ -304,7 +305,7 @@ contract Redistribution is AccessControl, Pausable {
             revert NotCommitPhase();
         }
 
-        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) {
+        if (block.number % ROUND_LENGTH == PHASE_LENGTH - 1) {
             revert PhaseLastBlock();
         }
 
@@ -563,7 +564,7 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
-        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
+        uint256 randomChunkSegmentIndex = uint256(seed) % Constants.SEGMENTS_PER_CHUNK;
         bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
             entryProof.proofSegments3,
             entryProof.proveSegment2,
@@ -798,7 +799,7 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during commit phase.
      */
     function currentPhaseCommit() public view returns (bool) {
-        if (block.number % ROUND_LENGTH < ROUND_LENGTH / 4) {
+        if (block.number % ROUND_LENGTH < PHASE_LENGTH) {
             return true;
         }
         return false;
@@ -890,7 +891,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function currentPhaseReveal() public view returns (bool) {
         uint256 number = block.number % ROUND_LENGTH;
-        if (number >= ROUND_LENGTH / 4 && number < ROUND_LENGTH / 2) {
+        if (number >= PHASE_LENGTH && number < PHASE_LENGTH * 2) {
             return true;
         }
         return false;
@@ -917,7 +918,7 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during claim phase.
      */
     function currentPhaseClaim() public view returns (bool) {
-        if (block.number % ROUND_LENGTH >= ROUND_LENGTH / 2) {
+        if (block.number % ROUND_LENGTH >= PHASE_LENGTH * 2) {
             return true;
         }
         return false;

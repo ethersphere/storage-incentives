@@ -258,7 +258,7 @@ contract EchidnaRedistributionHarness {
         if (redist.paused()) return;
         if (!redist.currentPhaseCommit()) return;
         // Avoid the "phase last block" restriction in commit phase.
-        if (block.number % Constants.ROUND_LENGTH == (Constants.ROUND_LENGTH / 4) - 1) return;
+        if (block.number % Constants.ROUND_LENGTH == Constants.PHASE_LENGTH - 1) return;
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaRedistributionActor a = actors[idx];

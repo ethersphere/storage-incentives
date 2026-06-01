@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "../TestToken.sol";
 import "../Staking.sol";
+import "../Util/Constants.sol";
 
 contract EchidnaStakingActor {
     TestToken internal immutable token;
@@ -70,7 +71,7 @@ contract EchidnaStakingHarness {
     TestToken internal immutable token;
     StakeRegistry internal immutable registry;
 
-    uint256 internal constant MIN_STAKE = 100000000000000000;
+    uint256 internal constant MIN_STAKE = Constants.MIN_STAKE;
     uint256 internal constant ACTOR_COUNT = 3;
     uint64 internal constant WAIT_BASE = 2;
     uint64 internal constant WAIT_OVERLAY = 2;

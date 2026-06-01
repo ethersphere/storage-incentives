@@ -21,8 +21,8 @@ contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- State variables ------------------------------
 
     uint256 public constant ROUND_LENGTH = Constants.ROUND_LENGTH;
-    /// @notice Minimum BZZ base unit at staking height 0 (`MIN_STAKE * 2**height` for higher heights).
-    uint256 public constant MIN_STAKE = 100000000000000000;
+    /// @notice Minimum BZZ at staking height 0 (`MIN_STAKE * 2**height` for higher heights).
+    uint256 public constant MIN_STAKE = Constants.MIN_STAKE;
     uint256 public constant UPDATE_QUEUE_MAX_LENGTH = 10;
     /// @notice Maximum staking height; prevents `2**height` overflow in `MIN_STAKE * (2 ** height)`.
     uint8 public constant MAX_STAKING_HEIGHT = 128;
