@@ -403,7 +403,6 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
-
     /**
      * @notice Pauses staking mutations.
      */

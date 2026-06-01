@@ -9,7 +9,7 @@ import "./Util/Constants.sol";
 import "./interface/IPostageStamp.sol";
 
 interface IPriceOracle {
-    function adjustPrice(uint16 redundancy) external returns (bool);
+    function adjustPrice(uint16 _redundancy) external returns (bool);
 }
 
 interface IStakeRegistry {
@@ -258,14 +258,14 @@ contract Redistribution is AccessControl, Pausable {
     // ----------------------------- CONSTRUCTOR ------------------------------
 
     /**
-     * @param staking the address of the linked Staking contract.
-     * @param postageContract the address of the linked PostageStamp contract.
-     * @param oracleContract the address of the linked PriceOracle contract.
+     * @param _staking the address of the linked Staking contract.
+     * @param _postageContract the address of the linked PostageStamp contract.
+     * @param _oracleContract the address of the linked PriceOracle contract.
      */
-    constructor(address staking, address postageContract, address oracleContract) {
-        Stakes = IStakeRegistry(staking);
-        PostageContract = IPostageStamp(postageContract);
-        OracleContract = IPriceOracle(oracleContract);
+    constructor(address _staking, address _postageContract, address _oracleContract) {
+        Stakes = IStakeRegistry(_staking);
+        PostageContract = IPostageStamp(_postageContract);
+        OracleContract = IPriceOracle(_oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -417,9 +417,9 @@ contract Redistribution is AccessControl, Pausable {
      * @dev
      */
     function claim(
-        ChunkInclusionProof calldata entryProof1,
-        ChunkInclusionProof calldata entryProof2,
-        ChunkInclusionProof calldata entryProofLast
+        ChunkInclusionProof calldata _entryProof1,
+        ChunkInclusionProof calldata _entryProof2,
+        ChunkInclusionProof calldata _entryProofLast
     ) external whenNotPaused {
         winnerSelection();
 
@@ -437,39 +437,39 @@ contract Redistribution is AccessControl, Pausable {
             indexInRC2++;
         }
 
-        if (!inProximity(entryProofLast.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
+        if (!inProximity(_entryProofLast.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
             revert OutOfDepthClaim(3);
         }
 
-        inclusionFunction(entryProofLast, 30);
-        stampFunction(entryProofLast);
-        socFunction(entryProofLast);
+        inclusionFunction(_entryProofLast, 30);
+        stampFunction(_entryProofLast);
+        socFunction(_entryProofLast);
 
-        if (!inProximity(entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
+        if (!inProximity(_entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
             revert OutOfDepthClaim(2);
         }
 
-        inclusionFunction(entryProof1, indexInRC1 * 2);
-        stampFunction(entryProof1);
-        socFunction(entryProof1);
+        inclusionFunction(_entryProof1, indexInRC1 * 2);
+        stampFunction(_entryProof1);
+        socFunction(_entryProof1);
 
-        if (!inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
+        if (!inProximity(_entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
             revert OutOfDepthClaim(1);
         }
 
-        inclusionFunction(entryProof2, indexInRC2 * 2);
-        stampFunction(entryProof2);
-        socFunction(entryProof2);
+        inclusionFunction(_entryProof2, indexInRC2 * 2);
+        stampFunction(_entryProof2);
+        socFunction(_entryProof2);
 
         checkOrder(
             indexInRC1,
             indexInRC2,
-            entryProof1.proofSegments[0],
-            entryProof2.proofSegments[0],
-            entryProofLast.proofSegments[0]
+            _entryProof1.proofSegments[0],
+            _entryProof2.proofSegments[0],
+            _entryProofLast.proofSegments[0]
         );
 
-        estimateSize(entryProofLast.proofSegments[0]);
+        estimateSize(_entryProofLast.proofSegments[0]);
 
         PostageContract.withdraw(winnerSelected.owner);
 
@@ -563,61 +563,61 @@ contract Redistribution is AccessControl, Pausable {
         currentClaimRound = cr;
     }
 
-    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
+    function inclusionFunction(ChunkInclusionProof calldata _entryProof, uint256 _indexInRC) internal {
         uint256 randomChunkSegmentIndex = uint256(seed) % Constants.SEGMENTS_PER_CHUNK;
         bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-            entryProof.proofSegments3,
-            entryProof.proveSegment2,
+            _entryProof.proofSegments3,
+            _entryProof.proveSegment2,
             randomChunkSegmentIndex,
-            entryProof.chunkSpan,
+            _entryProof.chunkSpan,
             currentRevealRoundAnchor
         );
 
-        emit transformedChunkAddressFromInclusionProof(indexInRC, calculatedTransformedAddr);
+        emit transformedChunkAddressFromInclusionProof(_indexInRC, calculatedTransformedAddr);
 
         if (
             winner.hash !=
             BMTChunk.chunkAddressFromInclusionProof(
-                entryProof.proofSegments,
-                entryProof.proveSegment,
-                indexInRC,
+                _entryProof.proofSegments,
+                _entryProof.proveSegment,
+                _indexInRC,
                 32 * 32
             )
         ) {
             revert InclusionProofFailed(1, calculatedTransformedAddr);
         }
 
-        if (entryProof.proofSegments2[0] != entryProof.proofSegments3[0]) {
+        if (_entryProof.proofSegments2[0] != _entryProof.proofSegments3[0]) {
             revert InclusionProofFailed(2, calculatedTransformedAddr);
         }
 
-        bytes32 originalAddress = entryProof.socProof.length > 0
-            ? entryProof.socProof[0].chunkAddr // soc attestation in socFunction
-            : entryProof.proveSegment;
+        bytes32 originalAddress = _entryProof.socProof.length > 0
+            ? _entryProof.socProof[0].chunkAddr // soc attestation in socFunction
+            : _entryProof.proveSegment;
 
         if (
             originalAddress !=
             BMTChunk.chunkAddressFromInclusionProof(
-                entryProof.proofSegments2,
-                entryProof.proveSegment2,
+                _entryProof.proofSegments2,
+                _entryProof.proveSegment2,
                 randomChunkSegmentIndex,
-                entryProof.chunkSpan
+                _entryProof.chunkSpan
             )
         ) {
             revert InclusionProofFailed(3, calculatedTransformedAddr);
         }
 
         // In case of SOC, the transformed address is hashed together with its address in the sample
-        if (entryProof.socProof.length > 0) {
+        if (_entryProof.socProof.length > 0) {
             calculatedTransformedAddr = keccak256(
                 abi.encode(
-                    entryProof.proveSegment, // SOC address
+                    _entryProof.proveSegment, // SOC address
                     calculatedTransformedAddr
                 )
             );
         }
 
-        if (entryProof.proofSegments[0] != calculatedTransformedAddr) {
+        if (_entryProof.proofSegments[0] != calculatedTransformedAddr) {
             revert InclusionProofFailed(4, calculatedTransformedAddr);
         }
     }
@@ -774,16 +774,16 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Returns true if an overlay address _A_ is within proximity order _minimum_ of _B_.
-     * @param A An overlay address to compare.
-     * @param B An overlay address to compare.
-     * @param minimum Minimum proximity order.
+     * @param _a An overlay address to compare.
+     * @param _b An overlay address to compare.
+     * @param _minimum Minimum proximity order.
      */
-    function inProximity(bytes32 A, bytes32 B, uint8 minimum) public pure returns (bool) {
-        if (minimum == 0) {
+    function inProximity(bytes32 _a, bytes32 _b, uint8 _minimum) public pure returns (bool) {
+        if (_minimum == 0) {
             return true;
         }
 
-        return uint256(A ^ B) < uint256(2 ** (256 - minimum));
+        return uint256(_a ^ _b) < uint256(2 ** (256 - _minimum));
     }
 
     // ----------------------------- Commit ------------------------------
@@ -875,15 +875,15 @@ contract Redistribution is AccessControl, Pausable {
      * @param _overlay The overlay address of the applicant.
      * @param _depth The reported depth.
      * @param _hash The reserve commitment hash.
-     * @param revealNonce A random, single use, secret nonce.
+     * @param _revealNonce A random, single use, secret nonce.
      */
     function wrapCommit(
         bytes32 _overlay,
         uint8 _depth,
         bytes32 _hash,
-        bytes32 revealNonce
+        bytes32 _revealNonce
     ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_overlay, _depth, _hash, revealNonce));
+        return keccak256(abi.encodePacked(_overlay, _depth, _hash, _revealNonce));
     }
 
     /**
@@ -1026,110 +1026,110 @@ contract Redistribution is AccessControl, Pausable {
 
     // ----------------------------- Claim verifications  ------------------------------
 
-    function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
-        if (entryProof.socProof.length == 0) return;
+    function socFunction(ChunkInclusionProof calldata _entryProof) internal pure {
+        if (_entryProof.socProof.length == 0) return;
 
         if (
             !Signatures.socVerify(
-                entryProof.socProof[0].signer, // signer Ethereum address to check against
-                entryProof.socProof[0].signature,
-                entryProof.socProof[0].identifier,
-                entryProof.socProof[0].chunkAddr
+                _entryProof.socProof[0].signer, // signer Ethereum address to check against
+                _entryProof.socProof[0].signature,
+                _entryProof.socProof[0].identifier,
+                _entryProof.socProof[0].chunkAddr
             )
         ) {
-            revert SocVerificationFailed(entryProof.socProof[0].chunkAddr);
+            revert SocVerificationFailed(_entryProof.socProof[0].chunkAddr);
         }
 
         if (
-            calculateSocAddress(entryProof.socProof[0].identifier, entryProof.socProof[0].signer) !=
-            entryProof.proveSegment
+            calculateSocAddress(_entryProof.socProof[0].identifier, _entryProof.socProof[0].signer) !=
+            _entryProof.proveSegment
         ) {
-            revert SocCalcNotMatching(entryProof.socProof[0].chunkAddr);
+            revert SocCalcNotMatching(_entryProof.socProof[0].chunkAddr);
         }
     }
 
-    function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
+    function stampFunction(ChunkInclusionProof calldata _entryProof) internal view {
         // authentic
         (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , , ) = PostageContract.batches(
-            entryProof.postageProof.postageId
+            _entryProof.postageProof.postageId
         );
 
         // alive
         if (batchOwner == address(0)) {
-            revert BatchDoesNotExist(entryProof.postageProof.postageId); // Batch does not exist or expired
+            revert BatchDoesNotExist(_entryProof.postageProof.postageId); // Batch does not exist or expired
         }
 
-        uint32 postageIndex = getPostageIndex(entryProof.postageProof.index);
+        uint32 postageIndex = getPostageIndex(_entryProof.postageProof.index);
         uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
         // available
         if (postageIndex >= maxPostageIndex) {
-            revert IndexOutsideSet(entryProof.postageProof.postageId);
+            revert IndexOutsideSet(_entryProof.postageProof.postageId);
         }
 
         // aligned
-        uint64 postageBucket = getPostageBucket(entryProof.postageProof.index);
-        uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
+        uint64 postageBucket = getPostageBucket(_entryProof.postageProof.index);
+        uint64 addressBucket = addressToBucket(_entryProof.proveSegment, bucketDepth);
         if (postageBucket != addressBucket) {
-            revert BucketDiffers(entryProof.postageProof.postageId);
+            revert BucketDiffers(_entryProof.postageProof.postageId);
         }
 
         // authorized
         if (
             !Signatures.postageVerify(
                 batchOwner,
-                entryProof.postageProof.signature,
-                entryProof.proveSegment,
-                entryProof.postageProof.postageId,
-                entryProof.postageProof.index,
-                entryProof.postageProof.timeStamp
+                _entryProof.postageProof.signature,
+                _entryProof.proveSegment,
+                _entryProof.postageProof.postageId,
+                _entryProof.postageProof.index,
+                _entryProof.postageProof.timeStamp
             )
         ) {
-            revert SigRecoveryFailed(entryProof.postageProof.postageId);
+            revert SigRecoveryFailed(_entryProof.postageProof.postageId);
         }
     }
 
-    function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {
-        uint32 prefix = uint32(uint256(swarmAddress) >> (256 - 32));
-        return prefix >> (32 - bucketDepth);
+    function addressToBucket(bytes32 _swarmAddress, uint8 _bucketDepth) internal pure returns (uint32) {
+        uint32 prefix = uint32(uint256(_swarmAddress) >> (256 - 32));
+        return prefix >> (32 - _bucketDepth);
     }
 
-    function postageStampIndexCount(uint8 postageDepth, uint8 bucketDepth) internal pure returns (uint256) {
-        return 1 << (postageDepth - bucketDepth);
+    function postageStampIndexCount(uint8 _postageDepth, uint8 _bucketDepth) internal pure returns (uint256) {
+        return 1 << (_postageDepth - _bucketDepth);
     }
 
-    function getPostageIndex(uint64 signedIndex) internal pure returns (uint32) {
-        return uint32(signedIndex);
+    function getPostageIndex(uint64 _signedIndex) internal pure returns (uint32) {
+        return uint32(_signedIndex);
     }
 
-    function getPostageBucket(uint64 signedIndex) internal pure returns (uint64) {
-        return uint32(signedIndex >> 32);
+    function getPostageBucket(uint64 _signedIndex) internal pure returns (uint64) {
+        return uint32(_signedIndex >> 32);
     }
 
-    function calculateSocAddress(bytes32 identifier, address signer) internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(identifier, signer));
+    function calculateSocAddress(bytes32 _identifier, address _signer) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_identifier, _signer));
     }
 
-    function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
-        if (a < b) {
-            if (uint256(trA1) >= uint256(trA2)) {
+    function checkOrder(uint256 _a, uint256 _b, bytes32 _trA1, bytes32 _trA2, bytes32 _trALast) internal pure {
+        if (_a < _b) {
+            if (uint256(_trA1) >= uint256(_trA2)) {
                 revert RandomElementCheckFailed();
             }
-            if (uint256(trA2) >= uint256(trALast)) {
+            if (uint256(_trA2) >= uint256(_trALast)) {
                 revert LastElementCheckFailed();
             }
         } else {
-            if (uint256(trA2) >= uint256(trA1)) {
+            if (uint256(_trA2) >= uint256(_trA1)) {
                 revert RandomElementCheckFailed();
             }
-            if (uint256(trA1) >= uint256(trALast)) {
+            if (uint256(_trA1) >= uint256(_trALast)) {
                 revert LastElementCheckFailed();
             }
         }
     }
 
-    function estimateSize(bytes32 trALast) internal view {
-        if (uint256(trALast) >= sampleMaxValue) {
-            revert ReserveCheckFailed(trALast);
+    function estimateSize(bytes32 _trALast) internal view {
+        if (uint256(_trALast) >= sampleMaxValue) {
+            revert ReserveCheckFailed(_trALast);
         }
     }
 }

@@ -97,13 +97,13 @@ contract PriceOracle is AccessControl {
         return true;
     }
 
-    function adjustPrice(uint16 redundancy) external returns (bool) {
+    function adjustPrice(uint16 _redundancy) external returns (bool) {
         if (isPaused == false) {
             if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
                 revert CallerNotPriceUpdater();
             }
 
-            uint16 usedRedundancy = redundancy;
+            uint16 usedRedundancy = _redundancy;
             uint64 currentRoundNumber = currentRound();
 
             // Price can only be adjusted once per round
@@ -111,13 +111,13 @@ contract PriceOracle is AccessControl {
                 revert PriceAlreadyAdjusted();
             }
             // Redundancy may not be zero
-            if (redundancy == 0) {
+            if (_redundancy == 0) {
                 revert UnexpectedZero();
             }
 
             // Enforce maximum considered extra redundancy
             uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
-            if (redundancy > maxConsideredRedundancy) {
+            if (_redundancy > maxConsideredRedundancy) {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
