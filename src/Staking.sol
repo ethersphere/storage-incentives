@@ -482,8 +482,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
         // Path 2: full exit — delete stake and return all remaining BZZ.
         if (scheduled.kind == UpdateKind.ExitStake) {
-            Stake storage stakeRef = _accounts[_owner].stake;
-            uint256 balance = stakeRef.balance;
+            uint256 balance = _accounts[_owner].stake.balance;
             _clearStake(_owner);
             if (balance > 0) {
                 if (!ERC20(bzzToken).transfer(_owner, balance)) revert TransferFailed();
