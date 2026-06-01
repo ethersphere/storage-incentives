@@ -493,12 +493,9 @@ contract StakeRegistry is AccessControl, Pausable {
         }
 
         // Path 3: stake mutations — CreateDeposit, AddTokens, IncreaseHeight, ChangeOverlay (no token transfer).
-        Stake storage stRef = _accounts[_owner].stake;
-        Stake memory s = Stake({overlay: stRef.overlay, balance: stRef.balance, height: stRef.height});
+        Stake memory s = _accounts[_owner].stake;
         s = _simulateUpdate(_owner, s, scheduled);
-        stRef.overlay = s.overlay;
-        stRef.balance = s.balance;
-        stRef.height = s.height;
+        _accounts[_owner].stake = s;
     }
 
     /**
