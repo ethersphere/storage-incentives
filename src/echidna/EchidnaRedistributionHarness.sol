@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "../Redistribution.sol";
+import "../Util/Constants.sol";
 import "../interface/IPostageStamp.sol";
 import "./RedistributionExposed.sol";
 import "./EchidnaMocks.sol";
@@ -257,7 +258,7 @@ contract EchidnaRedistributionHarness {
         if (redist.paused()) return;
         if (!redist.currentPhaseCommit()) return;
         // Avoid the "phase last block" restriction in commit phase.
-        if (block.number % 152 == (152 / 4) - 1) return;
+        if (block.number % Constants.ROUND_LENGTH == (Constants.ROUND_LENGTH / 4) - 1) return;
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaRedistributionActor a = actors[idx];
@@ -625,7 +626,7 @@ contract EchidnaRedistributionHarness {
     }
 
     function _backdateLastUpdated() internal view returns (uint256) {
-        uint256 twoRounds = 2 * 152;
+        uint256 twoRounds = 2 * Constants.ROUND_LENGTH;
         if (block.number > twoRounds + 1) return block.number - twoRounds - 1;
         return 1;
     }

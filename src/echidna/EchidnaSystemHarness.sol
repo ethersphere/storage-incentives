@@ -6,6 +6,7 @@ import "../PostageStamp.sol";
 import "../PriceOracle.sol";
 import "../Redistribution.sol" as RedistMod;
 import "../Staking.sol" as StakingMod;
+import "../Util/Constants.sol";
 import "./RedistributionExposed.sol";
 
 contract EchidnaSystemActor {
@@ -223,7 +224,7 @@ contract EchidnaSystemHarness {
         if (redist.paused()) return;
         if (!redist.currentPhaseCommit()) return;
         // Avoid the commit-phase last-block restriction.
-        if (block.number % 152 == (152 / 4) - 1) return;
+        if (block.number % Constants.ROUND_LENGTH == (Constants.ROUND_LENGTH / 4) - 1) return;
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaSystemActor a = actors[idx];

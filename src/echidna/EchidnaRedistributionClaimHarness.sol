@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "../Redistribution.sol";
+import "../Util/Constants.sol";
 import "../TestToken.sol";
 import "../interface/IPostageStamp.sol";
 import "./EchidnaMocks.sol";
@@ -132,7 +133,7 @@ contract EchidnaRedistributionClaimActor {
 /// @notice Harness to fuzz commit→reveal→claim-withdraw end-to-end (without proof verification).
 contract EchidnaRedistributionClaimHarness {
     uint256 internal constant ACTOR_COUNT = 3;
-    uint256 internal constant ROUND_LENGTH = 152;
+    uint256 internal constant ROUND_LENGTH = Constants.ROUND_LENGTH;
 
     TestToken internal immutable token;
     EchidnaStakeRegistryMock internal immutable stakeMock;

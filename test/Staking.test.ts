@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { BigNumber, Contract, ContractTransaction, Event } from 'ethers';
-import { mineNBlocks } from './util/tools';
+import { mineNBlocks, ROUND_LENGTH } from './util/tools';
 
 const { read, execute } = deployments;
 
@@ -12,7 +12,7 @@ let staker_0: string;
 let staker_1: string;
 
 /** Blocks per staking round; overwritten from `StakeRegistry.ROUND_LENGTH()` after fixture load. */
-let roundLength = 152;
+let roundLength = ROUND_LENGTH;
 const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
 const freezeTime = 3;
 

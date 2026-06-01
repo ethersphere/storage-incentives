@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "./Util/Constants.sol";
 
 /**
  * @title Staking contract for the Swarm storage incentives
@@ -19,7 +20,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 contract StakeRegistry is AccessControl, Pausable {
     // ----------------------------- State variables ------------------------------
 
-    uint256 public constant ROUND_LENGTH = 152;
+    uint256 public constant ROUND_LENGTH = Constants.ROUND_LENGTH;
     /// @notice Minimum BZZ base unit at staking height 0 (`MIN_STAKE * 2**height` for higher heights).
     uint256 public constant MIN_STAKE = 100000000000000000;
     uint256 public constant UPDATE_QUEUE_MAX_LENGTH = 10;

@@ -9,6 +9,7 @@ export const equalBytes = BmtUtils.equalBytes;
 
 export const ZERO_32_BYTES = '0x' + '0'.repeat(64);
 export const PHASE_LENGTH = 38;
+/** Must match `Constants.ROUND_LENGTH` in `src/Util/Constants.sol`. */
 export const ROUND_LENGTH = 152;
 export const WITNESS_COUNT = 16;
 export const SEGMENT_COUNT_IN_CHUNK = 128;

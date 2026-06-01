@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./interface/IPostageStamp.sol";
+import "./Util/Constants.sol";
 
 /**
  * @title PriceOracle contract.
@@ -37,9 +38,6 @@ contract PriceOracle is AccessControl {
 
     // Role allowed to update price
     bytes32 public immutable PRICE_UPDATER_ROLE;
-
-    // The length of a round in blocks.
-    uint8 private constant ROUND_LENGTH = 152;
 
     // ----------------------------- Events ------------------------------
 
@@ -189,7 +187,7 @@ contract PriceOracle is AccessControl {
         // We downcasted to uint64 as uint64 has 18,446,744,073,709,551,616 places
         // as each round is 152 x 5 = 760, each day has around 113 rounds which is 41245 in a year
         // it results 4.4724801e+14 years to run this game
-        return uint64(block.number / uint256(ROUND_LENGTH));
+        return uint64(block.number / Constants.ROUND_LENGTH);
     }
 
     /**

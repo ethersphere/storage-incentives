@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
+import "./Util/Constants.sol";
 import "./interface/IPostageStamp.sol";
 
 interface IPriceOracle {
@@ -151,7 +152,7 @@ contract Redistribution is AccessControl, Pausable {
     Reveal public winner;
 
     // The length of a round in blocks.
-    uint256 private constant ROUND_LENGTH = 152;
+    uint256 private constant ROUND_LENGTH = Constants.ROUND_LENGTH;
 
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
