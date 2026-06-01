@@ -405,13 +405,6 @@ contract StakeRegistry is AccessControl, Pausable {
         }
     }
 
-    /**
-     * @notice Updates the Swarm network identifier used in overlay derivation.
-     * @param _networkId The new network id.
-     */
-    function changeNetworkId(uint64 _networkId) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        networkId = _networkId;
-    }
 
     /**
      * @notice Pauses staking mutations.
@@ -846,7 +839,6 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /**
      * @notice True when the on-chain stake record is committed for `owner`.
-     * @dev Commitment is indicated by `overlay != bytes32(0)`; collision with keccak256 output is negligible.
      */
     function _hasCommittedStake(address _owner) internal view returns (bool) {
         return _accounts[_owner].stake.overlay != bytes32(0);
