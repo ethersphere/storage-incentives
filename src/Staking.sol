@@ -10,8 +10,10 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  * @dev Allows users to stake tokens in order to be eligible for the Redistribution Schelling co-ordination game.
  * Stakes are frozen or slashed by the Redistribution contract in response to violations of the
  * protocol.
- * @dev Freeze penalties are stored per account (`freezeUntilBlock`); they are not cleared by exit
- * or stake deletion. A new deposit after exit still cannot participate until the freeze ends.
+ * @dev Freeze is a per-address penalty (`freezeUntilBlock`), not a fund lock: while active,
+ * `nodeEffectiveStake` is zero and due withdrawal/exit payouts are blocked; enqueueing deposits
+ * and other updates is still allowed. The deadline survives exit and stake deletion, redeposit
+ * on the same address does not restore participation until it passes.
  */
 
 contract StakeRegistry is AccessControl, Pausable {
