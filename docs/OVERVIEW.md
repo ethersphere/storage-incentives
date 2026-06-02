@@ -43,17 +43,17 @@ User → PostageStamp.createBatch()
 
 ### 2. Staking for Node Operators
 
-Node operators stake tokens to participate in the redistribution game:
+Node operators stake BZZ to participate in the redistribution game:
 
 ```
-Node Operator → StakeRegistry.manageStake()
-  ├─ Calculate overlay from network ID + nonce
-  ├─ Calculate committed stake (in storage units)
-  ├─ Track potential stake (in BZZ tokens)
-  └─ Allow withdrawal of surplus stake
+Node Operator → StakeRegistry (queued updates)
+  ├─ createDeposit / addTokens / increaseHeight / changeOverlay
+  ├─ overlay = keccak256(owner, networkId, nonce)
+  ├─ applyUpdates after round delays
+  └─ withdraw / exit (with WAIT_WITHDRAWAL)
 ```
 
-**Key Concept**: Height parameter allows nodes to register additional storage capacity (2^height multiplier).
+**Key Concept**: Height sets the minimum stake (`MIN_STAKE * 2^height`). Effective stake for the game is the previewed BZZ balance while not frozen (no oracle in staking).
 
 ### 3. Redistribution Game Phases
 
@@ -105,14 +105,13 @@ remainingBalance = normalisedBalance - currentTotalOutPayment()
 
 ### Staking Economics
 
-- **Committed Stake**: Amount of chunks pledged to store (in oracle price units)
-- **Potential Stake**: Actual BZZ tokens staked
-- **Effective Stake**: `min(committed_stake * price * 2^height, potential_stake)`
+- **Balance**: BZZ locked in `StakeRegistry` for the node
+- **Height**: Minimum balance scale (`MIN_STAKE * 2^height`); used with reported depth in redistribution
+- **Effective Stake**: Previewed balance when overlay is set and account is not frozen
 
 **Example**:
-- Node stakes 1000 BZZ at price 1000 chunks/BZZ with height 2
-- Committed stake: 100 chunks
-- Effective stake: min(100 * 1000 * 4, 1000 BZZ) = 1000 BZZ
+- Node deposits 1 BZZ at height 2 (minimum 0.1 * 4 = 0.4 BZZ)
+- `nodeEffectiveStake` returns 1 BZZ (or 0 while frozen)
 
 ### Redistribution Economics
 
@@ -138,7 +137,7 @@ Each contract defines specific roles:
 - `PRICE_UPDATER_ROLE`: Can adjust price based on redundancy (granted to Redistribution)
 
 **StakeRegistry**:
-- `DEFAULT_ADMIN_ROLE`: Change network ID, pause
+- `DEFAULT_ADMIN_ROLE`: Pause / unpause
 - `REDISTRIBUTOR_ROLE`: Freeze and slash deposits (granted to Redistribution)
 
 **Redistribution**:

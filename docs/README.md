@@ -45,10 +45,11 @@ Automatically adjusts the price per chunk based on network redundancy.
 Manages staking for node operators participating in the redistribution game.
 
 **Key Features:**
-- Stake commitment and potential stake
-- Overlay management for nodes
-- Freeze and slash mechanisms for penalties
-- Height-based reserve calculations
+- Queued stake updates (deposit, top-up, height, overlay, withdraw, exit)
+- Overlay derivation from network ID and nonce
+- Effective stake = previewed BZZ balance (gated by freeze)
+- Height-based minimum stake (`MIN_STAKE * 2^height`)
+- Freeze and slash penalties via `REDISTRIBUTOR_ROLE`
 
 ### Redistribution (`Redistribution.sol`)
 Implements the Schelling coordination game for reserve commitment consensus.
