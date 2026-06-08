@@ -140,7 +140,7 @@ contract Redistribution is AccessControl, Pausable {
     uint64 public currentRevealRound;
     uint64 public currentClaimRound;
 
-    // Settings for slashing and freezing
+    // Settings for freezing penalties
     uint8 private penaltyMultiplierDisagreement = 1;
     uint8 private penaltyMultiplierNonRevealed = 2;
     uint8 private penaltyRandomFactor = 100; // Use 100 as value to ignore random factor in freezing penalty
@@ -542,10 +542,7 @@ contract Redistribution is AccessControl, Pausable {
                 );
             }
 
-            // Slash deposits if revealed is false
             if (!currentCommit.revealed) {
-                // slash in later phase (ph5)
-                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
                 Stakes.freezeDeposit(
                     currentCommit.owner,
                     penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)

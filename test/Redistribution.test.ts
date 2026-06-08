@@ -1417,7 +1417,7 @@ describe('Redistribution', function () {
             //node_2 stake is preserved and not frozen
             expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(stakeAmount_2);
 
-            //node_1 is frozen but not slashed
+            //node_1 is frozen
             expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(0);
           });
 

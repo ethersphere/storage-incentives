@@ -57,7 +57,7 @@ Echidna then tries many such sequences (**`testLimit`**, default **60 000**). 
 
 | Harness | File | Under test | Focus |
 |---------|------|------------|--------|
-| Staking | `EchidnaStakeRegistryHarness.sol` | `StakeRegistry` | stake, freeze, slash, migrate, roles |
+| Staking | `EchidnaStakeRegistryHarness.sol` | `StakeRegistry` | stake, freeze, migrate, roles |
 | Oracle | `EchidnaPriceOracleHarness.sol` | `PriceOracle` | price, pause, `adjustPrice`, postage callback fail/revert |
 | Postage | `EchidnaPostageStampHarness.sol` | `PostageStamp` | batches, pot, expiry, roles |
 | Redistribution (base) | `EchidnaRedistributionHarness.sol` | `RedistributionExposed` | commit/reveal ledger, `winnerSelection`, dummy `claim()` |
@@ -88,7 +88,7 @@ System: real contracts; happy commit/reveal only
 
 Written to be **mostly non-reverting** (bounded inputs, low-level calls) so sequences stay long.
 
-- **Staking:** `act_actor_manageStake`, `withdrawSurplus`, `migrateStake`; admin pause/unpause/networkId; redistributor freeze/slash; `act_actor_try*`; `act_fundActor`
+- **Staking:** `act_actor_manageStake`, `withdrawSurplus`, `migrateStake`; admin pause/unpause/networkId; redistributor freeze; `act_actor_try*`; `act_fundActor`
 - **Oracle:** `act_admin_setPrice`, pause/unpause; `act_updater_adjustPrice`; `act_rando_try*`; `act_setStampRevertMode`
 - **Postage:** `act_createBatch`, `topUp`, `increaseDepth`, `expireAll`; `act_oracle_setPrice`; `act_redistributor_withdraw`; pauser pause/unpause; `act_rando_try*`; `act_fundActor`
 - **Redistribution (base):** `act_commit`, `reveal`, `claim`; `act_happyCommit`, `happyReveal`; `act_winnerSelection`; `act_setActorStake`; admin pause/unpause/sample/freezing
@@ -99,7 +99,7 @@ Written to be **mostly non-reverting** (bounded inputs, low-level calls) so sequ
 
 Patterns: **must-never-happen** (auth), **global invariants**, **post-conditions** on last successful action (`pending*` flags).
 
-- **Staking:** `echidna_never_performed_forbidden_calls`; registry balance vs potential stake; per-actor stake/overlay/freeze; post-conditions for manageStake/freeze/slash/migrate
+- **Staking:** `echidna_never_performed_forbidden_calls`; registry balance vs potential stake; per-actor stake/overlay/freeze; post-conditions for manageStake/freeze/migrate
 - **Oracle:** forbidden calls; price ≥ minimum; `lastAdjustedRound` not in future; post-conditions for `setPrice` / `adjustPrice`
 - **Postage:** forbidden calls; batch post-conditions; `expireAll`; withdraw/pot; `echidna_pot_never_decreases_except_withdraw`
 - **Redistribution (base):** `echidna_commit_overlays_unique`, `revealed_commit_indices_valid`, `reveal_entries_imply_matching_commit`, `winnerSelection_only_once_per_round`, `last_winnerSelection_freezes_nonrevealed`, `tracked_commit_matches_storage`, `tracked_reveal_matches_storage`  

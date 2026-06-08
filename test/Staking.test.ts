@@ -27,10 +27,6 @@ const errors = {
     invalidWithdrawalAmountExceedsBalance: 'InvalidWithdrawalAmount(1)',
     notStaked: 'NotStaked()',
   },
-  slash: {
-    noRole: 'OnlyRedistributor()',
-    invalidAmount: 'InvalidAmount()',
-  },
   freeze: {
     noRole: 'OnlyRedistributor()',
   },
@@ -57,12 +53,7 @@ const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000
 const obfuscatedHash_0 = nonce_0;
 const stakeAmount_0 = '100000000000000000';
 const doubleStakeAmount_0 = '200000000000000000';
-const tripleStakeAmount_0 = '300000000000000000';
 const withdrawAmount = stakeAmount_0;
-const doubleWithdrawAmount = doubleStakeAmount_0;
-const slashAmount = '50000000000000000';
-const doubleSlashAmount = doubleStakeAmount_0;
-const partialSlashBalance = slashAmount;
 const height_0 = 0;
 const height_0_n_1 = 1;
 
@@ -566,66 +557,6 @@ describe('Staking', function () {
     expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
   });
 
-  it('should slash active stake balances', async function () {
-    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
-    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
-
-    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
-    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
-
-    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-    await expect(stakeRegistryRedistributor.slashDeposit(staker_0, '0')).to.be.revertedWith(errors.slash.invalidAmount);
-
-    await expect(stakeRegistryRedistributor.slashDeposit(staker_0, slashAmount))
-      .to.emit(srStaker0, 'StakeSlashed')
-      .withArgs(staker_0, overlay_0, slashAmount);
-
-    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(partialSlashBalance);
-
-    await stakeRegistryRedistributor.slashDeposit(staker_0, partialSlashBalance);
-    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
-  });
-
-  it('should reduce queued withdrawals that exceed the post-slash stake', async function () {
-    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
-    await activateStake(srStaker0, staker_0, nonce_0, tripleStakeAmount_0, height_0);
-
-    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
-    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
-
-    await srStaker0.withdraw(doubleWithdrawAmount);
-
-    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-    await stakeRegistryRedistributor.slashDeposit(staker_0, doubleSlashAmount);
-
-    await advanceRounds();
-
-    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
-    expect(await token.balanceOf(staker_0)).to.be.eq(0);
-
-    await srStaker0.applyUpdates(staker_0);
-
-    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
-    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
-  });
-
-  it('should lower height after slash when balance no longer meets the previous minimum', async function () {
-    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
-    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0_n_1);
-    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
-
-    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-    await stakeRegistryDeployer.grantRole(await stakeRegistryDeployer.REDISTRIBUTOR_ROLE(), redistributor);
-    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
-
-    await srRedis.slashDeposit(staker_0, slashAmount);
-
-    expect((await srStaker0.stakes(staker_0)).balance).to.eq(BigNumber.from(doubleStakeAmount_0).sub(slashAmount));
-    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0);
-  });
-
   it('should reject staking height above MAX_STAKING_HEIGHT', async function () {
     const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
     const maxH = Number(await srStaker1.MAX_STAKING_HEIGHT());
@@ -636,7 +567,7 @@ describe('Staking', function () {
     );
   });
 
-  it('should not allow freeze or slash while staking is paused', async function () {
+  it('should not allow freeze while staking is paused', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
 
@@ -648,7 +579,6 @@ describe('Staking', function () {
     await srPauser.pause();
 
     await expect(srRedis.freezeDeposit(staker_0, freezeTime)).to.be.revertedWith(errors.pause.currentlyPaused);
-    await expect(srRedis.slashDeposit(staker_0, slashAmount)).to.be.revertedWith(errors.pause.currentlyPaused);
   });
 
   it('should not allow stake migration while unpaused and should include queued deposits when paused', async function () {

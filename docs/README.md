@@ -49,7 +49,7 @@ Manages staking for node operators participating in the redistribution game.
 - Overlay derivation from network ID and nonce
 - Effective stake = previewed BZZ balance (gated by freeze)
 - Height-based minimum stake (`MIN_STAKE * 2^height`)
-- Freeze and slash penalties via `REDISTRIBUTOR_ROLE`
+- Freeze penalties via `REDISTRIBUTOR_ROLE`
 
 ### Redistribution (`Redistribution.sol`)
 Implements the Schelling coordination game for reserve commitment consensus.

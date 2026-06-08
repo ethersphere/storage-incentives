@@ -138,7 +138,7 @@ Each contract defines specific roles:
 
 **StakeRegistry**:
 - `DEFAULT_ADMIN_ROLE`: Pause / unpause
-- `REDISTRIBUTOR_ROLE`: Freeze and slash deposits (granted to Redistribution)
+- `REDISTRIBUTOR_ROLE`: Freeze deposits (granted to Redistribution)
 
 **Redistribution**:
 - `DEFAULT_ADMIN_ROLE`: Adjust freezing parameters, pause

@@ -56,10 +56,6 @@ contract EchidnaStakingActor {
     function tryFreezeDeposit(address owner, uint256 time) external returns (bool ok) {
         (ok, ) = address(registry).call(abi.encodeWithSelector(registry.freezeDeposit.selector, owner, time));
     }
-
-    function trySlashDeposit(address owner, uint256 amount) external returns (bool ok) {
-        (ok, ) = address(registry).call(abi.encodeWithSelector(registry.slashDeposit.selector, owner, amount));
-    }
 }
 
 /// @notice Echidna harness for the queued-update StakeRegistry (src/Staking.sol).
@@ -81,7 +77,7 @@ contract EchidnaStakingHarness {
     bytes32[3] internal lastSetNonceByActor;
 
     bool internal unauthorizedAdminCallSucceeded;
-    bool internal unauthorizedFreezeSlashSucceeded;
+    bool internal unauthorizedFreezeSucceeded;
     bool internal pausedMutationSucceeded;
     bool internal migrateSucceededWhileUnpaused;
     bool internal actionInvariantViolated;
@@ -339,22 +335,6 @@ contract EchidnaStakingHarness {
         _checkOtherDigestsUnchanged(idx, otherA, otherB);
     }
 
-    function act_redistributor_slash(uint8 targetActorId, uint256 amount) external {
-        _clearPendingChecks();
-
-        uint256 idx = uint256(targetActorId) % ACTOR_COUNT;
-        address t = address(actors[idx]);
-        (, uint256 balBefore, ) = _stakes(t);
-        (bytes32 otherA, bytes32 otherB) = _otherDigests(idx);
-
-        bool ok = redistributor.trySlashDeposit(t, amount);
-        if (!ok) return;
-        _checkOtherDigestsUnchanged(idx, otherA, otherB);
-
-        (, uint256 balAfter, ) = _stakes(t);
-        if (balAfter > balBefore) actionInvariantViolated = true;
-    }
-
     function act_actor_tryPause(uint8 actorId) external {
         _clearPendingChecks();
         bytes32 d0 = _stakeDigest(address(actors[0]));
@@ -381,17 +361,7 @@ contract EchidnaStakingHarness {
         bytes32 d1 = _stakeDigest(address(actors[1]));
         bytes32 d2 = _stakeDigest(address(actors[2]));
         bool ok = _actor(actorId).tryFreezeDeposit(address(_actor(targetActorId)), uint256(time));
-        if (ok) unauthorizedFreezeSlashSucceeded = true;
-        _checkDigestsUnchanged(d0, d1, d2);
-    }
-
-    function act_actor_trySlash(uint8 actorId, uint8 targetActorId, uint256 amount) external {
-        _clearPendingChecks();
-        bytes32 d0 = _stakeDigest(address(actors[0]));
-        bytes32 d1 = _stakeDigest(address(actors[1]));
-        bytes32 d2 = _stakeDigest(address(actors[2]));
-        bool ok = _actor(actorId).trySlashDeposit(address(_actor(targetActorId)), amount);
-        if (ok) unauthorizedFreezeSlashSucceeded = true;
+        if (ok) unauthorizedFreezeSucceeded = true;
         _checkDigestsUnchanged(d0, d1, d2);
     }
 
@@ -402,7 +372,7 @@ contract EchidnaStakingHarness {
     function echidna_never_performed_forbidden_calls() external view returns (bool) {
         return
             !unauthorizedAdminCallSucceeded &&
-            !unauthorizedFreezeSlashSucceeded &&
+            !unauthorizedFreezeSucceeded &&
             !pausedMutationSucceeded &&
             !actionInvariantViolated;
     }

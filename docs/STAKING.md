@@ -2,7 +2,7 @@
 
 ## Overview
 
-The `StakeRegistry` contract (`src/Staking.sol`) manages BZZ staking for node operators in the Swarm redistribution game. Nodes lock tokens, register an overlay and height, and become subject to freeze or slash penalties from the `Redistribution` contract.
+The `StakeRegistry` contract (`src/Staking.sol`) manages BZZ staking for node operators in the Swarm redistribution game. Nodes lock tokens, register an overlay and height, and become subject to freeze penalties from the `Redistribution` contract.
 
 There is **no PriceOracle dependency**. Stake is a single on-chain BZZ balance per account, not a committed-chunk / potential-stake pair.
 
@@ -14,7 +14,7 @@ The contract:
 - Holds staked BZZ with height-based minimum requirements
 - Queues stake changes with round-based delays (FIFO update queue)
 - Exposes **effective** overlay, height, and balance to `Redistribution` (including matured-but-not-yet-applied queue items)
-- Applies freeze penalties (participation exclusion) and slash (balance removal) via `REDISTRIBUTOR_ROLE`
+- Applies freeze penalties (participation exclusion) via `REDISTRIBUTOR_ROLE`
 
 ## Key Concepts
 
@@ -120,15 +120,6 @@ When contract is **paused**: returns active balance plus amounts from queued `Cr
 - While frozen: `nodeEffectiveStake` is 0; further due withdrawals are blocked
 - Emits `StakeFrozen` when committed stake exists; otherwise `AccountFreezeExtended` for account-only freeze
 
-`Redistribution` uses freeze today; slash in redistribution is still commented out (ph5).
-
-#### slashDeposit(owner, amount)
-
-- Applies ready updates first (same ordering caveat as freeze for withdrawals)
-- Reduces `balance`, runs `_syncHeightToBalance` on partial slash, may zero balance while keeping overlay if queue non-empty
-- Emits `StakeSlashed` with requested `amount` (not necessarily the balance actually removed)
-- Not called from `Redistribution` in the current deployment
-
 ### Admin functions
 
 #### pause() / unpause()
@@ -179,7 +170,6 @@ event OverlayChanged(address indexed owner, uint64 registeredFromRound, bytes32 
 event HeightIncreased(address indexed owner, uint64 registeredFromRound, uint8 height);
 event WithdrawalQueued(address indexed owner, uint64 effectiveFromRound, uint256 amount);
 event Withdrawal(address indexed owner, uint64 executedInRound, uint256 amount);
-event StakeSlashed(address indexed owner, bytes32 overlay, uint256 amount);
 event StakeFrozen(address indexed frozen, bytes32 indexed overlay, uint256 durationBlocks);
 event AccountFreezeExtended(address indexed account, uint256 freezeUntilBlock);
 event StakeMigrated(address indexed owner, uint256 totalReturned);
@@ -188,7 +178,7 @@ event StakeMigrated(address indexed owner, uint256 totalReturned);
 ## Roles
 
 - **DEFAULT_ADMIN_ROLE**: pause / unpause
-- **REDISTRIBUTOR_ROLE**: `freezeDeposit`, `slashDeposit` (typically granted to `Redistribution`)
+- **REDISTRIBUTOR_ROLE**: `freezeDeposit` (typically granted to `Redistribution`)
 
 ## Deployment
 
@@ -270,9 +260,8 @@ error HeightDecreaseNotAllowed();
 
 1. **Preview vs storage**: View functions include matured queue state; Bee must use the same semantics as `commit`/`reveal` verification.
 2. **Freeze**: Participation ban, not confiscation; first `freezeDeposit` may execute a due queued withdrawal.
-3. **Slash**: Available on-chain but not wired from `Redistribution` yet; enabling slash should address ordering and post-slash queue invariants separately.
-4. **Pause**: Stops new queue items from users; `applyUpdates` can still run.
-5. **Minimum stake**: Enforced at deposit, height increase, and partial withdraw scheduling — not re-checked on every queued apply path (relevant if slash is enabled).
+3. **Pause**: Stops new queue items from users; `applyUpdates` can still run.
+4. **Minimum stake**: Enforced at deposit, height increase, and partial withdraw scheduling — not re-checked on every queued apply path.
 
 ## Related contracts
 

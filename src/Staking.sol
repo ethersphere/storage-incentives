@@ -9,8 +9,7 @@ import "./Util/Constants.sol";
  * @title Staking contract for the Swarm storage incentives
  * @author The Swarm Authors
  * @dev Allows users to stake tokens in order to be eligible for the Redistribution Schelling co-ordination game.
- * Stakes are frozen or slashed by the Redistribution contract in response to violations of the
- * protocol.
+ * Stakes are frozen by the Redistribution contract in response to violations of the protocol.
  * @dev Freeze is a per-address penalty (`freezeUntilBlock`), not a fund lock: while active,
  * `nodeEffectiveStake` is zero and due withdrawal/exit payouts are blocked; enqueueing deposits
  * and other updates is still allowed. The deadline survives exit and stake deletion, redeposit
@@ -101,7 +100,6 @@ contract StakeRegistry is AccessControl, Pausable {
     event WithdrawalQueued(address indexed owner, uint64 effectiveFromRound, uint256 amount);
     /// @notice BZZ was transferred to `owner` when a queued withdrawal or exit was applied (`executedInRound` is the round at execution).
     event Withdrawal(address indexed owner, uint64 executedInRound, uint256 amount);
-    event StakeSlashed(address indexed owner, bytes32 overlay, uint256 amount);
     event StakeFrozen(address indexed frozen, bytes32 indexed overlay, uint256 durationBlocks);
     /// @notice Account-level freeze recorded when there is no stake/queue (overlay zero in `StakeFrozen`).
     event AccountFreezeExtended(address indexed account, uint256 freezeUntilBlock);
@@ -111,7 +109,7 @@ contract StakeRegistry is AccessControl, Pausable {
 
     /// @notice ERC20 `transfer` / `transferFrom` returned false for `bzzToken`.
     error TransferFailed();
-    /// @notice Caller lacks `REDISTRIBUTOR_ROLE` (`freezeDeposit`, `slashDeposit`).
+    /// @notice Caller lacks `REDISTRIBUTOR_ROLE` (`freezeDeposit`).
     error OnlyRedistributor();
     /// @notice Stake amount `have` is below protocol minimum `need` for the operation (deposit, height, or post-withdraw remainder).
     error BelowMinimumStake(uint256 have, uint256 need);
@@ -296,7 +294,7 @@ contract StakeRegistry is AccessControl, Pausable {
      *      `FrozenWithdrawal()` — the **entire transaction** reverts, so no partial state from this call persists.
      *      When that happens (e.g. user frozen with a matured withdrawal queued), callers may retry after
      *      unfreeze, or advance the queue indirectly via functions that invoke `_applyReadyUpdates` internally
-     *      under different rules (`freezeDeposit`, `slashDeposit`, `migrateStake` when paused).
+     *      under different rules (`freezeDeposit`, `migrateStake` when paused).
      */
     function applyUpdates(address _owner) public {
         _applyReadyUpdates(_owner);
@@ -376,34 +374,6 @@ contract StakeRegistry is AccessControl, Pausable {
     }
 
     /**
-     * @notice Slashes the active stake and reconciles queued withdrawals if needed.
-     * @param _owner The staker to slash.
-     * @param _amount The amount to slash from the active stake.
-     */
-    function slashDeposit(address _owner, uint256 _amount) external whenNotPaused onlyRedistributor {
-        if (_amount == 0) revert InvalidAmount();
-
-        _applyReadyUpdates(_owner);
-
-        Stake storage stake = _accounts[_owner].stake;
-        bytes32 previousOverlay = stake.overlay;
-
-        if (previousOverlay != bytes32(0)) {
-            if (stake.balance > _amount) {
-                stake.balance -= _amount;
-                _reconcileQueuedWithdrawals(_owner);
-                _syncHeightToBalance(stake);
-            } else if (_queueLength(_owner) > 0) {
-                stake.balance = 0;
-                _reconcileQueuedWithdrawals(_owner);
-            } else {
-                _clearStake(_owner);
-            }
-            emit StakeSlashed(_owner, previousOverlay, _amount);
-        }
-    }
-
-    /**
      * @notice Pauses staking mutations.
      */
     function pause() external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -463,16 +433,13 @@ contract StakeRegistry is AccessControl, Pausable {
      *      or stake mutation via `_simulateUpdate` (deposit, add, height, overlay).
      */
     function _applyStoredUpdate(address _owner, ScheduledUpdate storage _scheduled) internal {
-        // Path 1: partial withdrawal — pay out capped at current balance (may be slashed since queued).
+        // Path 1: partial withdrawal — transfer and reduce balance.
         if (_scheduled.kind == UpdateKind.WithdrawTokens) {
             Stake storage stake = _accounts[_owner].stake;
             if (stake.overlay != bytes32(0)) {
-                uint256 paid = _scheduled.amount > stake.balance ? stake.balance : _scheduled.amount;
-                stake.balance -= paid;
-                if (paid > 0) {
-                    if (!ERC20(bzzToken).transfer(_owner, paid)) revert TransferFailed();
-                    emit Withdrawal(_owner, currentRound(), paid);
-                }
+                stake.balance -= _scheduled.amount;
+                if (!ERC20(bzzToken).transfer(_owner, _scheduled.amount)) revert TransferFailed();
+                emit Withdrawal(_owner, currentRound(), _scheduled.amount);
             }
             return;
         }
@@ -529,46 +496,6 @@ contract StakeRegistry is AccessControl, Pausable {
     function _pullTokens(uint256 _amount) internal {
         if (_amount == 0) revert InvalidAmount();
         if (!ERC20(bzzToken).transferFrom(msg.sender, address(this), _amount)) revert TransferFailed();
-    }
-
-    /**
-     * @notice Shrinks queued withdrawals when slashing leaves less balance than they expect.
-     * @dev This preserves queue order while preventing later withdrawals from overpaying the owner.
-     */
-    function _reconcileQueuedWithdrawals(address _owner) internal {
-        UpdateQueue storage queue = _accounts[_owner].queue;
-        uint256 head = queue.head;
-        Stake memory preview = _accounts[_owner].stake;
-
-        for (uint256 i = head; i < queue.items.length; ) {
-            ScheduledUpdate storage scheduled = queue.items[i];
-
-            if (scheduled.kind == UpdateKind.WithdrawTokens && _hasCommittedStake(preview)) {
-                if (scheduled.amount > preview.balance) {
-                    scheduled.amount = preview.balance;
-                }
-            }
-
-            preview = _simulateUpdate(_owner, preview, scheduled);
-
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
-    /**
-     * @notice Lowers height so `balance` satisfies `_minimumStakeForHeight(height)` when possible, happens in slashing
-     */
-    function _syncHeightToBalance(Stake storage _stake) internal {
-        if (_stake.overlay == bytes32(0)) return;
-        uint8 h = _stake.height;
-        while (h > 0 && _stake.balance < _minimumStakeForHeight(h)) {
-            unchecked {
-                h--;
-            }
-        }
-        _stake.height = h;
     }
 
     ////////////////////////////////////////
