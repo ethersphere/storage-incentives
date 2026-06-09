@@ -8,6 +8,9 @@ const func: DeployFunction = async function ({ deployments, network }) {
   if (network.name == 'mainnet' && process.env.MAINNET_ETHERSCAN_KEY) {
     const config = networkConfig[network.name] || {};
     const swarmNetworkID = config.swarmNetworkId;
+    if (swarmNetworkID === undefined) {
+      throw new Error(`swarmNetworkId is not configured for network '${network.name}'`);
+    }
     const token = await get('Token');
 
     // Verify postageStamp

@@ -6,6 +6,9 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer } = await getNamedAccounts();
   const config = networkConfig[network.name] || {};
   const swarmNetworkID = config.swarmNetworkId;
+  if (swarmNetworkID === undefined) {
+    throw new Error(`swarmNetworkId is not configured for network '${network.name}'`);
+  }
   const token = await get('Token');
 
   const args = [
