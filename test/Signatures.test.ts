@@ -53,9 +53,9 @@ describe('Signatures', () => {
     const signature = await wallet.signMessage(ethers.utils.arrayify(messageHash));
 
     const { r, s, v } = ethers.utils.splitSignature(signature);
-    const malleableS = ethers.BigNumber.from(
-      '0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141'
-    ).sub(ethers.BigNumber.from(s));
+    const malleableS = ethers.BigNumber.from('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141').sub(
+      ethers.BigNumber.from(s)
+    );
     const malleableSignature = ethers.utils.hexConcat([
       r,
       ethers.utils.hexZeroPad(malleableS.toHexString(), 32),
@@ -79,12 +79,7 @@ describe('Signatures', () => {
     const messageHash = ethers.utils.solidityKeccak256(['bytes32', 'bytes32'], [identifier, chunkAddr]);
     const signature = await wallet.signMessage(ethers.utils.arrayify(messageHash));
 
-    const verified = await harness.socVerify(
-      wallet.address,
-      signature,
-      hexlify(identifier),
-      hexlify(chunkAddr)
-    );
+    const verified = await harness.socVerify(wallet.address, signature, hexlify(identifier), hexlify(chunkAddr));
 
     expect(verified).to.be.true;
   });
