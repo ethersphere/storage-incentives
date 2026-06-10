@@ -1439,5 +1439,103 @@ describe('PostageStamp', function () {
         expect(stamp[4]).to.equal(expectedNormalisedBalance);
       });
     });
+
+    describe('when copyBatchBulk imports batches', function () {
+      beforeEach(async function () {
+        postageStampStamper = await ethers.getContract('PostageStamp', stamper);
+        const postageStampDeployer = await ethers.getContract('PostageStamp', deployer);
+        const admin = await postageStampStamper.DEFAULT_ADMIN_ROLE();
+        await postageStampDeployer.grantRole(admin, stamper);
+
+        batch = {
+          id: '0x000000000000000000000000000000000000000000000000000000000000abcd',
+          nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
+          initialPaymentPerChunk: 10240,
+          depth: 17,
+          immutable: false,
+          bucketDepth: 16,
+        };
+      });
+
+      it('should import valid batches without granting admin role to the contract', async function () {
+        const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        const batch1 = computeBatchId(stamper, nonce1);
+        const nonce2 = '0x0000000000000000000000000000000000000000000000000000000000001235';
+        const batch2 = computeBatchId(stamper, nonce2);
+
+        const bulkBatches = [
+          {
+            batchId: batch1,
+            owner: stamper,
+            depth: batch.depth,
+            bucketDepth: batch.bucketDepth,
+            immutableFlag: batch.immutable,
+            remainingBalance: 3300,
+          },
+          {
+            batchId: batch2,
+            owner: stamper,
+            depth: batch.depth,
+            bucketDepth: batch.bucketDepth,
+            immutableFlag: batch.immutable,
+            remainingBalance: 2200,
+          },
+        ];
+
+        const adminRole = await postageStampStamper.DEFAULT_ADMIN_ROLE();
+        expect(await postageStampStamper.hasRole(adminRole, postageStampStamper.address)).to.be.false;
+
+        await expect(postageStampStamper.copyBatchBulk(bulkBatches))
+          .to.emit(postageStampStamper, 'BatchCreated')
+          .withArgs(batch1, 3300 * 2 ** batch.depth, 3300, stamper, batch.depth, batch.bucketDepth, batch.immutable)
+          .and.to.emit(postageStampStamper, 'BatchCreated')
+          .withArgs(batch2, 2200 * 2 ** batch.depth, 2200, stamper, batch.depth, batch.bucketDepth, batch.immutable);
+
+        expect((await postageStampStamper.batches(batch1)).owner).to.equal(stamper);
+        expect((await postageStampStamper.batches(batch2)).owner).to.equal(stamper);
+      });
+
+      it('should emit CopyBatchFailed for invalid batches and continue importing valid ones', async function () {
+        const validNonce = '0x0000000000000000000000000000000000000000000000000000000000001234';
+        const validBatchId = computeBatchId(stamper, validNonce);
+        const duplicateBatchId = batch.nonce;
+
+        await postageStampStamper.copyBatch(
+          stamper,
+          batch.initialPaymentPerChunk,
+          batch.depth,
+          batch.bucketDepth,
+          duplicateBatchId,
+          batch.immutable
+        );
+
+        const bulkBatches = [
+          {
+            batchId: validBatchId,
+            owner: stamper,
+            depth: batch.depth,
+            bucketDepth: batch.bucketDepth,
+            immutableFlag: batch.immutable,
+            remainingBalance: 3300,
+          },
+          {
+            batchId: duplicateBatchId,
+            owner: stamper,
+            depth: batch.depth,
+            bucketDepth: batch.bucketDepth,
+            immutableFlag: batch.immutable,
+            remainingBalance: 2200,
+          },
+        ];
+
+        await expect(postageStampStamper.copyBatchBulk(bulkBatches))
+          .to.emit(postageStampStamper, 'BatchCreated')
+          .withArgs(validBatchId, 3300 * 2 ** batch.depth, 3300, stamper, batch.depth, batch.bucketDepth, batch.immutable)
+          .and.to.emit(postageStampStamper, 'CopyBatchFailed')
+          .withArgs(1, duplicateBatchId);
+
+        expect((await postageStampStamper.batches(validBatchId)).owner).to.equal(stamper);
+      });
+    });
   });
 });
