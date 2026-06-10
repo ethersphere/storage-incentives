@@ -1530,7 +1530,15 @@ describe('PostageStamp', function () {
 
         await expect(postageStampStamper.copyBatchBulk(bulkBatches))
           .to.emit(postageStampStamper, 'BatchCreated')
-          .withArgs(validBatchId, 3300 * 2 ** batch.depth, 3300, stamper, batch.depth, batch.bucketDepth, batch.immutable)
+          .withArgs(
+            validBatchId,
+            3300 * 2 ** batch.depth,
+            3300,
+            stamper,
+            batch.depth,
+            batch.bucketDepth,
+            batch.immutable
+          )
           .and.to.emit(postageStampStamper, 'CopyBatchFailed')
           .withArgs(1, duplicateBatchId);
 
