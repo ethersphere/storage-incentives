@@ -40,3 +40,7 @@ gas-report.txt
 
 # Tenderly
 tenderly.log
+
+# Echidna fuzzing
+echidna/corpus/
+crytic-export/
