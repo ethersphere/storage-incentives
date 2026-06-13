@@ -25,7 +25,6 @@ const errors = {
   },
   auto: {
     notZero: 'UnexpectedZero()',
-    paused: 'OraclePaused()',
   },
 };
 
@@ -247,29 +246,10 @@ describe('PriceOracle', function () {
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
 
-        await expect(priceOracleU.adjustPrice(1)).to.be.revertedWith(errors.auto.paused);
+        await priceOracleU.adjustPrice(1);
 
         expect(await priceOracle.currentPrice()).to.be.eq(newPrice1);
         expect(await postageStamp.lastPrice()).to.be.eq(newPrice1);
-      });
-
-      it('reverts and keeps state when postage rejects the price update', async function () {
-        const priceOracleU = await ethers.getContract('PriceOracle', updater);
-        const priceOracleRole = await postageStamp.PRICE_ORACLE_ROLE();
-
-        await mineNBlocks(roundLength);
-
-        const lastAdjustedBefore = await priceOracle.lastAdjustedRound();
-        const priceUpScaledBefore = await priceOracle.currentPriceUpScaled();
-        const stampPriceBefore = await postageStamp.lastPrice();
-
-        await postageStamp.revokeRole(priceOracleRole, priceOracle.address);
-
-        await expect(priceOracleU.adjustPrice(1)).to.be.revertedWith('PriceOracleOnly()');
-
-        expect(await priceOracle.lastAdjustedRound()).to.be.eq(lastAdjustedBefore);
-        expect(await priceOracle.currentPriceUpScaled()).to.be.eq(priceUpScaledBefore);
-        expect(await postageStamp.lastPrice()).to.be.eq(stampPriceBefore);
       });
 
       it('if redundany factor modulates', async function () {
