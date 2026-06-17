@@ -199,6 +199,21 @@ export function calculateStakeDensity(stake: string, depth: number): string {
 }
 
 /**
+ * Mines blocks until the beginning of a commit phase (start of a round).
+ * @param minRoundsAhead Minimum number of complete rounds to advance before
+ *   aligning. Defaults to 0 (align to the nearest round start).
+ */
+export async function mineToCommitPhase(minRoundsAhead = 0) {
+  const currentBlockNumber = await getBlockNumber();
+  const roundBlocks = currentBlockNumber % ROUND_LENGTH;
+  const toNextRound = roundBlocks === 0 ? 0 : ROUND_LENGTH - roundBlocks;
+  const totalBlocks = toNextRound + minRoundsAhead * ROUND_LENGTH;
+  if (totalBlocks > 0) {
+    await mineNBlocks(totalBlocks);
+  }
+}
+
+/**
  * checks whether there is enough blocks for the 1st phase and if not it mines blocks until the next round
  */
 export async function mineToRevealPhase() {
