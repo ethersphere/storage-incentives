@@ -1173,6 +1173,18 @@ describe('Redistribution', function () {
             ).to.be.revertedWith(errors.claim.socVerificationFailed);
           });
 
+          it('rejects SOC address(0) signer bypass at claim', async function () {
+            const { proofParams } = await generatedSampling(true);
+            const socProof = proofParams.proof1.socProof![0];
+
+            socProof.signer = ethers.constants.AddressZero;
+            socProof.signature = '0x' + '00'.repeat(65);
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith(errors.claim.socVerificationFailed);
+          });
+
           it('SOC attachment does not match with witness', async function () {
             const { proofParams } = await generatedSampling(true);
 
