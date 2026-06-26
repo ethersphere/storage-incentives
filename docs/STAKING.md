@@ -79,11 +79,14 @@ First stake for an address (no existing committed stake with balance).
 
 - Pulls `amount` of BZZ via `transferFrom`
 - Requires `amount >= MIN_STAKE * 2**height`
+- Reverts `AlreadyStaked()` if the address already has committed stake with balance
+- Reverts `StakingHeightTooLarge()` if `height > MAX_STAKING_HEIGHT`
+- Returns `effectiveFromRound` (same value as in `DepositCreated`)
 - Emits `DepositCreated`
 
 #### addTokens(amount)
 
-Adds BZZ to an existing stake (queued).
+Adds BZZ to an existing stake (queued). Reverts `InvalidAmount()` if `amount == 0`.
 
 #### changeOverlay(setNonce)
 
@@ -115,10 +118,13 @@ When contract is **paused**: returns active balance plus amounts from queued `Cr
 
 #### freezeDeposit(owner, time)
 
+Requires `REDISTRIBUTOR_ROLE` and `whenNotPaused`.
+
 - Extends `freezeUntilBlock` to at least `block.number + time` (monotonic — never shortened)
-- Calls `_applyReadyUpdates` first: a **matured** withdrawal at queue head on an **unfrozen** account can pay out in the same tx before the new freeze applies
+- If the account has no stake and no queue: records account-level freeze only and emits `AccountFreezeExtended`
+- Otherwise calls `_applyReadyUpdates` first: a **matured** withdrawal at queue head on an **unfrozen** account can pay out in the same tx before the new freeze applies
 - While frozen: `nodeEffectiveStake` is 0; further due withdrawals are blocked
-- Emits `StakeFrozen` when committed stake exists; otherwise `AccountFreezeExtended` for account-only freeze
+- Emits `StakeFrozen` when committed stake remains after applying ready updates
 
 ### Admin functions
 
@@ -239,14 +245,17 @@ stakeRegistry.freezeDeposit(node, durationBlocks);
 
 `Redistribution` reads `overlayOfAddress`, `heightOfAddress`, and `nodeEffectiveStake` (and lookahead variants for eligibility). Commit requires `_stake != 0`. Stake density in winner selection uses the stake recorded at commit time.
 
+On claim, `Redistribution` calls `freezeDeposit` on non-revealers and on revealers whose hash/depth disagrees with the selected truth (subject to `penaltyRandomFactor`). Freeze duration scales with `ROUND_LENGTH` and truth depth.
+
 Price oracle affects **postage** economics only, not stake effective balance.
 
-## Errors (selected)
+## Errors
 
 ```solidity
 error BelowMinimumStake(uint256 have, uint256 need);
 error NotStaked();
 error AlreadyStaked();
+error InvalidAmount();
 error FrozenWithdrawal();
 error UpdateQueueFull(uint256 queuedCount, uint256 limit);
 error QueueClosed();
@@ -254,7 +263,12 @@ error OnlyRedistributor();
 error InvalidWithdrawalAmount(WithdrawalAmountIssue reason);
 error OverlayUnchanged();
 error HeightDecreaseNotAllowed();
+error StakingHeightTooLarge(uint8 height, uint8 maxHeight);
+error InvalidWaitConfiguration(uint64 waitBase, uint64 waitOverlayChange, uint64 waitWithdrawal);
+error TransferFailed();
 ```
+
+Penalties are **freeze-only**; there is no slash path on `StakeRegistry`.
 
 ## Security and integration notes
 
@@ -267,3 +281,37 @@ error HeightDecreaseNotAllowed();
 
 - **Token**: ERC20 BZZ (`bzzToken`)
 - **Redistribution**: Commit/reveal game; holds `REDISTRIBUTOR_ROLE` for penalties
+
+## Test coverage
+
+Hardhat suite: **177 tests** (~33s). Staking-specific: **51 tests** in `test/Staking.test.ts`. Run `npx hardhat compile && npm test`.
+
+Property tests: `src/echidna/EchidnaStakingHarness.sol` (see `echidna/README.md`).
+
+### Unit tests (`test/Staking.test.ts`)
+
+| Area | What is tested |
+|------|----------------|
+| **Deposit & queue** | Deploy wait params; `createDeposit` delay and activation; inactive until delay; top-up / height / overlay scheduling; lookahead previews; queue full; queue closed after `exit()`; redeposit after exit |
+| **Validation** | Below minimum at deposit; `AlreadyStaked()`; `InvalidAmount()` on `addTokens(0)`; height decrease rejected; height increase below new minimum; `MAX_STAKING_HEIGHT`; invalid constructor wait config |
+| **Withdraw & exit** | Partial withdraw + `applyUpdates` payout; full exit; invalid amounts; below-minimum remainder; withdraw/exit while active in current round (Redistribution commit) |
+| **Freeze** | Effective stake = 0 while frozen; non-withdrawal updates still apply; queued withdrawal blocked until unfreeze; `FrozenWithdrawal()` atomic revert on `applyUpdates`; freeze monotonic; freeze survives exit and `migrateStake`; `OnlyRedistributor()`; `AccountFreezeExtended` on unstaked account; freeze while paused reverts |
+| **Pause & migrate** | Staking blocked when paused; `migrateStake` only when paused (includes queued `CreateDeposit` / `AddTokens`); unpause restores flow |
+| **Enqueue API** | `callStatic` return matches event effective round; overlay unchanged revert; height unchanged no-op; non-decreasing rounds when stacking `addTokens`; atomic `applyUpdates` when withdrawal blocked mid-batch |
+| **FIFO & mixed delays** | Different wait configs (top-up → withdraw → overlay); same-round ordering; uniform waits (top-up → withdraw → height in one round) |
+| **Oracle independence** | Price oracle change does not change effective stake |
+
+### Integration tests (`test/Redistribution.test.ts`)
+
+| Area | What is tested |
+|------|----------------|
+| **Eligibility** | Unstaked / recently staked cannot commit; height-based minimum at commit; effective stake in reveals and winner selection |
+| **Queued stake** | Multi-node fixture with `createDeposit` and `addTokens`; effective stake after top-ups |
+| **Exit & lookahead** | Next-round stake state during claim-phase eligibility after queued `exit()` |
+| **Freeze from game** | Non-revealer frozen on claim (`nodeEffectiveStake == 0`); `StakeFrozen` event parsed from claim tx logs (overlay + duration) |
+| **Winner flow** | Single reveal, both reveal, postage payout failure retry — unchanged game logic with new stake API |
+
+### Not tested in Hardhat (by design)
+
+- Slash penalties (removed; freeze-only protocol)
+- Mainnet / testnet deployed bytecode (local fixture only)
