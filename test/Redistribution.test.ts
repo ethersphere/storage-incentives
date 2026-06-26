@@ -1378,8 +1378,23 @@ describe('Redistribution', function () {
               }
             }
 
-            // <sig need something special to get at child events to check stakefrozen event
-            // https://github.com/ethers-io/ethers.js/discussions/3057?sort=top
+            const sr = await ethers.getContract('StakeRegistry');
+            const expectedFreezeDuration = 2 * roundLength * 2 ** parseInt(depth_5);
+            const stakeFrozenLogs = (receipt2.logs as Array<{ topics: string[]; data: string }>)
+              .map((log) => {
+                try {
+                  return sr.interface.parseLog(log);
+                } catch {
+                  return null;
+                }
+              })
+              .filter((parsed) => parsed?.name === 'StakeFrozen');
+            const node1Frozen = stakeFrozenLogs.find(
+              (parsed) => parsed!.args.frozen.toLowerCase() === node_1.toLowerCase()
+            );
+            expect(node1Frozen).to.not.be.undefined;
+            expect(node1Frozen!.args.overlay).to.be.eq(overlay_1_n_25);
+            expect(node1Frozen!.args.durationBlocks).to.be.eq(expectedFreezeDuration);
 
             const expectedPotPayout =
               (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
@@ -1411,8 +1426,6 @@ describe('Redistribution', function () {
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
             );
-
-            const sr = await ethers.getContract('StakeRegistry');
 
             //node_2 stake is preserved and not frozen
             expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(stakeAmount_2);

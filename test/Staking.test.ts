@@ -21,6 +21,8 @@ const errors = {
     noBalance: 'ERC20: insufficient allowance',
     belowMinimum: 'BelowMinimumStake',
     heightDecrease: 'HeightDecreaseNotAllowed()',
+    alreadyStaked: 'AlreadyStaked()',
+    invalidAmount: 'InvalidAmount()',
   },
   withdraw: {
     invalidWithdrawalAmountZero: 'InvalidWithdrawalAmount(0)',
@@ -191,6 +193,23 @@ describe('Staking', function () {
     );
   });
 
+  it('should reject createDeposit when the address already has active stake', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0)).to.be.revertedWith(
+      errors.deposit.alreadyStaked
+    );
+  });
+
+  it('should reject addTokens with zero amount', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await expectRevertReasonSubstring(srStaker0.addTokens(0), errors.deposit.invalidAmount);
+  });
+
   it('should schedule top ups and height increases without changing the active stake immediately', async function () {
     const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
     await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
@@ -224,6 +243,13 @@ describe('Staking', function () {
     await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0_n_1);
 
     await expect(srStaker0.increaseHeight(height_0)).to.be.revertedWith(errors.deposit.heightDecrease);
+  });
+
+  it('should reject height increase when balance is below minimum for the new height', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await expectRevertReasonSubstring(srStaker0.increaseHeight(height_0_n_1), errors.deposit.belowMinimum);
   });
 
   it('should preview queued stake state with lookahead', async function () {
@@ -579,6 +605,30 @@ describe('Staking', function () {
     await srPauser.pause();
 
     await expect(srRedis.freezeDeposit(staker_0, freezeTime)).to.be.revertedWith(errors.pause.currentlyPaused);
+  });
+
+  it('should reject freezeDeposit from callers without REDISTRIBUTOR_ROLE', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await expect(srStaker0.freezeDeposit(staker_1, freezeTime)).to.be.revertedWith(errors.freeze.noRole);
+  });
+
+  it('should emit AccountFreezeExtended when freezing an address with no stake or queue', async function () {
+    const srDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await srDeployer.grantRole(await srDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+
+    const freezeDuration = 100;
+    const tx = await srRedis.freezeDeposit(staker_1, freezeDuration);
+    const receipt = await tx.wait();
+    const freezeEvent = receipt.events?.find((e: Event) => e.event === 'AccountFreezeExtended');
+    expect(freezeEvent).to.not.be.undefined;
+    expect(freezeEvent!.args![0]).to.be.eq(staker_1);
+    expect(freezeEvent!.args![1]).to.be.eq(receipt.blockNumber + freezeDuration);
+
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    expect(await srStaker1.freezeUntilBlock(staker_1)).to.be.eq(receipt.blockNumber + freezeDuration);
   });
 
   it('should not allow stake migration while unpaused and should include queued deposits when paused', async function () {
