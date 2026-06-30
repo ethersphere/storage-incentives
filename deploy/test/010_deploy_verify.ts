@@ -6,7 +6,8 @@ const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
   if (process.env.TESTNET_ETHERSCAN_KEY) {
-    const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
+    const config = networkConfig[network.name] || {};
+    const swarmNetworkID = config.swarmNetworkId;
 
     // Verify TestNet token
     const token = await get('TestToken');
@@ -34,14 +35,21 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
     // Verify staking
     const staking = await get('StakeRegistry');
-    const argStaking = [token.address, swarmNetworkID, priceOracle.address];
+    const redistribution = await get('Redistribution');
+    const argStaking = [
+      token.address,
+      redistribution.address,
+      swarmNetworkID,
+      config.stakeWaitBase || 2,
+      config.stakeWaitOverlayChange || 2,
+      config.stakeWaitWithdrawal || 2,
+    ];
 
     log('Staking');
     await verify(staking.address, argStaking);
     log('----------------------------------------------------');
 
     // Verify redistribution
-    const redistribution = await get('Redistribution');
     const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
 
     log('Redistribution');

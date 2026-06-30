@@ -1,70 +1,64 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
-import { Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber } from './util/tools';
+import { BigNumber, Contract, ContractTransaction, Event } from 'ethers';
+import { mineNBlocks, ROUND_LENGTH } from './util/tools';
 
 const { read, execute } = deployments;
+
 let deployer: string;
 let redistributor: string;
 let pauser: string;
-const roundLength = 152;
+let staker_0: string;
+let staker_1: string;
 
+/** Blocks per staking round; overwritten from `StakeRegistry.ROUND_LENGTH()` after fixture load. */
+let roundLength = ROUND_LENGTH;
 const zeroBytes32 = '0x0000000000000000000000000000000000000000000000000000000000000000';
 const freezeTime = 3;
 
 const errors = {
   deposit: {
     noBalance: 'ERC20: insufficient allowance',
-    noZeroAddress: 'owner cannot be the zero address',
-    onlyOwner: 'Unauthorized()',
-    belowMinimum: 'BelowMinimumStake()',
+    belowMinimum: 'BelowMinimumStake',
+    heightDecrease: 'HeightDecreaseNotAllowed()',
+    alreadyStaked: 'AlreadyStaked()',
+    invalidAmount: 'InvalidAmount()',
   },
-  slash: {
-    noRole: 'OnlyRedistributor()',
+  withdraw: {
+    invalidWithdrawalAmountZero: 'InvalidWithdrawalAmount(0)',
+    invalidWithdrawalAmountExceedsBalance: 'InvalidWithdrawalAmount(1)',
+    notStaked: 'NotStaked()',
   },
   freeze: {
     noRole: 'OnlyRedistributor()',
-    currentlyFrozen: 'Frozen()',
   },
   pause: {
-    noRole: 'OnlyPauser()',
+    noRole: 'Unauthorized()',
     currentlyPaused: 'Pausable: paused',
     notCurrentlyPaused: 'Pausable: not paused',
-    onlyPauseCanUnPause: 'OnlyPauser()',
+    onlyPauseCanUnPause: 'Unauthorized()',
   },
-  commitment: {
-    decrease: 'DecreasedCommitment()',
+  general: {
+    overlayUnchanged: 'OverlayUnchanged()',
+    frozenWithdrawal: 'FrozenWithdrawal()',
+    queueFull: 'UpdateQueueFull',
+    queueClosed: 'QueueClosed()',
+    invalidWaitConfig: 'InvalidWaitConfiguration',
   },
 };
 
-let staker_0: string;
 const overlay_0 = '0xa602fa47b3e8ce39ffc2017ad9069ff95eb58c051b1cfa2b0d86bc44a5433733';
-const stakeAmount_0 = '100000000000000000';
-const updateStakeAmount_0 = '633633';
-const updatedStakeAmount_0 = '100000000000633633';
-const committedStakeAmount_0 = '4166666666666';
-const updatedCommittedStakeAmount_0 = '4166666666693';
-const doubled_stakeAmount_0 = '200000000000000000';
-const doubled_committedStakeAmount_0 = '8333333333333';
+const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
+const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc99f9f91e915';
 const nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
+const obfuscatedHash_0 = nonce_0;
+const stakeAmount_0 = '100000000000000000';
+const doubleStakeAmount_0 = '200000000000000000';
+const withdrawAmount = stakeAmount_0;
 const height_0 = 0;
 const height_0_n_1 = 1;
 
-let staker_1: string;
-const overlay_1 = '0xa6f955c72d7053f96b91b5470491a0c732b0175af56dcfb7a604b82b16719406';
-const overlay_1_n_25 = '0x676766bbae530fd0483e4734e800569c95929b707b9c50f8717dc99f9f91e915';
-const stakeAmount_1 = '100000000000000000';
-const stakeAmount_1_n = '100000000000000000';
-const doubled_stakeAmount_1 = '200000000000000000';
-const nonce_1 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const nonce_1_n_25 = '0x00000000000000000000000000000000000000000000000000000000000325dd';
-const height_1 = 0;
-const height_1_n_1 = 1;
-
-const zeroStake = '0';
-const zeroAmount = '0';
-
-// Before the tests, set named accounts and read deployments.
 before(async function () {
   const namedAccounts = await getNamedAccounts();
   deployer = namedAccounts.deployer;
@@ -84,627 +78,898 @@ async function mintAndApprove(payee: string, beneficiary: string, transferAmount
   await payeeTokenInstance.approve(beneficiary, transferAmount);
 }
 
+async function advanceRounds(rounds = 2) {
+  await mineNBlocks(roundLength * rounds);
+}
+
+async function advanceToRoundCommitPhase(redistribution: Contract, targetRound: BigNumber) {
+  while (true) {
+    const currentRound = await redistribution.currentRound();
+    const inCommitPhase = await redistribution.currentPhaseCommit();
+    if (currentRound.eq(targetRound) && inCommitPhase) {
+      return;
+    }
+    await mineNBlocks(1);
+  }
+}
+
+async function activateStake(contract: Contract, owner: string, nonce: string, amount: string, height: number) {
+  await mintAndApprove(owner, contract.address, amount);
+  await contract.createDeposit(nonce, amount, height);
+  await advanceRounds();
+  await contract.applyUpdates(owner);
+}
+
+async function getSignerFor(address: string) {
+  const signers = await ethers.getSigners();
+  const signer = signers.find((s) => s.address.toLowerCase() === address.toLowerCase());
+  if (!signer) {
+    throw new Error(`No unlocked signer for ${address}`);
+  }
+  return signer;
+}
+
+/** Effective staking round from enqueue events (ABI may expose `registeredFromRound`). */
+function effectiveRoundFromEvent(ev: Event | undefined): BigNumber {
+  if (!ev?.args) {
+    throw new Error('expected event with args');
+  }
+  const args = ev.args as readonly unknown[] & {
+    effectiveFromRound?: BigNumber;
+    registeredFromRound?: BigNumber;
+  };
+  const fromNamed = args.effectiveFromRound ?? args.registeredFromRound;
+  return fromNamed !== undefined ? fromNamed : (args[1] as BigNumber);
+}
+
+/** Custom errors with arguments often fail Chai `revertedWith` exact matching in waffle; match substring instead. */
+async function expectRevertReasonSubstring(txPromise: Promise<ContractTransaction>, substring: string) {
+  try {
+    await txPromise;
+    expect.fail(`expected revert containing ${substring}`);
+  } catch (e: unknown) {
+    const err = e as { message?: string; error?: { message?: string } };
+    const combined = `${err.message ?? ''}${err.error?.message ?? ''}`;
+    expect(combined).to.include(substring);
+  }
+}
+
 describe('Staking', function () {
-  describe('when deploying contract', function () {
-    beforeEach(async function () {
-      await deployments.fixture();
-      stakeRegistry = await ethers.getContract('StakeRegistry');
+  beforeEach(async function () {
+    await deployments.fixture();
+    token = await ethers.getContract('TestToken', deployer);
+    stakeRegistry = await ethers.getContract('StakeRegistry');
+    roundLength = (await stakeRegistry.ROUND_LENGTH()).toNumber();
 
-      const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
-      await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
+    const pauserRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
+    await execute('StakeRegistry', { from: deployer }, 'grantRole', pauserRole, pauser);
+  });
+
+  it('should deploy StakeRegistry with queue wait parameters', async function () {
+    expect(stakeRegistry.address).to.be.properAddress;
+    expect(await stakeRegistry.ROUND_LENGTH()).to.be.eq(roundLength);
+    expect(await stakeRegistry.WAIT_BASE()).to.be.eq(2);
+    expect(await stakeRegistry.WAIT_OVERLAY_CHANGE()).to.be.eq(2);
+    expect(await stakeRegistry.WAIT_WITHDRAWAL()).to.be.eq(2);
+  });
+
+  it('should schedule a new deposit and activate it after the base delay', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const currentRound = await srStaker0.currentRound();
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_0, stakeAmount_0, height_0))
+      .to.emit(srStaker0, 'DepositCreated')
+      .withArgs(staker_0, currentRound.add(2), stakeAmount_0, overlay_0, height_0);
+
+    await advanceRounds();
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+  });
+
+  it('should keep a scheduled deposit inactive until the delay elapses', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_0, stakeAmount_0, height_0))
+      .to.emit(srStaker0, 'DepositCreated')
+      .withArgs(staker_0, (await srStaker0.currentRound()).add(2), stakeAmount_0, overlay_0, height_0);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+    expect(await srStaker0.overlayOfAddress(staker_0)).to.be.eq(zeroBytes32);
+
+    await advanceRounds();
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    expect(await srStaker0.overlayOfAddress(staker_0)).to.be.eq(overlay_0);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+  });
+
+  it('should not allow first stake below minimum for the requested height', async function () {
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    await mintAndApprove(staker_1, srStaker1.address, stakeAmount_0);
+
+    await expect(srStaker1.createDeposit(nonce_0, stakeAmount_0, height_0_n_1)).to.be.revertedWith(
+      errors.deposit.belowMinimum
+    );
+  });
+
+  it('should reject createDeposit when the address already has active stake', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0)).to.be.revertedWith(
+      errors.deposit.alreadyStaked
+    );
+  });
+
+  it('should reject addTokens with zero amount', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await expectRevertReasonSubstring(srStaker0.addTokens(0), errors.deposit.invalidAmount);
+  });
+
+  it('should schedule top ups and height increases without changing the active stake immediately', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.addTokens(stakeAmount_0)).to.emit(srStaker0, 'TokensAdded');
+    await expect(srStaker0.increaseHeight(height_0_n_1)).to.emit(srStaker0, 'HeightIncreased');
+
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0);
+
+    await advanceRounds();
+
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+  });
+
+  it('should schedule overlay changes and expose them after the overlay delay', async function () {
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    await activateStake(srStaker1, staker_1, nonce_0, stakeAmount_0, height_0);
+
+    await expect(srStaker1.changeOverlay(nonce_1_n_25)).to.emit(srStaker1, 'OverlayChanged');
+    expect(await srStaker1.overlayOfAddress(staker_1)).to.be.eq(overlay_1);
+
+    await advanceRounds();
+    expect(await srStaker1.overlayOfAddress(staker_1)).to.be.eq(overlay_1_n_25);
+  });
+
+  it('should reject height decreases on active stake', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0_n_1);
+
+    await expect(srStaker0.increaseHeight(height_0)).to.be.revertedWith(errors.deposit.heightDecrease);
+  });
+
+  it('should reject height increase when balance is below minimum for the new height', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await expectRevertReasonSubstring(srStaker0.increaseHeight(height_0_n_1), errors.deposit.belowMinimum);
+  });
+
+  it('should preview queued stake state with lookahead', async function () {
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    await activateStake(srStaker1, staker_1, nonce_0, stakeAmount_0, height_0);
+
+    await mintAndApprove(staker_1, srStaker1.address, stakeAmount_0);
+    await srStaker1.addTokens(stakeAmount_0);
+    await srStaker1.changeOverlay(nonce_1_n_25);
+    await srStaker1.increaseHeight(height_0_n_1);
+
+    expect(await srStaker1.nodeEffectiveStakeLookahead(staker_1, 1)).to.be.eq(stakeAmount_0);
+    expect(await srStaker1.overlayOfAddressLookahead(staker_1, 1)).to.be.eq(overlay_1);
+    expect(await srStaker1.heightOfAddressLookahead(staker_1, 1)).to.be.eq(height_0);
+
+    expect(await srStaker1.nodeEffectiveStakeLookahead(staker_1, 2)).to.be.eq(doubleStakeAmount_0);
+    expect(await srStaker1.overlayOfAddressLookahead(staker_1, 2)).to.be.eq(overlay_1_n_25);
+    expect(await srStaker1.heightOfAddressLookahead(staker_1, 2)).to.be.eq(height_0_n_1);
+  });
+
+  it('should keep effective stake equal to balance after oracle price changes', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const priceOracle = await ethers.getContract('PriceOracle', deployer);
+    await priceOracle.setPrice(24000);
+    await mineNBlocks(1);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+  });
+
+  it('should return balance as effective stake for an unfrozen node', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await mineNBlocks(1);
+
+    const staked = await srStaker0.stakes(staker_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(staked.balance);
+  });
+
+  it('should schedule withdrawals and transfer tokens on applyUpdates', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+    await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'WithdrawalQueued');
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
+
+    await advanceRounds();
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+  });
+
+  it('should apply mature withdrawal during freeze and block future ones', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
+
+    await srStaker0.withdraw(withdrawAmount);
+    await advanceRounds();
+
+    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+    await stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime);
+
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mineNBlocks(freezeTime + 1);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+  });
+
+  it('should execute queued withdrawal while the node is active in the current round', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const redistribution = await ethers.getContract('Redistribution', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+    const withdrawalReceipt = await (await srStaker0.withdraw(withdrawAmount)).wait();
+    const withdrawalEvent = withdrawalReceipt.events?.find((event: Event) => event.event === 'WithdrawalQueued');
+    const effectiveRound = withdrawalEvent?.args?.effectiveFromRound ?? withdrawalEvent?.args?.[1];
+    await advanceToRoundCommitPhase(redistribution, effectiveRound);
+
+    const currentRound = await redistribution.currentRound();
+    await redistribution.commit(obfuscatedHash_0, currentRound);
+
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+
+    await mineNBlocks(roundLength);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+  });
+
+  it('should execute queued exit as soon as it becomes effective in the current round', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const redistribution = await ethers.getContract('Redistribution', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const exitReceipt = await (await srStaker0.exit()).wait();
+    const exitEvent = exitReceipt.events?.find((event: Event) => event.event === 'WithdrawalQueued');
+    const effectiveRound = exitEvent?.args?.effectiveFromRound ?? exitEvent?.args?.[1];
+    await advanceToRoundCommitPhase(redistribution, effectiveRound);
+
+    const currentRound = await redistribution.currentRound();
+    await expect(redistribution.commit(obfuscatedHash_0, currentRound)).to.be.revertedWith(errors.withdraw.notStaked);
+
+    await srStaker0.applyUpdates(staker_0);
+
+    const stakedAfter = await srStaker0.stakes(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect(stakedAfter.overlay).to.be.eq(zeroBytes32);
+    expect(stakedAfter.balance).to.be.eq(0);
+  });
+
+  it('should schedule exits and clear the stake on applyUpdates', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await expect(srStaker0.exit()).to.emit(srStaker0, 'WithdrawalQueued');
+
+    await advanceRounds();
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+
+    await srStaker0.applyUpdates(staker_0);
+    const stakedAfter = await srStaker0.stakes(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect(stakedAfter.overlay).to.be.eq(zeroBytes32);
+    expect(stakedAfter.balance).to.be.eq(0);
+  });
+
+  it('should not allow new updates to be queued after exit is scheduled', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await srStaker0.exit();
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0)).to.be.revertedWith(
+      errors.general.queueClosed
+    );
+  });
+
+  it('should allow redeposit after exit is fully applied', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await srStaker0.exit();
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+    expect((await srStaker0.stakes(staker_0)).overlay).to.be.eq(zeroBytes32);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0)).to.emit(srStaker0, 'DepositCreated');
+
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    const redeposit = await srStaker0.stakes(staker_0);
+    expect(redeposit.overlay).to.not.be.eq(zeroBytes32);
+    expect(redeposit.overlay).to.not.be.eq(overlay_0);
+  });
+
+  it('should keep account freeze across full exit and block effective stake until it expires', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const longFreezeTime = roundLength * 3;
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await srStaker0.exit();
+    await advanceRounds();
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await stakeRegistryDeployer.grantRole(await stakeRegistryDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+    // Applies the mature exit first, then starts the penalty window (same tx as existing tests expect).
+    await srRedis.freezeDeposit(staker_0, longFreezeTime);
+
+    expect((await srStaker0.stakes(staker_0)).overlay).to.be.eq(zeroBytes32);
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect(await srStaker0.freezeUntilBlock(staker_0)).to.be.gt(0);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0);
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mineNBlocks(longFreezeTime + 1);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+  });
+
+  it('should keep account freeze across migrateStake and block effective stake until it expires', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const longFreezeTime = roundLength * 3;
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await stakeRegistryDeployer.grantRole(await stakeRegistryDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+    await srRedis.freezeDeposit(staker_0, longFreezeTime);
+    expect(await srStaker0.freezeUntilBlock(staker_0)).to.be.gt(0);
+
+    const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+    await stakeRegistryPauser.pause();
+    await expect(srStaker0.migrateStake()).to.emit(srStaker0, 'StakeMigrated').withArgs(staker_0, stakeAmount_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect((await srStaker0.stakes(staker_0)).overlay).to.be.eq(zeroBytes32);
+    expect(await srStaker0.freezeUntilBlock(staker_0)).to.be.gt(0);
+
+    await stakeRegistryPauser.unpause();
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await srStaker0.createDeposit(nonce_1_n_25, stakeAmount_0, height_0);
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(stakeAmount_0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mineNBlocks(longFreezeTime + 1);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+  });
+
+  it('should not shorten an existing freeze when a shorter freeze is applied', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await stakeRegistryDeployer.grantRole(await stakeRegistryDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+
+    const longFreeze = roundLength * 10;
+    const shortFreeze = 5;
+    await srRedis.freezeDeposit(staker_0, longFreeze);
+    const untilAfterLong = await srStaker0.freezeUntilBlock(staker_0);
+
+    await mineNBlocks(3);
+    await srRedis.freezeDeposit(staker_0, shortFreeze);
+    const untilAfterShort = await srStaker0.freezeUntilBlock(staker_0);
+
+    expect(untilAfterShort).to.be.eq(untilAfterLong);
+  });
+
+  it('should not allow invalid withdrawals', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await expectRevertReasonSubstring(srStaker0.withdraw(0), errors.withdraw.invalidWithdrawalAmountZero);
+    await expect(srStaker0.exit()).to.be.revertedWith(errors.withdraw.notStaked);
+
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+    await expectRevertReasonSubstring(srStaker0.withdraw(stakeAmount_0), errors.deposit.belowMinimum);
+
+    const overdraw = BigNumber.from(stakeAmount_0).add(1).toString();
+    await expectRevertReasonSubstring(
+      srStaker0.withdraw(overdraw),
+      errors.withdraw.invalidWithdrawalAmountExceedsBalance
+    );
+  });
+
+  it('should allow non-transfer updates to be queued and applied while the node is frozen', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const longFreezeTime = roundLength * 3;
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
+
+    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+    await expect(stakeRegistryRedistributor.freezeDeposit(staker_0, longFreezeTime))
+      .to.emit(srStaker0, 'StakeFrozen')
+      .withArgs(staker_0, overlay_0, longFreezeTime);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.addTokens(stakeAmount_0)).to.emit(srStaker0, 'TokensAdded');
+    await expect(srStaker0.changeOverlay(nonce_1_n_25)).to.emit(srStaker0, 'OverlayChanged');
+    await expect(srStaker0.increaseHeight(height_0_n_1)).to.emit(srStaker0, 'HeightIncreased');
+
+    await advanceRounds();
+    await srStaker0.applyUpdates(staker_0);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
+    expect(await srStaker0.overlayOfAddress(staker_0)).to.not.be.eq(overlay_0);
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+
+    await mineNBlocks(longFreezeTime + 1);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(doubleStakeAmount_0);
+    expect(await srStaker0.overlayOfAddress(staker_0)).to.not.be.eq(overlay_0);
+    expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+  });
+
+  it('should allow withdrawals to be queued while frozen and execute them after the freeze expires', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const longFreezeTime = roundLength * 3;
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+    const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
+    const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
+    await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
+
+    const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
+    await stakeRegistryRedistributor.freezeDeposit(staker_0, longFreezeTime);
+
+    await expect(srStaker0.withdraw(withdrawAmount)).to.emit(srStaker0, 'WithdrawalQueued');
+    await advanceRounds();
+
+    await expect(srStaker0.applyUpdates(staker_0)).to.be.revertedWith(errors.general.frozenWithdrawal);
+    expect(await token.balanceOf(staker_0)).to.be.eq(0);
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(0);
+
+    await mineNBlocks(longFreezeTime + 1);
+
+    expect(await srStaker0.nodeEffectiveStake(staker_0)).to.be.eq(stakeAmount_0);
+    await srStaker0.applyUpdates(staker_0);
+    expect(await token.balanceOf(staker_0)).to.be.eq(withdrawAmount);
+  });
+
+  it('should reject staking height above MAX_STAKING_HEIGHT', async function () {
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    const maxH = Number(await srStaker1.MAX_STAKING_HEIGHT());
+    await mintAndApprove(staker_1, srStaker1.address, stakeAmount_0);
+    await expectRevertReasonSubstring(
+      srStaker1.createDeposit(nonce_0, stakeAmount_0, maxH + 1),
+      'StakingHeightTooLarge'
+    );
+  });
+
+  it('should not allow freeze while staking is paused', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    const srDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await srDeployer.grantRole(await srDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+
+    const srPauser = await ethers.getContract('StakeRegistry', pauser);
+    await srPauser.pause();
+
+    await expect(srRedis.freezeDeposit(staker_0, freezeTime)).to.be.revertedWith(errors.pause.currentlyPaused);
+  });
+
+  it('should reject freezeDeposit from callers without REDISTRIBUTOR_ROLE', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, stakeAmount_0, height_0);
+
+    await expect(srStaker0.freezeDeposit(staker_1, freezeTime)).to.be.revertedWith(errors.freeze.noRole);
+  });
+
+  it('should emit AccountFreezeExtended when freezing an address with no stake or queue', async function () {
+    const srDeployer = await ethers.getContract('StakeRegistry', deployer);
+    await srDeployer.grantRole(await srDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+    const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+
+    const freezeDuration = 100;
+    const tx = await srRedis.freezeDeposit(staker_1, freezeDuration);
+    const receipt = await tx.wait();
+    const freezeEvent = receipt.events?.find((e: Event) => e.event === 'AccountFreezeExtended');
+    expect(freezeEvent).to.not.be.undefined;
+    expect(freezeEvent!.args![0]).to.be.eq(staker_1);
+    expect(freezeEvent!.args![1]).to.be.eq(receipt.blockNumber + freezeDuration);
+
+    const srStaker1 = await ethers.getContract('StakeRegistry', staker_1);
+    expect(await srStaker1.freezeUntilBlock(staker_1)).to.be.eq(receipt.blockNumber + freezeDuration);
+  });
+
+  it('should not allow stake migration while unpaused and should include queued deposits when paused', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await srStaker0.createDeposit(nonce_0, stakeAmount_0, height_0);
+
+    await expect(srStaker0.migrateStake()).to.be.revertedWith(errors.pause.notCurrentlyPaused);
+
+    const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+    await stakeRegistryPauser.pause();
+    await expect(srStaker0.migrateStake()).to.emit(srStaker0, 'StakeMigrated').withArgs(staker_0, stakeAmount_0);
+
+    expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
+    expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(0);
+  });
+
+  it('should not allow staking while paused and should allow it again after unpause', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
+
+    await stakeRegistryPauser.pause();
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.createDeposit(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
+      errors.pause.currentlyPaused
+    );
+
+    await stakeRegistryPauser.unpause();
+    await expect(srStaker0.createDeposit(nonce_0, stakeAmount_0, height_0)).to.not.be.reverted;
+  });
+
+  describe('enqueue API surface', function () {
+    it('should match createDeposit callStatic return to DepositCreated round', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await mintAndApprove(staker_0, sr.address, stakeAmount_0);
+      const fromCall = await sr.callStatic.createDeposit(nonce_0, stakeAmount_0, height_0);
+      const tx = await sr.createDeposit(nonce_0, stakeAmount_0, height_0);
+      const receipt = await tx.wait();
+      const ev = receipt.events!.find((e: Event) => e.event === 'DepositCreated');
+      expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
-    it('should deploy StakeRegistry', async function () {
-      expect(stakeRegistry.address).to.be.properAddress;
+    it('should match addTokens callStatic return to TokensAdded round', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, stakeAmount_0, height_0);
+      await mintAndApprove(staker_0, sr.address, stakeAmount_0);
+      const fromCall = await sr.callStatic.addTokens(stakeAmount_0);
+      const tx = await sr.addTokens(stakeAmount_0);
+      const receipt = await tx.wait();
+      const ev = receipt.events!.find((e: Event) => e.event === 'TokensAdded');
+      expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
-    it('should set the pauser role', async function () {
-      const pauserRole = await stakeRegistry.DEFAULT_ADMIN_ROLE();
-      expect(await stakeRegistry.hasRole(pauserRole, pauser)).to.be.true;
+    it('should match changeOverlay callStatic return to OverlayChanged round', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_1);
+      await activateStake(sr, staker_1, nonce_0, stakeAmount_0, height_0);
+      const fromCall = await sr.callStatic.changeOverlay(nonce_1_n_25);
+      const tx = await sr.changeOverlay(nonce_1_n_25);
+      const receipt = await tx.wait();
+      const ev = receipt.events!.find((e: Event) => e.event === 'OverlayChanged');
+      expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
-    it('should set the redistributor role', async function () {
-      const redistributorRole = await stakeRegistry.REDISTRIBUTOR_ROLE();
-      const redistribution = await ethers.getContract('Redistribution');
-      expect(await stakeRegistry.hasRole(redistributorRole, redistribution.address)).to.be.true;
+    it('should match increaseHeight callStatic return to HeightIncreased round', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+      const fromCall = await sr.callStatic.increaseHeight(height_0_n_1);
+      const tx = await sr.increaseHeight(height_0_n_1);
+      const receipt = await tx.wait();
+      const ev = receipt.events!.find((e: Event) => e.event === 'HeightIncreased');
+      expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
     });
 
-    it('should set the correct token', async function () {
-      const token = await ethers.getContract('TestToken');
-      expect(await stakeRegistry.bzzToken()).to.be.eq(token.address);
+    it('should match withdraw callStatic return to WithdrawalQueued round', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+      const fromCall = await sr.callStatic.withdraw(withdrawAmount);
+      const tx = await sr.withdraw(withdrawAmount);
+      const receipt = await tx.wait();
+      const ev = receipt.events!.find((e: Event) => e.event === 'WithdrawalQueued');
+      expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
+    });
+
+    it('should match exit callStatic return to WithdrawalQueued round', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_1);
+      await activateStake(sr, staker_1, nonce_0, stakeAmount_0, height_0);
+      const fromCall = await sr.callStatic.exit();
+      const tx = await sr.exit();
+      const receipt = await tx.wait();
+      const ev = receipt.events!.find((e: Event) => e.event === 'WithdrawalQueued');
+      expect(effectiveRoundFromEvent(ev)).to.eq(fromCall);
+    });
+
+    it('should revert when overlay is unchanged', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, stakeAmount_0, height_0);
+      await expect(sr.changeOverlay(nonce_0)).to.be.revertedWith(errors.general.overlayUnchanged);
+    });
+
+    it('should return 0 and emit nothing when height is unchanged', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, doubleStakeAmount_0, height_0_n_1);
+      expect(await sr.callStatic.increaseHeight(height_0_n_1)).to.eq(0);
+      const tx = await sr.increaseHeight(height_0_n_1);
+      const receipt = await tx.wait();
+      expect(receipt.events?.some((e: Event) => e.event === 'HeightIncreased')).to.eq(false);
+    });
+
+    it('should assign non-decreasing effective rounds when stacking addTokens without mining', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, stakeAmount_0, height_0);
+      const rounds: BigNumber[] = [];
+      for (let i = 0; i < 5; i++) {
+        await mintAndApprove(staker_0, sr.address, stakeAmount_0);
+        const tx = await sr.addTokens(stakeAmount_0);
+        const receipt = await tx.wait();
+        const ev = receipt.events!.find((e: Event) => e.event === 'TokensAdded');
+        rounds.push(effectiveRoundFromEvent(ev));
+      }
+      for (let i = 1; i < rounds.length; i++) {
+        expect(rounds[i].gte(rounds[i - 1])).to.eq(true);
+      }
+    });
+
+    it('should reject withdraw that would leave remainder below minimum for current height', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+      const almostAll = BigNumber.from(doubleStakeAmount_0).sub(1);
+      await expectRevertReasonSubstring(sr.withdraw(almostAll), errors.deposit.belowMinimum);
+    });
+
+    it('should revert applyUpdates atomically when a due withdrawal is blocked by freeze (withdraw then top-up)', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      const longFreezeTime = roundLength * 3;
+      await activateStake(sr, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+      const srDeployer = await ethers.getContract('StakeRegistry', deployer);
+      await srDeployer.grantRole(await srDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+      const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+      await srRedis.freezeDeposit(staker_0, longFreezeTime);
+
+      await sr.withdraw(withdrawAmount);
+      await mintAndApprove(staker_0, sr.address, stakeAmount_0);
+      await sr.addTokens(stakeAmount_0);
+      await advanceRounds();
+
+      const balanceBefore = (await sr.stakes(staker_0)).balance;
+      await expect(sr.applyUpdates(staker_0)).to.be.revertedWith(errors.general.frozenWithdrawal);
+      expect((await sr.stakes(staker_0)).balance).to.eq(balanceBefore);
+    });
+
+    it('should revert applyUpdates atomically when due withdrawal blocks after earlier queued top-up', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      const longFreezeTime = roundLength * 3;
+      await activateStake(sr, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+      const srDeployer = await ethers.getContract('StakeRegistry', deployer);
+      await srDeployer.grantRole(await srDeployer.REDISTRIBUTOR_ROLE(), redistributor);
+      const srRedis = await ethers.getContract('StakeRegistry', redistributor);
+      await srRedis.freezeDeposit(staker_0, longFreezeTime);
+
+      await mintAndApprove(staker_0, sr.address, stakeAmount_0);
+      await sr.addTokens(stakeAmount_0);
+      await sr.withdraw(withdrawAmount);
+      await advanceRounds();
+
+      const balanceBefore = (await sr.stakes(staker_0)).balance;
+      await expect(sr.applyUpdates(staker_0)).to.be.revertedWith(errors.general.frozenWithdrawal);
+      expect((await sr.stakes(staker_0)).balance).to.eq(balanceBefore);
+    });
+
+    it('should migrate active stake plus queued addTokens payout when paused', async function () {
+      const sr = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(sr, staker_0, nonce_0, stakeAmount_0, height_0);
+      await mintAndApprove(staker_0, sr.address, stakeAmount_0);
+      await sr.addTokens(stakeAmount_0);
+
+      const srPauser = await ethers.getContract('StakeRegistry', pauser);
+      await srPauser.pause();
+
+      const payout = BigNumber.from(stakeAmount_0).add(stakeAmount_0);
+      await expect(sr.migrateStake()).to.emit(sr, 'StakeMigrated').withArgs(staker_0, payout);
+      expect(await token.balanceOf(staker_0)).to.eq(doubleStakeAmount_0);
+      expect((await sr.stakes(staker_0)).balance).to.eq(0);
     });
   });
 
-  describe('depositing stake', function () {
-    beforeEach(async function () {
-      await deployments.fixture();
-      token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry', staker_0);
-    });
+  it('should reject staking constructor when waits are below base', async function () {
+    const tokenDeploy = await ethers.getContract('TestToken', deployer);
+    const netId = await stakeRegistry.networkId();
+    const Factory = await ethers.getContractFactory('StakeRegistry');
+    await expect(Factory.deploy(tokenDeploy.address, netId, 5, 4, 8)).to.be.revertedWith(
+      errors.general.invalidWaitConfig
+    );
+  });
 
-    it('should not deposit stake if funds are unavailable', async function () {
-      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
-        errors.deposit.noBalance
+  it('should reject enqueue when the update queue is full', async function () {
+    const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+    await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+    for (let i = 0; i < 10; i++) {
+      await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+      await expect(srStaker0.addTokens(stakeAmount_0)).to.emit(srStaker0, 'TokensAdded');
+    }
+    await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+    await expect(srStaker0.addTokens(stakeAmount_0)).to.be.revertedWith(errors.general.queueFull);
+  });
+
+  it('should apply earlier-enqueued top-up while frozen before overlay change is due', async function () {
+    const Factory = await ethers.getContractFactory('StakeRegistry');
+    const srAlt = await Factory.deploy(token.address, await stakeRegistry.networkId(), 2, 10, 2);
+    await srAlt.deployed();
+    await srAlt.grantRole(await srAlt.REDISTRIBUTOR_ROLE(), redistributor);
+
+    const srStaker = srAlt.connect(await getSignerFor(staker_0));
+    await mintAndApprove(staker_0, srAlt.address, doubleStakeAmount_0);
+    await srStaker.createDeposit(nonce_0, stakeAmount_0, height_0);
+    await advanceRounds();
+    await srAlt.applyUpdates(staker_0);
+
+    await mintAndApprove(staker_0, srAlt.address, stakeAmount_0);
+    await srStaker.addTokens(stakeAmount_0);
+    await srStaker.changeOverlay(nonce_1_n_25);
+
+    const srRedis = srAlt.connect(await getSignerFor(redistributor));
+    await srRedis.freezeDeposit(staker_0, roundLength * 25);
+
+    await advanceRounds(2);
+
+    await srAlt.applyUpdates(staker_0);
+
+    expect((await srAlt.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
+    expect(await srAlt.overlayOfAddress(staker_0)).to.be.eq(overlay_0);
+  });
+
+  describe('queue FIFO and mixed delays', function () {
+    /** WAIT_BASE / WAIT_OVERLAY_CHANGE / WAIT_WITHDRAWAL — overlay and withdrawal waits > base so effective rounds spread out. */
+    async function deployStakeRegistryAlt(
+      waitBase: number,
+      waitOverlay: number,
+      waitWithdrawal: number
+    ): Promise<Contract> {
+      const Factory = await ethers.getContractFactory('StakeRegistry');
+      const srAlt = await Factory.deploy(
+        token.address,
+        await stakeRegistry.networkId(),
+        waitBase,
+        waitOverlay,
+        waitWithdrawal
       );
+      await srAlt.deployed();
+      await srAlt.grantRole(await srAlt.REDISTRIBUTOR_ROLE(), redistributor);
+      return srAlt;
+    }
+
+    it('applies addTokens, withdraw, and changeOverlay in effective-round order when waits differ', async function () {
+      const waitBase = 2;
+      const waitWithdrawal = 6;
+      const waitOverlay = 10;
+      const srAlt = await deployStakeRegistryAlt(waitBase, waitOverlay, waitWithdrawal);
+      const srStaker = srAlt.connect(await getSignerFor(staker_1));
+
+      expect(await srAlt.WAIT_BASE()).to.eq(waitBase);
+      expect(await srAlt.WAIT_OVERLAY_CHANGE()).to.eq(waitOverlay);
+      expect(await srAlt.WAIT_WITHDRAWAL()).to.eq(waitWithdrawal);
+
+      await mintAndApprove(staker_1, srAlt.address, doubleStakeAmount_0);
+      await srStaker.createDeposit(nonce_0, doubleStakeAmount_0, height_0);
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_1);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(doubleStakeAmount_0);
+      expect(await token.balanceOf(staker_1)).to.be.eq(0);
+
+      await mintAndApprove(staker_1, srAlt.address, stakeAmount_0);
+      await srStaker.addTokens(stakeAmount_0);
+      await srStaker.withdraw(withdrawAmount);
+      await srStaker.changeOverlay(nonce_1_n_25);
+
+      // First maturity: top-up only (round + waitBase).
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_1);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(BigNumber.from(doubleStakeAmount_0).add(stakeAmount_0));
+      expect(await srAlt.overlayOfAddress(staker_1)).to.be.eq(overlay_1);
+      expect(await token.balanceOf(staker_1)).to.be.eq(0);
+
+      // Second: queued withdrawal (stacked after top-up; maturity round + waitWithdrawal).
+      await advanceRounds(waitWithdrawal - waitBase);
+      await srAlt.applyUpdates(staker_1);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(doubleStakeAmount_0);
+      expect(await token.balanceOf(staker_1)).to.be.eq(BigNumber.from(withdrawAmount));
+      expect(await srAlt.overlayOfAddress(staker_1)).to.be.eq(overlay_1);
+
+      // Third: overlay (candidate round + waitOverlay vs last scheduled round).
+      await advanceRounds(waitOverlay - waitWithdrawal);
+      await srAlt.applyUpdates(staker_1);
+      expect(await srAlt.overlayOfAddress(staker_1)).to.be.eq(overlay_1_n_25);
+      expect((await srAlt.stakes(staker_1)).balance).to.be.eq(doubleStakeAmount_0);
     });
 
-    it('should deposit stake correctly if funds are available', async function () {
-      const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
+    it('applies addTokens then withdraw then addTokens in queue order when shares the same effective round', async function () {
+      const waitBase = 2;
+      const waitWithdrawal = 6;
+      const waitOverlay = 10;
+      const srAlt = await deployStakeRegistryAlt(waitBase, waitOverlay, waitWithdrawal);
+      const srStaker = srAlt.connect(await getSignerFor(staker_0));
 
-      const updatedBlockNumber = (await getBlockNumber()) + 3;
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
-
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, committedStakeAmount_0, stakeAmount_0, overlay_0, updatedBlockNumber, height_0);
-
+      await mintAndApprove(staker_0, srAlt.address, doubleStakeAmount_0);
+      await srStaker.createDeposit(nonce_0, doubleStakeAmount_0, height_0);
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(0);
 
-      const staked = await sr_staker_0.stakes(staker_0);
+      await mintAndApprove(staker_0, srAlt.address, doubleStakeAmount_0);
+      await srStaker.addTokens(stakeAmount_0);
+      await srStaker.withdraw(withdrawAmount);
+      await srStaker.addTokens(stakeAmount_0);
 
-      expect(staked.overlay).to.be.eq(overlay_0);
-      expect(staked.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked.committedStake).to.be.eq(committedStakeAmount_0);
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+      await advanceRounds(waitBase);
+      await srAlt.applyUpdates(staker_0);
+      expect((await srAlt.stakes(staker_0)).balance).to.be.eq(BigNumber.from(doubleStakeAmount_0).add(stakeAmount_0));
 
-      expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(stakeAmount_0);
+      await advanceRounds(waitWithdrawal - waitBase);
+      await srAlt.applyUpdates(staker_0);
+      expect((await srAlt.stakes(staker_0)).balance).to.be.eq(BigNumber.from(doubleStakeAmount_0).add(stakeAmount_0));
+      expect(await token.balanceOf(staker_0)).to.be.eq(BigNumber.from(withdrawAmount));
     });
 
-    it('should update stake correctly if funds are available', async function () {
-      const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
-
-      sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      const lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
-
-      await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
-      expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount_0);
-
-      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, zeroAmount))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(
-          staker_0,
-          updatedCommittedStakeAmount_0,
-          updatedStakeAmount_0,
-          overlay_0,
-          lastUpdatedBlockNumber + 1,
-          height_0
-        );
-
-      const staked = await stakeRegistry.stakes(staker_0);
-      expect(staked.overlay).to.be.eq(overlay_0);
-      expect(staked.potentialStake).to.be.eq(updatedStakeAmount_0);
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber + 1);
-      expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(updatedStakeAmount_0);
-    });
-  });
-
-  describe('slashing stake', function () {
-    beforeEach(async function () {
-      await deployments.fixture();
-      token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry');
-
-      const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-      const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
-      await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
-    });
-
-    it('should not slash staked deposit without redistributor role', async function () {
-      const stakeRegistry = await ethers.getContract('StakeRegistry', staker_0);
-      await expect(stakeRegistry.slashDeposit(staker_0, stakeAmount_0)).to.be.revertedWith(errors.slash.noRole);
-    });
-
-    it('should slash staked deposit with redistributor role', async function () {
-      const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-
-      await stakeRegistryRedistributor.slashDeposit(staker_0, stakeAmount_0);
-
-      const staked = await stakeRegistry.stakes(staker_0);
-      expect(staked.overlay).to.be.eq(zeroBytes32);
-      expect(staked.potentialStake).to.be.eq(0);
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(0);
-    });
-
-    it('should restake slashed deposit', async function () {
-      const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-
-      await stakeRegistryRedistributor.slashDeposit(staker_0, stakeAmount_0);
-
-      const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      const lastUpdatedBlockNumber = await getBlockNumber();
-      const staked = await stakeRegistry.stakes(staker_0);
-      expect(staked.overlay).to.be.eq(overlay_0);
-
-      expect(staked.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
-    });
-  });
-
-  describe('freezing stake', function () {
-    let sr_staker_0: Contract;
-
-    beforeEach(async function () {
-      await deployments.fixture();
-      token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry');
-
-      sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-      const redistributorRole = await stakeRegistryDeployer.REDISTRIBUTOR_ROLE();
-      await stakeRegistryDeployer.grantRole(redistributorRole, redistributor);
-    });
-
-    it('should not freeze staked deposit without redistributor role', async function () {
-      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_0);
-      await expect(stakeRegistryStaker1.freezeDeposit(staker_0, freezeTime)).to.be.revertedWith(errors.freeze.noRole);
-    });
-
-    it('should freeze staked deposit with redistributor role', async function () {
-      const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-
-      await expect(stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime))
-        .to.emit(stakeRegistry, 'StakeFrozen')
-        .withArgs(staker_0, overlay_0, freezeTime);
-
-      const staked = await stakeRegistryRedistributor.stakes(staker_0);
-      const updatedBlockNumber = (await getBlockNumber()) + 3;
-
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-    });
-
-    it('should not allow update of a frozen staked deposit', async function () {
-      const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-      await stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime);
-
-      const staked = await stakeRegistryRedistributor.stakes(staker_0);
-      const updatedBlockNumber = (await getBlockNumber()) + 3;
-
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
-        errors.freeze.currentlyFrozen
-      );
-
-      mineNBlocks(3);
-
-      const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(
-          staker_0,
-          doubled_committedStakeAmount_0,
-          doubled_stakeAmount_0,
-          overlay_0,
-          newUpdatedBlockNumber,
-          height_0
-        );
-    });
-  });
-
-  describe('pause contract', function () {
-    let sr_staker_0: Contract;
-
-    beforeEach(async function () {
-      await deployments.fixture();
-      token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry');
-
-      sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-      const pauserRole = await stakeRegistryDeployer.DEFAULT_ADMIN_ROLE();
-      await stakeRegistryDeployer.grantRole(pauserRole, pauser);
-    });
-
-    it('should not pause contract without pauser role', async function () {
-      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_0);
-      await expect(stakeRegistryStaker1.pause()).to.be.revertedWith(errors.pause.noRole);
-    });
-
-    it('should pause contract with pauser role', async function () {
-      const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
-      await stakeRegistryPauser.pause();
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
-        errors.pause.currentlyPaused
-      );
-    });
-
-    it('should not unpause contract without pauser role', async function () {
-      const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
-      await stakeRegistryPauser.pause();
-
-      const stakeRegistryStaker1 = await ethers.getContract('StakeRegistry', staker_0);
-      await expect(stakeRegistryStaker1.unPause()).to.be.revertedWith(errors.pause.onlyPauseCanUnPause);
-    });
-
-    it('should not allow staking while paused', async function () {
-      const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
-      await stakeRegistryPauser.pause();
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await expect(stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
-        errors.pause.currentlyPaused
-      );
-    });
-
-    it('should allow staking once unpaused', async function () {
-      const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
-      await stakeRegistryPauser.pause();
-
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
-        errors.pause.currentlyPaused
-      );
-
-      await stakeRegistryPauser.unPause();
-
-      const newUpdatedBlockNumber = (await getBlockNumber()) + 3;
-      await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
-      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, height_0))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(
-          staker_0,
-          updatedCommittedStakeAmount_0,
-          updatedStakeAmount_0,
-          overlay_0,
-          newUpdatedBlockNumber,
-          height_0
-        );
-    });
-  });
-
-  describe('stake surplus withdrawl and stake migrate', function () {
-    let sr_staker_0: Contract;
-    let sr_staker_1: Contract;
-    let updatedBlockNumber: number;
-
-    beforeEach(async function () {
-      await deployments.fixture();
-      token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry');
-      sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
-      sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-      // Bump up the price so we can test surplus withdrawls
-      await priceOracle.setPrice(32000);
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      updatedBlockNumber = await getBlockNumber();
-
-      const stakeRegistryDeployer = await ethers.getContract('StakeRegistry', deployer);
-      const pauserRole = await stakeRegistryDeployer.DEFAULT_ADMIN_ROLE();
-      await stakeRegistryDeployer.grantRole(pauserRole, pauser);
-    });
-
-    it('should not allow stake migration while unpaused', async function () {
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-      await expect(sr_staker_0.migrateStake()).to.be.revertedWith(errors.pause.notCurrentlyPaused);
-    });
-
-    it('should allow stake migration while paused', async function () {
-      const staked_before = await sr_staker_0.stakes(staker_0);
-
-      expect(staked_before.overlay).to.be.eq(overlay_0);
-      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      const stakeRegistryPauser = await ethers.getContract('StakeRegistry', pauser);
-      await stakeRegistryPauser.pause();
-
-      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-
-      await sr_staker_0.migrateStake();
-
-      const staked_after = await sr_staker_0.stakes(staker_0);
-
-      expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
-
-      expect(staked_after.overlay).to.be.eq(zeroBytes32);
-      expect(staked_after.potentialStake).to.be.eq(zeroStake);
-      expect(staked_after.lastUpdatedBlockNumber).to.be.eq(0);
-
-      await stakeRegistryPauser.unPause();
-    });
-
-    it('should not allow deposit stake below minimum', async function () {
-      await mintAndApprove(staker_1, stakeRegistry.address, stakeAmount_1_n);
-      await expect(sr_staker_1.manageStake(nonce_1, stakeAmount_1_n, height_1_n_1)).to.be.revertedWith(
-        errors.deposit.belowMinimum
-      );
-    });
-
-    it('should make stake surplus withdrawal', async function () {
-      const staked_before = await sr_staker_0.stakes(staker_0);
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-      expect(staked_before.overlay).to.be.eq(overlay_0);
-      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      // Check that balance of wallet is 0 in the begining and lower the price
-      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-      await priceOracle.setPrice(24000);
-
-      await sr_staker_0.withdrawFromStake();
-      const staked_after = await sr_staker_0.stakes(staker_0);
-      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
-
-      expect(staked_before.potentialStake.gt(staked_after.potentialStake)).to.be.true;
-      expect(staked_after.potentialStake.toString()).to.be.eq(effectiveStake);
-      expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
-    });
-
-    it('should make stake surplus withdrawal when height increases', async function () {
-      const staked_before = await sr_staker_0.stakes(staker_0);
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-      await priceOracle.setPrice(24000);
-
-      // We are doubling here as we are adding another "amount" with another stakeAmount_0
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
-      const staked_after = await sr_staker_0.stakes(staker_0);
-
-      expect(staked_after.overlay).to.be.eq(overlay_0);
-      expect(staked_after.potentialStake).to.be.eq(doubled_stakeAmount_0);
-      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      // Check that balance of wallet is 0 in the begining
-      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-
-      await sr_staker_0.withdrawFromStake();
-
-      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
-      const tokenBalance = (await token.balanceOf(staker_0)).toString();
-      const potentialStakeBalance = staked_after.potentialStake.toString();
-
-      expect(staked_after.potentialStake.gt(staked_before.potentialStake)).to.be.true;
-      expect(String(potentialStakeBalance - tokenBalance)).to.be.eq(effectiveStake);
-      expect(tokenBalance).to.not.eq(zeroAmount);
-    });
-
-    it('should make stake surplus withdrawal when height increases and then decreases', async function () {
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-      await priceOracle.setPrice(24000);
-      const price = await priceOracle.currentPrice();
-
-      // We are doubling here as we are adding another "amount" with another stakeAmount_0
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
-      const staked_before = await sr_staker_0.stakes(staker_0);
-
-      expect(staked_before.overlay).to.be.eq(overlay_0);
-      expect(staked_before.potentialStake).to.be.eq(doubled_stakeAmount_0);
-      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-
-      // Mine 2 rounds so that values are valid, before that effectiveStake is zero as nodes cant play
-      await mineNBlocks(roundLength * 2);
-      const withdrawbleStakeBefore = await sr_staker_0.withdrawableStake();
-
-      // We are lowering height to 0 and again mining 2 rounds so values are valid
-      await sr_staker_0.manageStake(nonce_0, 0, height_0);
-      await mineNBlocks(roundLength * 2);
-      const staked_after = await sr_staker_0.stakes(staker_0);
-      // await priceOracle.setPrice(24000);
-
-      const withdrawbleStakeAfter = await sr_staker_0.withdrawableStake();
-      expect(withdrawbleStakeAfter.gt(withdrawbleStakeBefore)).to.be.true;
-      await sr_staker_0.withdrawFromStake();
-
-      const potentialStakeBalance = staked_after.potentialStake.toString();
-      const tokenBalance = await token.balanceOf(staker_0);
-      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
-
-      expect(String(potentialStakeBalance - tokenBalance)).to.be.eq(effectiveStake);
-      expect(tokenBalance).to.not.eq(zeroAmount);
-    });
-
-    it('should make stake surplus withdrawal and not withdraw again after', async function () {
-      const staked_before = await sr_staker_0.stakes(staker_0);
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-      expect(staked_before.overlay).to.be.eq(overlay_0);
-      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      // Check that balance of wallet is 0 in the begining and lower the price
-      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-      await priceOracle.setPrice(24000);
-
-      await sr_staker_0.withdrawFromStake();
-      const staked_after = await sr_staker_0.stakes(staker_0);
-      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
-
-      expect(staked_before.potentialStake.gt(staked_after.potentialStake)).to.be.true;
-      expect(staked_after.potentialStake.toString()).to.be.eq(effectiveStake);
-      expect(await token.balanceOf(staker_0)).to.not.eq(zeroAmount);
-
-      // Check repeated withdrawl and that it stays the same
-      await sr_staker_0.withdrawFromStake();
-      await sr_staker_0.withdrawFromStake();
-      expect(await token.balanceOf(staker_0)).to.eq('25000000000000000');
-
-      const effectiveStakeRepeated = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
-      const staked_repeated = await sr_staker_0.stakes(staker_0);
-      expect(staked_repeated.potentialStake.toString()).to.be.eq(effectiveStakeRepeated);
-    });
-
-    it('should not make stake surplus withdrawal when price from oracle stays the same', async function () {
-      const staked_before = await sr_staker_0.stakes(staker_0);
-
-      expect(staked_before.overlay).to.be.eq(overlay_0);
-      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      // Check that balance of wallet is 0 in the begining and lower the price
-      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-
-      await sr_staker_0.withdrawFromStake();
-      const staked_after = await sr_staker_0.stakes(staker_0);
-
-      expect(staked_before.potentialStake).to.be.eq(staked_after.potentialStake);
-      expect(await token.balanceOf(staker_0)).to.eq(zeroAmount);
-    });
-
-    it('should not make stake surplus withdrawal when price from oracle is higher', async function () {
-      const staked_before = await sr_staker_0.stakes(staker_0);
-      const priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-      expect(staked_before.overlay).to.be.eq(overlay_0);
-      expect(staked_before.potentialStake).to.be.eq(stakeAmount_0);
-      expect(staked_before.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
-
-      // Check that balance of wallet is 0 in the begining and lower the price
-      expect(await token.balanceOf(staker_0)).to.be.eq(zeroAmount);
-      await priceOracle.setPrice(44000);
-
-      await sr_staker_0.withdrawFromStake();
-      const staked_after = await sr_staker_0.stakes(staker_0);
-
-      expect(staked_before.potentialStake).to.be.eq(staked_after.potentialStake);
-      expect(await token.balanceOf(staker_0)).to.eq(zeroAmount);
-    });
-
-    it('should check withdrawable stake of node if we increse and decrease height', async function () {
-      // Situation where we have 10 BZZ, then change height to 1 and add 10 more BZZ, then lower height to 0 and withdraw 10
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0_n_1);
-      await mineNBlocks(roundLength * 2);
-
-      // We should not be able to withdraw anything
-      const effectiveStake = (await sr_staker_0.nodeEffectiveStake(staker_0)).toString();
-      const withdrawableStakeBefore = (await sr_staker_0.withdrawableStake()).toString();
-      expect(withdrawableStakeBefore).to.be.eq('0');
-
-      // We should be able to withdraw inital stake of 10 BZZ
-      await sr_staker_0.manageStake(nonce_0, 0, height_0);
-      await mineNBlocks(roundLength * 2);
-      const withdrawableStakeAfter = (await sr_staker_0.withdrawableStake()).toString();
-      expect(withdrawableStakeAfter).to.be.eq(stakeAmount_0);
-    });
-
-    it('should check withdrawable stake of node if we decrease height, height starting from 1 ', async function () {
-      // Situation where we have 20 BZZ and 1 height, then change back to 0, and withdrawl should be 10 BZZ
-      await mintAndApprove(staker_1, stakeRegistry.address, doubled_stakeAmount_1);
-      await sr_staker_1.manageStake(nonce_1, doubled_stakeAmount_1, height_1_n_1);
-      await mineNBlocks(roundLength * 2);
-      const withdrawableStakeBefore1 = (await sr_staker_1.withdrawableStake()).toString();
-      expect(withdrawableStakeBefore1).to.be.eq('0');
-
-      // Decrease height and check withdrawable stake, should be 10 BZZ
-      await sr_staker_1.manageStake(nonce_1, 0, height_1);
-      await mineNBlocks(roundLength * 2);
-      const withdrawableStakeAfter2 = (await sr_staker_1.withdrawableStake()).toString();
-      expect(withdrawableStakeAfter2).to.be.eq(stakeAmount_1);
-    });
-
-    it('should check withdrawable stake of node if we increrase then, decrease height, height starting from 0', async function () {
-      // Situation where we have 20 BZZ and 1 height, then change back to 0, and withdrawl should be 10 BZZ
-      await mintAndApprove(staker_1, stakeRegistry.address, doubled_stakeAmount_1);
-      await sr_staker_1.manageStake(nonce_1, doubled_stakeAmount_1, height_1);
-      await mineNBlocks(roundLength * 2);
-      const withdrawableStakeBefore1 = (await sr_staker_1.withdrawableStake()).toString();
-      expect(withdrawableStakeBefore1).to.be.eq('0');
-
-      // Increase height and check withdrawable stake, should be still 0
-      await sr_staker_1.manageStake(nonce_1, 0, height_1_n_1);
-      const withdrawableStakeAfter1 = (await sr_staker_1.withdrawableStake()).toString();
-      expect(withdrawableStakeAfter1).to.be.eq('0');
-
-      // Decrease height and check withdrawable stake, should be 0 BZZ
-      await sr_staker_1.manageStake(nonce_1, 0, height_1);
-      await mineNBlocks(roundLength * 2);
-      const withdrawableStakeAfter2 = (await sr_staker_1.withdrawableStake()).toString();
-      expect(withdrawableStakeAfter2).to.be.eq('0');
-    });
-  });
-
-  describe('change overlay hex', function () {
-    let sr_staker_1: Contract;
-
-    beforeEach(async function () {
-      await deployments.fixture();
-      token = await ethers.getContract('TestToken', deployer);
-      sr_staker_1 = await ethers.getContract('StakeRegistry', staker_1);
-
-      await mintAndApprove(staker_1, sr_staker_1.address, stakeAmount_1);
-      await sr_staker_1.manageStake(nonce_1, stakeAmount_1, height_1);
-    });
-
-    it('should change overlay hex', async function () {
-      const current_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      await sr_staker_1.manageStake(nonce_1_n_25, 0, 0);
-      const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      expect(new_overlay).to.not.eq(current_overlay);
-    });
-
-    it('should match new overlay hex', async function () {
-      await sr_staker_1.manageStake(nonce_1_n_25, zeroStake, height_1);
-      const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      expect(new_overlay).to.be.eq(overlay_1_n_25);
-    });
-
-    it('should match old overlay hex after double change', async function () {
-      await sr_staker_1.manageStake(nonce_1_n_25, zeroStake, height_1);
-      const new_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      expect(new_overlay).to.be.eq(overlay_1_n_25);
-
-      await sr_staker_1.manageStake(nonce_1, zeroStake, height_1);
-      const old_overlay = await sr_staker_1.overlayOfAddress(staker_1);
-      expect(old_overlay).to.be.eq(overlay_1);
-    });
-  });
-
-  describe('commitment protection', function () {
-    beforeEach(async function () {
-      await deployments.fixture();
-      token = await ethers.getContract('TestToken', deployer);
-      stakeRegistry = await ethers.getContract('StakeRegistry', staker_0);
-
-      // Set up initial stake with height 0 (lower height)
-      await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
-      await stakeRegistry.manageStake(nonce_0, stakeAmount_0, height_0);
-    });
-
-    it('should prevent decreasing commitment by increasing height', async function () {
-      // Try to manipulate the committed stake by increasing the height parameter
-      // This will decrease the committedStake value because of the larger divisor
-      await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
-
-      // This would decrease the committedStake due to larger height divisor
-      await expect(stakeRegistry.manageStake(nonce_0, updateStakeAmount_0, height_0_n_1)).to.be.revertedWith(
-        errors.commitment.decrease
-      );
+    it('applies addTokens, withdraw, and increaseHeight in strict FIFO in one round when fixture waits are uniform', async function () {
+      const srStaker0 = await ethers.getContract('StakeRegistry', staker_0);
+      await activateStake(srStaker0, staker_0, nonce_0, doubleStakeAmount_0, height_0);
+
+      await mintAndApprove(staker_0, srStaker0.address, stakeAmount_0);
+      await srStaker0.addTokens(stakeAmount_0);
+      await srStaker0.withdraw(withdrawAmount);
+      await srStaker0.increaseHeight(height_0_n_1);
+
+      await advanceRounds(2);
+      await srStaker0.applyUpdates(staker_0);
+
+      expect((await srStaker0.stakes(staker_0)).balance).to.be.eq(doubleStakeAmount_0);
+      expect(await srStaker0.heightOfAddress(staker_0)).to.be.eq(height_0_n_1);
+      expect(await token.balanceOf(staker_0)).to.be.eq(BigNumber.from(withdrawAmount));
     });
   });
 });

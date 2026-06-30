@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./interface/IPostageStamp.sol";
+import "./Util/Constants.sol";
 
 /**
  * @title PriceOracle contract.
@@ -37,9 +38,6 @@ contract PriceOracle is AccessControl {
 
     // Role allowed to update price
     bytes32 public immutable PRICE_UPDATER_ROLE;
-
-    // The length of a round in blocks.
-    uint8 private constant ROUND_LENGTH = 152;
 
     // ----------------------------- Events ------------------------------
 
@@ -99,13 +97,13 @@ contract PriceOracle is AccessControl {
         return true;
     }
 
-    function adjustPrice(uint16 redundancy) external returns (bool) {
+    function adjustPrice(uint16 _redundancy) external returns (bool) {
         if (isPaused == false) {
             if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
                 revert CallerNotPriceUpdater();
             }
 
-            uint16 usedRedundancy = redundancy;
+            uint16 usedRedundancy = _redundancy;
             uint64 currentRoundNumber = currentRound();
 
             // Price can only be adjusted once per round
@@ -113,13 +111,13 @@ contract PriceOracle is AccessControl {
                 revert PriceAlreadyAdjusted();
             }
             // Redundancy may not be zero
-            if (redundancy == 0) {
+            if (_redundancy == 0) {
                 revert UnexpectedZero();
             }
 
             // Enforce maximum considered extra redundancy
             uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
-            if (redundancy > maxConsideredRedundancy) {
+            if (_redundancy > maxConsideredRedundancy) {
                 usedRedundancy = maxConsideredRedundancy;
             }
 
@@ -189,7 +187,7 @@ contract PriceOracle is AccessControl {
         // We downcasted to uint64 as uint64 has 18,446,744,073,709,551,616 places
         // as each round is 152 x 5 = 760, each day has around 113 rounds which is 41245 in a year
         // it results 4.4724801e+14 years to run this game
-        return uint64(block.number / uint256(ROUND_LENGTH));
+        return uint64(block.number / Constants.ROUND_LENGTH);
     }
 
     /**

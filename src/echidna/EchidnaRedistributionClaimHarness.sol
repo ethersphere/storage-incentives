@@ -2,6 +2,7 @@
 pragma solidity ^0.8.19;
 
 import "../Redistribution.sol";
+import "../Util/Constants.sol";
 import "../TestToken.sol";
 import "../interface/IPostageStamp.sol";
 import "./EchidnaMocks.sol";
@@ -83,6 +84,8 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
 }
 
 contract RedistributionClaimStub is Redistribution {
+    event WithdrawFailed(address indexed winner);
+
     constructor(
         address staking,
         address postageContract,
@@ -130,7 +133,8 @@ contract EchidnaRedistributionClaimActor {
 /// @notice Harness to fuzz commit→reveal→claim-withdraw end-to-end (without proof verification).
 contract EchidnaRedistributionClaimHarness {
     uint256 internal constant ACTOR_COUNT = 3;
-    uint256 internal constant ROUND_LENGTH = 152;
+    uint256 internal constant ROUND_LENGTH = Constants.ROUND_LENGTH;
+    uint256 internal constant PHASE_LENGTH = Constants.PHASE_LENGTH;
 
     TestToken internal immutable token;
     EchidnaStakeRegistryMock internal immutable stakeMock;
@@ -217,7 +221,7 @@ contract EchidnaRedistributionClaimHarness {
     function act_happyCommit(uint8 actorId, bytes32 hash, bytes32 nonce) external {
         _clearClaimPending();
         if (!redist.currentPhaseCommit()) return;
-        if (block.number % ROUND_LENGTH == (ROUND_LENGTH / 4) - 1) return;
+        if (block.number % ROUND_LENGTH == PHASE_LENGTH - 1) return;
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaRedistributionClaimActor a = actors[idx];

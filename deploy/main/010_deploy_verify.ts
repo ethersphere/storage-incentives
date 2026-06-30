@@ -6,7 +6,11 @@ const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
   if (network.name == 'mainnet' && process.env.MAINNET_ETHERSCAN_KEY) {
-    const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
+    const config = networkConfig[network.name] || {};
+    const swarmNetworkID = config.swarmNetworkId;
+    if (swarmNetworkID === undefined) {
+      throw new Error(`swarmNetworkId is not configured for network '${network.name}'`);
+    }
     const token = await get('Token');
 
     // Verify postageStamp
@@ -27,14 +31,21 @@ const func: DeployFunction = async function ({ deployments, network }) {
 
     // Verify staking
     const staking = await get('StakeRegistry');
-    const argStaking = [token.address, swarmNetworkID, priceOracle.address];
+    const redistribution = await get('Redistribution');
+    const argStaking = [
+      token.address,
+      redistribution.address,
+      swarmNetworkID,
+      config.stakeWaitBase || 2,
+      config.stakeWaitOverlayChange || 2,
+      config.stakeWaitWithdrawal || 2,
+    ];
 
     log('Verifying...');
     await verify(staking.address, argStaking);
     log('----------------------------------------------------');
 
     // Verify redistribution
-    const redistribution = await get('Redistribution');
     const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
 
     log('Verifying...');

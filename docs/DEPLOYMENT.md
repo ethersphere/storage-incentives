@@ -18,7 +18,7 @@ The contracts must be deployed in this specific order due to dependencies:
 1. Token (external or TestToken for testnets)
 2. PostageStamp (depends on Token)
 3. PriceOracle (depends on PostageStamp)
-4. StakeRegistry (depends on Token and PriceOracle)
+4. StakeRegistry (depends on Token)
 5. Redistribution (depends on StakeRegistry, PostageStamp, PriceOracle)
 6. Role Setup (connects contracts together)
 ```
@@ -111,7 +111,7 @@ npx hardhat deploy --network mainnet --tags oracle
 
 **Constructor**:
 ```typescript
-[token.address, swarmNetworkId, priceOracle.address]
+[token.address, swarmNetworkId, waitBase, waitOverlayChange, waitWithdrawal]
 ```
 
 **Network IDs** (from `helper-hardhat-config.ts`):

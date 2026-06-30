@@ -2,426 +2,316 @@
 
 ## Overview
 
-The `StakeRegistry` (Staking) contract manages staking for node operators participating in the Swarm network's redistribution game. Nodes stake tokens to become eligible for rewards and penalties.
+The `StakeRegistry` contract (`src/Staking.sol`) manages BZZ staking for node operators in the Swarm redistribution game. Nodes lock tokens, register an overlay and height, and become subject to freeze penalties from the `Redistribution` contract.
+
+There is **no PriceOracle dependency**. Stake is a single on-chain BZZ balance per account, not a committed-chunk / potential-stake pair.
 
 ## Purpose
 
 The contract:
-- Tracks node stakes with overlay addresses
-- Manages committed vs potential stake
-- Allows height-based reserve calculations
-- Provides freeze/slash mechanisms for penalties
-- Enables stake withdrawal for surplus amounts
+
+- Derives and tracks each node's overlay address
+- Holds staked BZZ with height-based minimum requirements
+- Queues stake changes with round-based delays (FIFO update queue)
+- Exposes **effective** overlay, height, and balance to `Redistribution` (including matured-but-not-yet-applied queue items)
+- Applies freeze penalties (participation exclusion) via `REDISTRIBUTOR_ROLE`
 
 ## Key Concepts
 
-### Overlay Address
+### Overlay address
 
-Each node has an "overlay address" which is derived from:
 ```solidity
-overlay = keccak256(abi.encodePacked(nodeAddress, reverse(networkId), nonce))
+overlay = keccak256(abi.encodePacked(owner, reverse(networkId), nonce))
 ```
 
-This creates a unique identifier for the node within a specific Swarm network.
+`networkId` is set at deploy time and used for all new overlay derivations on that deployment.
 
-### Two-Stake System
+### Stake balance and height
 
-The contract maintains two types of stake:
+Each committed account has:
 
-1. **Committed Stake**: Chunks pledged to store (in oracle price units)
-2. **Potential Stake**: Actual BZZ tokens staked
+- **`balance`**: BZZ held in the contract for that stake
+- **`height`**: Staking height (0–128). Minimum required balance is:
 
-The effective stake (used in redistribution) is the minimum of:
 ```solidity
-effectiveStake = min(
-    committedStake * price * 2^height,
-    potentialStake
-)
+minimumForHeight(h) = MIN_STAKE * (2 ** h)
 ```
 
-### Height Parameter
+Higher height means a higher minimum deposit and a higher minimum remainder after partial withdrawal. Height does **not** multiply effective stake in the redistribution game; it scales **eligibility requirements** and how `Redistribution` computes depth responsibility (`depth - height`).
 
-The `height` parameter allows nodes to register additional capacity:
-- Height 0: Normal capacity (committed stake * price)
-- Height 1: Double capacity (committed stake * price * 2)
-- Height 2: 4x capacity, etc.
+### Effective stake (for Redistribution)
 
-This allows nodes to increase their effective stake without depositing more tokens by registering additional storage space.
+```solidity
+nodeEffectiveStake(owner) =
+    addressNotFrozen(owner) && overlay != 0
+        ? previewedBalance(owner)
+        : 0
+```
+
+`previewedBalance` includes all queue items at the account head whose `effectiveFromRound <= currentRound()` (and that are not blocked by freeze for withdrawal types), even if the owner has not called `applyUpdates()`.
+
+**Freeze** is not a token lock: while `block.number <= freezeUntilBlock`, effective stake is zero, but the owner can still enqueue non-withdrawal updates. Due `withdraw` / `exit` payouts are blocked until unfreeze (or advanced via redistributor paths — see below).
+
+### Update queue
+
+Most mutations are **scheduled**, not immediate:
+
+| Function | Queue kind | Typical wait |
+|----------|------------|--------------|
+| `createDeposit` | `CreateDeposit` | `WAIT_BASE` rounds |
+| `addTokens` | `AddTokens` | `WAIT_BASE` |
+| `increaseHeight` | `IncreaseHeight` | `WAIT_BASE` |
+| `changeOverlay` | `ChangeOverlay` | `WAIT_OVERLAY_CHANGE` |
+| `withdraw` | `WithdrawTokens` | `WAIT_WITHDRAWAL` |
+| `exit` | `ExitStake` | `WAIT_WITHDRAWAL` |
+
+Items become applicable when `effectiveFromRound <= currentRound()`. `applyUpdates(owner)` materializes the ready prefix of the queue. Queue length is capped at `UPDATE_QUEUE_MAX_LENGTH` (10). After `exit()` is queued, the queue is **closed** (no further mutations until processed or migrated).
+
+Rounds are `block.number / ROUND_LENGTH` (152 blocks per round).
 
 ## Functions
 
-### Node Functions
+### Node functions
 
-#### manageStake()
-Creates or updates a node's stake, optionally changing overlay.
+#### createDeposit(setNonce, amount, height)
 
-**Parameters**:
-- `_setNonce`: Nonce for overlay calculation
-- `_addAmount`: Additional BZZ tokens to add (0 if only changing overlay)
-- `_height`: Height multiplier (0-255)
+First stake for an address (no existing committed stake with balance).
 
-**Requirements**:
-- Minimum stake: `_addAmount >= MIN_STAKE * 2^height` (first deposit only)
-- If frozen: transaction reverts with `Frozen()` error
+- Pulls `amount` of BZZ via `transferFrom`
+- Requires `amount >= MIN_STAKE * 2**height`
+- Reverts `AlreadyStaked()` if the address already has committed stake with balance
+- Reverts `StakingHeightTooLarge()` if `height > MAX_STAKING_HEIGHT`
+- Returns `effectiveFromRound` (same value as in `DepositCreated`)
+- Emits `DepositCreated`
 
-**Logic**:
-1. Calculate new overlay from nonce
-2. If first stake: check minimum deposit requirement
-3. If frozen: revert (can't change stake while frozen)
-4. Update potential stake if depositing
-5. Calculate new committed stake: `potentialStake / (price * 2^height)`
-6. Never allow committed stake to decrease
-7. Transfer tokens if depositing
-8. Store new stake state
-9. Emit events
+#### addTokens(amount)
 
-**Overlay Change**:
-If overlay changes, emits `OverlayChanged` event (useful for monitoring).
+Adds BZZ to an existing stake (queued). Reverts `InvalidAmount()` if `amount == 0`.
 
-#### withdrawFromStake()
-Withdraws surplus stake (difference between potential and effective stake).
+#### changeOverlay(setNonce)
 
-**Requirements**:
-- No special roles needed (only withdraws surplus)
+Changes overlay after `WAIT_OVERLAY_CHANGE`; reverts `OverlayUnchanged` if derived overlay is unchanged.
 
-**Logic**:
-```solidity
-surplus = potentialStake - effectiveStake
-if (surplus > 0) {
-    transfer tokens to node
-    potentialStake -= surplus
-}
-```
+#### increaseHeight(height)
 
-**Use Case**: If price increases or height decreases, effective stake may be less than potential, allowing withdrawal of the difference.
+Increases height only (cannot decrease). Requires preview balance ≥ minimum for the new height at enqueue time.
+
+#### withdraw(amount)
+
+Partial withdrawal after `WAIT_WITHDRAWAL`. Remainder must stay ≥ minimum for current height. Full unwind uses `exit()`, not `withdraw(fullBalance)`.
+
+#### exit()
+
+Schedules full exit: clears stake and returns all balance when applied; closes the queue.
+
+#### applyUpdates(owner)
+
+Public. Applies all ready queue items in order. Reverts `FrozenWithdrawal()` if the head item is a due withdrawal/exit while frozen (whole tx rolls back).
+
+Integrators and Bee should align commit/reveal data with **previewed** overlay/height/stake from view functions, not only storage before `applyUpdates`.
 
 #### migrateStake()
-Emergency withdrawal when contract is paused.
 
-**Requirements**:
-- Contract must be paused
-- Withdraws entire potential stake
+When contract is **paused**: returns active balance plus amounts from queued `CreateDeposit` / `AddTokens`, clears stake and queue. Freeze deadline on the account is unchanged.
 
-**Use Case**: For upgrading to new staking contracts.
+### Redistributor functions
 
-### Redistributor Functions
+#### freezeDeposit(owner, time)
 
-#### freezeDeposit()
-Freezes a node's stake for a specified time (penalty).
+Requires `REDISTRIBUTOR_ROLE` and `whenNotPaused`.
 
-**Parameters**:
-- `_owner`: Node address to freeze
-- `_time`: Duration in blocks
+- Extends `freezeUntilBlock` to at least `block.number + time` (monotonic — never shortened)
+- If the account has no stake and no queue: records account-level freeze only and emits `AccountFreezeExtended`
+- Otherwise calls `_applyReadyUpdates` first: a **matured** withdrawal at queue head on an **unfrozen** account can pay out in the same tx before the new freeze applies
+- While frozen: `nodeEffectiveStake` is 0; further due withdrawals are blocked
+- Emits `StakeFrozen` when committed stake remains after applying ready updates
 
-**Requirements**:
-- Only `REDISTRIBUTOR_ROLE` can call
+### Admin functions
 
-**Logic**:
-```solidity
-stakes[_owner].lastUpdatedBlockNumber = block.number + _time
-```
+#### pause() / unpause()
 
-While frozen: `stakes[_owner].lastUpdatedBlockNumber > block.number`
+`DEFAULT_ADMIN_ROLE`. Pauses user-facing mutations (`whenNotPaused`). `applyUpdates` and `migrateStake` are not gated by pause.
 
-**Effects**:
-- Node cannot call `manageStake()` while frozen
-- `nodeEffectiveStake()` returns 0 while frozen
-- After freeze expires, can resume normal operations
+There is no `changeNetworkId()` in the current contract; `networkId` is constructor-initialized only.
 
-#### slashDeposit()
-Slashes (removes) a specified amount from a node's stake.
+### View functions
 
-**Parameters**:
-- `_owner`: Node address to slash
-- `_amount`: BZZ amount to remove
+| Function | Returns |
+|----------|---------|
+| `stakes(owner)` | Previewed `Stake` (overlay, balance, height) |
+| `nodeEffectiveStake(owner)` | Previewed balance if committed and not frozen, else 0 |
+| `overlayOfAddress(owner)` | Previewed overlay if committed, else `0` |
+| `heightOfAddress(owner)` | Previewed height if committed, else 0 |
+| `nodeEffectiveStakeLookahead(owner, n)` | Same at round `currentRound() + n` |
+| `overlayOfAddressLookahead` / `heightOfAddressLookahead` | Lookahead previews |
+| `freezeUntilBlock(owner)` | Freeze deadline (exclusive: unfrozen when `block.number >` this) |
+| `currentRound()` | `block.number / ROUND_LENGTH` |
 
-**Requirements**:
-- Only `REDISTRIBUTOR_ROLE` can call
-
-**Logic**:
-```solidity
-if (potentialStake > _amount) {
-    potentialStake -= _amount
-    lastUpdatedBlockNumber = block.number
-} else {
-    delete stakes[_owner]  // Remove entire stake
-}
-```
-
-**Use Cases**:
-- Severe protocol violations
-- Currently not actively used (freezing is preferred)
-
-### Admin Functions
-
-#### changeNetworkId()
-Changes the Swarm network ID.
-
-**Parameters**:
-- `_NetworkId`: New network ID
-
-**Requirements**:
-- Only `DEFAULT_ADMIN_ROLE` can call
-
-**Effects**:
-- New overlays will use new network ID
-- Existing overlays remain valid
-
-#### pause() / unPause()
-Pauses or unpauses the contract.
-
-**Requirements**:
-- Only `DEFAULT_ADMIN_ROLE` can call
-
-**Effects**:
-- Prevents `manageStake()` calls
-- Allows `migrateStake()` calls
-
-### View Functions
-
-#### nodeEffectiveStake(address)
-Returns the effective stake used in redistribution game.
-
-```solidity
-if (addressNotFrozen(address)) {
-    return calculateEffectiveStake(
-        committedStake,
-        potentialStake,
-        height
-    )
-} else {
-    return 0
-}
-```
-
-#### withdrawableStake()
-Returns the amount of surplus stake that can be withdrawn.
-
-#### lastUpdatedBlockNumberOfAddress(address)
-Returns when stake was last updated (used to check if frozen).
-
-#### overlayOfAddress(address)
-Returns the current overlay for a node.
-
-#### heightOfAddress(address)
-Returns the height multiplier for a node.
-
-### Internal Functions
-
-#### calculateEffectiveStake()
-Calculates effective stake based on committed stake and height.
-
-```solidity
-committedStakeBzz = (2^height) * committedStake * oracle.currentPrice()
-return min(committedStakeBzz, potentialStake)
-```
-
-#### addressNotFrozen()
-Checks if a node is frozen:
-```solidity
-return stakes[_owner].lastUpdatedBlockNumber < block.number
-```
-
-#### reverse()
-Byte-reverses a uint64 (for network ID in overlay calculation).
-
-## Stake Structure
+## Data structures
 
 ```solidity
 struct Stake {
-    bytes32 overlay;                    // Node's overlay address
-    uint256 committedStake;             // Chunks pledged
-    uint256 potentialStake;            // BZZ tokens staked
-    uint256 lastUpdatedBlockNumber;    // Update timestamp / freeze flag
-    uint8 height;                      // Reserve height multiplier
+    bytes32 overlay;   // zero = not committed
+    uint256 balance;   // BZZ in contract
+    uint8 height;
+}
+
+struct ScheduledUpdate {
+    UpdateKind kind;
+    uint64 effectiveFromRound;
+    bytes32 nonce;
+    uint256 amount;
+    uint8 height;
 }
 ```
+
+Per-account `Account` holds `stake`, `freezeUntilBlock`, and `queue`. Freeze survives stake deletion and exit.
 
 ## Events
 
 ```solidity
-event StakeUpdated(
-    address indexed owner,
-    uint256 committedStake,
-    uint256 potentialStake,
-    bytes32 overlay,
-    uint256 lastUpdatedBlock,
-    uint8 height
-);
-
-event OverlayChanged(address owner, bytes32 overlay);
-
-event StakeSlashed(address slashed, bytes32 overlay, uint256 amount);
-
-event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
-
-event StakeWithdrawn(address node, uint256 amount);
+event DepositCreated(address indexed owner, uint64 registeredFromRound, uint256 amount, bytes32 overlay, uint8 height);
+event TokensAdded(address indexed owner, uint64 registeredFromRound, uint256 amount);
+event OverlayChanged(address indexed owner, uint64 registeredFromRound, bytes32 overlay);
+event HeightIncreased(address indexed owner, uint64 registeredFromRound, uint8 height);
+event WithdrawalQueued(address indexed owner, uint64 effectiveFromRound, uint256 amount);
+event Withdrawal(address indexed owner, uint64 executedInRound, uint256 amount);
+event StakeFrozen(address indexed frozen, bytes32 indexed overlay, uint256 durationBlocks);
+event AccountFreezeExtended(address indexed account, uint256 freezeUntilBlock);
+event StakeMigrated(address indexed owner, uint256 totalReturned);
 ```
 
 ## Roles
 
-- **DEFAULT_ADMIN_ROLE**: Change network ID, pause/unpause
-- **REDISTRIBUTOR_ROLE**: Freeze and slash stakes (typically Redistribution contract)
+- **DEFAULT_ADMIN_ROLE**: pause / unpause
+- **REDISTRIBUTOR_ROLE**: `freezeDeposit` (typically granted to `Redistribution`)
 
-## Deployment Configuration
+## Deployment
 
 ```typescript
-constructor(address _bzzToken, uint64 _NetworkId, address _oracleContract)
+constructor(
+  bzzToken: address,
+  networkId: uint64,
+  waitBase: uint64,
+  waitOverlayChange: uint64,
+  waitWithdrawal: uint64
+)
 ```
 
-- `_bzzToken`: ERC20 token address for staking
-- `_NetworkId`: Swarm network ID (1 for mainnet, 10 for testnet)
-- `_oracleContract`: PriceOracle address for price queries
+- `waitOverlayChange` and `waitWithdrawal` must be ≥ `waitBase`
+- Example deploy args: `[token.address, swarmNetworkId, 2, 2, 2]` (see `deploy/*/003_deploy_staking.ts`)
+
+No oracle address in the constructor.
 
 ## Constants
 
 ```solidity
-uint64 private constant MIN_STAKE = 100000000000000000;  // 0.1 BZZ
+MIN_STAKE = 10 * 1e16;           // 0.1 BZZ at height 0
+ROUND_LENGTH = 152;
+UPDATE_QUEUE_MAX_LENGTH = 10;
+MAX_STAKING_HEIGHT = 128;
 ```
 
-## Stake Lifecycle
+## Lifecycle examples
 
-### 1. Initial Stake
+### Initial deposit
 
 ```solidity
-// Node calls with initial deposit
-manageStake(nonce, 1000000000000000000, 1)
-// Deposits 1 BZZ, sets height to 1
-
-// At price 1000 chunks/BZZ, height 1:
-// committedStake = 1000000000000000000 / (1000 * 2^1) = 500000 chunks
-// effectiveStake = min(500000 * 1000 * 2, 1000000000000000000) = 1000000000000000000
+ERC20(bzz).approve(stakeRegistry, amount);
+stakeRegistry.createDeposit(nonce, amount, height);
+// ... advance rounds ...
+stakeRegistry.applyUpdates(node);
 ```
 
-### 2. Stake Update
+At height 1, minimum deposit is `MIN_STAKE * 2`.
+
+### Partial withdrawal
 
 ```solidity
-// Add more tokens
-manageStake(nonce, 500000000000000000, 1)
-// Deposits 0.5 BZZ more
-
-// Recalculate:
-// potentialStake = 1500000000000000000
-// committedStake = 1500000000000000000 / (1000 * 2^1) = 750000 chunks
-// effectiveStake = min(750000 * 1000 * 2, 1500000000000000000) = 1500000000000000000
+stakeRegistry.withdraw(partialAmount);
+// after WAIT_WITHDRAWAL rounds and applyUpdates (and not frozen):
+// BZZ transferred, balance reduced
 ```
 
-### 3. Surplus Withdrawal
+### Freeze penalty
 
 ```solidity
-// Price increased from 1000 to 1200 chunks/BZZ
-// committedStake = 750000 chunks
-// effectiveStake = min(750000 * 1200 * 2, 1500000000000000000) = 1800000000000000000
-// But actual potentialStake = 1500000000000000000
-// Can withdraw: 0 (effective = potential)
-
-// OR height decreased from 1 to 0
-// effectiveStake = min(750000 * 1200 * 1, 1500000000000000000) = 900000000000000000
-// Can withdraw: 1500000000000000000 - 900000000000000000 = 600000000000000000
-```
-
-### 4. Penalty Freeze
-
-```solidity
-// Redistribution calls after node violates protocol
-freezeDeposit(nodeAddress, 1000 blocks)
-
-// While frozen:
-// nodeEffectiveStake() returns 0
-// manageStake() reverts with Frozen()
+// Called by Redistribution
+stakeRegistry.freezeDeposit(node, durationBlocks);
+// nodeEffectiveStake(node) == 0 until block.number > freezeUntilBlock
 ```
 
 ## Integration with Redistribution
 
-The `nodeEffectiveStake()` value is used in the redistribution game to:
-1. Weight commit selection during truth consensus
-2. Calculate stake density for winner selection
-3. Determine eligibility for participation
+`Redistribution` reads `overlayOfAddress`, `heightOfAddress`, and `nodeEffectiveStake` (and lookahead variants for eligibility). Commit requires `_stake != 0`. Stake density in winner selection uses the stake recorded at commit time.
 
-## Examples
+On claim, `Redistribution` calls `freezeDeposit` on non-revealers and on revealers whose hash/depth disagrees with the selected truth (subject to `penaltyRandomFactor`). Freeze duration scales with `ROUND_LENGTH` and truth depth.
 
-### Creating a Stake
+Price oracle affects **postage** economics only, not stake effective balance.
 
-```solidity
-// Approve tokens first
-ERC20(bzzToken).approve(stakeRegistry, 2000000000000000000);
-
-// Create stake
-StakeRegistry(stakeRegistry).manageStake(
-    keccak256("my-nonce"),   // nonce
-    2000000000000000000,     // 2 BZZ
-    2                         // height = 2 (4x capacity)
-);
-```
-
-### Checking Stake Status
+## Errors
 
 ```solidity
-uint256 effective = StakeRegistry(stakeRegistry).nodeEffectiveStake(myAddress);
-bytes32 overlay = StakeRegistry(stakeRegistry).overlayOfAddress(myAddress);
-uint8 height = StakeRegistry(stakeRegistry).heightOfAddress(myAddress);
-bool isFrozen = StakeRegistry(stakeRegistry).lastUpdatedBlockNumberOfAddress(myAddress) > block.number;
+error BelowMinimumStake(uint256 have, uint256 need);
+error NotStaked();
+error AlreadyStaked();
+error InvalidAmount();
+error FrozenWithdrawal();
+error UpdateQueueFull(uint256 queuedCount, uint256 limit);
+error QueueClosed();
+error OnlyRedistributor();
+error InvalidWithdrawalAmount(WithdrawalAmountIssue reason);
+error OverlayUnchanged();
+error HeightDecreaseNotAllowed();
+error StakingHeightTooLarge(uint8 height, uint8 maxHeight);
+error InvalidWaitConfiguration(uint64 waitBase, uint64 waitOverlayChange, uint64 waitWithdrawal);
+error TransferFailed();
 ```
 
-### Withdrawing Surplus
+Penalties are **freeze-only**; there is no slash path on `StakeRegistry`.
 
-```solidity
-uint256 surplus = StakeRegistry(stakeRegistry).withdrawableStake();
-if (surplus > 0) {
-    StakeRegistry(stakeRegistry).withdrawFromStake();
-}
-```
+## Security and integration notes
 
-### Changing Overlay
+1. **Preview vs storage**: View functions include matured queue state; Bee must use the same semantics as `commit`/`reveal` verification.
+2. **Freeze**: Participation ban, not confiscation; first `freezeDeposit` may execute a due queued withdrawal.
+3. **Pause**: Stops new queue items from users; `applyUpdates` can still run.
+4. **Minimum stake**: Enforced at deposit, height increase, and partial withdraw scheduling — not re-checked on every queued apply path.
 
-```solidity
-// Change overlay without depositing
-StakeRegistry(stakeRegistry).manageStake(
-    keccak256("new-nonce"),  // new nonce
-    0,                        // no additional deposit
-    2                         // keep same height
-);
-```
+## Related contracts
 
-## Error Codes
+- **Token**: ERC20 BZZ (`bzzToken`)
+- **Redistribution**: Commit/reveal game; holds `REDISTRIBUTOR_ROLE` for penalties
 
-```solidity
-error TransferFailed();              // Token transfer failed
-error Frozen();                      // Node is frozen
-error Unauthorized();                // Only admin
-error OnlyRedistributor();          // Only redistributor role
-error OnlyPauser();                  // Only pauser role
-error BelowMinimumStake();          // First deposit below minimum
-error DecreasedCommitment();         // Committed stake cannot decrease
-```
+## Test coverage
 
-## Security Considerations
+Hardhat suite: **177 tests** (~33s). Staking-specific: **51 tests** in `test/Staking.test.ts`. Run `npx hardhat compile && npm test`.
 
-1. **Minimum Stake**: Prevents dust attacks
-2. **Non-Decreasing Commitment**: Prevents gaming the system
-3. **Freeze Mechanism**: Temporary penalty without full slash
-4. **Pausability**: Emergency stop with migration path
-5. **Frozen Check**: Prevents stake modifications during penalty
+Property tests: `src/echidna/EchidnaStakingHarness.sol` (see `echidna/README.md`).
 
-## Overlay Calculation
+### Unit tests (`test/Staking.test.ts`)
 
-The `reverse()` function byte-reverses the network ID for the overlay calculation. This is done for endianness consistency between different systems that calculate overlays.
+| Area | What is tested |
+|------|----------------|
+| **Deposit & queue** | Deploy wait params; `createDeposit` delay and activation; inactive until delay; top-up / height / overlay scheduling; lookahead previews; queue full; queue closed after `exit()`; redeposit after exit |
+| **Validation** | Below minimum at deposit; `AlreadyStaked()`; `InvalidAmount()` on `addTokens(0)`; height decrease rejected; height increase below new minimum; `MAX_STAKING_HEIGHT`; invalid constructor wait config |
+| **Withdraw & exit** | Partial withdraw + `applyUpdates` payout; full exit; invalid amounts; below-minimum remainder; withdraw/exit while active in current round (Redistribution commit) |
+| **Freeze** | Effective stake = 0 while frozen; non-withdrawal updates still apply; queued withdrawal blocked until unfreeze; `FrozenWithdrawal()` atomic revert on `applyUpdates`; freeze monotonic; freeze survives exit and `migrateStake`; `OnlyRedistributor()`; `AccountFreezeExtended` on unstaked account; freeze while paused reverts |
+| **Pause & migrate** | Staking blocked when paused; `migrateStake` only when paused (includes queued `CreateDeposit` / `AddTokens`); unpause restores flow |
+| **Enqueue API** | `callStatic` return matches event effective round; overlay unchanged revert; height unchanged no-op; non-decreasing rounds when stacking `addTokens`; atomic `applyUpdates` when withdrawal blocked mid-batch |
+| **FIFO & mixed delays** | Different wait configs (top-up → withdraw → overlay); same-round ordering; uniform waits (top-up → withdraw → height in one round) |
+| **Oracle independence** | Price oracle change does not change effective stake |
 
-```solidity
-function reverse(uint64 input) internal pure returns (uint64 v) {
-    v = input;
-    // swap bytes
-    v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
-    // swap 2-byte long pairs
-    v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
-    // swap 4-byte long pairs
-    v = (v >> 32) | (v << 32);
-}
-```
+### Integration tests (`test/Redistribution.test.ts`)
 
-## Related Contracts
+| Area | What is tested |
+|------|----------------|
+| **Eligibility** | Unstaked / recently staked cannot commit; height-based minimum at commit; effective stake in reveals and winner selection |
+| **Queued stake** | Multi-node fixture with `createDeposit` and `addTokens`; effective stake after top-ups |
+| **Exit & lookahead** | Next-round stake state during claim-phase eligibility after queued `exit()` |
+| **Freeze from game** | Non-revealer frozen on claim (`nodeEffectiveStake == 0`); `StakeFrozen` event parsed from claim tx logs (overlay + duration) |
+| **Winner flow** | Single reveal, both reveal, postage payout failure retry — unchanged game logic with new stake API |
 
-- **Token**: ERC20 token used for staking
-- **PriceOracle**: Provides current price for calculations
-- **Redistribution**: Uses effective stake for game participation
+### Not tested in Hardhat (by design)
 
+- Slash penalties (removed; freeze-only protocol)
+- Mainnet / testnet deployed bytecode (local fixture only)
