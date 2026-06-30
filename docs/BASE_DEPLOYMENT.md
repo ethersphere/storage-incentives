@@ -144,11 +144,3 @@ Running op-reth + op-node for Base did not fast-bootstrap without relaxing archi
 
 Vet a new chain on **RPC requirements, sync model, and resource footprint** up front. These operational constraints gate rollouts more than Bee application code itself.
 
----
-
-## Open Items
-
-| Item | Owner / notes |
-|------|---------------|
-| `AcceptedChequebookBytecodeHashes` for Base | Derive via `cast keccak $(cast code <chequebook addr> --rpc-url <rpc>)`; append-only set per factory generation |
-| Oracle contract history | @0xCardiE — details on early Oracle issues leading to redeploy |
