@@ -24,13 +24,8 @@ contract PriceOracle is AccessControl {
     // The number of the last round price adjusting happend
     uint64 public lastAdjustedRound;
 
-    // The minimum price allowed
-    uint32 public minimumPriceUpscaled = 24000 << 10; // we upscale it by 2^10
-
     // The priceBase to modulate the price
     uint32 public priceBase = 1048576;
-
-    uint64 public currentPriceUpScaled = minimumPriceUpscaled;
 
     // Constants used to modulate the price, see below usage
     uint32[9] public changeRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
@@ -41,10 +36,15 @@ contract PriceOracle is AccessControl {
     // The length of a round in blocks.
     uint8 private constant ROUND_LENGTH = 152;
 
+    /// @dev Minimum upscaled price (24000 PLUR × 2^10).
+    uint64 public constant MINIMUM_PRICE_UPSCALED = 24000 << 10;
+
     /// @dev Upper bound for upscaled price so `(currentPriceUpScaled >> 10)` fits in `uint32`.
     /// Without this, `currentPrice()`'s `uint32(... >> 10)` truncates and can disagree with
     /// `currentPriceUpScaled` and under-report vs `minimumPrice()`.
-    uint64 public constant MAX_CURRENT_PRICE_UPSCALED = uint64(uint256(type(uint32).max) << 10);
+    uint64 public constant MAX_CURRENT_PRICE_UPSCALED = uint64(type(uint32).max) << 10;
+
+    uint64 public currentPriceUpScaled = MINIMUM_PRICE_UPSCALED;
 
     // ----------------------------- Events ------------------------------
 
@@ -179,11 +179,10 @@ contract PriceOracle is AccessControl {
     //            STATE READING           //
     ////////////////////////////////////////
 
-    /// @notice Clamp upscaled price to [minimumPriceUpscaled, MAX_CURRENT_PRICE_UPSCALED].
-    function _clampPriceUpscaled(uint64 priceUpScaled) private view returns (uint64) {
-        uint64 minU = uint64(minimumPriceUpscaled);
-        if (priceUpScaled < minU) {
-            priceUpScaled = minU;
+    /// @notice Clamp upscaled price to [MINIMUM_PRICE_UPSCALED, MAX_CURRENT_PRICE_UPSCALED].
+    function _clampPriceUpscaled(uint64 priceUpScaled) private pure returns (uint64) {
+        if (priceUpScaled < MINIMUM_PRICE_UPSCALED) {
+            priceUpScaled = MINIMUM_PRICE_UPSCALED;
         }
         if (priceUpScaled > MAX_CURRENT_PRICE_UPSCALED) {
             priceUpScaled = MAX_CURRENT_PRICE_UPSCALED;
@@ -212,8 +211,8 @@ contract PriceOracle is AccessControl {
     /**
      * @notice Return the price downscaled
      */
-    function minimumPrice() public view returns (uint32) {
+    function minimumPrice() public pure returns (uint32) {
         // We downcasted to uint32 and bitshift it by 2^10
-        return uint32((minimumPriceUpscaled) >> 10);
+        return uint32(MINIMUM_PRICE_UPSCALED >> 10);
     }
 }
