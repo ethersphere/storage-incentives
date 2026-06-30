@@ -69,10 +69,8 @@ Manually sets the price (for initialization or emergency).
 
 **Logic**:
 ```solidity
-currentPriceUpScaled = _price << 10  // upscale by 2^10
-if (currentPriceUpScaled < minimumPriceUpscaled) {
-    currentPriceUpScaled = minimumPriceUpscaled
-}
+_currentPriceUpScaled = uint64(_price) << 10  // upscale by 2^10
+currentPriceUpScaled = _clampPriceUpscaled(_currentPriceUpScaled)
 // Update PostageStamp
 PostageStamp.setPrice(currentPrice())
 emit PriceUpdate(currentPrice())
@@ -94,7 +92,7 @@ Automatically adjusts price based on redundancy (called by Redistribution).
 2. Cap redundancy at `targetRedundancy + maxConsideredExtraRedundancy`
 3. Apply change rate based on redundancy - target
 4. Apply maximum penalty for skipped rounds
-5. Enforce minimum price
+5. Clamp price to `[MINIMUM_PRICE_UPSCALED, MAX_CURRENT_PRICE_UPSCALED]`
 6. Update PostageStamp
 7. Emit event
 
@@ -124,7 +122,10 @@ Pauses or unpauses price adjustments.
 Returns the current price (downscaled by 2^10).
 
 #### minimumPrice()
-Returns the minimum price floor.
+Returns the minimum price floor (compile-time constant derived from `MINIMUM_PRICE_UPSCALED`).
+
+#### MINIMUM_PRICE_UPSCALED() / MAX_CURRENT_PRICE_UPSCALED()
+Public constant getters for the upscaled price bounds used by `_clampPriceUpscaled()`.
 
 #### currentRound()
 Returns the current round number: `block.number / 152`
@@ -134,7 +135,8 @@ Returns the current round number: `block.number / 152`
 ```solidity
 uint16 targetRedundancy = 4;           // Target chunks per node
 uint16 maxConsideredExtraRedundancy = 4; // Cap on extra redundancy
-uint32 minimumPriceUpscaled = 24000 << 10; // ~23.44 (downscaled)
+uint64 constant MINIMUM_PRICE_UPSCALED = 24000 << 10; // ~24000 (downscaled)
+uint64 constant MAX_CURRENT_PRICE_UPSCALED = uint64(type(uint32).max) << 10;
 uint32 priceBase = 1048576;            // Base for change rate (2^20)
 ```
 
@@ -186,16 +188,24 @@ newPrice = (1049417 * 1000000) / 1048576 = 1000800
 // Increase of ~0.08%
 ```
 
-### Minimum Price Enforcement
+### Price Bounds Enforcement
 
-Prices are bounded from below:
+Prices are clamped via `_clampPriceUpscaled()` after every manual or automatic update:
+
 ```solidity
-if (currentPriceUpScaled < minimumPriceUpscaled) {
-    currentPriceUpScaled = minimumPriceUpscaled
+function _clampPriceUpscaled(uint64 priceUpScaled) private pure returns (uint64) {
+    if (priceUpScaled < MINIMUM_PRICE_UPSCALED) {
+        priceUpScaled = MINIMUM_PRICE_UPSCALED;
+    }
+    if (priceUpScaled > MAX_CURRENT_PRICE_UPSCALED) {
+        priceUpScaled = MAX_CURRENT_PRICE_UPSCALED;
+    }
+    return priceUpScaled;
 }
 ```
 
-This prevents prices from becoming too low and disincentivizing storage.
+- **Minimum floor** prevents prices from becoming too low and disincentivizing storage.
+- **Maximum ceiling** ensures `(currentPriceUpScaled >> 10)` fits in `uint32`, so `currentPrice()` cannot silently truncate and under-report relative to the stored upscaled value.
 
 ## Integration with Other Contracts
 
@@ -264,10 +274,11 @@ error UnexpectedZero();         // Redundancy must be > 0
 ## Security Considerations
 
 1. Minimum price floor prevents race-to-bottom pricing
-2. Maximum extra redundancy cap prevents excessive price increases
-3. One adjustment per round prevents manipulation
-4. Pausable for emergency stops
-5. Failed PostageStamp updates don't prevent oracle updates
+2. Maximum upscaled price cap keeps `currentPrice()` consistent with stored state
+3. Maximum extra redundancy cap prevents excessive price increases
+4. One adjustment per round prevents manipulation
+5. Pausable for emergency stops
+6. Failed PostageStamp updates don't prevent oracle updates
 
 ## Pause Mechanism
 
@@ -300,9 +311,8 @@ function adjustPrice(redundancy):
     for each skipped round:
         newPrice = (changeRate[0] * newPrice) / priceBase
     
-    // Enforce minimum
-    if (newPrice < minimumPriceUpscaled):
-        newPrice = minimumPriceUpscaled
+    // Clamp to upscaled bounds
+    newPrice = _clampPriceUpscaled(newPrice)
     
     currentPriceUpScaled = newPrice
     lastAdjustedRound = currentRoundNum
