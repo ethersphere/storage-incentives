@@ -30,6 +30,9 @@ deployedContracts.sh
 !mainnet_deployed.json
 !testnet_deployed.json
 
+# Cursor (local rules, not committed)
+.cursor/
+
 # Misc
 contractsInfo.json
 .DS_Store
