@@ -152,7 +152,7 @@ const config: HardhatUserConfig = {
       deploy: ['deploy/local/'],
     },
     localhost: {
-      url: 'http://localhost:8545',
+      url: 'http://geth-swap.localhost',
       // accounts,  if not defined uses the same as above hardhat
       chainId: 12345,
       deploy: ['deploy/local/'],
