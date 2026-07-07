@@ -226,10 +226,10 @@ contract EchidnaRedistributionClaimHarness {
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaRedistributionClaimActor a = actors[idx];
 
-        // Make proximity always pass by setting depth == height (depthResponsibility=0).
+        // depth must exceed height so depth responsibility is non-zero.
         bytes32 overlay = keccak256(abi.encodePacked("overlay", idx, redist.currentRoundAnchor()));
         uint8 height = 0;
-        uint8 depth = 0;
+        uint8 depth = 1;
 
         // Ensure staking is old enough.
         stakeMock.setNode(address(a), overlay, height, 1e18, _backdateLastUpdated());

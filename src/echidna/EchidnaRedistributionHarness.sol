@@ -264,12 +264,12 @@ contract EchidnaRedistributionHarness {
         EchidnaRedistributionActor a = actors[idx];
 
         // Pick a unique overlay per actor that still has a high chance of being eligible.
-        // We set depthResponsibility = 0 (depth == height), which makes proximity always pass.
+        // depth must exceed height so depth responsibility is non-zero.
         bytes32 anchor = redist.currentRoundAnchor();
         bytes32 overlay = keccak256(abi.encodePacked("overlay", idx, anchor));
 
         uint8 h = uint8(height % 16);
-        uint8 d = h;
+        uint8 d = h + 1;
         uint256 stake = _boundStake(stakeAmount);
         uint256 lastUpdated = _backdateLastUpdated();
 
