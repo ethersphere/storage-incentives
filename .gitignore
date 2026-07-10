@@ -9,6 +9,9 @@ coverage*
 # vscode
 .vscode*
 
+# Cursor
+.cursor/rules/audit-code.mdc
+
 # Node
 node_modules/
 

@@ -179,7 +179,6 @@ const errors = {
   reveal: {
     noCommits: 'NoCommitsReceived()',
     doNotMatch: 'NoMatchingCommit()',
-    outOfDepth: 'OutOfDepth()',
     outOfDepthReveal: 'OutOfDepthReveal()',
     notInReveal: 'NotRevealPhase()',
   },
@@ -187,7 +186,7 @@ const errors = {
     noReveals: 'NoReveals()',
     alreadyClaimed: 'AlreadyClaimed()',
     randomCheckFailed: 'RandomElementCheckFailed()',
-    outOfDepth: 'OutOfDepth()',
+    outOfDepth: 'OutOfDepthClaim',
     reserveCheckFailed: 'ReserveCheckFailed()',
     indexOutsideSet: 'IndexOutsideSet()',
     batchDoesNotExist: 'BatchDoesNotExist()',
