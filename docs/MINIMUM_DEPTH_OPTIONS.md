@@ -20,6 +20,8 @@ On branch `fix/minimal_depth_resolve`, there is **no minimum depth check** in `r
 
 This document compares that baseline with alternative policies.
 
+For how sybil spam and claim gas griefing actually work (including node-count estimates), see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md).
+
 ---
 
 ## Option A — Remove the floor entirely (current branch)
@@ -149,13 +151,15 @@ Stack mechanisms instead of choosing only one:
 
 ## Comparison
 
-| Option                    | Spam protection | Winner gaming | Lockout recovery | Complexity |
-|---------------------------|-----------------|---------------|------------------|------------|
-| A — Remove floor          | None            | None          | N/A              | Low        |
-| B — Honest min depth      | Yes             | Low           | Partial          | Medium     |
-| C — +1 cap                | Yes             | Medium        | Slow             | Low        |
-| D — Collapse on low N     | Yes             | Medium        | Strong           | Medium     |
-| E — Combined              | Yes             | Low           | Strong           | Higher     |
+| Option                    | Shallow-reveal spam | Sybil / claim gas grief | Winner gaming | Lockout recovery | Complexity |
+|---------------------------|---------------------|-------------------------|---------------|------------------|------------|
+| A — Remove floor          | None                | Unchanged (see above)   | None          | N/A              | Low        |
+| B — Honest min depth      | Partial             | Unchanged               | Low           | Partial          | Medium     |
+| C — +1 cap                | Partial             | Unchanged               | Medium        | Slow             | Low        |
+| D — Collapse on low N     | Partial             | Unchanged               | Medium        | Strong           | Medium     |
+| E — Combined              | Partial             | Unchanged               | Low           | Strong           | Higher     |
+
+“Shallow-reveal spam” = blocking the cheapest reveal path (`depth == height`). “Sybil / claim gas grief” = many staked identities bloating per-round arrays; not solved by depth floor alone.
 
 ---
 
@@ -166,3 +170,16 @@ Stack mechanisms instead of choosing only one:
 3. Add **Option C** if deep winners remain a concern.
 4. Add **Option D** if lockout after low-participation rounds is the main incident to prevent.
 5. Specify concrete constants: `X`, collapse rule, bootstrap floor, and skipped-round decay.
+6. Separately evaluate **sybil / claim gas griefing** if that risk is unacceptable — see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md); depth floor alone is insufficient.
+
+---
+
+## Related code and docs
+
+- [`Redistribution.sol`](../src/Redistribution.sol) — reveal, claim, and truth selection
+- [`REDISTRIBUTION.md`](./REDISTRIBUTION.md) — contract overview and game phases
+- [`SPAM_GRIEFING.md`](./SPAM_GRIEFING.md) — sybil spam and claim gas model
+
+## Status
+
+**Open for discussion.** No option in this document is implemented yet except Option A on `fix/minimal_depth_resolve`.
