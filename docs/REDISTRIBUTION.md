@@ -37,10 +37,10 @@ Each round consists of three consecutive phases:
    - Only nodes in proximity to anchor can participate
 
 3. **Claim Phase** (50% = 76 blocks ≈ 6 minutes)
-   - Truth is determined from reveals
-   - Winner is randomly selected from truth-tellers
-   - Winner verifies their reserve
-   - Pot is transferred to winner
+   - Truth is determined from reveals (stake-density-weighted lottery)
+   - Winner is randomly selected from truth-tellers (same weighting)
+   - Anyone may submit `claim()` with proofs; pot goes to `winner.owner`
+   - If proofs fail, the whole transaction reverts (including penalties)
 
 ### Proximity and Anchors
 
@@ -91,6 +91,8 @@ Commits to an obfuscated hash for the current round.
 - Node must be staked for 2+ rounds
 - Node must not have already committed
 - Not in last block of commit phase (prevents front-running)
+
+**Note:** `commit()` does **not** check proximity today. Any staked node can enter `currentCommits`. Proximity is enforced only at `reveal()`. See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md) for griefing implications and planned mitigations.
 
 **Logic**:
 ```solidity
@@ -172,7 +174,7 @@ Higher depth → Higher density → Better chance of being selected as truth
 ### Claim Phase Functions
 
 #### claim()
-Winner claims the pot by proving they have the chunks.
+Finalizes the round and pays the pot if proofs verify.
 
 **Parameters**:
 - `entryProof1`: Chunk inclusion proof for random index 1
@@ -180,12 +182,15 @@ Winner claims the pot by proving they have the chunks.
 - `entryProofLast`: Chunk inclusion proof for last index
 
 **Requirements**:
-- Only winner can call
 - Must be in claim phase
-- Must provide valid proofs
+- At least one reveal in the round (`NoReveals()` otherwise)
+- Round not already claimed (`AlreadyClaimed()`)
+- Must provide valid proofs for the selected winner's reserve
+
+**Caller:** There is **no `msg.sender` check**. Any party may call `claim()` and pay gas. The pot is withdrawn to `winner.owner`, not the caller. A relayer or griefer can submit the transaction.
 
 **Logic**:
-1. Select winner (if not already done)
+1. `winnerSelection()` — truth, winner, penalties, oracle adjustment, `currentClaimRound` (all in one internal call)
 2. Calculate random chunk indices from seed
 3. Verify proximity for all three chunks
 4. Verify inclusion proofs for all three chunks
@@ -193,8 +198,9 @@ Winner claims the pot by proving they have the chunks.
 6. Verify SOC proofs (if applicable)
 7. Check ordering of chunks
 8. Estimate reserve size
-9. Withdraw pot from PostageStamp
-10. Transfer to winner
+9. Withdraw pot from PostageStamp to `winner.owner`
+
+**Atomicity:** `winnerSelection()` runs inside the same transaction as proof checks. If proofs revert or the tx runs out of gas, **penalties and `currentClaimRound` are rolled back**. Freezes apply only after a fully successful `claim()`.
 
 #### isWinner()
 Determines if caller is the winner for the current round.
@@ -303,21 +309,25 @@ struct SOCProof {
 
 ### Truth Selection (from reveals)
 
+Truth is an **exact pair** `(hash, depth)` — a reveal agrees with truth only if both fields match.
+
 ```solidity
 function getCurrentTruth() {
     currentSum = 0
-    for (each revealed commit in order) {
-        currentSum += reveal.stakeDensity
-        if (random < reveal.stakeDensity / currentSum) {
-            truthHash = reveal.hash
-            truthDepth = reveal.depth
+    for (each commit in currentCommits order) {
+        if (commit.revealed) {
+            currentSum += reveal.stakeDensity
+            if (random(i) * currentSum < reveal.stakeDensity * (MAX_H + 1)) {
+                truthHash = reveal.hash
+                truthDepth = reveal.depth
+            }
         }
     }
     return (truthHash, truthDepth)
 }
 ```
 
-The **median reveal** (by stake density) is selected as truth.
+Each revealed commit is a candidate. A **stake-density-weighted reservoir lottery** (not a median) walks commits in array order and updates the selected truth tuple when the random draw hits. Higher `stakeDensity` increases the chance a reveal becomes truth, but dishonest reveals can still win if they carry enough weight.
 
 ### Winner Selection (from truth-tellers)
 
@@ -326,17 +336,22 @@ function winnerSelection() {
     (truthHash, truthDepth) = getCurrentTruth()
     currentSum = 0
     redundancyCount = 0
-    for (each reveal matching truth) {
-        currentSum += reveal.stakeDensity
-        if (random < reveal.stakeDensity / currentSum) {
-            winner = reveal
+    for (each commit in currentCommits order) {
+        if (commit.revealed && reveal matches truth exactly) {
+            currentSum += reveal.stakeDensity
+            if (random(redundancyCount) * currentSum < reveal.stakeDensity * (MAX_H + 1)) {
+                winner = reveal
+            }
+            redundancyCount++
         }
-        redundancyCount++
+        // also: freeze non-reveal committers; probabilistic freeze for wrong-truth revealers
     }
     adjustPrice(redundancyCount)
     return winner
 }
 ```
+
+The loop iterates **all commits** (O(N)), not only truth-tellers. Winner lottery and `redundancyCount` include only revealed commits whose `(hash, depth)` exactly matches truth. Non-reveal committers and wrong-truth revealers are penalized in the same loop.
 
 A **single winner** is randomly selected from truth-tellers, weighted by stake density.
 
@@ -525,10 +540,12 @@ Redistribution(redis).reveal(
 ```solidity
 bool winner = Redistribution(redis).isWinner(overlay);
 if (winner) {
-    // Generate proofs and claim
+    // Generate proofs; winner.owner (or any relayer) calls claim()
     claim(proof1, proof2, proofLast);
 }
 ```
+
+`isWinner()` mirrors winner selection without applying penalties. `claim()` may be submitted by any address as long as proofs are valid for the selected winner.
 
 ### Checking Eligibility
 
@@ -542,11 +559,19 @@ bool eligible = Redistribution(redis).isParticipatingInUpcomingRound(
 ## Security Considerations
 
 1. **Random Nonce**: Must be truly random and never reused
-2. **Proximity Calculations**: Proper depth responsibility
+2. **Proximity Calculations**: Proper depth responsibility (`depth - height`); `depth == height` makes proximity vacuous
 3. **Freeze Protection**: Prevents stake manipulation during freeze
 4. **Proof Verification**: Comprehensive validation prevents fake claims
 5. **Random Selection**: Weighted fairly by stake density
-6. **Truth Selection**: Deters dishonest behavior
+6. **Truth Selection**: Stake-weighted lottery over exact `(hash, depth)` tuples — not majority vote or correctness check
+7. **Sybil / claim gas griefing**: Unbounded `currentCommits` makes `claim()` O(N); see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md)
+8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()` before penalties; round is permanently unclaimable after rollover
+9. **Open caller on `claim()`**: Anyone can submit; economic incentive is on `winner.owner` to provide proofs
+
+## Related Documentation
+
+- [SPAM_GRIEFING.md](./SPAM_GRIEFING.md) — sybil spam, claim gas griefing, planned mitigations
+- [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) — depth floor policy options (Option B invalid under current truth semantics)
 
 ## Related Contracts
 

@@ -1,177 +1,262 @@
 # Minimum Depth / Spam Protection — Design Options
 
-This document captures possible approaches for reveal-phase minimum depth (“floor”) policy in `Redistribution.sol`. It is intended for discussion and decision-making before implementation.
+This document captures possible approaches for minimum depth (“floor”) policy in `Redistribution.sol`. It is intended for discussion and decision-making before implementation.
+
+For the full sybil / claim gas griefing threat model, see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md).
 
 ## Background
 
-The contract previously exposed `currentMinimumDepth()`, which enforced a minimum reported depth during `reveal()`. That floor was derived from the **winner’s depth** in the last claimed round and decayed when rounds were skipped without a claim.
+The contract previously exposed `currentMinimumDepth()`, which enforced a minimum reported depth during `reveal()`. That floor was derived from the **winner's depth** in the last claimed round and decayed when rounds were skipped without a claim.
 
 That design was removed because a malicious or unusually deep winner could raise the floor and lock out honest participants.
 
-The question now is whether some form of minimum depth should return, and if so, how to preserve spam protection without giving the winner unilateral control of the floor.
+The question now is whether some form of minimum depth should return, and if so, how to preserve spam protection without giving the winner unilateral control of the floor — **and** without relying on a floor signal that is tautological under current truth semantics.
 
 ## Current State
 
 On branch `fix/minimal_depth_resolve`, there is **no minimum depth check** in `reveal()`. Participation is gated by:
 
 - Staking requirements
-- Commit/reveal proximity to the round anchor
+- Commit/reveal proximity to the round anchor (reveal only today; commit has no proximity check)
 - Penalties for disagreeing with selected truth
 
 This document compares that baseline with alternative policies.
 
-For how sybil spam and claim gas griefing actually work (including node-count estimates), see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md).
+---
+
+## Truth semantics constraint (read this first)
+
+Current truth is an **exact pair** `(hash, depth)` selected by stake-density-weighted lottery over individual reveals in `getCurrentTruth()`. A reveal "agrees with truth" only if **both** `hash == truthHash` **and** `depth == truthDepth`.
+
+Consequence for floor policy:
+
+- Every truth-agreeing revealer has depth exactly `truthDepth`.
+- Therefore `min(depth among truth-agreeing revealers) == truthDepth`.
+- The winner is also chosen only among that exact pair, so `winner.depth == truthDepth`.
+
+**Option B as originally written is not a distinct policy under current semantics.** It renames the old winner-derived floor without changing the value. Examples with truth-agreeing depths 10, 12, and 20 are **impossible** — all agreeing revealers must share the same depth.
+
+Any independent floor signal must either:
+
+1. **Not derive from the selected truth tuple** (governed constant, bootstrap minimum, external oracle), or
+2. **Change truth aggregation first** so depth can vary among hash-agreeing revealers (Option B′ below).
+
+Depth floor alone does **not** cap sybil count **N** for commit spam. See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md).
 
 ---
 
 ## Option A — Remove the floor entirely (current branch)
 
-**Policy:** No minimum depth check in `reveal()`. Any staked node that passes commit/reveal proximity checks can participate.
+**Policy:** No minimum depth check in `reveal()` (or `commit()`). Any staked node that passes proximity checks can participate.
 
 **Pros**
 
-- Simplest design; no winner-gaming vector
+- Simplest design; no winner-gaming vector via floor
 - No lockout after a deep or adversarial win
 
 **Cons**
 
-- Loses explicit spam protection at low depth
+- Loses explicit spam protection at low depth (`depth == height` path always available)
 - Relies on stake, proximity, and penalty mechanics alone
+- Does not bound claim-loop size
 
 ---
 
-## Option B — Honest-participant floor (middle ground)
+## Option B — Honest-participant floor (original proposal)
 
-**Policy:** Set the floor from the **minimum depth among truth-agreeing revealers** in the last completed round, not from the winner.
+**Policy (as originally drafted):** Set the floor from the **minimum depth among truth-agreeing revealers** in the last completed round.
 
-After claim, once truth `(hash, depth)` is known:
+```
+floorNext = min(depth) over reveals where hash == truthHash && depth == truthDepth
+```
 
-1. Collect all reveals where `hash == truthHash && depth == truthDepth`
-2. Set `floorNext = min(reveal.depth)` over that set
-3. In `reveal()`, reject if `_depth < floorNext` (optional decay for skipped rounds)
+**Status under current contract: NOT VIABLE AS A DISTINCT POLICY.**
 
-**Example:** Truth-agreeing revealers at depths 10, 12, and 20 → floor = **10**, even if the winner was at 20.
+Because truth agreement requires `depth == truthDepth`, the minimum is always `truthDepth`. This is equivalent to the removed winner-based floor (and to using the truth-teller's depth directly).
+
+The original example ("truth-agreeing depths 10, 12, 20 → floor = 10") cannot occur. **Do not implement Option B without first changing truth semantics.**
+
+---
+
+## Option B′ — Hash-level truth, then cohort minimum depth
+
+**Policy:** Redesign truth selection so the protocol first selects a **hash** (e.g. stake-weighted vote or density lottery on hash only), then sets:
+
+```
+floorNext = min(reveal.depth) over reveals where hash == selectedTruthHash
+```
+
+Varying depths among hash-agreeing revealers become meaningful again.
 
 **Pros**
 
-- Preserves spam protection
-- Winner cannot unilaterally raise the floor
-- Floor reflects the honest cohort, not one beneficiary
+- Restores the original intent of "honest cohort minimum" without winner-only control
+- Floor can be lower than the winner's depth if the winner played deeper than some hash-agreeing peers
 
 **Cons**
 
-- Requires persisted state from claim (truth plus agreeing depths, or a precomputed minimum)
-- If only one honest revealer exists, floor still follows that single node
-- Sybil among “agreeing” revealers could manipulate the floor downward (likely bounded by stake and proximity economics)
+- Requires **protocol change** to `getCurrentTruth()` and downstream winner/agreement checks
+- Winner selection, penalties, and client semantics must be re-specified
+- Higher implementation and audit cost than a governed floor
 
-**Open parameters**
-
-- Decay when rounds are skipped (retain old `skippedRounds` logic or drop it)
-- Default floor when no prior round or no truth-agreeing revealers exist (0 vs fixed bootstrap value)
+**When to choose:** Only if the product goal is an adaptive floor tied to observed honest depth, and the team accepts a truth-model change.
 
 ---
 
 ## Option C — Gradual floor increase (+1 per round max)
 
-**Policy:** The floor may rise by **at most 1 per claimed round**, regardless of winner depth.
+**Policy:** The floor may rise by **at most 1 per claimed round**.
 
 ```
-floorNext = min(winner.depth, floorPrev + 1)
+floorNext = min(referenceDepth, floorPrev + 1)
 ```
 
-**Example:** Previous floor 10; winner at 20 → next floor **11**, not 20. If the winner played at 20 and others at 10, the next round floor is **11**.
+Where `referenceDepth` must be defined without Option B tautology — e.g. governed target, bootstrap constant, or Option B′ cohort minimum.
 
 **Pros**
 
-- Limits rapid escalation by a deep winner
+- Limits rapid escalation
 - Cheap to implement; one stored `floor` value
 - Predictable for operators
 
 **Cons**
 
-- Still winner-influenced, only capped
+- Still needs a non-tautological `referenceDepth` source
 - Slow to converge if honest network depth is legitimately higher
-- Does not help if the floor has already crept above honest depth
-
-**Variants**
-
-- Combine with Option B: `floorNext = min(minHonestDepth, floorPrev + 1)`
-- Combine with decay on skipped rounds
+- Does not cap sybil N
 
 ---
 
 ## Option D — Self-healing / collapsing floor (low participation)
 
-**Policy:** If participation is too low, **automatically lower the floor** so locked-out honest nodes can re-enter.
+**Policy:** If participation is too low, **automatically lower the floor**.
 
 Example rule:
 
 - If `revealerCount < X` in the last round → `floorNext = floorPrev / 2` (or `floorPrev - k`)
-- Repeat if still below threshold
-
-**Example:** Floor 20, winner at 20, only 3 revealers (< 4) → floor collapses to **10**; if the next round still has fewer than 4 revealers → **5**.
 
 **Pros**
 
-- Recovers from adversarial “win deep, lock everyone out” scenarios
-- Directly targets the failure mode of the old winner-based floor
+- Recovers from adversarial high-floor lockout scenarios
 
 **Cons**
 
-- Attacker could potentially force collapse by suppressing participation (needs careful tuning of `X`, collapse rate, and stake economics)
-- Collapse logic adds parameters and edge cases (empty round, first round, interaction with Options B/C)
-
-**Open parameters**
-
-- `X` — minimum revealers before collapse triggers
-- Collapse function: half, minus fixed step, minimum bound (e.g. never below 0 or a bootstrap floor)
-- Whether collapse applies to Option B/C floor or only a winner-derived floor
+- Attacker could force collapse by suppressing participation (tune `X`, collapse rate, stake economics carefully)
+- Must define what `revealerCount` means (all revealers vs hash-agreeing only)
+- Interacts poorly with Option B under current semantics; more sensible with governed floor or Option B′
 
 ---
 
-## Option E — Combined policy (recommended direction to evaluate)
+## Option E — Combined adaptive policy
 
-Stack mechanisms instead of choosing only one:
+Stack mechanisms (only meaningful with a valid base floor source):
 
 | Layer       | Mechanism                                              |
 |-------------|--------------------------------------------------------|
-| Base floor  | `min(depth)` among truth-agreeing revealers (Option B) |
+| Base floor  | Governed constant, bootstrap minimum, or **Option B′**   |
 | Rise cap    | `floorNext = min(baseFloor, floorPrev + 1)` (Option C) |
 | Recovery    | If `revealerCount < X`, apply collapse (Option D)      |
 | Skip decay  | Optional: decay floor when claim rounds are skipped    |
 
-**Example walkthrough**
+**Do not stack Option B (original) with C/D/E** — the base signal is tautological.
 
-1. Last round: truth-agreeing depths 10, 12, 20 → base = 10
-2. Previous floor was 10 → capped rise → **10**
-3. Only 2 revealers → collapse → **5**
-4. Next round, honest nodes at depth ≥ 5 can reveal again
+---
+
+## Option F — Governed / bootstrap floor (recommended for near-term)
+
+**Policy:** `currentFloor()` is a stored value set by governance (multisig/admin) or a fixed bootstrap constant until a better adaptive signal exists. Enforced at **both** `commit()` and `reveal()`.
+
+**Pros**
+
+- Independent of winner/truth-teller depth
+- Simple to specify and audit
+- Works with current `(hash, depth)` truth model
+- Pairs with commit proximity and `depth > height` requirement
+
+**Cons**
+
+- Not self-tuning; requires governance or parameter choice
+- Wrong constant can lock out honest nodes or leave spam window open
+
+**Typical pairing:** Option F + minimum `depth - height` responsibility + commit proximity + hard `MAX_COMMITS` (see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md)).
 
 ---
 
 ## Comparison
 
-| Option                    | Shallow-reveal spam | Sybil / claim gas grief | Winner gaming | Lockout recovery | Complexity |
-|---------------------------|---------------------|-------------------------|---------------|------------------|------------|
-| A — Remove floor          | None                | Unchanged (see above)   | None          | N/A              | Low        |
-| B — Honest min depth      | Partial             | Unchanged               | Low           | Partial          | Medium     |
-| C — +1 cap                | Partial             | Unchanged               | Medium        | Slow             | Low        |
-| D — Collapse on low N     | Partial             | Unchanged               | Medium        | Strong           | Medium     |
-| E — Combined              | Partial             | Unchanged               | Low           | Strong           | Higher     |
+| Option                    | Shallow-reveal spam | Sybil / claim gas grief | Independent of truth depth | Lockout recovery | Complexity |
+|---------------------------|---------------------|-------------------------|----------------------------|------------------|------------|
+| A — Remove floor          | None                | Unchanged               | N/A                        | N/A              | Low        |
+| B — Honest min (original) | N/A (tautological)  | Unchanged               | **No**                     | —                | —          |
+| B′ — Hash then min depth  | Partial             | Unchanged               | **Yes** (with redesign)    | Partial          | High       |
+| C — +1 cap                | Partial             | Unchanged               | If paired with F or B′     | Slow             | Low        |
+| D — Collapse on low N     | Partial             | Unchanged               | If paired with F or B′     | Strong           | Medium     |
+| E — Combined adaptive     | Partial             | Unchanged               | Only with F or B′ base     | Strong           | Higher     |
+| F — Governed / bootstrap  | Partial             | Unchanged               | **Yes**                    | Manual/governance| Low        |
 
-“Shallow-reveal spam” = blocking the cheapest reveal path (`depth == height`). “Sybil / claim gas grief” = many staked identities bloating per-round arrays; not solved by depth floor alone.
+"Shallow-reveal spam" = blocking the cheapest path (`depth == height`). "Sybil / claim gas grief" = many staked identities bloating per-round arrays; **not solved by any floor alone**.
 
 ---
 
 ## Suggested decision process
 
-1. Decide whether **any** reveal floor is required, or stake plus penalties are sufficient (Option A).
-2. If a floor is required, prefer **Option B** as the base signal (not winner depth).
-3. Add **Option C** if deep winners remain a concern.
-4. Add **Option D** if lockout after low-participation rounds is the main incident to prevent.
-5. Specify concrete constants: `X`, collapse rule, bootstrap floor, and skipped-round decay.
-6. Separately evaluate **sybil / claim gas griefing** if that risk is unacceptable — see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md); depth floor alone is insufficient.
-7. For the leading planned package, implement **commit proximity + Option B/E floor** together — see [Recommended combined approach](#recommended-combined-approach-with-commit-proximity).
+1. Decide whether **any** depth floor is required, or stake plus penalties are sufficient (Option A).
+2. Accept that **Option B (original) is invalid** under current truth semantics unless truth aggregation changes.
+3. For near-term spam/liveness work, prefer **Option F** (governed/bootstrap floor) plus the bounded-work package in [SPAM_GRIEFING.md](./SPAM_GRIEFING.md).
+4. If an adaptive floor tied to honest cohort depth is required long-term, evaluate **Option B′** (truth redesign) before reintroducing Options C/D/E.
+5. Separately and mandatorily, address **sybil / claim gas griefing** with hard `MAX_COMMITS` or batched finalization — depth floor alone is insufficient.
+6. Add reproducible gas benchmarks on Gnosis before setting constants.
+
+---
+
+## Recommended combined approach with commit proximity
+
+The preferred direction is **not** depth floor alone, and **not** the original Option B/E stack. See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#recommended-mitigation-package-planned-not-implemented) for the full threat-model context.
+
+### Rationale
+
+- **Depth floor alone** does not stop global sybil commits — only shallow reveals.
+- **Commit proximity alone** is bypassed at `depth == height` (responsibility 0) and by zero-deposit height changes in `manageStake()`.
+- **Proximity is probabilistic**, not a hard cap on N.
+- **Bounded work** (commit cap or batched finalization) is required for claim liveness.
+
+### Proposed pairing
+
+| Component | Choice |
+|-----------|--------|
+| Commit proximity | `inProximity(overlay, currentRoundAnchor(), _depth - height)` in `commit()` |
+| Minimum responsibility | Require `_depth > height` at commit and reveal |
+| Stored depth | `Commit.declaredDepth`; reveal must match |
+| Depth floor | **Option F** (governed/bootstrap), not Option B |
+| Height changes | Revalidate `MIN_STAKE * 2^height` on every `manageStake` height update |
+| Bounded work | `MAX_COMMITS` from gas benchmarks, or batched `finalizeRound()` |
+| Finalization split | `finalizeRound()` before `claimReward()` proofs |
+| Avoid | Original Option B/E without truth redesign |
+
+### Example flow
+
+1. Governance sets `currentFloor()` (Option F) or bootstrap constant applies.
+2. Commit phase → `commit(hash, round, depth)`; revert if `depth <= height`, not in proximity, `depth < floor`, or cap reached.
+3. Reveal phase → `declaredDepth` match, proximity to reveal anchor, `depth > height`, `depth >= floor`.
+4. `finalizeRound()` → truth, winner, penalties, oracle (bounded); then `claimReward()` with proofs.
+
+### Comparison update (with combined approach)
+
+| Approach | Shallow-reveal spam | Sybil / claim gas grief | Independent floor |
+|----------|---------------------|-------------------------|-------------------|
+| Option A only (current) | None | Unchanged | N/A |
+| Depth floor only (F) | Partial | Unchanged | Yes |
+| Commit proximity only | Weak (`depth==height` bypass) | Unchanged | N/A |
+| Proximity + F + `depth > height` | **Strong** | Weak | Yes |
+| **Full package (+ bounded work + split finalize)** | **Strong** | **Strong** | Yes |
+
+### Open design questions
+
+- Bootstrap floor value when no governance parameter exists
+- `MAX_COMMITS` vs batched finalization trade-off
+- Admission policy under hard cap (censorship resistance)
+- Whether to pursue Option B′ / truth redesign in a later phase
+- Skipped-round floor decay (carry forward from old design or drop)
 
 ---
 
@@ -181,50 +266,6 @@ Stack mechanisms instead of choosing only one:
 - [`REDISTRIBUTION.md`](./REDISTRIBUTION.md) — contract overview and game phases
 - [`SPAM_GRIEFING.md`](./SPAM_GRIEFING.md) — sybil spam and claim gas model
 
----
-
-## Recommended combined approach with commit proximity
-
-The preferred direction for a future change is **not** depth floor alone, but **commit-phase proximity + depth floor** together. See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#recommended-combined-approach-planned-not-implemented) for the full threat-model context.
-
-### Rationale
-
-- **Depth floor alone** does not stop global sybil commits — only shallow reveals.
-- **Commit proximity alone** stops out-of-neighbourhood spam but not the `depth == height` cheap path.
-- **Both together** align participation with the Schelling game: only nodes near the anchor at a meaningful depth may enter the round.
-
-### Proposed pairing
-
-| Component | Choice |
-|-----------|--------|
-| Commit proximity | Require `inProximity(overlay, currentRoundAnchor(), _depth - height)` in `commit()` |
-| Commit API | Add `_depth` argument; must match reveal pre-image via `wrapCommit` |
-| Depth floor | **Option B** (min among truth-agreeing revealers), optionally **Option E** (+1 cap, collapse) |
-| Floor enforcement | Same floor at **commit** and **reveal** |
-| Avoid | Winner-only floor (old `currentMinimumDepth` design) |
-
-### Example flow
-
-1. Last round claim completes → persist `floorNext = min(depth)` over truth-agreeing revealers (Option B).
-2. Commit phase → node calls `commit(hash, round, depth)`; revert if not in proximity or `depth < floorNext`.
-3. Reveal phase → same depth (hash match), proximity to reveal anchor, `depth >= floorNext`.
-4. Claim → unchanged for now; optional later split of finalize vs winner proofs.
-
-### Comparison update (with combined approach)
-
-| Approach | Shallow-reveal spam | Sybil / claim gas grief | Winner gaming |
-|----------|---------------------|-------------------------|---------------|
-| Option A only (current) | None | Unchanged | None |
-| Depth floor only (B/E) | Partial | Unchanged | Low |
-| **Commit proximity + Option B/E** | **Strong** | **Strong** | **Low** |
-
-### Open design questions
-
-- Bootstrap floor when no prior claimed round
-- Whether to add a hard cap on commits per round in addition to proximity
-- Whether to split `finalizeRound()` from `claim()` in the same change or a follow-up
-- Decay on skipped rounds (carry forward from old design or drop)
-
 ## Status
 
-**Open for discussion.** Option A is on `fix/minimal_depth_resolve`. The **planned** next step is commit proximity + Option B/E floor — documented but not implemented.
+**Open for discussion.** Option A is on `fix/minimal_depth_resolve`. The **planned** next step is the layered package (Option F floor + commit eligibility + bounded work) — documented but not implemented. Original Option B/E is **deprecated** under current truth semantics.
