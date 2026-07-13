@@ -171,6 +171,7 @@ Stack mechanisms instead of choosing only one:
 4. Add **Option D** if lockout after low-participation rounds is the main incident to prevent.
 5. Specify concrete constants: `X`, collapse rule, bootstrap floor, and skipped-round decay.
 6. Separately evaluate **sybil / claim gas griefing** if that risk is unacceptable — see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md); depth floor alone is insufficient.
+7. For the leading planned package, implement **commit proximity + Option B/E floor** together — see [Recommended combined approach](#recommended-combined-approach-with-commit-proximity).
 
 ---
 
@@ -180,6 +181,50 @@ Stack mechanisms instead of choosing only one:
 - [`REDISTRIBUTION.md`](./REDISTRIBUTION.md) — contract overview and game phases
 - [`SPAM_GRIEFING.md`](./SPAM_GRIEFING.md) — sybil spam and claim gas model
 
+---
+
+## Recommended combined approach with commit proximity
+
+The preferred direction for a future change is **not** depth floor alone, but **commit-phase proximity + depth floor** together. See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#recommended-combined-approach-planned-not-implemented) for the full threat-model context.
+
+### Rationale
+
+- **Depth floor alone** does not stop global sybil commits — only shallow reveals.
+- **Commit proximity alone** stops out-of-neighbourhood spam but not the `depth == height` cheap path.
+- **Both together** align participation with the Schelling game: only nodes near the anchor at a meaningful depth may enter the round.
+
+### Proposed pairing
+
+| Component | Choice |
+|-----------|--------|
+| Commit proximity | Require `inProximity(overlay, currentRoundAnchor(), _depth - height)` in `commit()` |
+| Commit API | Add `_depth` argument; must match reveal pre-image via `wrapCommit` |
+| Depth floor | **Option B** (min among truth-agreeing revealers), optionally **Option E** (+1 cap, collapse) |
+| Floor enforcement | Same floor at **commit** and **reveal** |
+| Avoid | Winner-only floor (old `currentMinimumDepth` design) |
+
+### Example flow
+
+1. Last round claim completes → persist `floorNext = min(depth)` over truth-agreeing revealers (Option B).
+2. Commit phase → node calls `commit(hash, round, depth)`; revert if not in proximity or `depth < floorNext`.
+3. Reveal phase → same depth (hash match), proximity to reveal anchor, `depth >= floorNext`.
+4. Claim → unchanged for now; optional later split of finalize vs winner proofs.
+
+### Comparison update (with combined approach)
+
+| Approach | Shallow-reveal spam | Sybil / claim gas grief | Winner gaming |
+|----------|---------------------|-------------------------|---------------|
+| Option A only (current) | None | Unchanged | None |
+| Depth floor only (B/E) | Partial | Unchanged | Low |
+| **Commit proximity + Option B/E** | **Strong** | **Strong** | **Low** |
+
+### Open design questions
+
+- Bootstrap floor when no prior claimed round
+- Whether to add a hard cap on commits per round in addition to proximity
+- Whether to split `finalizeRound()` from `claim()` in the same change or a follow-up
+- Decay on skipped rounds (carry forward from old design or drop)
+
 ## Status
 
-**Open for discussion.** No option in this document is implemented yet except Option A on `fix/minimal_depth_resolve`.
+**Open for discussion.** Option A is on `fix/minimal_depth_resolve`. The **planned** next step is commit proximity + Option B/E floor — documented but not implemented.

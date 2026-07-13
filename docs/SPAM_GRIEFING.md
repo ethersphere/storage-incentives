@@ -187,15 +187,94 @@ Per sybil at `height = 0` (minimum path):
 
 **Example:** ~100 sybils for wallet-limit griefing ≈ **10 BZZ** minimum stake (height 0) plus gas, plus frozen stake if commit-only.
 
-Depth floor policy changes **how** sybils reveal, not the **N** needed for gas griefing.
+Depth floor policy changes **how** sybils reveal, not the **N** needed for gas griefing when commit proximity is absent.
 
 ---
 
-## Mitigations (separate from depth floor)
+## Recommended combined approach (planned, not implemented)
 
-If claim gas griefing is unacceptable, consider mechanisms **in addition to** any minimum depth policy:
+The leading direction for a future implementation pairs **commit-phase proximity** with a **depth floor** (prefer Option B or E from [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md)). This targets both spam layers: global commit bloat and shallow/cheap reveals.
 
-- Require proximity (or equivalent eligibility) at **commit** time, not only reveal
+### Problem mapping
+
+| Layer | Current gap | Mitigation |
+|-------|-------------|------------|
+| Commit bloat | Any staked node can `commit()` | Proximity check at commit |
+| Shallow reveals | `depth == height` always passes proximity | Depth floor at commit + reveal |
+| Winner floor gaming | Old winner-based floor | Option B: min depth among truth-agreeing revealers |
+| Round stuck on grief | Penalties inside `claim()` | Optional later: split `finalizeRound()` / `claim()` |
+
+### Proposed rules
+
+**1. Extend `commit()` with depth**
+
+Today `commit(bytes32 _obfuscatedHash, uint64 _roundNumber)` has no depth argument, so the contract cannot verify proximity at commit time. Depth is bound in `wrapCommit(overlay, depth, hash, nonce)` but only checked at reveal.
+
+Proposed signature:
+
+```solidity
+commit(bytes32 _obfuscatedHash, uint64 _roundNumber, uint8 _depth)
+```
+
+**2. Proximity at commit**
+
+During commit phase, require:
+
+```
+depthResponsibility = _depth - height
+inProximity(overlay, currentRoundAnchor(), depthResponsibility)
+```
+
+Only nodes in the round’s neighbourhood at the declared depth may enter `currentCommits`. This is the main anti-bloat lever: **N** is bounded by eligible overlays near the anchor, not every staker on the network.
+
+**3. Depth floor at commit and reveal**
+
+Apply the same floor at both phases (fail fast at commit):
+
+```
+_depth >= currentFloor()
+```
+
+- **Reveal:** existing checks remain — hash must match commit (same depth), proximity to reveal anchor, `depth >= floor`.
+- **Floor source:** Option **B** (minimum depth among truth-agreeing revealers from last claimed round), optionally stacked with **+1 cap** or **collapse on low participation** (Option E).
+
+Avoid winner-only floor (removed design): proximity already limits who can commit; winner-based floor still risks honest lockout.
+
+**4. Depth binding**
+
+Because `wrapCommit` includes `_depth`, a node cannot commit at one depth and reveal at another without breaking the hash match.
+
+### What this fixes
+
+| Problem | Commit proximity | Depth floor (Option B/E) |
+|---------|------------------|--------------------------|
+| Global sybil commit spam | **Strong** | Weak |
+| `depth == height` cheap path | Partial | **Strong** |
+| Claim gas grief from huge **N** | **Strong** (N ≈ neighbourhood size) | Weak alone |
+| Winner gaming the floor | — | **Fixed** with Option B |
+
+### Remaining gaps (optional follow-ups)
+
+1. **Neighbourhood size at low depth** — proximity limits who can commit but does not hard-cap count; a **max commits per round** may still be useful as backup.
+2. **Split finalize / claim** — decouple `winnerSelection()` + penalties from winner proof verification so grief cannot block round finalization.
+3. **Client changes** — Bee and other clients must pass `_depth` on commit and respect the floor when choosing depth.
+4. **Bootstrap floor** — define behaviour when no prior claimed round exists (floor = 0 vs fixed minimum).
+
+### Suggested implementation package
+
+1. `commit(..., _depth)` + proximity on `currentRoundAnchor()`
+2. Floor from Option B, optionally Option E (+1 cap, collapse on low N)
+3. Same floor check at commit and reveal
+4. (Optional) per-round commit cap and/or split finalize/claim
+
+**Status:** Documented for discussion. Not implemented in `Redistribution.sol` yet.
+
+---
+
+## Other mitigations
+
+If additional hardening is needed beyond the combined approach above:
+
 - Per-round cap on commits or reveals
 - Batch / paginate `winnerSelection()` across transactions or rounds
 - Higher minimum stake or stake-density threshold to participate
@@ -212,4 +291,4 @@ If claim gas griefing is unacceptable, consider mechanisms **in addition to** an
 
 ## Status
 
-**Reference document.** Gas figures measured locally on Hardhat; re-validate before mainnet decisions.
+**Open for discussion.** Option A is on `fix/minimal_depth_resolve`. The **planned** next step is commit proximity + Option B/E floor — documented but not implemented.
