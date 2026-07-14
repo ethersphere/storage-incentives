@@ -23,7 +23,7 @@ Proposed fix:
 1. A **bounded online admission set** whose storage and per-call work are capped at all times.
 2. **Participation finalization** that persists only objective non-reveal penalties.
 3. Proof validation before disagreement penalties, oracle adjustment, or payout.
-4. Current-round-only payout rights, retryable withdrawal, explicit deadlines, and an incentive to pay finalization gas.
+4. Current-round-only payout rights, retryable withdrawal, explicit deadlines, and enforced step ordering so the winner must complete the chain to receive the pot.
 
 This bounds gas and keeps false truth from triggering disagreement penalties or payout. It does **not** by itself solve an all-revealing coalition that reports the same fabricated hash; objective reveal validation or a bounded timeout/fallback protocol is still required for that liveness guarantee.
 
@@ -238,7 +238,7 @@ This package bounds gas and safely persists non-reveal penalties. It deliberatel
 
 ## Penalty gaps in the current contract
 
-Penalties are the main reason a capped sybil farm cannot attack every round cheaply. Today there are four gaps that break that story.
+Penalties are the main reason a capped sybil farm cannot attack every round cheaply. Today there are four bugs and one economic limitation.
 
 ### Gap 1: penalties live inside the same tx as proofs (bug)
 
@@ -262,9 +262,9 @@ This is a bug that must be fixed: dishonest play should trigger penalization, no
 
 The penalty loop never runs. Commit-only sybils pay commit gas only and stay unfrozen.
 
-### Gap 3: freeze is a time-lock, not a slash
+### Gap 3: freeze is a time-lock, not a slash (economic limitation)
 
-`freezeDeposit()` prevents participation for a period. Stake is not destroyed. After the freeze ends the same capital can attack again (with new wallets still needing the two-round staking wait).
+`freezeDeposit()` prevents participation for a period. Stake is not destroyed. After the freeze ends the same capital can attack again (with new wallets still needing the two-round staking wait). This raises repeat-attack cost but is not a protocol bug.
 
 ### Gap 4: disagreement penalties require validated truth
 
@@ -305,6 +305,28 @@ Use explicit current-round state and three stages. Today `claim()` is one transa
 
 All claim-phase actions must complete within the current round's claim window (or the round's payout right expires at rollover).
 
+### Caller incentives
+
+Today one `claim()` ties everything together: whoever submits valid proofs triggers payout to `winner.owner` in the same transaction. The winner (or a relayer acting on their behalf) has a direct economic reason to call it.
+
+The staged design must preserve that chain:
+
+| Step | Who is likely to call | Incentive |
+|------|----------------------|-----------|
+| `finalizeParticipation` | Anyone (permissionless) | **Weakest.** No pot is paid here. Non-revealers get frozen; tentative winner is stored. The tentative winner benefits indirectly and should call this before trying to prove, but can free-ride if they expect someone else to pay. Zero-reveal rounds have no winner — this step only closes the round and applies penalties. |
+| `verifyWinner` | Tentative winner or relayer | **Strong once step 1 ran.** Proofs are required; payout still does not happen in this tx. Same relayer model as today's `claim()`: pot goes to stored `winner.owner`, not `msg.sender`. |
+| `settleRound` | Tentative winner or relayer | **Strongest payout step.** Pot is withdrawn to stored `winner.owner` only after `truthValidated`. This is the step that actually pays. |
+
+**Requirement:** a round with reveals only pays if all three steps succeed in order before the claim deadline. The protocol should enforce that ordering (`participationFinalized` → `truthValidated` → payout) and that only the stored winner receives the pot.
+
+**Not specified yet (needs design):**
+
+- What incentivizes step 1 on zero-reveal rounds when there is no winner to call it.
+- Whether to expose a convenience wrapper (for example `verifyAndSettle(proofs)`) so the winner can complete steps 2–3 in one transaction while keeping the gas-bounded split internally.
+- Whether step 1 receives any explicit caller reward; the doc does not assume one.
+
+Without step 1, the winner cannot reach `verifyWinner` or `settleRound`. Without steps 2–3, the winner never receives the pot even if step 1 ran.
+
 ### 1. `finalizeParticipation(uint64 round)`
 
 Callable only after reveal closes and before a fixed finalization deadline:
@@ -336,7 +358,7 @@ mark truthValidated
 
 Invalid proofs revert only this transaction. Because anyone can submit `verifyWinner()` with deliberately invalid calldata, a failed transaction is not evidence that the selected winner cheated and must never directly slash/freeze the winner. A timeout penalty can apply to non-delivery at the deadline if that rule is specified in advance.
 
-Persist the round's reveal anchor, proof-selection seed, winner/truth, and proof parameters; never read mutable globals from a later phase. Postage batches can expire and be deleted before a delayed proof is checked, so either snapshot/historically prove stamp validity at the protocol-defined reference block or make the proof deadline/expiry rules guarantee equivalent immutable context. A short deadline alone is not protection against permissionless early expiry.
+Persist the round's reveal anchor, proof-selection seed, winner/truth, and proof parameters in `RoundState`; do not read mutable globals from a later phase. Stamp/proof reference timing against PostageStamp expiry is out of scope for this doc (separate PR).
 
 ### 3. `settleRound(uint64 round)`
 
@@ -364,10 +386,6 @@ Use one of these audited models:
 Storing `finalized[round]` while calling the current global `withdraw()` later is unsafe.
 
 The design requires an explicit bounded `RoundState` record containing phase/status, reveal anchor, proof seed, tentative/validated truth, winner, and payment status. New rounds must not alias singleton proof context. Cleanup must be generation-tagged, fixed-capacity, or cursor-bounded; never bulk-delete attacker-sized arrays.
-
-### Finalization incentive
-
-Permissionless does not mean someone will pay gas. `finalizeParticipation()`, especially on the zero-reveal path, still needs a defined keeper obligation or caller incentive. Without that, an attacker can rely on nobody spending gas to close the round.
 
 ### Gas statement
 
@@ -408,7 +426,7 @@ Requirements:
 - Snapshot owner, overlay, height, effective stake, declared depth, weight, and priority at commit.
 - Bound auxiliary mappings and define cleanup. A fixed array plus an ever-growing "seen candidate" mapping is not bounded.
 
-The seed is known during commit in the simple online model. That permits mature identities to decide whether their fixed overlay has a favorable ticket, but avoids transaction-order dependence and arbitrary nonce grinding. If unpredictability until cutoff is required, use a VRF/commitment design with a separately proven bounded data path.
+The seed is known during commit in the simple online model. That permits mature identities to decide whether their fixed overlay has a favorable ticket, but avoids transaction-order dependence and arbitrary nonce grinding.
 
 Weighted admission improves proportional fairness; it does not guarantee an honest node a slot. Inclusion probability depends on honest weight versus total admitted attacker weight.
 
@@ -487,58 +505,6 @@ Attacks covered: (1) zero-reveal lock, (2) claim gas grief, (3) truth poisoning 
 ### Rollover (supports attacks 1–2)
 
 - Fixed-cap/generation-tagged state prevents dynamic-array deletion from becoming the next-round DoS.
-
-### Sybils with real storage and valid proofs
-
-If sybils actually satisfy objective storage and reveal requirements, they are protocol participants rather than the cheap fake-hash grief considered here. Admission fairness and stake centralization remain economic/governance questions.
-
-### Sustained multi-round attack
-
-Non-reveal attacks consume fresh or frozen capital once finalization is incentivized. All-reveal fabricated attacks do not, unless validity/fallback rules add a penalty. State both cases separately; it is incorrect to claim every successful attack round becomes progressively more expensive.
-
----
-
-## Round flow (recommended)
-
-1. Governance sets bounded floor/depth/penalty parameters.
-2. Commit phase: `commit(hash, round, depth)` validates stake age, collateral, depth, proximity, and computes a fixed-identity weighted priority.
-3. The fixed-cap online structure admits or evicts in bounded work.
-4. At commit cutoff, selected status is final and queryable.
-5. Reveal phase: only selected records reveal; the round-versioned floor, declared depth, and all eligibility snapshots are checked.
-6. Early claim phase: `finalizeParticipation(round)` — **action 1 of 3** (or the only action on a zero-reveal round).
-7. Proof window: `verifyWinner(round, proofs)` — **action 2 of 3** (skipped if no reveals).
-8. Settlement window: `settleRound(round)` — **action 3 of 3** (disagreement penalties, oracle, payout).
-9. At rollover, current-round payout rights expire unless PostageStamp was redesigned to escrow a round-specific amount. Bounded old metadata may be cleaned; no stale winner may withdraw the future global pot.
-
----
-
-## Required decisions before implementation
-
-- Exact `MAX_COMMITS` from complete-round Gnosis fork benchmarks with safety margin
-- Exact weighted-priority algorithm and fixed-seed bias/grinding analysis
-- Exact Staking post-state invariant and committed-stake recomputation rule on height change
-- Future-round activation and emergency-decrease rules for governed floor changes
-- Claim-phase sub-deadlines with enough retry blocks for proof and settlement
-- Immutable stamp/proof reference context
-- Finalizer/keeper incentive for `finalizeParticipation()`
-- Objective-validity approach for all-reveal fabricated tuples
-- Current-round expiry versus PostageStamp round-amount escrow
-- Timeout consequence for a selected winner; failed arbitrary calldata must not count as winner fault
-- Fixed-cap/generation-tagged round-state retention and cleanup
-- Multi-contract deployment cutover: active-round handling, state continuity, role grants verified before old-role revocation, and fail-closed post-deploy assertions
-
----
-
-## Implementation order
-
-1. Add regression tests reproducing zero-reveal, proof rollback, false-truth disagreement freeze, stale payout, withdrawal failure, rollover cleanup, and floor changes between phases.
-2. Add reproducible complete-round gas benchmarks on a current Gnosis-compatible fork.
-3. Specify and test bounded online stake-weighted admission independently, including eviction, identity grinding, capital splitting, cleanup, and maximum K.
-4. Add `Commit.declaredDepth`, eligibility snapshots, and bounded admission.
-5. Implement `finalizeParticipation`, `verifyWinner`, and retry-safe `settleRound` with current-round deadlines.
-6. Implement the chosen objective-validity/fallback defense before claiming fake-truth liveness.
-7. Update ABI consumers: Bee/client, docs/examples, deployment JSON/codegen, `isWinner` semantics, events/errors, tests, and Echidna harnesses.
-8. Execute a fail-closed multi-contract cutover: handle the active round; preserve required pot/oracle/stake state; grant and verify Postage `REDISTRIBUTOR_ROLE` → new Redistribution, Staking `REDISTRIBUTOR_ROLE` → new Redistribution, PriceOracle `PRICE_UPDATER_ROLE` → new Redistribution, and Postage `PRICE_ORACLE_ROLE` → new PriceOracle; then revoke every corresponding old Redistribution/oracle edge and assert the complete role graph.
 
 ---
 
