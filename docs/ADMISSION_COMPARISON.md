@@ -22,9 +22,9 @@ Neither option alone solves fabricated-truth liveness. That still requires objec
 
 ---
 
-## Shared baseline (held constant)
+## Shared proposed baseline (held constant)
 
-These components are identical in both designs.
+These components are assumed in both designs. The mitigation package as a whole, including bounded admission and staged finalization, is not implemented in the current contracts.
 
 ### Staged finalization
 
@@ -32,13 +32,13 @@ These components are identical in both designs.
 |------|---------|
 | `finalizeParticipation(round)` | Freeze selected non-revealers; store tentative truth/winner; close participation |
 | `verifyWinner(round, proofs)` | Validate storage proofs; mark truth validated |
-| `settleRound(round)` | Apply disagreement penalties, oracle update, withdraw pot |
+| `settleRound(round)` | Apply disagreement penalties and oracle update; withdraw pot and mark settled only on success |
 
 Fixes that apply equally to both admission options:
 
 - Penalty rollback on proof failure (Gap 1)
 - Zero-reveal rounds with no penalty path (Gap 2)
-- `WithdrawFailed` treated as success (Gap 5)
+- Payout failure no longer treated as successful settlement (Gap 5)
 - Bounded finalization loops at K participants
 
 ### Eligibility at commit
@@ -66,14 +66,14 @@ Additional shared rules:
 
 ### Hard cap K
 
-- `MAX_COMMITS = K` chosen from Gnosis fork benchmarks
-- Illustrative claim-side scaling (from [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#gas-model-how-many-nodes-to-block-claim)): ~25k gas marginal per selected commit in `winnerSelection()` at full freeze path
-- K ≈ 128 → ~3–4M gas for loop + freezes + ~450k proof baseline; K ≈ 512 approaches Gnosis tx cap cliff
+- `MAX_COMMITS = K`; K remains unset until Gnosis fork benchmarks cover every staged call
+- Illustrative current-contract claim-side estimate (from [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#gas-model-how-many-nodes-to-block-claim)): ~25k gas marginal per additional commit at the full-freeze path
+- Applying that unverified estimate gives K = 128 at roughly 3.6M gas and K = 512 at roughly 13.2M gas, including the ~450k baseline. These are not staged-design benchmarks or safe K recommendations.
 
 ### Online admission shape (shared)
 
 - At most K selected commits throughout the commit phase
-- When full, a new eligible commit evicts one existing selected commit
+- When full, a new eligible commit evicts the current worst only if the newcomer ranks better
 - Per-commit work is O(K) or O(log K), never O(unbounded N)
 - Emit admission/eviction events; expose whether an overlay is selected for reveal
 - Snapshot owner, overlay, height, effective stake, declared depth at commit
@@ -94,7 +94,7 @@ distance(overlay, anchor) = uint256(overlay XOR anchor)
 
 When saturated, evict the selected commit with the **largest** distance.
 
-Proximity is both an eligibility filter (`inProximity` at declared responsibility) and the eviction tie-breaker among eligible commits.
+Proximity is both an eligibility filter (`inProximity` at declared responsibility) and the ranking metric among eligible commits.
 
 ### Typical implementation
 
@@ -114,11 +114,12 @@ Proximity is both an eligibility filter (`inProximity` at declared responsibilit
 | Issue | Detail |
 |-------|--------|
 | Stake-blind eviction | K min-stake sybils closer to anchor beat one high-stake honest node that is merely “good enough” but outside top-K by distance |
-| No reactive overlay grinding | Each `manageStake` resets the two-round wait. Attackers cannot iterate nonces on-chain per round. See [Overlay preparation model](#overlay-preparation-model) |
+| Pre-matured wallet bank still works | Each `manageStake` resets the two-round wait, preventing same-round on-chain overlay iteration but not advance preparation. See [Overlay preparation model](#overlay-preparation-model) |
 | Wallet-bank selection | Attacker pre-matures many wallets with off-chain nonce search, then commits from the subset with best fixed overlays for this round’s anchor |
 | Late-commit eviction | A sybil with a closer pre-matured wallet can evict an honest commit later in the phase without changing any overlay on-chain |
-| Cross-depth comparison | Requires `declaredDepth` at commit so distance comparisons use a consistent anchor and eligibility context |
-| Anchor forecast error | Overlay is fixed ~2+ rounds before commit; attacker cannot perfectly target the live anchor, but a large bank improves hit rate |
+| Declared-depth binding | Raw XOR ranking is independent of depth, but `declaredDepth` must be stored so commit eligibility cannot be obtained with one depth and reveal attempted with another |
+| Advance preparation | An overlay must mature before commit. Once the round anchor is known, an attacker can choose the best eligible overlays from a pre-matured bank but cannot retune those overlays |
+| Anchor predictability | If a future anchor is predictable before the two-round maturity window starts, an attacker can grind overlays directly for that anchor |
 
 ---
 
@@ -131,7 +132,7 @@ Among eligible commits, rank by audited stake-weighted priority:
 ```text
 weight = objectivelyLockedEffectiveStake(owner)   // snapshotted at commit
 entropy = H(domain, round, fixedRoundSeed, overlay)
-priority = auditedWeightedPriority(entropy, weight)
+priority = auditedWeightedPriority(entropy, weight) // larger is better
 ```
 
 When saturated, evict the selected commit with the **lowest** priority. Keep the best K.
@@ -146,8 +147,8 @@ Proximity and declared depth are **eligibility only**, not eviction weight.
 
 ### Intended properties
 
-- Exclusion cost scales with locked stake, not only XOR luck
-- Reduces pure geometry censorship by min-stake farms
+- Expected admission probability scales with locked weight under a correctly specified weighted-sampling algorithm
+- Reduces reliance on XOR position alone
 - Entropy from `(domain, round, seed, overlay)` limits tx-order and user-grindable field advantage
 - Mature identities can evaluate ticket strength before committing, but cannot grind obfuscated hash or reveal nonce
 
@@ -155,8 +156,9 @@ Proximity and declared depth are **eligibility only**, not eviction weight.
 
 | Issue | Detail |
 |-------|--------|
-| No inclusion guarantee | High-weight coalition can still occupy all K slots |
-| Capital splitting | Many min-stake wallets may still approximate weight concentration unless algorithm is audited for split resistance |
+| No inclusion guarantee | A coalition can occupy all K slots; greater total weight raises its probability but does not make the outcome deterministic |
+| Capital splitting | Splitting weight creates more independently grindable overlay tickets. Its exact effect depends on the priority algorithm and must be quantified |
+| Seed timing | If the priority seed is predictable before an overlay begins its two-round maturity period, an attacker can grind an overlay directly for that round instead of relying only on a pre-matured bank |
 | More design surface | Exact `auditedWeightedPriority` must be specified and proven |
 | Slightly higher implementation cost | Heap + weight snapshots vs linear distance scan |
 | Same overlay constraints | Two-round wait and fixed overlay apply equally; weight does not remove wallet-bank attacks, only changes who wins eviction |
@@ -169,19 +171,19 @@ Both options operate on **fixed overlays** set at `manageStake` time. This is a 
 
 | Action | Effect |
 |--------|--------|
-| `manageStake(nonce, amount, height)` | Sets overlay from `keccak256(sender, networkId, nonce)`; updates `lastUpdatedBlockNumber` |
+| `manageStake(nonce, amount, height)` | Sets overlay from `keccak256(sender, reverse(networkId), nonce)`; updates `lastUpdatedBlockNumber` |
 | `commit()` | Requires `lastUpdatedBlockNumber < block.number - 2 * ROUND_LENGTH` |
-| On-chain nonce iteration | Impractical: each attempt costs two full rounds (~304 blocks) before commit |
+| On-chain nonce iteration | Repeated calls are possible, but only the final overlay can mature; each candidate intended for commit must remain unchanged for two full rounds (~304 blocks) |
 
-**Off-chain nonce search** before the one-time `manageStake` is cheap. **Wallet banks** (many addresses, parallel two-round maturation) are the realistic sybil shape for both options.
+**Off-chain nonce search** before `manageStake` is cheap. If future round inputs are not known two rounds ahead, the attacker must mature a bank of fixed overlays and choose the best ones later. If an anchor or priority seed is predictable before the maturity window starts, the attacker can grind overlays directly for that known value.
 
 Difference at commit time:
 
 | | Proximity (A) | Stake-weighted (B) |
 |---|---------------|-------------------|
-| Sybil prepares | Many wallets; off-chain pick nonces for expected anchor proximity | Many wallets; off-chain pick nonces for entropy ticket + stake layout |
+| Sybil prepares | Mature many fixed overlays, then choose those closest to the live anchor | Mature many fixed overlays, then choose favorable tickets after the fixed seed is known |
 | At commit | Send from wallets with smallest `overlay XOR anchor` | Send from wallets with highest `priority` given snapshotted stake |
-| Capital efficiency | K min-stake wallets can fill slots if close enough | Need comparable or higher **weight** to evict, not just proximity |
+| Capital efficiency | K min-stake wallets can fill slots if their overlays rank closely enough | Higher weight improves ticket distribution, but a low-weight candidate can still win with favorable entropy |
 
 The two-round wait is a meaningful brake on **reactive** grinding. It does **not** require “forever” to attack, but it does force **advance preparation** rather than per-round overlay tuning.
 
@@ -193,13 +195,12 @@ The two-round wait is a meaningful brake on **reactive** grinding. It does **not
 |-----------|---------------------|-------------------|
 | **Primary eviction metric** | `overlay XOR anchor` (ascending) | `priority(entropy, stake)` (descending) |
 | **Proximity role** | Filter + rank | Filter only |
-| **Stake role** | Penalties / truth lottery only | Filter + rank + penalties / truth lottery |
-| **Sybil slot-fill strategy** | Bank of close overlays | Bank of high-weight or favorable tickets |
-| **Censorship resistance** | Weak vs capital-light close overlays | Stronger vs min-stake farms; weak vs high-stake coalition |
-| **Honest single-operator odds** | Good if overlay is among K closest | Good if effective stake is among top K priorities |
+| **Stake role** | Minimum-stake eligibility + penalties / truth lottery | Minimum-stake eligibility + admission rank + penalties / truth lottery |
+| **Sybil slot-fill strategy** | Bank of close overlays | Bank of independently scored weighted tickets |
+| **Censorship resistance** | Weak against a sufficiently large bank of close eligible overlays | Depends on honest/attacker weight and ticket grinding; not established until the algorithm is specified |
+| **Honest single-operator odds** | Selected iff its overlay is among the K closest eligible candidates | Probabilistic; depends on its weight and all eligible candidates' tickets |
 | **Implementation complexity** | Lower: O(K) scan, distance uint256 | Higher: heap, weighted algorithm spec |
 | **Per saturated commit gas** | ~O(K) distance compares | ~O(log K) heap ops + weight reads |
-| **Protocol semantics fit** | Strong XOR/neighborhood story | Strong economic-game story |
 | **Grinding surface** | Off-chain nonce → overlay position | Off-chain nonce → entropy ticket; stake splitting |
 | **Late-phase eviction** | Closer pre-matured wallet evicts | Higher-priority pre-matured wallet evicts |
 | **Staged finalization** | Same | Same |
@@ -218,8 +219,8 @@ How each option behaves against the four attacks in [SPAM_GRIEFING.md](./SPAM_GR
 | **2. Claim gas grief** | Loops bounded at K | Same | Same |
 | **3. Truth poisoning / penalty rollback** | Non-reveal freezes persist before proofs; disagreement after validation | Same | Same |
 | **4. Commit-only spam** | K cap + persisted non-reveal freezes | Same | Same |
-| **Slot filling / exclusion** | Not FCFS; online eviction | Favors closest overlays; min-stake bank can dominate | Favors highest weight/ticket; needs stake to evict |
-| **Wallet-bank economics** | 2-round prep, off-chain nonce search | Cost ≈ bank size × min stake; pick best K distances | Cost ≈ bank size × min stake; need weight advantage to hold slots |
+| **Slot filling / exclusion** | Not FCFS; online eviction | Favors closest overlays; a min-stake bank can dominate | Favors the highest realized weighted priorities; higher stake improves odds but is not required for a lucky eviction |
+| **Wallet-bank economics** | 2-round prep, off-chain nonce search | Cost at least bank size × minimum stake; pick best K distances | Cost at least bank size × minimum stake; selection also depends on total weight and realized tickets |
 | **Repeat attack after freeze** | Freeze is time-lock, not slash (Gap 3) | Same | Same |
 
 ---
@@ -233,23 +234,23 @@ How each option behaves against the four attacks in [SPAM_GRIEFING.md](./SPAM_GR
 
 **A (proximity):** If 128 sybils are closer than honest, honest is excluded regardless of stake.
 
-**B (stake-weighted):** Honest high stake yields high priority; may evict low-weight sybils even if they are slightly closer.
+**B (stake-weighted):** Higher honest stake improves the distribution of its priority, but does not guarantee selection. It may evict a low-weight sybil regardless of relative proximity.
 
-### Scenario 2: Coalition with 128 min-stake wallets, overlays pre-ground for expected anchor
+### Scenario 2: Coalition with 128 selected min-stake wallets
 
 - All 128 pass eligibility and sit in top-K by distance
 
 **A:** Coalition holds all slots for the round.
 
-**B:** Only holds all slots if their snapshotted weights and entropy tickets beat every other eligible commit. A single higher-stake honest commit can displace the weakest coalition member.
+**B:** The coalition holds all slots only if its realized priorities occupy the top K. A higher-stake honest commit is more likely, but not guaranteed, to displace the weakest coalition member.
 
-### Scenario 3: Anchor shifts after sybil stake maturation
+### Scenario 3: Unpredictable round inputs become known after sybil stake maturation
 
-- Sybils staked 2 rounds ago targeting a forecast anchor; actual `currentRoundAnchor()` differs
+- Assume the live admission anchor and weighted-priority seed were not predictable when the sybil overlays began maturing
 
-**A:** Bank hit rate drops; honest nodes with stable real overlays may gain relative advantage.
+**A:** The attacker cannot retune overlays, but can select the closest overlays from its matured bank after the anchor is known.
 
-**B:** Same anchor uncertainty applies to ticket evaluation; weight ranking unchanged by anchor shift except through eligibility filter.
+**B:** The attacker cannot retune overlays, but can select favorable tickets from its matured bank after the fixed priority seed is known. The anchor controls eligibility; the priority seed controls ticket rank. If one value is used for both, a change affects both.
 
 ---
 
@@ -265,7 +266,7 @@ distance = uint256(overlay XOR currentRoundAnchor())
 
 Eligibility already enforces `distance < 2^(256 - depthResponsibility)`. Among eligible commits, smaller distance is strictly better for retention.
 
-Tie-break when distances are equal (required for determinism): e.g. lower overlay bytes, or earlier commit snapshot index in fixed array — specify one rule.
+Distinct overlays cannot have equal XOR distance to the same anchor because XOR with a fixed anchor is one-to-one. Duplicate-overlay rejection therefore removes the distance tie case.
 
 ### Priority metric (Option B only)
 
@@ -283,25 +284,25 @@ See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#bounded-online-selection) for entropy 
 ```text
 1. Validate phase, round, stake maturity, obligation-window freeze
 2. Validate eligibility (depth, floor, proximity, height)
-3. If overlay already selected → revert
+3. If overlay already selected → reject
 4. If count < K → insert
-5. If count == K → compute rank; if newcomer beats worst → evict worst, insert newcomer; else revert
-6. Emit Selected or Rejected
+5. If count == K → compute rank; if newcomer beats worst → evict worst and insert newcomer; otherwise reject
+6. Emit `Selected`/`Evicted`. A rejected transaction may either revert or return normally and emit `Rejected`; a revert cannot preserve an event.
 ```
 
 ---
 
 ## Gas and K selection
 
-Both options target the same K from benchmarks. Differences are in **commit-phase** cost, not claim-phase (claim always loops K selected records).
+Both options should use the same K after benchmarks set it. Differences are in **commit-phase** cost, not finalization cost; finalization loops over at most K selected records.
 
 | | A: Proximity | B: Stake-weighted |
 |---|--------------|-------------------|
-| Unsaturated commit | O(unique check) + O(K) overlay scan for duplicates | O(unique check) + structure lookup |
-| Saturated commit | O(K) distance compares + one eviction write | O(log K) heap + weight snapshot reads |
+| Unsaturated commit | O(1) bounded membership lookup plus insertion, or O(K) scan in a simpler design | O(1) bounded membership lookup plus O(log K) heap insertion |
+| Saturated commit | O(K) distance comparisons + one eviction write | O(log K) heap replacement; weight snapshot cost is additional |
 | Claim / finalize | O(K) | O(K) |
 
-Proximity may be marginally cheaper at commit time; stake-weighted may be cheaper when K is large (512+) if heap beats linear scan. Measure both on a Gnosis fork.
+Which option is cheaper depends on storage layout, membership tracking, snapshot reads, and K. Measure both on a Gnosis fork; the current estimates do not establish a crossover point.
 
 ---
 
@@ -310,13 +311,13 @@ Proximity may be marginally cheaper at commit time; stake-weighted may be cheape
 | Priority | Prefer |
 |----------|--------|
 | Simplest auditable contract | **A: Proximity** |
-| Strongest censorship resistance per unit stake | **B: Stake-weighted** |
+| Make admission probability depend on stake | **B: Stake-weighted** |
 | Align admission with XOR neighborhood responsibility | **A: Proximity** |
 | Align admission with economic weight of the Schelling game | **B: Stake-weighted** |
 | Minimize new algorithm surface before audit | **A: Proximity** |
-| Defend against min-stake wallet banks | **B: Stake-weighted** |
+| Reduce dependence on overlay proximity alone | **B: Stake-weighted** |
 
-**Neither option removes the wallet-bank pattern.** Both require advance sybil preparation (off-chain nonce search + two-round maturation). The choice is whether slot competition is won by **geometry** or **stake**.
+**Neither option removes the wallet-bank pattern.** Both require advance sybil preparation (off-chain nonce search + two-round maturation). Option A ranks deterministically by geometry. Option B ranks by a probabilistic function of entropy and stake whose security properties cannot be claimed until the exact algorithm is specified.
 
 A hybrid is possible but increases complexity: e.g. primary rank by priority, tie-break by distance, or eligibility buckets per proximity band. Any hybrid needs its own row in this comparison before implementation.
 
@@ -325,7 +326,7 @@ A hybrid is possible but increases complexity: e.g. primary rank by priority, ti
 ## Open design questions
 
 1. **K value** from staged-finalization benchmarks on Gnosis (both options)
-2. **Tie-break rules** for equal distance (A) or equal priority (B)
+2. **Tie-break rule** for equal priority (B); distinct eligible overlays cannot tie on raw XOR distance (A)
 3. **Whether proximity distance** should be normalized by `depthResponsibility` or raw XOR suffices given eligibility already enforces responsibility
 4. **Caller incentive** for `finalizeParticipation` on zero-reveal rounds (shared)
 5. **Objective reveal validity** for fabricated-truth liveness (shared, rule 6)
