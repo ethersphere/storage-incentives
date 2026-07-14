@@ -16,7 +16,7 @@ Current contract limits:
 
 - `currentCommits` is unbounded, so `claim()` work scales linearly with sybil count.
 - Penalties, oracle adjustment, and payout all run inside one atomic `claim()`; proof failure rolls them back.
-- `PostageStamp.withdraw()` and `PriceOracle.adjustPrice()` can perform unbounded downstream work.
+- `PriceOracle.adjustPrice()` can perform unbounded catch-up work after skipped rounds.
 - Round state is global and arrays are bulk-deleted on rollover, so spam can also grief the next round.
 
 Proposed fix:
@@ -164,24 +164,6 @@ The disagreement penalty also evaluates the same `block.prevrandao % 100` for ev
 
 Do not reuse this construction for admission without a separate analysis. Admission randomness must not include user-grindable fields such as `_obfuscatedHash` or reveal nonce, and its bias/order properties must be specified and tested. If probabilistic disagreement penalties remain, derive a domain-separated value per participant from committed entropy rather than reusing one block value for the whole cohort.
 
-### 9. Downstream batch-expiry gas lock
-
-Even if commit processing is capped, the current `PostageStamp.withdraw()` is not bounded. It calls `totalPot()`, which calls `expireLimited(type(uint256).max)` and loops over every expired batch.
-
-Many batches expiring together can make settlement exceed its current-round deadline. The mitigation must bound the entire call graph and remove the checkpoint-to-withdraw race: reserve an immutable amount, or atomically finish the last bounded expiry step and withdraw that exact amount.
-
-### 10. Oversized proof calldata
-
-Each claim proof contains dynamic Merkle arrays, dynamic signatures, and a dynamic `SOCProof[]`. Proof helpers iterate caller-supplied array lengths, while only the first SOC proof is consumed.
-
-An arbitrary caller can submit oversized shapes that waste its own gas, but canonical bounds are still required for predictable relayer estimation, RPC acceptance, and protocol-level worst-case guarantees. Require exact proof depths, exact signature lengths, and `socProof.length <= 1` before expensive hashing.
-
-### 11. Cross-contract pause/migration penalty evasion
-
-Staking and Redistribution pause independently. While Staking is paused, `migrateStake()` deletes a participant's stake; a later `freezeDeposit()` silently does nothing when that stake no longer exists.
-
-A participant represented by a selected commit snapshot can therefore escape a later obligation if migration is allowed before the round becomes terminal. Coordinate pause/cutover state, or make migration reject stakes referenced by unresolved rounds and preserve penalty obligations during migration.
-
 ---
 
 ## Gas model: how many nodes to block `claim()`?
@@ -233,7 +215,7 @@ Examples (illustrative formula):
 - N = 500: ~450k + 499×25k ≈ 12.9M gas
 - N = 660: ~450k + 659×25k ≈ ~17M gas (Gnosis block-limit cliff)
 
-Re-measure after contract, compiler, or proof-shape changes. Cold/warm storage, calldata size, external-call costs, the commit-phase block budget, and the chain's current block gas limit can shift coefficients.
+Re-measure after contract, compiler, or proof changes. Cold/warm storage, calldata size, external-call costs, the commit-phase block budget, and the chain's current block gas limit can shift coefficients.
 
 ### Commit-phase cost to the attacker
 
@@ -368,9 +350,7 @@ mark truthValidated
 
 Invalid proofs revert only this transaction. Because anyone can submit `verifyWinner()` with deliberately invalid calldata, a failed transaction is not evidence that the selected winner cheated and must never directly slash/freeze the winner. A timeout bond can penalize non-delivery at the deadline if that rule is specified in advance.
 
-Persist the round's reveal anchor, proof-selection seed, winner/truth, and canonical proof parameters; never read mutable globals from a later phase. Postage batches can expire and be deleted before a delayed proof is checked, so either snapshot/historically prove stamp validity at the protocol-defined reference block or make the proof deadline/expiry rules guarantee equivalent immutable context. A short deadline alone is not protection against permissionless early expiry.
-
-Reject non-canonical proof shapes before expensive work: exact Merkle path lengths, exact signature sizes, and at most one SOC attachment.
+Persist the round's reveal anchor, proof-selection seed, winner/truth, and proof parameters; never read mutable globals from a later phase. Postage batches can expire and be deleted before a delayed proof is checked, so either snapshot/historically prove stamp validity at the protocol-defined reference block or make the proof deadline/expiry rules guarantee equivalent immutable context. A short deadline alone is not protection against permissionless early expiry.
 
 ### 3. `settleRound(uint64 round)`
 
@@ -390,7 +370,6 @@ This requires changes below Redistribution:
 
 - `PriceOracle.adjustPrice()` must not leave `lastAdjustedRound` advanced when `PostageStamp.setPrice()` failed, unless an idempotent sync operation can complete that exact transition later.
 - Skipped-round catch-up must be O(1) or strictly bounded; the current loop over every skipped round is attacker-amplifiable.
-- `PostageStamp.withdraw()` must not call an unbounded `expireLimited(type(uint256).max)` sweep. Settlement must consume an immutable reserved/checkpointed amount, or perform the final bounded expiry step and withdrawal atomically. A prior "clean" checkpoint alone is racy because another batch can expire before withdrawal.
 
 ### Deadlines and global-pot safety
 
@@ -411,7 +390,7 @@ Permissionless does not mean someone will pay gas. `finalizeParticipation()`, es
 
 ### Gas statement
 
-Set `MAX_COMMITS` only after fork benchmarks prove every stage and downstream call fits with margin at N = MAX. The ~2.9M figure above is an estimate for the current atomic `claim()` at N = 100; benchmark the staged implementation separately with worst-case capped batch expiry and maximum skipped-round catch-up.
+Set `MAX_COMMITS` only after fork benchmarks prove every stage and downstream call fits with margin at N = MAX. The ~2.9M figure above is an estimate for the current atomic `claim()` at N = 100; benchmark the staged implementation separately with maximum skipped-round catch-up.
 
 ---
 
@@ -503,8 +482,6 @@ _depth >= currentFloor()
 
 **7. Objective validity:** if all-revealing fabricated cohorts are in scope, require a bounded reveal-time sample/validity proof or design a timeout-and-fallback mechanism. This is a required liveness decision, not an optional hardening item.
 
-**8. Pause and migration:** unresolved round obligations survive coordinated pauses and stake migration. A migration cannot delete the target of a future freeze.
-
 ---
 
 ## How the mitigation package handles each attack
@@ -554,18 +531,15 @@ This is a remaining liveness attack. A floor, stake-weighted admission, and stag
 - Explicit height/depth/responsibility/penalty caps reject the input before exponentiation.
 - Tests exercise every maximum and one-above-maximum value.
 
-### Skipped-round oracle and expired-batch backlog
+### Skipped-round oracle
 
 - The cap on commits does not bound downstream loops.
 - Oracle catch-up uses a bounded policy rather than one iteration per missed round.
-- Batch expiry is processed in capped calls and settlement atomically consumes an immutable amount; it never performs an unlimited or racy sweep.
 - Oracle/postage price synchronization is atomic or idempotently repairable.
 
-### Rollover, proof shape, and stake migration
+### Rollover
 
 - Fixed-cap/generation-tagged state prevents dynamic-array deletion from becoming the next-round DoS.
-- Canonical proof-shape checks bound calldata and hashing work.
-- Coordinated pause/migration rules preserve unresolved freeze and payout obligations.
 
 ### Sybils with real storage and valid proofs
 
@@ -586,7 +560,7 @@ Non-reveal attacks consume fresh or frozen capital once finalization is incentiv
 5. Reveal phase: only selected records reveal; the round-versioned floor, declared depth, and all eligibility snapshots are checked.
 6. Early claim phase: `finalizeParticipation(round)` applies only non-reveal penalties and stores tentative truth/winner.
 7. Proof window: `verifyWinner(round, proofs)` marks the truth valid only after all current proof checks pass.
-8. Settlement window: after bounded oracle catch-up, atomically consume an immutable Postage checkpoint/reservation (or atomically complete the last bounded expiry step), apply disagreement penalties, synchronize price, and withdraw exactly that amount. Mark settled only after payout succeeds.
+8. Settlement window: after bounded oracle catch-up, apply disagreement penalties, synchronize price, and withdraw to the winner. Mark settled only after payout succeeds.
 9. At rollover, current-round payout rights expire unless PostageStamp was redesigned to escrow a round-specific amount. Bounded old metadata may be cleaned; no stale winner may withdraw the future global pot.
 
 ---
@@ -599,15 +573,13 @@ Non-reveal attacks consume fresh or frozen capital once finalization is incentiv
 - Exact Staking post-state invariant and committed-stake recomputation rule on height change
 - Future-round activation and emergency-decrease rules for governed floor changes
 - Claim-phase sub-deadlines with enough retry blocks for proof and settlement
-- Immutable stamp/proof reference context and canonical proof-shape limits
+- Immutable stamp/proof reference context
 - Finalizer/keeper incentive and bond accounting
 - Objective-validity approach for all-reveal fabricated tuples
 - Oracle failure policy and retry/skip observability
 - Bounded skipped-round price catch-up with explicit rounding/saturation semantics
-- Immutable/atomic Postage expiry checkpoint and amount-bounded withdrawal
 - Current-round expiry versus PostageStamp round-amount escrow
 - Timeout consequence for a selected winner; failed arbitrary calldata must not count as winner fault
-- Coordinated pause/migration behavior for unresolved participant obligations
 - Fixed-cap/generation-tagged round-state retention and cleanup
 - Multi-contract deployment cutover: active-round handling, state continuity, role grants verified before old-role revocation, and fail-closed post-deploy assertions
 
@@ -615,18 +587,17 @@ Non-reveal attacks consume fresh or frozen capital once finalization is incentiv
 
 ## Implementation order
 
-1. Add regression tests reproducing zero-reveal, proof rollback, false-truth disagreement freeze, depth-boundary arithmetic, stale payout, withdrawal failure, rollover cleanup, oversized proofs, floor changes between phases, and pause/migration cases.
+1. Add regression tests reproducing zero-reveal, proof rollback, false-truth disagreement freeze, depth-boundary arithmetic, stale payout, withdrawal failure, rollover cleanup, and floor changes between phases.
 2. Add reproducible complete-round gas benchmarks on a current Gnosis-compatible fork.
 3. Specify and test bounded online stake-weighted admission independently, including eviction, identity grinding, capital splitting, cleanup, and maximum K.
 4. Bound PriceOracle skipped-round catch-up and make oracle/Postage synchronization atomic or idempotently repairable.
-5. Add immutable/atomic bounded Postage expiry checkpointing and amount-bounded withdrawal so settlement never performs an unlimited or racy batch sweep.
-6. Add depth/collateral/arithmetic bounds in Staking and Redistribution.
-7. Add `Commit.declaredDepth`, eligibility snapshots, and bounded admission.
-8. Implement `finalizeParticipation`, `verifyWinner`, and retry-safe settlement with current-round deadlines.
-9. Add finalizer incentives and bounded-slot bond accounting.
-10. Implement the chosen objective-validity/fallback defense before claiming fake-truth liveness.
-11. Update ABI consumers: Bee/client, docs/examples, deployment JSON/codegen, `isWinner` semantics, events/errors, tests, and Echidna harnesses.
-12. Execute a fail-closed multi-contract cutover: handle the active round; preserve required pot/oracle/stake state; grant and verify Postage `REDISTRIBUTOR_ROLE` → new Redistribution, Staking `REDISTRIBUTOR_ROLE` → new Redistribution, PriceOracle `PRICE_UPDATER_ROLE` → new Redistribution, and Postage `PRICE_ORACLE_ROLE` → new PriceOracle; then revoke every corresponding old Redistribution/oracle edge and assert the complete role graph.
+5. Add depth/collateral/arithmetic bounds in Staking and Redistribution.
+6. Add `Commit.declaredDepth`, eligibility snapshots, and bounded admission.
+7. Implement `finalizeParticipation`, `verifyWinner`, and retry-safe settlement with current-round deadlines.
+8. Add finalizer incentives and bounded-slot bond accounting.
+9. Implement the chosen objective-validity/fallback defense before claiming fake-truth liveness.
+10. Update ABI consumers: Bee/client, docs/examples, deployment JSON/codegen, `isWinner` semantics, events/errors, tests, and Echidna harnesses.
+11. Execute a fail-closed multi-contract cutover: handle the active round; preserve required pot/oracle/stake state; grant and verify Postage `REDISTRIBUTOR_ROLE` → new Redistribution, Staking `REDISTRIBUTOR_ROLE` → new Redistribution, PriceOracle `PRICE_UPDATER_ROLE` → new Redistribution, and Postage `PRICE_ORACLE_ROLE` → new PriceOracle; then revoke every corresponding old Redistribution/oracle edge and assert the complete role graph.
 
 ---
 
