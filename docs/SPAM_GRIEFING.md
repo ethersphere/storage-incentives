@@ -12,9 +12,14 @@ There is no hard cap on `currentCommits.length`. Claim work scales as O(N) over 
 
 Depth floors and proximity are economic filters, not deterministic liveness guarantees.
 
-The previously proposed unbounded pending pool plus an end-of-phase weighted lottery is **not safe**: selection still has to process unbounded state and merely moves the OOG target from `claim()` to `selectCommits()`. The previously proposed split also persisted disagreement penalties before the selected truth had passed an objective proof, allowing a fabricated truth to freeze honest revealers.
+Current contract limits:
 
-The corrected near-term design is:
+- `currentCommits` is unbounded, so `claim()` work scales linearly with sybil count.
+- Penalties, oracle adjustment, and payout all run inside one atomic `claim()`; proof failure rolls them back.
+- `PostageStamp.withdraw()` and `PriceOracle.adjustPrice()` can perform unbounded downstream work.
+- Round state is global and arrays are bulk-deleted on rollover, so spam can also grief the next round.
+
+Proposed fix:
 
 1. A **bounded online admission set** whose storage and per-call work are capped at all times.
 2. **Participation finalization** that persists only objective non-reveal penalties.
@@ -22,7 +27,7 @@ The corrected near-term design is:
 4. Current-round-only payout rights, retryable withdrawal, explicit deadlines, and an incentive to pay finalization gas.
 5. Reported-depth and penalty-duration caps with checked arithmetic.
 
-This bounds gas and avoids making false truth more dangerous. It does **not** by itself solve an all-revealing coalition that reports the same fabricated hash; objective reveal validation or a bounded timeout/fallback protocol is still required for that liveness guarantee.
+This bounds gas and keeps false truth from triggering disagreement penalties or payout. It does **not** by itself solve an all-revealing coalition that reports the same fabricated hash; objective reveal validation or a bounded timeout/fallback protocol is still required for that liveness guarantee.
 
 No real Bee nodes or stored chunks are required for the attack. `commit()` and `reveal()` only check stake, phase, `wrapCommit()` consistency, and proximity. Reserve commitment hashes are not validated against storage until `claim()` proof verification.
 
@@ -75,7 +80,7 @@ Several paths loop over `currentCommits.length`:
 
 A farm of N sybil nodes increases claim work linearly in N. Per-iteration cost is not uniform: commit-only sybils are cheap in `getCurrentTruth()` but expensive in `winnerSelection()` because of `freezeDeposit()` external calls.
 
-Arrays reset each round (`delete currentCommits` at the start of a new commit phase), but Solidity storage cleanup scales with occupied slots. Current-round spam can therefore make rollover itself expensive or uncallable. A bounded replacement must cap cleanup too, using fixed-capacity/generation-tagged state, a ring buffer, or bounded cursor cleanup.
+Arrays reset each round (`delete currentCommits` at the start of a new commit phase), but Solidity storage cleanup scales with occupied slots. Current-round spam can therefore make rollover itself expensive or uncallable. The fix must cap cleanup too, using fixed-capacity/generation-tagged state, a ring buffer, or bounded cursor cleanup.
 
 ---
 
@@ -137,7 +142,7 @@ Defense: enforce protocol-level `MAX_REPORTED_DEPTH`, revalidate stake collatera
 
 Attack: malicious revealers submit a fabricated tuple that wins the truth lottery.
 
-Effect today: proof verification fails and rolls back disagreement freezes. A naive split that finalizes freezes before proofs makes the attack worse: honest revealers disagreeing with the fabricated tuple are frozen even though the tuple can never pass storage proofs.
+Effect: proof verification fails and rolls back disagreement freezes, so a fabricated truth can block payout without penalty.
 
 Defense: non-reveal penalties may be persisted before proof validation because non-participation is objective. Disagreement penalties and oracle adjustment must wait until the selected truth has passed an objective proof.
 
@@ -161,7 +166,7 @@ Do not reuse this construction for admission without a separate analysis. Admiss
 
 ### 9. Downstream batch-expiry gas lock
 
-Even if commit processing is capped, today's `PostageStamp.withdraw()` is not bounded. It calls `totalPot()`, which calls `expireLimited(type(uint256).max)` and loops over every expired batch.
+Even if commit processing is capped, the current `PostageStamp.withdraw()` is not bounded. It calls `totalPot()`, which calls `expireLimited(type(uint256).max)` and loops over every expired batch.
 
 Many batches expiring together can make settlement exceed its current-round deadline. The mitigation must bound the entire call graph and remove the checkpoint-to-withdraw race: reserve an immutable amount, or atomically finish the last bounded expiry step and withdraw that exact amount.
 
@@ -257,14 +262,14 @@ Effective re-entry is approximately the configured freeze duration **plus two ro
 
 ---
 
-## Corrected mitigation package
+## Mitigation package
 
 The package has four layers:
 
 ```
 bounded eligibility and arithmetic
         +
-bounded online admission (no unbounded pending pool)
+bounded online admission
         +
 objective participation finalization
         +
@@ -305,17 +310,17 @@ The penalty loop never runs. Commit-only sybils pay commit gas only and stay unf
 
 `freezeDeposit()` prevents participation for a period. Stake is not destroyed. After the freeze ends the same capital can attack again (with new wallets still needing the two-round staking wait).
 
-### Gap 4: not every penalty is safe to finalize before proofs
+### Gap 4: disagreement penalties require validated truth
 
-Failure to reveal is objective after the reveal deadline. Disagreement is relative to a lottery-selected tuple that may be fabricated. Persisting both classes before proof validation would let a false truth freeze honest revealers.
+Failure to reveal is objective after the reveal deadline. Disagreement is relative to a lottery-selected tuple that may be fabricated and cannot pass storage proofs.
 
-Only non-reveal penalties belong in proof-independent finalization. Disagreement penalties require a validated truth.
+Only non-reveal penalties belong in proof-independent finalization. Disagreement penalties and oracle adjustment require a validated truth.
 
 ### Gap 5: payout failure is currently treated as success
 
 `claim()` makes a low-level `PostageStamp.withdraw()` call, emits `WithdrawFailed` on failure, and still completes. Because `currentClaimRound` was already set, the winner cannot retry that round.
 
-The replacement must revert settlement or retain an explicit retryable payout state when withdrawal fails. It must never emit final success or consume the round's payout right after a failed transfer.
+Settlement must revert or retain an explicit retryable payout state when withdrawal fails. It must never emit final success or consume the round's payout right after a failed transfer.
 
 ### Who gets penalized today (only if full `claim()` succeeds)
 
@@ -346,7 +351,7 @@ mark participationFinalized
 
 If there are zero reveals, close the round with no truth, no oracle update, and no payout. If there are reveals, the selected tuple remains tentative.
 
-An empty round has no `truthRevealedDepth`, so its freeze duration cannot reuse today's truth-depth formula. Define a bounded governed duration or derive a capped duration from each selected commit's stored responsibility.
+An empty round has no `truthRevealedDepth`, so its freeze duration cannot reuse the current truth-depth penalty formula. Define a bounded governed duration or derive a capped duration from each selected commit's stored responsibility.
 
 This stage must **not** freeze disagreeing revealers or adjust the oracle. A false tentative truth has not earned that authority.
 
@@ -393,12 +398,12 @@ This requires changes below Redistribution:
 
 Use one of these audited models:
 
-1. **Current-round-only rights (recommended near-term):** all three stages have deadlines inside the current claim phase. An unpaid reward expires at rollover and the pot carries forward. Old rounds can never call `withdraw()`.
+1. **Current-round-only rights:** all three stages have deadlines inside the current claim phase. An unpaid reward expires at rollover and the pot carries forward. Past rounds cannot call `withdraw()`.
 2. **Escrowed round amount:** snapshot and reserve an amount in PostageStamp, then expose amount-bounded withdrawal. This requires a PostageStamp protocol change.
 
-Merely storing `finalized[round]` while calling today's unbounded `withdraw()` later is unsafe.
+Storing `finalized[round]` while calling the current global `withdraw()` later is unsafe.
 
-The near-term model still needs an explicit bounded `RoundState` record containing phase/status, reveal anchor, proof seed, tentative/validated truth, winner, and payment status. New rounds must not alias singleton proof context. Cleanup must be generation-tagged, fixed-capacity, or cursor-bounded; never bulk-delete attacker-sized arrays.
+The design requires an explicit bounded `RoundState` record containing phase/status, reveal anchor, proof seed, tentative/validated truth, winner, and payment status. New rounds must not alias singleton proof context. Cleanup must be generation-tagged, fixed-capacity, or cursor-bounded; never bulk-delete attacker-sized arrays.
 
 ### Finalization incentive
 
@@ -406,7 +411,7 @@ Permissionless does not mean someone will pay gas. `finalizeParticipation()`, es
 
 ### Gas statement
 
-Set `MAX_COMMITS` only after fork benchmarks prove every stage and downstream call fits with margin at N = MAX. The earlier ~2.9M estimate describes the existing combined claim formula at N = 100; it does **not** prove a 2.9M finalizer plus a separate 450k proof transaction. Benchmark the staged implementation with worst-case capped batch expiry and maximum skipped-round catch-up.
+Set `MAX_COMMITS` only after fork benchmarks prove every stage and downstream call fits with margin at N = MAX. The ~2.9M figure above is an estimate for the current atomic `claim()` at N = 100; benchmark the staged implementation separately with worst-case capped batch expiry and maximum skipped-round catch-up.
 
 ---
 
@@ -420,13 +425,9 @@ A cap bounds `currentCommits.length`, so finalization loops and external freeze 
 
 If the first `MAX_COMMITS` txs win, sybils can race to fill slots and exclude honest nodes for that round. Admission must not be pure FCFS.
 
-### Rejected design: unbounded pool then cutoff lottery
+### Bounded online selection
 
-Do not collect all eligible commits on-chain and scan them at cutoff. The pending pool, selection transaction, cleanup, and storage refunds are all attacker-controlled and unbounded. Contracts also do not execute automatically on the "last block"; a caller must submit a transaction that fits.
-
-### Required design: bounded online selection
-
-Keep at most `MAX_COMMITS` selected records throughout the commit phase. Each accepted transaction performs bounded work, for example O(log MAX) replacement in a fixed-capacity heap.
+Keep at most `MAX_COMMITS` selected records throughout the commit phase. Each accepted transaction performs bounded work, for example O(log MAX) replacement in a fixed-capacity heap. Admission must not depend on a single end-of-phase transaction that scans unbounded state.
 
 Separate weight from random priority:
 
@@ -448,9 +449,9 @@ Requirements:
 - Keep bond escrow only for the K currently selected slots. Refund an eviction synchronously in that eviction transaction (with checks-effects-interactions/reentrancy protection); do not create permanent per-evictee credits.
 - Bound auxiliary mappings and define cleanup. A fixed array plus an ever-growing "seen candidate" mapping is not bounded.
 
-The seed is known during commit in the simple online model. That permits mature identities to decide whether their fixed overlay has a favorable ticket, but avoids transaction-order dependence and arbitrary nonce grinding. If unpredictability until cutoff is required, use a VRF/commitment design with a separately proven bounded data path; do not reintroduce an unbounded on-chain candidate scan.
+The seed is known during commit in the simple online model. That permits mature identities to decide whether their fixed overlay has a favorable ticket, but avoids transaction-order dependence and arbitrary nonce grinding. If unpredictability until cutoff is required, use a VRF/commitment design with a separately proven bounded data path.
 
-Weighted admission improves proportional fairness; it does not guarantee an honest node a slot. Inclusion probability depends on honest weight versus total admitted attacker weight. Documentation and tests must not say "honest likely admitted" without a quantified model.
+Weighted admission improves proportional fairness; it does not guarantee an honest node a slot. Inclusion probability depends on honest weight versus total admitted attacker weight.
 
 ### Optional: commit bond
 
@@ -506,7 +507,7 @@ _depth >= currentFloor()
 
 ---
 
-## How the corrected package handles each attack
+## How the mitigation package handles each attack
 
 `MAX_COMMITS` remains a placeholder until measured. The examples below use K selected participants, not an assumed safe value of 100.
 
@@ -520,7 +521,6 @@ _depth >= currentFloor()
 ### Commit/reveal gas grief
 
 - Online admission keeps storage and each later scan bounded by K.
-- No cutoff transaction scans an unbounded pending pool.
 - Fork benchmarks must cover worst-case K external freeze calls and not only happy-path proof verification.
 
 ### Commit-only sybils plus one valid honest reveal
@@ -541,7 +541,7 @@ _depth >= currentFloor()
 - Proof validation fails, and the current-round payout expires.
 - The same capital can repeat after paying gas because no disagreement has been objectively established.
 
-This is a remaining liveness attack. A floor, stake-weighted admission, and split finalization do not solve it. Require reveal-time objective validity, a meaningful timeout bond on the selected proof provider, or a bounded fallback that can move to another objectively validated candidate. Do not describe the full package as providing deterministic claim liveness until one is implemented.
+This is a remaining liveness attack. A floor, stake-weighted admission, and staged finalization do not solve it. Require reveal-time objective validity, a meaningful timeout bond on the selected proof provider, or a bounded fallback that can move to another objectively validated candidate.
 
 ### Slot filling
 
@@ -581,7 +581,7 @@ Non-reveal attacks consume fresh or frozen capital once finalization is incentiv
 
 1. Governance sets bounded floor/depth/penalty parameters.
 2. Commit phase: `commit(hash, round, depth)` validates stake age, collateral, depth, proximity, and computes a fixed-identity weighted priority.
-3. The fixed-cap online structure admits or evicts in bounded work. No cutoff selection transaction exists.
+3. The fixed-cap online structure admits or evicts in bounded work.
 4. At commit cutoff, selected status is final and queryable.
 5. Reveal phase: only selected records reveal; the round-versioned floor, declared depth, and all eligibility snapshots are checked.
 6. Early claim phase: `finalizeParticipation(round)` applies only non-reveal penalties and stores tentative truth/winner.
@@ -639,4 +639,4 @@ Non-reveal attacks consume fresh or frozen capital once finalization is incentiv
 
 ## Status
 
-Threat model and mitigation architecture corrected after audit. Not yet implemented in the contracts.
+Proposed mitigation architecture. Not yet implemented in the contracts.

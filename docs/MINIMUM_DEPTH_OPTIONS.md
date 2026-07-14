@@ -211,7 +211,7 @@ Typical pairing: Option F + minimum `depth - height` responsibility + commit pro
 
 ## Recommended combined approach with commit proximity
 
-See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#corrected-mitigation-package) for the full threat-model context and corrected bounded-admission and staged-finalization package.
+See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#mitigation-package) for the full threat-model context and bounded-admission staged-finalization package.
 
 ### Rationale
 
