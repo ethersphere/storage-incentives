@@ -1,8 +1,8 @@
 # Redistribution — Spam and Griefing Threat Model
 
-This document describes how sybil spam and griefing attacks work against `Redistribution.sol`, what they can achieve, and order-of-magnitude estimates for how many nodes are needed to block `claim()`.
+This document describes how sybil spam and griefing attacks work against `Redistribution.sol`, what they can achieve, order-of-magnitude estimates for how many nodes are needed to block `claim()`, and the proposed mitigation package.
 
-For minimum-depth floor policy options, see [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md).
+For depth-floor policy details, see [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md).
 
 ## Summary
 
@@ -10,7 +10,7 @@ The main griefing vector is a **sybil farm**: many staked addresses, each with o
 
 There is **no hard cap** on `currentCommits.length`. Claim work scales as O(N) over commits; commit-phase attacker work scales as O(N²) across the round. Arrays reset each round, so griefing is per-round, not cumulative forever.
 
-Minimum depth policy (old or proposed Option B) **does not cap sybil count** and, under the current exact `(hash, depth)` truth model, does not provide an independent floor signal. Depth floors and proximity are **economic filters**, not deterministic liveness guarantees. A robust fix needs **bounded admission or batched finalization** in addition to eligibility checks.
+Depth floors and proximity are **economic filters**, not deterministic liveness guarantees. The proposed fix combines **eligibility tightening** with **bounded admission or batched finalization**.
 
 ---
 
@@ -128,34 +128,6 @@ If claims are skipped for multiple rounds, the next successful `adjustPrice()` c
 - Automatic stake destruction on freeze — `freezeDeposit()` time-locks participation; stake is not slashed (slash path is commented out)
 - Recovery of a griefed round after phase rollover — the old round cannot be claimed later; only the aggregate pot carries forward
 
-## What the old docs got wrong
-
-- **"Wrong hash loses truth selection"** — false. Dishonest reveals participate in truth lottery.
-- **"Commit-only sybils are always frozen at claim"** — only when ≥1 reveal exists **and** a `claim()` tx fully succeeds.
-- **"Round recovers when participation drops"** — N cannot shrink during a round's claim phase; rollover makes the round unclaimable.
-- **Option B "min among truth-agreeing depths"** — under exact `(hash, depth)` truth, every agreeing revealer has the same depth; the minimum equals `truthDepth` (see [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md)).
-
----
-
-## Relation to minimum depth
-
-The removed `currentMinimumDepth()` check (historical; not in current `src/Redistribution.sol`):
-
-```solidity
-if (_depth < currentMinimumDepth()) revert OutOfDepth();
-```
-
-did **not** limit sybil count or claim-loop size. It blocked **low-depth reveals** (especially `depth ≈ height`). **Commit-only spam was already possible** with the old floor.
-
-| Aspect                         | With old floor              | Without floor (current)     |
-|--------------------------------|-----------------------------|-----------------------------|
-| Sybil / claim gas grief        | Present                     | Present                     |
-| Easiest reveal path            | `depth >= floor`            | `depth == height`           |
-| Penalties on caught spammers   | `truthRevealedDepth`-scaled | Same                        |
-| Caps sybil N                   | No                          | No                          |
-
-See [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) for floor policy alternatives. Depth floor alone does not solve sybil **N**.
-
 ---
 
 ## Gas model — how many nodes to block `claim()`?
@@ -227,28 +199,37 @@ Per sybil at `height = 0` (minimum path):
 
 **Example:** ~660 sybils for Gnosis block-limit griefing ≈ **6,600 BZZ** minimum locked stake at height 0, plus O(N²) commit gas and operational burden.
 
-Depth floor or proximity policy changes **how** sybils reveal and **where** they must stake, not the fundamental need for a hard work bound.
+Eligibility rules change **how** sybils must stake and reveal; bounded work is what caps **N** and protects claim liveness.
 
 ---
 
-## Recommended mitigation package (planned, not implemented)
+## Proposed mitigation package
 
-The previous draft (commit proximity + Option B/E floor) is **insufficient as specified**. Under current `(hash, depth)` truth semantics, Option B collapses to `truthDepth`; proximity at `depth == height` is vacuous; and splitting `finalizeRound()` from `claim()` alone leaves the same uncapped O(N) loop.
+The mitigation is a **layered package** that combines commit/reveal eligibility tightening with **deterministic bounded work** and a split between round finalization and proof-based payout.
 
-The leading direction is a **layered package** that combines eligibility tightening with **deterministic bounded work**.
+### Design goals
+
+| Goal | Approach |
+|------|----------|
+| Limit shallow-reveal spam | Require `depth > height` and a governed/bootstrap depth floor |
+| Bind commit-time depth | Store `declaredDepth` in `Commit`; reveal must match |
+| Filter by neighborhood | Commit proximity using `inProximity(overlay, anchor, depth - height)` |
+| Close height collateral gap | Revalidate `MIN_STAKE * 2^height` on every `manageStake` height change |
+| Cap claim-loop work | Hard `MAX_COMMITS` or batched finalization |
+| Preserve penalties on grief | Split `finalizeRound()` from `claimReward()` |
 
 ### Problem mapping
 
-| Layer | Current gap | Mitigation |
-|-------|-------------|------------|
+| Layer | Gap today | Mitigation |
+|-------|-----------|------------|
 | Unbounded commit array | Any staked node can `commit()` | Commit proximity + positive `depth - height` + stored declared depth |
-| Vacuous proximity | `depth == height` ⇒ responsibility 0 | Require `depth > height` (minimum responsibility) at commit and reveal |
+| Vacuous proximity | `depth == height` ⇒ responsibility 0 | Require `depth > height` at commit and reveal |
 | Height bypass | `manageStake(..., 0, newHeight)` without collateral check | Revalidate height-scaled minimum stake on every height change |
-| Shallow reveals | `depth == height` always available | Absolute depth floor (governed or bootstrap constant), not Option B |
-| Claim gas grief | O(N) loops + external freezes in one tx | Hard `MAX_COMMITS` derived from worst-case gas, or batched finalization |
-| Penalties lost on grief | Freezes inside failing `claim()` tx | Persist finalization (penalties, oracle, `currentClaimRound`) before proof verification |
-| Truth poisoning | Stake-weighted lottery over individual reveals | Bounded N reduces blast radius; truth-policy redesign is a separate decision |
-| Round stuck on grief | Single atomic `claim()` | `finalizeRound()` + `claimReward()` split with durable per-round state |
+| Shallow reveals | `depth == height` always available | Governed or bootstrap `currentFloor()` |
+| Claim gas grief | O(N) loops + external freezes in one tx | `MAX_COMMITS` from Gnosis gas benchmarks, or batched finalization |
+| Penalties lost on grief | Freezes inside failing `claim()` tx | Persist finalization before proof verification |
+| Truth poisoning | Stake-weighted lottery over individual reveals | Bounded N reduces blast radius |
+| Round stuck on grief | Single atomic `claim()` | `finalizeRound()` + `claimReward()` with durable per-round state |
 
 ### Proposed rules
 
@@ -269,18 +250,14 @@ During commit phase:
 ```
 depthResponsibility = _depth - height   // must be > 0
 inProximity(overlay, currentRoundAnchor(), depthResponsibility)
-_depth >= currentFloor()               // governed/bootstrap floor, not Option B
+_depth >= currentFloor()
 ```
 
 Proximity is a **probabilistic economic filter** (~`2^-responsibility` eligibility), not a hard cap on N.
 
-**3. Depth floor source**
+**3. Depth floor**
 
-Do **not** use Option B ("min depth among truth-agreeing revealers") under current truth semantics — it equals `truthDepth`. Prefer one of:
-
-- **Governed floor** — admin/multisig parameter with public `currentFloor()` view
-- **Bootstrap constant** — network minimum depth until a better signal exists
-- **Future Option B′** — only if truth aggregation is redesigned to select by `hash` first, then derive depth from the agreeing cohort (see [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md))
+`currentFloor()` is a governed parameter or bootstrap constant, independent of the selected truth tuple. See [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) for policy options.
 
 **4. Bounded work (required for liveness)**
 
@@ -298,24 +275,33 @@ claimReward(round, proofs) → proof verification + pot withdrawal only
 
 Finalization must fit within gas limits via the cap or batching above. Do not delete round arrays at rollover until finalization completes or an explicit expiry path runs.
 
-### What this fixes
+### Round flow
 
-| Problem | Eligibility package | Bounded work | Split finalize/claim |
-|---------|---------------------|--------------|----------------------|
+1. Governance sets `currentFloor()` or a bootstrap constant applies.
+2. **Commit phase** — `commit(hash, round, depth)`; revert if `depth <= height`, not in proximity, `depth < floor`, or cap reached.
+3. **Reveal phase** — `declaredDepth` match, proximity to reveal anchor, `depth > height`, `depth >= floor`.
+4. **Finalize** — `finalizeRound()` computes truth, winner, penalties, oracle adjustment (bounded work).
+5. **Claim** — `claimReward()` verifies proofs and withdraws pot to `winner.owner`.
+
+### Coverage
+
+| Problem | Eligibility rules | Bounded work | Split finalize/claim |
+|---------|-------------------|--------------|----------------------|
 | Global sybil commit spam | Partial (economic) | **Strong** | — |
-| `depth == height` cheap path | **Strong** (if `depth > height` required) | — | — |
+| `depth == height` cheap path | **Strong** | — | — |
 | Claim gas grief from huge N | Weak alone | **Strong** | Partial |
 | Penalties lost when claim OOGs | — | — | **Strong** |
 | Proof deadlock after bad truth | Weak (reduces N only) | Partial | Partial |
 
-### Remaining gaps
+### Open design questions
 
-1. **Truth semantics** — stake-weighted lottery over `(hash, depth)` tuples remains; changing that is a separate protocol decision.
-2. **Withdraw soft-fail** — if `PostageStamp.withdraw()` fails, round is marked claimed but pot is not paid (`WithdrawFailed` event); needs operator handling.
-3. **Client / ABI migration** — breaking `commit()` signature; coordinate Bee release and redeploy (contract is not upgradeable).
-4. **Benchmarks** — add reproducible gas tests before setting `MAX_COMMITS`.
+- Bootstrap floor value when no governance parameter exists
+- `MAX_COMMITS` vs batched finalization trade-off
+- Admission policy under hard cap (censorship resistance)
+- Truth aggregation redesign (hash-level consensus before depth binding) — separate protocol decision
+- Handling `WithdrawFailed` when `PostageStamp.withdraw()` fails after finalization
 
-### Suggested implementation order
+### Implementation order
 
 1. Reproducible gas benchmarks on Gnosis fork (N ∈ {1, 6, 25, 50, 100, 200, …})
 2. `Commit.declaredDepth` + `commit(..., _depth)` + eligibility helper
@@ -323,20 +309,7 @@ Finalization must fit within gas limits via the cap or batching above. Do not de
 4. `currentFloor()` view + governed/bootstrap floor
 5. `MAX_COMMITS` or batched `finalizeRound()`
 6. `claimReward()` split
-7. Bee/client release + redeploy
-
-**Status:** Documented for discussion. Not implemented in `Redistribution.sol` yet.
-
----
-
-## Other mitigations
-
-If additional hardening is needed:
-
-- Higher minimum stake or stake-density threshold to participate
-- Mandatory minimum reveal count before claim is allowed
-- Off-chain monitoring and operational response
-- Truth aggregation redesign (hash-level consensus before depth binding)
+7. Bee/client release + redeploy (breaking `commit()` ABI; contract is not upgradeable)
 
 ---
 
@@ -344,9 +317,9 @@ If additional hardening is needed:
 
 - [`Redistribution.sol`](../src/Redistribution.sol) — `commit()`, `reveal()`, `claim()`, `winnerSelection()`
 - [`Staking.sol`](../src/Staking.sol) — `MIN_STAKE`, `freezeDeposit()`, `manageStake()`
-- [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) — floor policy discussion
+- [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) — depth floor policy
 - [REDISTRIBUTION.md](./REDISTRIBUTION.md) — game overview
 
 ## Status
 
-**Open for discussion.** Option A (no floor) is on `fix/minimal_depth_resolve`. The **planned** next step is the layered mitigation package above — documented but not implemented.
+**Planned, not implemented.** Documented for discussion and implementation planning.
