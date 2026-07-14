@@ -190,7 +190,7 @@ Finalizes the round and pays the pot if proofs verify.
 **Caller:** There is **no `msg.sender` check**. Any party may call `claim()` and pay gas. The pot is withdrawn to `winner.owner`, not the caller. A relayer or griefer can submit the transaction.
 
 **Logic**:
-1. `winnerSelection()` — truth, winner, penalties, oracle adjustment, `currentClaimRound` (all in one internal call)
+1. `winnerSelection()`: truth, winner, penalties, oracle adjustment, `currentClaimRound` (all in one internal call)
 2. Calculate random chunk indices from seed
 3. Verify proximity for all three chunks
 4. Verify inclusion proofs for all three chunks
@@ -309,7 +309,7 @@ struct SOCProof {
 
 ### Truth Selection (from reveals)
 
-Truth is an **exact pair** `(hash, depth)` — a reveal agrees with truth only if both fields match.
+Truth is an exact pair `(hash, depth)`. A reveal agrees with truth only if both fields match.
 
 ```solidity
 function getCurrentTruth() {
@@ -563,15 +563,15 @@ bool eligible = Redistribution(redis).isParticipatingInUpcomingRound(
 3. **Freeze Protection**: Prevents stake manipulation during freeze
 4. **Proof Verification**: Comprehensive validation prevents fake claims
 5. **Random Selection**: Weighted fairly by stake density
-6. **Truth Selection**: Stake-weighted lottery over exact `(hash, depth)` tuples — not majority vote or correctness check
+6. **Truth Selection**: Stake-weighted lottery over exact `(hash, depth)` tuples, not majority vote or correctness check
 7. **Sybil / claim gas griefing**: Unbounded `currentCommits` makes `claim()` O(N); see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md)
 8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()` before penalties; round is permanently unclaimable after rollover
 9. **Open caller on `claim()`**: Anyone can submit; economic incentive is on `winner.owner` to provide proofs
 
 ## Related Documentation
 
-- [SPAM_GRIEFING.md](./SPAM_GRIEFING.md) — sybil spam, claim gas griefing, planned mitigations
-- [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) — depth floor policy options (Option B invalid under current truth semantics)
+- [SPAM_GRIEFING.md](./SPAM_GRIEFING.md): sybil spam, claim gas griefing, planned mitigations
+- [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md): depth floor policy options
 
 ## Related Contracts
 
