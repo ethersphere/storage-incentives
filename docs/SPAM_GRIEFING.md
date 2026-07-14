@@ -430,6 +430,8 @@ The seed is known during commit in the simple online model. That permits mature 
 
 Weighted admission improves proportional fairness; it does not guarantee an honest node a slot. Inclusion probability depends on honest weight versus total admitted attacker weight.
 
+For a side-by-side comparison of stake-weighted admission versus proximity-ranked admission under the same staged-finalization and eligibility baseline, see [ADMISSION_COMPARISON.md](./ADMISSION_COMPARISON.md).
+
 ---
 
 ## Eligibility rules (supporting layer)
@@ -513,6 +515,7 @@ Attacks covered: (1) zero-reveal lock, (2) claim gas grief, (3) truth poisoning 
 - [`Redistribution.sol`](../src/Redistribution.sol): `commit()`, `reveal()`, `claim()`, `winnerSelection()`
 - [`Staking.sol`](../src/Staking.sol): `MIN_STAKE`, `freezeDeposit()`, `manageStake()`
 - [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md): depth floor policy
+- [ADMISSION_COMPARISON.md](./ADMISSION_COMPARISON.md): proximity vs stake-weighted admission
 - [REDISTRIBUTION.md](./REDISTRIBUTION.md): game overview
 
 ## Status

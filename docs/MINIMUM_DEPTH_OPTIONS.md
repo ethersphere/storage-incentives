@@ -229,7 +229,7 @@ See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#mitigation-package) for the full threa
 | Stored depth | `Commit.declaredDepth`; reveal must match |
 | Depth floor | Option F (governed/bootstrap) |
 | Height changes | Revalidate `MIN_STAKE * 2^height` on every `manageStake` height update |
-| Bounded work | `MAX_COMMITS` from gas benchmarks + bounded online stake-weighted admission |
+| Bounded work | `MAX_COMMITS` from gas benchmarks + bounded online admission ([proximity vs stake-weighted comparison](./ADMISSION_COMPARISON.md)) |
 | Finalization split | Persist non-reveal penalties; validate proofs before disagreement penalties/oracle/payout; bound oracle catch-up and Postage expiry |
 
 ### Example flow
@@ -253,7 +253,7 @@ See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#mitigation-package) for the full threa
 
 - Bootstrap floor value when no governance parameter exists
 - `MAX_COMMITS` value from Gnosis gas benchmarks
-- Exact bounded online stake-weighted admission algorithm under the hard cap (censorship resistance and grinding)
+- Exact bounded online admission algorithm under the hard cap — see [ADMISSION_COMPARISON.md](./ADMISSION_COMPARISON.md) for proximity vs stake-weighted trade-offs
 - Floor activation delay and emergency-decrease behavior
 - Objective validity or bounded fallback for all-reveal fabricated truth
 - Whether to pursue Option B′ / truth redesign in a later phase
