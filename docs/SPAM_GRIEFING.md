@@ -10,7 +10,7 @@ The main griefing vector is a sybil farm: many staked addresses, each with one c
 
 There is no hard cap on `currentCommits.length`. Claim work scales as O(N) over commits; commit-phase attacker work scales as O(N²) across the round. Arrays reset each round, so griefing is per-round, not cumulative forever.
 
-Depth floors and proximity are economic filters, not deterministic liveness guarantees. The proposed fix combines eligibility tightening with bounded admission or batched finalization.
+Depth floors and proximity are economic filters, not deterministic liveness guarantees. The recommended near-term fix is `MAX_COMMITS` plus split finalization (`finalizeRound` / `claimReward` / `finalizeEmptyRound`), together with commit eligibility rules and weighted admission at commit cutoff.
 
 No real Bee nodes or stored chunks are required for the attack. `commit()` and `reveal()` only check stake, phase, `wrapCommit()` consistency, and proximity. Reserve commitment hashes are not validated against storage until `claim()` proof verification.
 
@@ -207,33 +207,152 @@ Eligibility rules change how sybils must stake and reveal. Bounded work is what 
 
 ## Proposed mitigation package
 
-The mitigation combines commit/reveal eligibility rules, a hard cap or batched finalization on claim-loop work, and a split between round finalization and proof-based payout.
+The full package has three layers: eligibility rules (raise sybil cost), bounded participation (`MAX_COMMITS` with weighted admission), and split finalization (penalties persist independently of proofs).
 
-### Goals
+### Recommended near-term solution
 
-| Goal | Approach |
-|------|----------|
-| Limit shallow-reveal spam | Require `depth > height` and a governed/bootstrap depth floor |
-| Bind commit-time depth | Store `declaredDepth` in `Commit`; reveal must match |
-| Filter by neighborhood | Commit proximity using `inProximity(overlay, anchor, depth - height)` |
-| Close height collateral gap | Revalidate `MIN_STAKE * 2^height` on every `manageStake` height change |
-| Cap claim-loop work | Hard `MAX_COMMITS` or batched finalization |
-| Preserve penalties on grief | Split `finalizeRound()` from `claimReward()` |
+```
+Eligibility (proximity at commit, depth > height, floor, stored depth)
+        +
+MAX_COMMITS + weighted admission at end of commit phase
+        +
+finalizeRound() / finalizeEmptyRound() / claimReward() split
+```
 
-### Problem mapping
+This caps claim-loop gas and (with split finalize) makes one-round sybil attacks expensive via freezes without requiring honest nodes to win a gas war.
 
-| Layer | Gap today | Mitigation |
-|-------|-----------|------------|
-| Unbounded commit array | Any staked node can `commit()` | Commit proximity + positive `depth - height` + stored declared depth |
-| Vacuous proximity | `depth == height` ⇒ responsibility 0 | Require `depth > height` at commit and reveal |
-| Height bypass | `manageStake(..., 0, newHeight)` without collateral check | Revalidate height-scaled minimum stake on every height change |
-| Shallow reveals | `depth == height` always available | Governed or bootstrap `currentFloor()` |
-| Claim gas grief | O(N) loops + external freezes in one tx | `MAX_COMMITS` from Gnosis gas benchmarks, or batched finalization |
-| Penalties lost on grief | Freezes inside failing `claim()` tx | Persist finalization before proof verification |
-| Truth poisoning | Stake-weighted lottery over individual reveals | Bounded N reduces blast radius |
-| Round stuck on grief | Single atomic `claim()` | `finalizeRound()` + `claimReward()` with durable per-round state |
+---
 
-### Proposed rules
+## Penalty gaps in the current contract
+
+Penalties are the main reason a capped sybil farm cannot attack every round cheaply. Today there are three gaps that break that story.
+
+### Gap 1: penalties live inside the same tx as proofs
+
+`claim()` calls `winnerSelection()` first, then verifies proofs:
+
+```solidity
+function claim(...) external {
+    winnerSelection();   // freezeDeposit() for non-reveal / wrong-truth
+    // ... proof verification (reverts on failure)
+    // ... withdraw pot
+}
+```
+
+Any proof revert rolls back the entire transaction, including all `freezeDeposit()` calls and `currentClaimRound`. So a sybil winner with a fake hash can undo penalties for everyone by failing proofs.
+
+This is an incentives bug: dishonest play should trigger penalization, not a full rollback of punishments already computed.
+
+### Gap 2: zero reveals means no penalty path
+
+`winnerSelection()` reverts `NoReveals()` when `currentRevealRound != currentRound`. That happens when nobody revealed in the round (`currentRevealRound` is only set on the first successful reveal).
+
+The penalty loop never runs. Commit-only sybils pay commit gas only and stay unfrozen.
+
+### Gap 3: freeze is a time-lock, not a slash
+
+`freezeDeposit()` prevents participation for a period. Stake is not destroyed. After the freeze ends the same capital can attack again (with new wallets still needing the two-round staking wait).
+
+### Who gets penalized today (only if full `claim()` succeeds)
+
+| Participant | Condition | Penalty |
+|-------------|-----------|---------|
+| Commit, no reveal | `!revealed` in loop | Always frozen (`penaltyMultiplierNonRevealed`) |
+| Reveal, wrong truth | hash/depth != truth | Frozen with probability `penaltyRandomFactor` |
+| Reveal, matches truth | exact tuple match | No disagreement penalty |
+| Selected winner | bad proofs | No penalty; whole tx reverts |
+
+---
+
+## Split finalization: design and rationale
+
+Split the current atomic `claim()` into separate steps with persisted round state.
+
+### Functions
+
+```solidity
+// At least one reveal in the round
+finalizeRound(uint64 round)
+  → getCurrentTruth()
+  → winnerSelection loop (freezes)
+  → OracleContract.adjustPrice()
+  → set currentClaimRound, store winner + truth
+  → mark round finalized
+
+// Zero reveals in the round
+finalizeEmptyRound(uint64 round)
+  → require currentRevealRound != round
+  → freeze all committers (non-reveal penalty)
+  → set currentClaimRound
+  → mark round finalized (no truth, no winner, no pot)
+
+// After finalizeRound only
+claimReward(uint64 round, proofs...)
+  → require round finalized, winner set
+  → verify proofs + withdraw pot to winner.owner
+  → proof failure reverts only this tx; freezes already persisted
+```
+
+### Why this fixes the proof-revert bug
+
+| Step | On proof failure |
+|------|------------------|
+| Today (`claim()` atomic) | All penalties rolled back |
+| Split (`finalizeRound` then `claimReward`) | Penalties already on-chain; only pot payout blocked |
+
+Anyone can call `finalizeRound()` or `finalizeEmptyRound()` (permissionless). The winner (or a relayer) calls `claimReward()` separately.
+
+### Gas with MAX_COMMITS
+
+Set `MAX_COMMITS` from Gnosis fork benchmarks so `finalizeRound()` fits in one tx at N = MAX (illustrative: ~100 commits ≈ 2.9M gas for finalize + ~450k for proofs in `claimReward()`).
+
+No OOG from sybil count if admission enforces the cap.
+
+---
+
+## MAX_COMMITS and weighted admission
+
+### Why a hard cap
+
+A cap bounds `currentCommits.length`, so `finalizeRound()` loop + `freezeDeposit()` calls stay under the block/wallet gas limit.
+
+### Why not first-come-first-served
+
+If the first `MAX_COMMITS` txs win, sybils can race to fill slots and exclude honest nodes for that round. Admission must not be pure FCFS.
+
+### Recommended admission: weighted lottery at commit cutoff
+
+Collect all eligible commits during the commit phase into a pending pool. At a fixed block (last block of commit phase), select `MAX_COMMITS` using the same weighting philosophy as truth/winner selection.
+
+**Admission score** (computed at commit, with stored `declaredDepth`):
+
+```
+admissionScore = nodeEffectiveStake(owner) × 2^(declaredDepth - height)
+```
+
+This matches `stakeDensity` at reveal. A minimum-stake sybil at shallow depth scores low; one honest node at real depth scores much higher.
+
+**Selection:** stake-density-weighted reservoir lottery seeded by round anchor (not tx ordering). Small stake still has a nonzero chance to be admitted, consistent with the random win mechanic in claim. A farm of 100 cheap sybils does not automatically crowd out one serious honest commit.
+
+**Alternative:** top-N by score (simpler, but small honest stake may miss a full round). Weighted lottery is preferred for fairness alignment with the existing game.
+
+### Optional: commit bond
+
+For extra protection on the zero-reveal path before someone calls `finalizeEmptyRound()`:
+
+```
+commit() locks bond (e.g. 1-5 BZZ)
+  → refunded on valid reveal
+  → forfeited if no reveal by end of reveal phase
+```
+
+Economic penalty without scanning the array. Complements `finalizeEmptyRound()`, does not replace it.
+
+---
+
+## Eligibility rules (supporting layer)
+
+These raise sybil cost but do not cap N alone. They pair with `MAX_COMMITS`.
 
 **1. Extend `commit()` with stored depth**
 
@@ -243,11 +362,7 @@ commit(bytes32 _obfuscatedHash, uint64 _roundNumber, uint8 _depth)
 
 Store `declaredDepth` in `Commit`. At `reveal()`, require `_depth == declaredDepth` before proximity and floor checks.
 
-The opaque `_obfuscatedHash` alone does not bind the commit-time `_depth` argument. `wrapCommit()` binds depth to the hash preimage, but the contract cannot inspect that preimage until reveal.
-
-**2. Eligibility at commit (shared with `isParticipatingInUpcomingRound`)**
-
-During commit phase:
+**2. Eligibility at commit**
 
 ```
 depthResponsibility = _depth - height   // must be > 0
@@ -255,63 +370,134 @@ inProximity(overlay, currentRoundAnchor(), depthResponsibility)
 _depth >= currentFloor()
 ```
 
-Proximity filters by neighborhood (~`2^-responsibility` eligibility). It is not a hard cap on N.
+**3. Depth floor:** governed or bootstrap `currentFloor()`. See [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md).
 
-**3. Depth floor**
+**4. Staking:** revalidate `MIN_STAKE * 2^height` on every `manageStake` height change.
 
-`currentFloor()` is a governed parameter or bootstrap constant, independent of the selected truth tuple. See [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) for policy options.
+---
 
-**4. Bounded work (required for liveness)**
+## How the recommended package handles each attack
 
-Choose one:
+Assume `MAX_COMMITS = 100` (from benchmarks), weighted admission, split finalize, and eligibility rules in place.
 
-- Hard commit cap: `MAX_COMMITS` from fork benchmarks on Gnosis; admission rule must resist slot-filling censorship (e.g. deterministic scored selection, not pure first-come-first-served)
-- Batched finalization: permissionless `finalizeRound(round, start, count)` with persisted cursors; idempotent penalty application across txs
+### Scenario 1: Zero-reveal (100 sybil commits, no reveals)
 
-**5. Split finalize and claim**
+| Today | With package |
+|-------|----------------|
+| `NoReveals()`, no penalty, round stuck | Anyone calls `finalizeEmptyRound()`: all 100 committers frozen, round closed |
+| Attacker cost: commit gas only | Attacker cost: commit gas + 100× freeze duration + ~1,000 BZZ locked during freeze |
+| Same wallets retry next round | Frozen wallets cannot play until freeze ends |
 
-```
-finalizeRound(round)  → truth, winner, penalties, oracle adjust, currentClaimRound
-claimReward(round, proofs) → proof verification + pot withdrawal only
-```
+Pot still accrues; that round has no winner. Repeat attack needs new stakes or waiting out freezes.
 
-Finalization must fit within gas limits via the cap or batching above. Do not delete round arrays at rollover until finalization completes or an explicit expiry path runs.
+### Scenario 2: Gas grief (100 commits + reveals)
 
-### Round flow
+| Today | With package |
+|-------|----------------|
+| O(N) may OOG at high N | N capped at 100; `finalizeRound()` gas bounded |
+| Penalties lost on OOG | Finalize succeeds; penalties persist |
 
-1. Governance sets `currentFloor()` or a bootstrap constant applies.
-2. Commit phase: `commit(hash, round, depth)`; revert if `depth <= height`, not in proximity, `depth < floor`, or cap reached.
-3. Reveal phase: `declaredDepth` match, proximity to reveal anchor, `depth > height`, `depth >= floor`.
-4. Finalize: `finalizeRound()` computes truth, winner, penalties, oracle adjustment (bounded work).
-5. Claim: `claimReward()` verifies proofs and withdraws pot to `winner.owner`.
+### Scenario 3: 99 commit-only sybils + 1 honest reveal, honest wins
 
-### Coverage
+| Today | With package |
+|-------|----------------|
+| 99 frozen only if full `claim()` succeeds | `finalizeRound()`: 99 non-reveal frozen immediately |
+| | `claimReward()`: honest proofs, pot paid |
 
-| Problem | Eligibility rules | Bounded work | Split finalize/claim |
-|---------|-------------------|--------------|----------------------|
-| Global sybil commit spam | Partial | High | n/a |
-| `depth == height` cheap path | High | n/a | n/a |
-| Claim gas grief from huge N | Low | High | Partial |
-| Penalties lost when claim OOGs | n/a | n/a | High |
-| Proof deadlock after bad truth | Low | Partial | Partial |
+One attack round penalizes 99 sybils. Attacker needs new identities or waits for freeze expiry.
 
-### Open design questions
+### Scenario 4: 99 commit-only + 1 sybil fake reveal, sybil wins truth
 
-- Bootstrap floor value when no governance parameter exists
-- `MAX_COMMITS` vs batched finalization trade-off
-- Admission policy under hard cap (censorship resistance)
-- Truth aggregation redesign (hash-level consensus before depth binding)
-- Handling `WithdrawFailed` when `PostageStamp.withdraw()` fails after finalization
+| Today | With package |
+|-------|----------------|
+| 99 frozen in loop, then proof fails → all rolled back | `finalizeRound()`: 99 non-reveal frozen, persisted |
+| No penalty after failed proofs | `claimReward()` fails on proofs; freezes remain |
+| Round not closed | Round closed; pot not paid until honest path in a later round |
 
-### Implementation order
+Sybil does not get the pot. Commit-only sybils still frozen.
 
-1. Reproducible gas benchmarks on Gnosis fork (N ∈ {1, 6, 25, 50, 100, 200, …})
-2. `Commit.declaredDepth` + `commit(..., _depth)` + eligibility helper
-3. Staking: revalidate collateral on height change
-4. `currentFloor()` view + governed/bootstrap floor
-5. `MAX_COMMITS` or batched `finalizeRound()`
-6. `claimReward()` split
-7. Bee/client release + redeploy (breaking `commit()` ABI; contract is not upgradeable)
+### Scenario 5: 100 sybil reveals (same fake hash), sybil wins
+
+| Today | With package |
+|-------|----------------|
+| No disagreement penalty (all match wrong truth) | Same: no disagreement penalty |
+| Proof fails → full revert | `finalizeRound()` completes (no non-reveal if all revealed) |
+| | `claimReward()` fails; round closed, no pot |
+
+Weakest case: all sybils revealed the same lie. No non-reveal freezes. Optional mitigations: reveal sample proof (reject fake reveals at reveal time), commit bond, or higher floor/depth requirements. Truth redesign is a separate decision.
+
+### Scenario 6: 100 sybils fill slots via FCFS (without weighted admission)
+
+| With FCFS only | With weighted admission |
+|----------------|-------------------------|
+| Honest node may be excluded for the round | Honest high-score commit likely in top 100 lottery draw |
+| One round of exclusion | Sybil farm must outbid on stake×depth, not just tx speed |
+
+### Scenario 7: Sybils "play right" (real storage, valid reveals)
+
+If sybils actually store chunks and reveal honestly, they are real network participants, not a cheap grief farm. Cost is real infrastructure and stake per identity. The game works as designed.
+
+### Scenario 8: Sustained multi-round attack
+
+| Cost per round | Effect |
+|----------------|--------|
+| ~100 stakes × 10 BZZ ≈ 1,000 BZZ locked | Capital tied up |
+| 2-round wait per new identity | Rate limit on fresh sybils |
+| Freeze after bad play | Cannot immediately reuse same wallets |
+| Gas for 100 commits (O(N²) across phase) | Operational cost |
+
+Each successful attack round that triggers freezes makes the next round more expensive (new wallets, new wait, more gas). Not impossible, but materially more costly than today where zero-reveal and proof-failure paths are penalty-free.
+
+---
+
+## Scenario summary table
+
+| Attack | MAX_COMMITS | Split finalize | finalizeEmptyRound | Weighted admission |
+|--------|-------------|----------------|--------------------|--------------------|
+| Zero-reveal lock | Round bounded | n/a | Freezes all committers | n/a |
+| Gas grief | Gas bounded | Penalties persist | n/a | n/a |
+| Commit-only + honest win | n/a | 99 frozen, persisted | n/a | Honest likely admitted |
+| Fake winner, bad proofs | n/a | Non-reveal frozen, persisted | n/a | n/a |
+| All sybil reveals, same lie | n/a | Round closes, no pot | n/a | n/a |
+| Slot filling | Caps N | n/a | n/a | Honest not trivially excluded |
+| Sustained farm | Per-round capital + freeze | Repeat costly | Zero-reveal punished | n/a |
+
+---
+
+## Round flow (recommended)
+
+1. Governance sets `currentFloor()` or bootstrap constant applies.
+2. Commit phase: nodes call `commit(hash, round, depth)`; commits stored in pending pool with `admissionScore`.
+3. Last block of commit phase: `selectCommits(MAX_COMMITS)` via weighted lottery; only selected commits enter `currentCommits`.
+4. Reveal phase: `declaredDepth` match, proximity, `depth > height`, `depth >= floor`.
+5. Claim phase:
+   - If reveals exist: `finalizeRound()` then `claimReward(proofs)`.
+   - If no reveals: `finalizeEmptyRound()`.
+6. Do not delete round arrays at rollover until finalization completes.
+
+---
+
+## Open design questions
+
+- Exact `MAX_COMMITS` from Gnosis gas benchmarks (target: finalize + freezes fit in ~10-15M with margin)
+- `finalizeEmptyRound` timing: any time in claim phase vs deadline block
+- Commit bond amount and forfeiture rules
+- Reveal sample proof for fake-hash sybils (adds gas for all revealers)
+- Winner fails to call `claimReward()` before expiry: freeze winner?
+- `WithdrawFailed` when `PostageStamp.withdraw()` fails after finalization
+
+---
+
+## Implementation order
+
+1. Reproducible gas benchmarks on Gnosis fork (N ∈ {1, 6, 25, 50, 100, …})
+2. Split `finalizeRound()`, `finalizeEmptyRound()`, `claimReward()` from `claim()`
+3. `MAX_COMMITS` + `selectCommits()` weighted admission at commit cutoff
+4. `Commit.declaredDepth` + `commit(..., _depth)` + eligibility helper
+5. Staking: revalidate collateral on height change
+6. `currentFloor()` view + governed/bootstrap floor
+7. Optional commit bond
+8. Bee/client release + redeploy (breaking ABI; contract not upgradeable)
 
 ---
 

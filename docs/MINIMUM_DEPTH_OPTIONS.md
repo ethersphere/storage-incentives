@@ -204,21 +204,21 @@ Typical pairing: Option F + minimum `depth - height` responsibility + commit pro
 2. Option B (original) is invalid under current truth semantics unless truth aggregation changes.
 3. For near-term spam/liveness work, prefer Option F (governed/bootstrap floor) plus the bounded-work package in [SPAM_GRIEFING.md](./SPAM_GRIEFING.md).
 4. If an adaptive floor tied to honest cohort depth is required long-term, evaluate Option B′ (truth redesign) before reintroducing Options C/D/E.
-5. Address sybil / claim gas griefing with hard `MAX_COMMITS` or batched finalization. Depth floor alone is insufficient.
+5. Address sybil / claim gas griefing with hard `MAX_COMMITS` and weighted admission. Depth floor alone is insufficient.
 6. Add reproducible gas benchmarks on Gnosis before setting constants.
 
 ---
 
 ## Recommended combined approach with commit proximity
 
-See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#proposed-mitigation-package) for the full threat-model context.
+See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#proposed-mitigation-package) for the full threat-model context and recommended `MAX_COMMITS` + split finalize package.
 
 ### Rationale
 
 - Depth floor alone does not stop global sybil commits; it only affects shallow reveals.
 - Commit proximity alone is bypassed at `depth == height` (responsibility 0) and by zero-deposit height changes in `manageStake()`.
 - Proximity is probabilistic, not a hard cap on N.
-- Bounded work (commit cap or batched finalization) is required for claim liveness.
+- `MAX_COMMITS` with weighted admission is required for claim liveness.
 
 ### Proposed pairing
 
@@ -229,7 +229,7 @@ See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#proposed-mitigation-package) for the f
 | Stored depth | `Commit.declaredDepth`; reveal must match |
 | Depth floor | Option F (governed/bootstrap) |
 | Height changes | Revalidate `MIN_STAKE * 2^height` on every `manageStake` height update |
-| Bounded work | `MAX_COMMITS` from gas benchmarks, or batched `finalizeRound()` |
+| Bounded work | `MAX_COMMITS` from gas benchmarks + weighted admission |
 | Finalization split | `finalizeRound()` before `claimReward()` proofs |
 
 ### Example flow
@@ -252,7 +252,7 @@ See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#proposed-mitigation-package) for the f
 ### Open design questions
 
 - Bootstrap floor value when no governance parameter exists
-- `MAX_COMMITS` vs batched finalization trade-off
+- `MAX_COMMITS` value from Gnosis gas benchmarks
 - Admission policy under hard cap (censorship resistance)
 - Whether to pursue Option B′ / truth redesign in a later phase
 - Skipped-round floor decay (carry forward from old design or drop)
