@@ -15,7 +15,7 @@ Depth floors and proximity are economic filters, not deterministic liveness guar
 Current contract limits:
 
 - `currentCommits` is unbounded, so `claim()` work scales linearly with sybil count.
-- Penalties, oracle adjustment, and payout all run inside one atomic `claim()`; proof failure rolls them back.
+- **Bug:** penalties, oracle adjustment, and payout all run inside one atomic `claim()`; proof failure rolls back every `freezeDeposit()` and leaves blocking nodes unpenalized.
 - Round state is global and arrays are bulk-deleted on rollover, so spam can also grief the next round.
 
 Proposed fix:
@@ -24,7 +24,6 @@ Proposed fix:
 2. **Participation finalization** that persists only objective non-reveal penalties.
 3. Proof validation before disagreement penalties, oracle adjustment, or payout.
 4. Current-round-only payout rights, retryable withdrawal, explicit deadlines, and an incentive to pay finalization gas.
-5. Reported-depth and penalty-duration caps with checked arithmetic.
 
 This bounds gas and keeps false truth from triggering disagreement penalties or payout. It does **not** by itself solve an all-revealing coalition that reports the same fabricated hash; objective reveal validation or a bounded timeout/fallback protocol is still required for that liveness guarantee.
 
@@ -95,6 +94,8 @@ What breaks: the round cannot be claimed. The pot continues to accrue in Postage
 
 Cost to attacker: commit gas only (O(N²) across the round). No stake freeze. No reveals and no real storage required.
 
+**Bug:** with no reveals, `claim()` reverts `NoReveals()` and the penalty path never runs. Commit-only sybils are never frozen.
+
 ### 2. Claim-phase gas griefing
 
 Attack: N sybil commits plus at least one reveal (honest or dishonest).
@@ -107,11 +108,13 @@ What breaks: the round does not finalize while N stays high. Every retry in the 
 
 Penalties apply only when a `claim()` transaction fully succeeds. A grief that blocks every claim is penalty-free for the attacker. Sybil reveals can use fabricated hashes; the attacker does not need to win or pass proof checks.
 
+**Bug:** same penalty rollback as attack 3 — failed or out-of-gas `claim()` reverts all `freezeDeposit()` calls from `winnerSelection()`.
+
 ### 3. Truth poisoning / proof deadlock
 
 Attack: sybil reveals with a fabricated `(hash, depth)` and enough aggregate `stakeDensity` to be selected as truth.
 
-Effect: truth selection is a stake-density-weighted lottery over individual reveals, not a majority vote or correctness check. Any revealed tuple can become truth with probability proportional to its `stakeDensity`. Commit order also influences the draw because randomness is keyed on commit array index `i`.
+Effect: truth selection is a stake-density-weighted lottery over individual reveals, not a majority vote or correctness check. `reveal()` does not verify that the hash exists in storage; any revealed tuple can become truth with probability proportional to its `stakeDensity`. Commit order also influences the draw because randomness is keyed on commit array index `i`.
 
 If a fabricated hash is selected:
 
@@ -121,6 +124,10 @@ If a fabricated hash is selected:
 
 A single malicious reveal in a round becomes truth deterministically. This is a liveness attack independent of exceeding gas limits.
 
+**Bug:** dishonest nodes can block every `claim()` attempt without being penalized. `winnerSelection()` applies `freezeDeposit()` before proofs are checked; when inclusion verification fails, the whole transaction reverts and none of those freezes persist. Blocking payout is effectively free for the attacker.
+
+**Fix:** split finalization so objective non-reveal penalties persist before proof validation. Apply disagreement penalties and oracle adjustment only after the selected truth passes storage proofs.
+
 ### 4. Commit-only spam with at least one reveal
 
 Attack: many commits, one honest or sybil reveal, all other sybils skip reveal.
@@ -129,21 +136,7 @@ Effect: bloats the `winnerSelection()` loop. Each non-revealed commit can trigge
 
 With default `penaltyRandomFactor = 100`, disagreeing reveals are also always frozen when claim succeeds.
 
-### 5. Unbounded-depth arithmetic surface
-
-The contract accepts `uint8` reported depths without an explicit protocol maximum. Penalty expressions multiply `ROUND_LENGTH * 2 ** truthRevealedDepth`, and stake density multiplies `stake * 2 ** depthResponsibility`; extreme accepted values can panic on overflow.
-
-This is not a cheap deterministic `depth == height` attack: `manageStake()` evaluates `MIN_STAKE * 2 ** height` even on a zero-amount update and itself reverts before a staker can set height near penalty-overflow levels. A higher reported depth also has to pass increasingly improbable proximity. Treat this as a defensive arithmetic/domain gap, not a demonstrated practical lock.
-
-Defense: enforce protocol-level `MAX_REPORTED_DEPTH`, revalidate stake collateral on every height change, and cap/check stake-density and penalty-duration arithmetic. Do not rely only on incidental overflow in another contract to define valid protocol depths.
-
-### 6. False-truth penalty amplification
-
-Attack: malicious revealers submit a fabricated tuple that wins the truth lottery.
-
-Effect: proof verification fails and rolls back disagreement freezes, so a fabricated truth can block payout without penalty.
-
-Defense: non-reveal penalties may be persisted before proof validation because non-participation is objective. Disagreement penalties and oracle adjustment must wait until the selected truth has passed an objective proof.
+**Bug:** same as attack 3 — if `claim()` never completes, non-reveal freezes computed in `winnerSelection()` are rolled back and commit-only sybils stay unpenalized.
 
 ---
 
@@ -227,11 +220,9 @@ Effective re-entry is approximately the configured freeze duration **plus two ro
 
 ## Mitigation package
 
-The package has four layers:
+The package has three layers:
 
 ```
-bounded eligibility and arithmetic
-        +
 bounded online admission
         +
 objective participation finalization
@@ -239,15 +230,17 @@ objective participation finalization
 proof validation before subjective penalties, oracle update, and payout
 ```
 
+Supporting eligibility rules (depth floor, proximity, declared depth) raise sybil cost but do not cap N on their own.
+
 This package bounds gas and safely persists non-reveal penalties. It deliberately does not claim that fabricated reveals are solved: if false reveals must be prevented from suppressing every payout, reveal-time validity proof or a separately audited bounded fallback protocol is required.
 
 ---
 
 ## Penalty gaps in the current contract
 
-Penalties are the main reason a capped sybil farm cannot attack every round cheaply. Today there are five gaps that break that story.
+Penalties are the main reason a capped sybil farm cannot attack every round cheaply. Today there are four gaps that break that story.
 
-### Gap 1: penalties live inside the same tx as proofs
+### Gap 1: penalties live inside the same tx as proofs (bug)
 
 `claim()` calls `winnerSelection()` first, then verifies proofs:
 
@@ -261,9 +254,9 @@ function claim(...) external {
 
 Any proof revert rolls back the entire transaction, including all `freezeDeposit()` calls and `currentClaimRound`. So a sybil winner with a fake hash can undo penalties for everyone by failing proofs.
 
-This is an incentives bug: dishonest play should trigger penalization, not a full rollback of punishments already computed.
+This is a bug that must be fixed: dishonest play should trigger penalization, not a full rollback of punishments already computed.
 
-### Gap 2: zero reveals means no penalty path
+### Gap 2: zero reveals means no penalty path (bug)
 
 `winnerSelection()` reverts `NoReveals()` when `currentRevealRound != currentRound`. That happens when nobody revealed in the round (`currentRevealRound` is only set on the first successful reveal).
 
@@ -279,7 +272,7 @@ Failure to reveal is objective after the reveal deadline. Disagreement is relati
 
 Only non-reveal penalties belong in proof-independent finalization. Disagreement penalties and oracle adjustment require a validated truth.
 
-### Gap 5: payout failure is currently treated as success
+### Gap 5: payout failure is currently treated as success (bug)
 
 `claim()` makes a low-level `PostageStamp.withdraw()` call, emits `WithdrawFailed` on failure, and still completes. Because `currentClaimRound` was already set, the winner cannot retry that round.
 
@@ -450,64 +443,52 @@ _depth >= currentFloor()
 
 **3. Depth floor:** governed or bootstrap `currentFloor()`. Floor changes are round-versioned and activate only in a future round; store the applicable value in round/commit state so governance cannot accept a commit under one floor and force its reveal to fail under another. See [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md).
 
-**4. Staking:** validate the resulting post-state on every height change, including `_addAmount == 0`: `potentialStake >= MIN_STAKE * 2^newHeight`. Specify whether `committedStake` is recomputed at the current oracle price; do not leave this to implementer interpretation. Use checked bounds before exponentiation.
+**4. Staking:** validate the resulting post-state on every height change, including `_addAmount == 0`: `potentialStake >= MIN_STAKE * 2^newHeight`. Specify whether `committedStake` is recomputed at the current oracle price; do not leave this to implementer interpretation.
 
-**5. Arithmetic:** define `MAX_STAKE_HEIGHT`, `MAX_REPORTED_DEPTH`, `MAX_DEPTH_RESPONSIBILITY`, and `MAX_PENALTY_BLOCKS` from protocol limits. Use checked helper functions for weight/stake-density and penalty duration. Reject values outside the domain rather than allowing arithmetic panics to decide eligibility.
+**5. Stake state:** ensure selected participants cannot withdraw or mutate stake/overlay/height during their obligation window. Snapshot values for selection, but apply penalties to the same owner/stake identity that created the commit.
 
-**6. Stake state:** ensure selected participants cannot withdraw or mutate stake/overlay/height during their obligation window. Snapshot values for selection, but apply penalties to the same owner/stake identity that created the commit.
-
-**7. Objective validity:** if all-revealing fabricated cohorts are in scope, require a bounded reveal-time sample/validity proof or design a timeout-and-fallback mechanism. This is a required liveness decision, not an optional hardening item.
+**6. Objective validity:** if all-revealing fabricated cohorts are in scope, require a bounded reveal-time sample/validity proof or design a timeout-and-fallback mechanism. This is a required liveness decision for attack 3, not an optional hardening item.
 
 ---
 
 ## How the mitigation package handles each attack
 
+Attacks covered: (1) zero-reveal lock, (2) claim gas grief, (3) truth poisoning / penalty-free blocking, (4) commit-only spam.
+
 `MAX_COMMITS` remains a placeholder until measured. The examples below use K selected participants, not an assumed safe value of 100.
 
-### Zero reveal
+### 1. Zero reveal
 
 - Bounded admission limits work to K.
 - `finalizeParticipation()` freezes all selected non-revealers and closes the round.
 - This defense depends on a keeper/bounty actually causing finalization.
 - The pot carries forward; there is no winner for that round.
 
-### Commit/reveal gas grief
+### 2. Commit/reveal gas grief
 
 - Online admission keeps storage and each later scan bounded by K.
 - Fork benchmarks must cover worst-case K external freeze calls and not only happy-path proof verification.
 
-### Commit-only sybils plus one valid honest reveal
+### 3. Truth poisoning / proof deadlock
 
-- Participation finalization persists non-reveal freezes.
-- Honest proofs validate the truth; settlement can then apply disagreement policy, update the oracle, and pay.
+- The fabricated tuple can still win the stake-weighted lottery; admission and floors do not prevent that.
+- Staged finalization stops a false truth from freezing honest disagreeing revealers or updating price before proofs pass.
+- **Fix for the penalty rollback bug:** `finalizeParticipation()` persists non-reveal freezes even when later proof validation fails.
+- All-revealing fabricated cohorts still need objective reveal validity or a timeout/fallback (see eligibility rule 6).
+
+### 4. Commit-only spam with at least one reveal
+
+- Participation finalization persists non-reveal freezes before proof validation, fixing the rollback bug for commit-only sybils.
+- If an honest node was selected and reveals valid truth, settlement can apply disagreement policy, update the oracle, and pay.
 - Admission remains probabilistic: this outcome assumes the honest node was selected.
 
-### Commit-only sybils plus one fabricated reveal
-
-- Non-reveal sybils are frozen during participation finalization.
-- The fabricated tuple remains tentative and cannot freeze honest disagreeing revealers or update price.
-- Proof validation fails, so there is no payout.
-
-### All selected sybils reveal the same fabricated tuple
-
-- Gas is bounded, but there are no non-reveal penalties.
-- Proof validation fails, and the current-round payout expires.
-- The same capital can repeat after paying gas because no disagreement has been objectively established.
-
-This is a remaining liveness attack. A floor, stake-weighted admission, and staged finalization do not solve it. Require reveal-time objective validity, a meaningful timeout bond on the selected proof provider, or a bounded fallback that can move to another objectively validated candidate.
-
-### Slot filling
+### Slot filling (supports attacks 1–4)
 
 - FCFS allows transaction-speed exclusion.
 - Bounded stake-weighted admission makes selection depend on fixed identity and objectively locked stake rather than arrival order.
 - It does not guarantee honest inclusion. A coalition with sufficient total weight can occupy all K positions.
 
-### Extreme-depth arithmetic
-
-- Explicit height/depth/responsibility/penalty caps reject the input before exponentiation.
-- Tests exercise every maximum and one-above-maximum value.
-
-### Rollover
+### Rollover (supports attacks 1–2)
 
 - Fixed-cap/generation-tagged state prevents dynamic-array deletion from becoming the next-round DoS.
 
@@ -539,7 +520,6 @@ Non-reveal attacks consume fresh or frozen capital once finalization is incentiv
 
 - Exact `MAX_COMMITS` from complete-round Gnosis fork benchmarks with safety margin
 - Exact weighted-priority algorithm and fixed-seed bias/grinding analysis
-- Maximum stake height, reported depth, responsibility, and penalty duration
 - Exact Staking post-state invariant and committed-stake recomputation rule on height change
 - Future-round activation and emergency-decrease rules for governed floor changes
 - Claim-phase sub-deadlines with enough retry blocks for proof and settlement
@@ -555,16 +535,15 @@ Non-reveal attacks consume fresh or frozen capital once finalization is incentiv
 
 ## Implementation order
 
-1. Add regression tests reproducing zero-reveal, proof rollback, false-truth disagreement freeze, depth-boundary arithmetic, stale payout, withdrawal failure, rollover cleanup, and floor changes between phases.
+1. Add regression tests reproducing zero-reveal, proof rollback, false-truth disagreement freeze, stale payout, withdrawal failure, rollover cleanup, and floor changes between phases.
 2. Add reproducible complete-round gas benchmarks on a current Gnosis-compatible fork.
 3. Specify and test bounded online stake-weighted admission independently, including eviction, identity grinding, capital splitting, cleanup, and maximum K.
-4. Add depth/collateral/arithmetic bounds in Staking and Redistribution.
-5. Add `Commit.declaredDepth`, eligibility snapshots, and bounded admission.
-6. Implement `finalizeParticipation`, `verifyWinner`, and retry-safe settlement with current-round deadlines.
-7. Add finalizer incentives and bounded-slot bond accounting.
-8. Implement the chosen objective-validity/fallback defense before claiming fake-truth liveness.
-9. Update ABI consumers: Bee/client, docs/examples, deployment JSON/codegen, `isWinner` semantics, events/errors, tests, and Echidna harnesses.
-10. Execute a fail-closed multi-contract cutover: handle the active round; preserve required pot/oracle/stake state; grant and verify Postage `REDISTRIBUTOR_ROLE` → new Redistribution, Staking `REDISTRIBUTOR_ROLE` → new Redistribution, PriceOracle `PRICE_UPDATER_ROLE` → new Redistribution, and Postage `PRICE_ORACLE_ROLE` → new PriceOracle; then revoke every corresponding old Redistribution/oracle edge and assert the complete role graph.
+4. Add `Commit.declaredDepth`, eligibility snapshots, and bounded admission.
+5. Implement `finalizeParticipation`, `verifyWinner`, and retry-safe settlement with current-round deadlines.
+6. Add finalizer incentives and bounded-slot bond accounting.
+7. Implement the chosen objective-validity/fallback defense before claiming fake-truth liveness.
+8. Update ABI consumers: Bee/client, docs/examples, deployment JSON/codegen, `isWinner` semantics, events/errors, tests, and Echidna harnesses.
+9. Execute a fail-closed multi-contract cutover: handle the active round; preserve required pot/oracle/stake state; grant and verify Postage `REDISTRIBUTOR_ROLE` → new Redistribution, Staking `REDISTRIBUTOR_ROLE` → new Redistribution, PriceOracle `PRICE_UPDATER_ROLE` → new Redistribution, and Postage `PRICE_ORACLE_ROLE` → new PriceOracle; then revoke every corresponding old Redistribution/oracle edge and assert the complete role graph.
 
 ---
 
