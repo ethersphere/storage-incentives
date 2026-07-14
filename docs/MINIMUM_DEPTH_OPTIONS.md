@@ -204,21 +204,21 @@ Typical pairing: Option F + minimum `depth - height` responsibility + commit pro
 2. Option B (original) is invalid under current truth semantics unless truth aggregation changes.
 3. For near-term spam/liveness work, prefer Option F (governed/bootstrap floor) plus the bounded-work package in [SPAM_GRIEFING.md](./SPAM_GRIEFING.md).
 4. If an adaptive floor tied to honest cohort depth is required long-term, evaluate Option B′ (truth redesign) before reintroducing Options C/D/E.
-5. Address sybil / claim gas griefing with hard `MAX_COMMITS` and weighted admission. Depth floor alone is insufficient.
+5. Address sybil / claim gas griefing with hard `MAX_COMMITS` and bounded online stake-weighted admission. Treat depth as eligibility-only until it is objectively proven. An unbounded pending pool plus cutoff selection is not bounded. Depth floor alone is insufficient.
 6. Add reproducible gas benchmarks on Gnosis before setting constants.
 
 ---
 
 ## Recommended combined approach with commit proximity
 
-See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#proposed-mitigation-package) for the full threat-model context and recommended `MAX_COMMITS` + split finalize package.
+See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#corrected-mitigation-package) for the full threat-model context and corrected bounded-admission and staged-finalization package.
 
 ### Rationale
 
 - Depth floor alone does not stop global sybil commits; it only affects shallow reveals.
 - Commit proximity alone is bypassed at `depth == height` (responsibility 0) and by zero-deposit height changes in `manageStake()`.
 - Proximity is probabilistic, not a hard cap on N.
-- `MAX_COMMITS` with weighted admission is required for claim liveness.
+- `MAX_COMMITS` with bounded online admission is required for gas liveness. Fabricated-truth liveness additionally requires objective reveal validation or an audited timeout/fallback design.
 
 ### Proposed pairing
 
@@ -229,15 +229,15 @@ See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#proposed-mitigation-package) for the f
 | Stored depth | `Commit.declaredDepth`; reveal must match |
 | Depth floor | Option F (governed/bootstrap) |
 | Height changes | Revalidate `MIN_STAKE * 2^height` on every `manageStake` height update |
-| Bounded work | `MAX_COMMITS` from gas benchmarks + weighted admission |
-| Finalization split | `finalizeRound()` before `claimReward()` proofs |
+| Bounded work | `MAX_COMMITS` from gas benchmarks + bounded online stake-weighted admission |
+| Finalization split | Persist non-reveal penalties; validate proofs before disagreement penalties/oracle/payout; bound oracle catch-up and Postage expiry |
 
 ### Example flow
 
-1. Governance sets `currentFloor()` (Option F) or bootstrap constant applies.
-2. Commit phase: `commit(hash, round, depth)`; revert if `depth <= height`, not in proximity, `depth < floor`, or cap reached.
+1. Governance sets a round-versioned `currentFloor()` (Option F) or bootstrap constant applies; increases activate only in a future round.
+2. Commit phase: `commit(hash, round, depth)`; revert if `depth <= height`, above protocol maximum, not in proximity, or `depth < floor`. Insert/evict through a fixed-cap online admission structure.
 3. Reveal phase: `declaredDepth` match, proximity to reveal anchor, `depth > height`, `depth >= floor`.
-4. `finalizeRound()`: truth, winner, penalties, oracle (bounded); then `claimReward()` with proofs.
+4. Claim phase: finalize objective non-reveal penalties, validate the tentative winner's proofs, then apply disagreement penalties/oracle/payout.
 
 ### Comparison (with combined approach)
 
@@ -253,7 +253,9 @@ See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md#proposed-mitigation-package) for the f
 
 - Bootstrap floor value when no governance parameter exists
 - `MAX_COMMITS` value from Gnosis gas benchmarks
-- Admission policy under hard cap (censorship resistance)
+- Exact bounded online stake-weighted admission algorithm under the hard cap (censorship resistance and grinding)
+- Floor activation delay and emergency-decrease behavior
+- Objective validity or bounded fallback for all-reveal fabricated truth
 - Whether to pursue Option B′ / truth redesign in a later phase
 - Skipped-round floor decay (carry forward from old design or drop)
 
