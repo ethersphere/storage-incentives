@@ -6,7 +6,6 @@ interface Batch {
   owner: string;
   depth: number;
   bucketDepth: number;
-  immutable: boolean;
   remainingBalance: number;
 }
 
@@ -39,7 +38,6 @@ async function main() {
       owner: batch.owner,
       depth: batch.depth,
       bucketDepth: batch.bucketDepth,
-      immutableFlag: batch.immutable,
       remainingBalance: batch.remainingBalance,
     }));
 

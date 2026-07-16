@@ -8,7 +8,6 @@
  *     --depth 20 \
  *     --bucketdepth 16 \
  *     --batchid 0xabcd... \
- *     --immutable false \
  *     --contract 0x5678...
  *
  * Parameters:
@@ -17,7 +16,6 @@
  *   --depth: Batch depth
  *   --bucketdepth: Bucket depth
  *   --batchid: Batch ID
- *   --immutable: Whether batch is immutable (true/false)
  *   --contract: PostageStamp contract address
  *
  * This task:
@@ -34,7 +32,6 @@ interface TaskArguments {
   depth: string;
   bucketdepth: string;
   batchid: string;
-  immutable: string;
   contract: string;
 }
 
@@ -44,7 +41,6 @@ task('copy', 'Use copyBatch function from postageStamp contract')
   .addParam('depth', "The account's address")
   .addParam('bucketdepth', "The account's address")
   .addParam('batchid', "The account's address")
-  .addParam('immutable', "The account's address")
   .addParam('contract', 'Postage Stamp contract address')
 
   .setAction(async (taskArgs: TaskArguments, hre) => {
