@@ -27,7 +27,6 @@ interface IPostageStamp {
             address owner,
             uint8 depth,
             uint8 bucketDepth,
-            bool immutableFlag,
             uint256 normalisedBalance,
             uint256 lastUpdatedBlockNumber
         );

@@ -14,7 +14,7 @@ contract EchidnaPostageActor {
         token.approve(address(stamp), type(uint256).max);
     }
 
-    function createBatchMutable(
+    function createBatch(
         uint256 initialBalancePerChunk,
         uint8 depth,
         uint8 bucketDepth,
@@ -28,29 +28,7 @@ contract EchidnaPostageActor {
                 initialBalancePerChunk,
                 depth,
                 bucketDepth,
-                nonce,
-                false
-            )
-        );
-        if (ok && data.length >= 32) batchId = abi.decode(data, (bytes32));
-    }
-
-    function createBatchImmutable(
-        uint256 initialBalancePerChunk,
-        uint8 depth,
-        uint8 bucketDepth,
-        bytes32 nonce
-    ) external returns (bool ok, bytes32 batchId) {
-        bytes memory data;
-        (ok, data) = address(stamp).call(
-            abi.encodeWithSelector(
-                stamp.createBatch.selector,
-                address(this),
-                initialBalancePerChunk,
-                depth,
-                bucketDepth,
-                nonce,
-                true
+                nonce
             )
         );
         if (ok && data.length >= 32) batchId = abi.decode(data, (bytes32));
@@ -113,7 +91,6 @@ contract EchidnaPostageStampHarness {
     uint256 internal pendingCreateNormalisedExpected;
     uint8 internal pendingCreateDepth;
     uint8 internal pendingCreateBucketDepth;
-    bool internal pendingCreateImmutable;
 
     bool internal pendingTopUp;
     bytes32 internal pendingTopUpBatchId;
@@ -146,7 +123,6 @@ contract EchidnaPostageStampHarness {
 
     // Temporary inputs to reduce stack pressure in helpers.
     bytes32 internal tmpNonce;
-    bool internal tmpImmutable;
     bytes32 internal tmpBatchA;
     bytes32 internal tmpBatchB;
     bytes32 internal tmpBatchC;
@@ -197,14 +173,12 @@ contract EchidnaPostageStampHarness {
         uint8 actorId,
         uint256 initialPerChunk,
         uint8 depthRaw,
-        bytes32 nonce,
-        bool immutableFlag
+        bytes32 nonce
     ) external {
         _clearPending();
         // Normalize expiry so createBatch's internal expireLimited() doesn't unexpectedly mutate other batches.
         stamp.expireLimited(type(uint256).max);
         tmpNonce = nonce;
-        tmpImmutable = immutableFlag;
         _createBatchInternal(actorId, initialPerChunk, depthRaw);
         _observePot(false);
     }
@@ -424,7 +398,6 @@ contract EchidnaPostageStampHarness {
         if (stamp.batchOwner(pendingBatchId) == address(0)) return false;
         if (stamp.batchDepth(pendingBatchId) != pendingCreateDepth) return false;
         if (stamp.batchBucketDepth(pendingBatchId) != pendingCreateBucketDepth) return false;
-        if (stamp.batchImmutableFlag(pendingBatchId) != pendingCreateImmutable) return false;
 
         // Normalised balance is computed as currentTotalOutPayment + perChunk at creation time.
         if (stamp.batchNormalisedBalance(pendingBatchId) != pendingCreateNormalisedExpected) return false;
@@ -497,7 +470,6 @@ contract EchidnaPostageStampHarness {
         pendingCreateNormalisedExpected = 0;
         pendingCreateDepth = 0;
         pendingCreateBucketDepth = 0;
-        pendingCreateImmutable = false;
 
         pendingTopUp = false;
         pendingTopUpBatchId = bytes32(0);
@@ -537,7 +509,6 @@ contract EchidnaPostageStampHarness {
                     owner,
                     stamp.batchDepth(batchId),
                     stamp.batchBucketDepth(batchId),
-                    stamp.batchImmutableFlag(batchId),
                     stamp.batchNormalisedBalance(batchId),
                     stamp.batchLastUpdatedBlockNumber(batchId)
                 )
@@ -604,15 +575,8 @@ contract EchidnaPostageStampHarness {
         pendingCreateNormalisedExpected = stamp.currentTotalOutPayment() + perChunk;
         pendingCreateDepth = depth;
         pendingCreateBucketDepth = bucketDepth;
-        pendingCreateImmutable = tmpImmutable;
 
-        bool ok;
-        bytes32 batchId;
-        if (tmpImmutable) {
-            (ok, batchId) = a.createBatchImmutable(perChunk, depth, bucketDepth, tmpNonce);
-        } else {
-            (ok, batchId) = a.createBatchMutable(perChunk, depth, bucketDepth, tmpNonce);
-        }
+        (bool ok, bytes32 batchId) = a.createBatch(perChunk, depth, bucketDepth, tmpNonce);
         if (!ok || batchId == bytes32(0)) return;
 
         tracked[trackedCount % MAX_TRACKED] = batchId;

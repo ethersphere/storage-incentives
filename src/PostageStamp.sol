@@ -79,8 +79,6 @@ contract PostageStamp is AccessControl, Pausable {
         uint8 depth;
         // Bucket depth defined in this batch
         uint8 bucketDepth;
-        // Whether this batch is immutable.
-        bool immutableFlag;
         // Normalised balance per chunk.
         uint256 normalisedBalance;
         // When was this batch last updated
@@ -92,7 +90,6 @@ contract PostageStamp is AccessControl, Pausable {
         address owner;
         uint8 depth;
         uint8 bucketDepth;
-        bool immutableFlag;
         uint256 remainingBalance;
     }
 
@@ -107,8 +104,7 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 normalisedBalance,
         address owner,
         uint8 depth,
-        uint8 bucketDepth,
-        bool immutableFlag
+        uint8 bucketDepth
     );
 
     /**
@@ -184,15 +180,13 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _initialBalancePerChunk Initial balance per chunk.
      * @param _depth Initial depth of the new batch.
      * @param _nonce A random value used in the batch id derivation to allow multiple batches per owner.
-     * @param _immutable Whether the batch is mutable.
      */
     function createBatch(
         address _owner,
         uint256 _initialBalancePerChunk,
         uint8 _depth,
         uint8 _bucketDepth,
-        bytes32 _nonce,
-        bool _immutable
+        bytes32 _nonce
     ) external whenNotPaused returns (bytes32) {
         if (_owner == address(0)) {
             revert ZeroAddress();
@@ -228,14 +222,13 @@ contract PostageStamp is AccessControl, Pausable {
             owner: _owner,
             depth: _depth,
             bucketDepth: _bucketDepth,
-            immutableFlag: _immutable,
             normalisedBalance: normalisedBalance,
             lastUpdatedBlockNumber: block.number
         });
 
         tree.insert(batchId, normalisedBalance);
 
-        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+        emit BatchCreated(batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth);
 
         return batchId;
     }
@@ -247,15 +240,13 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _initialBalancePerChunk Initial balance per chunk of the batch.
      * @param _depth Initial depth of the new batch.
      * @param _batchId BatchId being copied (from previous version contract data).
-     * @param _immutable Whether the batch is mutable.
      */
     function copyBatch(
         address _owner,
         uint256 _initialBalancePerChunk,
         uint8 _depth,
         uint8 _bucketDepth,
-        bytes32 _batchId,
-        bool _immutable
+        bytes32 _batchId
     ) public whenNotPaused {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
@@ -288,14 +279,13 @@ contract PostageStamp is AccessControl, Pausable {
             owner: _owner,
             depth: _depth,
             bucketDepth: _bucketDepth,
-            immutableFlag: _immutable,
             normalisedBalance: normalisedBalance,
             lastUpdatedBlockNumber: block.number
         });
 
         tree.insert(_batchId, normalisedBalance);
 
-        emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+        emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth);
     }
 
     /**
@@ -316,8 +306,7 @@ contract PostageStamp is AccessControl, Pausable {
                     _batch.remainingBalance,
                     _batch.depth,
                     _batch.bucketDepth,
-                    _batch.batchId,
-                    _batch.immutableFlag
+                    _batch.batchId
                 )
             {
                 // Successful copyBatch call
@@ -626,10 +615,6 @@ contract PostageStamp is AccessControl, Pausable {
 
     function batchBucketDepth(bytes32 _batchId) public view returns (uint8) {
         return batches[_batchId].bucketDepth;
-    }
-
-    function batchImmutableFlag(bytes32 _batchId) public view returns (bool) {
-        return batches[_batchId].immutableFlag;
     }
 
     function batchNormalisedBalance(bytes32 _batchId) public view returns (uint256) {

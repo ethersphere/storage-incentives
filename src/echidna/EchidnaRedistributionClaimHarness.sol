@@ -73,12 +73,11 @@ contract EchidnaPostageStampPotMock is IPostageStamp {
             address owner,
             uint8 depth,
             uint8 bucketDepth,
-            bool immutableFlag,
             uint256 normalisedBalance,
             uint256 lastUpdatedBlockNumber
         )
     {
-        return (address(0), 0, 0, false, 0, 0);
+        return (address(0), 0, 0, 0, 0);
     }
 }
 

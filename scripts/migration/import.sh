@@ -11,12 +11,11 @@ for row in $(cat ./migration/batchesG2.json | jq -c '.batches[]'); do
     depth=$(_field $row ".depth")
     bucketdepth=$(_field $row ".bucketDepth")
     batchid=$(_field $row ".batchid")
-    immutable=$(_field $row ".immutable")
 
     echo "Batch balance #####"
     echo ${balance}
 
-    cmd="npx hardhat --network testnet copy --owner ${owner} --initialbalance ${balance}  --depth ${depth} --bucketdepth ${bucketdepth}  --batchid ${batchid}  --immutable ${immutable} --contract ${postagecontract}"
+    cmd="npx hardhat --network testnet copy --owner ${owner} --initialbalance ${balance}  --depth ${depth} --bucketdepth ${bucketdepth}  --batchid ${batchid} --contract ${postagecontract}"
     $cmd
     [ $? -eq 0 ] && echo "${batchid} migration successful" || echo "${batchid} migration failure"
 done

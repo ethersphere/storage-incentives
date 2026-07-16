@@ -309,7 +309,6 @@ describe('Redistribution', function () {
       initialPaymentPerChunk: 20000000000,
       depth: 17,
       bucketDepth: 16,
-      immutable: false,
       blocks: 100,
     };
     let stampCreatedBlock: number;
@@ -339,8 +338,7 @@ describe('Redistribution', function () {
         batch.initialPaymentPerChunk,
         batch.depth,
         batch.bucketDepth,
-        batch.nonce,
-        batch.immutable
+        batch.nonce
       );
 
       stampCreatedBlock = await getBlockNumber();
@@ -1217,8 +1215,7 @@ describe('Redistribution', function () {
               initialPaymentPerChunk,
               batch.depth,
               batch.bucketDepth,
-              '0x00000000000000000000000000000000000000000000000000000000b0bafe77',
-              batch.immutable
+              '0x00000000000000000000000000000000000000000000000000000000b0bafe77'
             );
             await mineNBlocks(1); // in order to expire batch
             await postage.expireLimited(1); // remove batch
