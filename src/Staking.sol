@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
@@ -16,7 +17,7 @@ interface IPriceOracle {
  * protocol.
  */
 
-contract StakeRegistry is AccessControl, Pausable {
+contract StakeRegistry is Initializable, AccessControl, Pausable {
     // ----------------------------- State variables ------------------------------
 
     struct Stake {
@@ -45,7 +46,7 @@ contract StakeRegistry is AccessControl, Pausable {
     uint64 private constant MIN_STAKE = 100000000000000000;
 
     // Address of the staked ERC20 token
-    address public immutable bzzToken;
+    address public bzzToken;
 
     // The address of the linked PriceOracle contract.
     IPriceOracle public OracleContract;
@@ -96,11 +97,16 @@ contract StakeRegistry is AccessControl, Pausable {
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
      * @param _bzzToken Address of the staked ERC20 token
      * @param _NetworkId Swarm network ID
      */
-    constructor(address _bzzToken, uint64 _NetworkId, address _oracleContract) {
+    function initialize(address _bzzToken, uint64 _NetworkId, address _oracleContract) external initializer {
         NetworkId = _NetworkId;
         bzzToken = _bzzToken;
         OracleContract = IPriceOracle(_oracleContract);

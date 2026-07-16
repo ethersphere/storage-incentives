@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
@@ -25,7 +26,7 @@ import "./OrderStatisticsTree/HitchensOrderStatisticsTreeLib.sol";
  * The global figure for the currently allowed chunks is tracked by _validChunkCount_ and updated during batch _expiry_ events.
  */
 
-contract PostageStamp is AccessControl, Pausable {
+contract PostageStamp is Initializable, AccessControl, Pausable {
     using HitchensOrderStatisticsTreeLib for HitchensOrderStatisticsTreeLib.Tree;
 
     // ----------------------------- State variables ------------------------------
@@ -37,12 +38,12 @@ contract PostageStamp is AccessControl, Pausable {
     uint8 public minimumBucketDepth;
 
     // Role allowed to increase totalOutPayment.
-    bytes32 public immutable PRICE_ORACLE_ROLE;
+    bytes32 public constant PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE_ROLE");
 
     // Role allowed to pause
-    bytes32 public immutable PAUSER_ROLE;
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     // Role allowed to withdraw the pot.
-    bytes32 public immutable REDISTRIBUTOR_ROLE;
+    bytes32 public constant REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
 
     // Associate every batch id with batch data.
     mapping(bytes32 => Batch) public batches;
@@ -65,7 +66,7 @@ contract PostageStamp is AccessControl, Pausable {
     uint64 public lastPrice;
 
     // blocks in 24 hours ~ 24 * 60 * 60 / 5 = 17280
-    uint64 public minimumValidityBlocks = 17280;
+    uint64 public minimumValidityBlocks;
 
     // Block at which the last update occured.
     uint64 public lastUpdatedBlock;
@@ -159,16 +160,19 @@ contract PostageStamp is AccessControl, Pausable {
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
      * @param _bzzToken The ERC20 token address to reference in this contract.
      * @param _minimumBucketDepth The minimum bucket depth of batches that can be purchased.
      */
-    constructor(address _bzzToken, uint8 _minimumBucketDepth) {
+    function initialize(address _bzzToken, uint8 _minimumBucketDepth) external initializer {
         bzzToken = _bzzToken;
         minimumBucketDepth = _minimumBucketDepth;
-        PRICE_ORACLE_ROLE = keccak256("PRICE_ORACLE_ROLE");
-        PAUSER_ROLE = keccak256("PAUSER_ROLE");
-        REDISTRIBUTOR_ROLE = keccak256("REDISTRIBUTOR_ROLE");
+        minimumValidityBlocks = 17280;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
     }

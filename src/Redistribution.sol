@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.19;
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./Util/TransformedChunkProof.sol";
@@ -58,7 +59,7 @@ interface IStakeRegistry {
  * have their stakes "frozen" for a period of rounds proportional to their reported depth.
  */
 
-contract Redistribution is AccessControl, Pausable {
+contract Redistribution is Initializable, AccessControl, Pausable {
     // ----------------------------- Type declarations ------------------------------
 
     // An eligible user may commit to an _obfuscatedHash_ during the commit phase...
@@ -142,12 +143,12 @@ contract Redistribution is AccessControl, Pausable {
     uint64 public currentClaimRound;
 
     // Settings for slashing and freezing
-    uint8 private penaltyMultiplierDisagreement = 1;
-    uint8 private penaltyMultiplierNonRevealed = 2;
-    uint8 private penaltyRandomFactor = 100; // Use 100 as value to ignore random factor in freezing penalty
+    uint8 private penaltyMultiplierDisagreement;
+    uint8 private penaltyMultiplierNonRevealed;
+    uint8 private penaltyRandomFactor;
 
     // alpha=0.097612 beta=0.0716570 k=16
-    uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
+    uint256 private sampleMaxValue;
 
     // The reveal of the winner of the last round.
     Reveal public winner;
@@ -263,15 +264,24 @@ contract Redistribution is AccessControl, Pausable {
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
     /**
      * @param staking the address of the linked Staking contract.
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
      */
-    constructor(address staking, address postageContract, address oracleContract) {
+    function initialize(address staking, address postageContract, address oracleContract) external initializer {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
+        penaltyMultiplierDisagreement = 1;
+        penaltyMultiplierNonRevealed = 2;
+        penaltyRandomFactor = 100;
+        sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 

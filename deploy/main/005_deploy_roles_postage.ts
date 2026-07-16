@@ -1,21 +1,23 @@
 import { DeployFunction } from 'hardhat-deploy/types';
+import { ethers } from 'hardhat';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
-  const { get, read, execute, log } = deployments;
+  const { get, execute, log, read } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  log('Setting PostageStamps roles');
-  const adminRole = await read('PostageStamp', 'DEFAULT_ADMIN_ROLE');
+  log('Setting PostageStamp roles');
+
+  const adminRole = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
   if (await read('PostageStamp', 'hasRole', adminRole, deployer)) {
-    const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
+    const priceOracleRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_ORACLE_ROLE'));
     await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, (await get('PriceOracle')).address);
 
-    const redisRole = await read('PostageStamp', 'REDISTRIBUTOR_ROLE');
+    const redisRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
     const redisAddress = (await get('Redistribution')).address;
     await execute('PostageStamp', { from: deployer }, 'grantRole', redisRole, redisAddress);
   } else {
-    log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN THE REDISTRIBUTION ROLE, PLEASE ASSIGN IT OR GRANT ROLE MANUALLY');
+    log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN ROLES, PLEASE GRANT ROLE MANUALLY');
   }
 
   log('----------------------------------------------------');

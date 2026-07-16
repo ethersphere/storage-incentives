@@ -5,15 +5,22 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  const args = [
-    (await get('StakeRegistry')).address,
-    (await get('PostageStamp')).address,
-    (await get('PriceOracle')).address,
-  ];
+  const staking = await get('StakeRegistry');
+  const postage = await get('PostageStamp');
+  const oracle = await get('PriceOracle');
 
   await deploy('Redistribution', {
     from: deployer,
-    args: args,
+    proxy: {
+      proxyContract: 'TransparentUpgradeableProxy',
+      viaAdminContract: 'DefaultProxyAdmin',
+      execute: {
+        init: {
+          methodName: 'initialize',
+          args: [staking.address, postage.address, oracle.address],
+        },
+      },
+    },
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
   });
