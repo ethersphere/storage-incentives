@@ -169,12 +169,7 @@ contract EchidnaPostageStampHarness {
         token.transfer(address(_actor(actorId)), x);
     }
 
-    function act_createBatch(
-        uint8 actorId,
-        uint256 initialPerChunk,
-        uint8 depthRaw,
-        bytes32 nonce
-    ) external {
+    function act_createBatch(uint8 actorId, uint256 initialPerChunk, uint8 depthRaw, bytes32 nonce) external {
         _clearPending();
         // Normalize expiry so createBatch's internal expireLimited() doesn't unexpectedly mutate other batches.
         stamp.expireLimited(type(uint256).max);

@@ -42,14 +42,7 @@ contract EchidnaSystemActor {
         bytes32 nonce
     ) external returns (bool ok) {
         (ok, ) = address(stamp).call(
-            abi.encodeWithSelector(
-                stamp.createBatch.selector,
-                owner,
-                initialBalancePerChunk,
-                depth,
-                bucketDepth,
-                nonce
-            )
+            abi.encodeWithSelector(stamp.createBatch.selector, owner, initialBalancePerChunk, depth, bucketDepth, nonce)
         );
     }
 

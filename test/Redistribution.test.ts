@@ -333,13 +333,7 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
       await postage.expireLimited(maxInt256); //for testing
-      await postage.createBatch(
-        stamper,
-        batch.initialPaymentPerChunk,
-        batch.depth,
-        batch.bucketDepth,
-        batch.nonce
-      );
+      await postage.createBatch(stamper, batch.initialPaymentPerChunk, batch.depth, batch.bucketDepth, batch.nonce);
 
       stampCreatedBlock = await getBlockNumber();
 

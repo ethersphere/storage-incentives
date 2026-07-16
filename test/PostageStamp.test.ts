@@ -143,14 +143,7 @@ describe('PostageStamp', function () {
           )
         )
           .to.emit(postageStampStamper, 'BatchCreated')
-          .withArgs(
-            batch.id,
-            transferAmount,
-            expectedNormalisedBalance,
-            stamper,
-            batch.depth,
-            batch.bucketDepth
-          );
+          .withArgs(batch.id, transferAmount, expectedNormalisedBalance, stamper, batch.depth, batch.bucketDepth);
       });
 
       it('should store the batch', async function () {
@@ -215,13 +208,7 @@ describe('PostageStamp', function () {
         const initialPaymentPerChunk2 = 2200;
 
         const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000001234';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk0,
-          batch.depth,
-          batch.bucketDepth,
-          nonce0
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk0, batch.depth, batch.bucketDepth, nonce0);
         const batch0 = computeBatchId(stamper, nonce0);
         expect(batch0).equal(await postageStampStamper.firstBatchId());
 
@@ -229,25 +216,13 @@ describe('PostageStamp', function () {
         const expectedNormalisedBalance1 = initialPaymentPerChunk1 + blocksElapsed * price0;
 
         const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk1,
-          batch.depth,
-          batch.bucketDepth,
-          nonce1
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk1, batch.depth, batch.bucketDepth, nonce1);
         const batch1 = computeBatchId(stamper, nonce1);
         expect(batch1).equal(await postageStampStamper.firstBatchId());
         const blocksElapsed2 = (await getBlockNumber()) - setPrice0Block;
 
         const nonce2 = '0x0000000000000000000000000000000000000000000000000000000000001236';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk2,
-          batch.depth,
-          batch.bucketDepth,
-          nonce2
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk2, batch.depth, batch.bucketDepth, nonce2);
 
         const batch2 = computeBatchId(stamper, nonce2);
         expect(batch2).equal(await postageStampStamper.firstBatchId());
@@ -288,13 +263,7 @@ describe('PostageStamp', function () {
 
       it('should not allow zero as bucket depth', async function () {
         await expect(
-          postageStampStamper.createBatch(
-            stamper,
-            batch.initialPaymentPerChunk,
-            batch.depth,
-            0,
-            batch.nonce
-          )
+          postageStampStamper.createBatch(stamper, batch.initialPaymentPerChunk, batch.depth, 0, batch.nonce)
         ).to.be.revertedWith(errors.createBatch.invalidDepth);
       });
 
@@ -312,13 +281,7 @@ describe('PostageStamp', function () {
 
       it('should not allow bucket depth equal to depth', async function () {
         await expect(
-          postageStampStamper.createBatch(
-            stamper,
-            batch.initialPaymentPerChunk,
-            batch.depth,
-            batch.depth,
-            batch.nonce
-          )
+          postageStampStamper.createBatch(stamper, batch.initialPaymentPerChunk, batch.depth, batch.depth, batch.nonce)
         ).to.be.revertedWith(errors.createBatch.invalidDepth);
       });
 
@@ -415,13 +378,7 @@ describe('PostageStamp', function () {
         await mintAndApprove(deployer, stamper, postageStampStamper.address, transferAmount0.toString());
 
         const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000001234';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk0,
-          batch.depth,
-          batch.bucketDepth,
-          nonce0
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk0, batch.depth, batch.bucketDepth, nonce0);
 
         const batch0 = computeBatchId(stamper, nonce0);
         expect(await postageStampStamper.firstBatchId()).to.equal(batch0);
@@ -430,13 +387,7 @@ describe('PostageStamp', function () {
         await mintAndApprove(deployer, stamper, postageStampStamper.address, transferAmount1.toString());
 
         const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk1,
-          batch.depth,
-          batch.bucketDepth,
-          nonce1
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk1, batch.depth, batch.bucketDepth, nonce1);
 
         const batch1 = computeBatchId(stamper, nonce1);
         expect(await postageStampStamper.firstBatchId()).to.equal(batch1);
@@ -445,13 +396,7 @@ describe('PostageStamp', function () {
         await mintAndApprove(deployer, stamper, postageStampStamper.address, transferAmount2.toString());
 
         const nonce2 = '0x0000000000000000000000000000000000000000000000000000000000001236';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk2,
-          batch.depth,
-          batch.bucketDepth,
-          nonce2
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk2, batch.depth, batch.bucketDepth, nonce2);
 
         const batch2 = computeBatchId(stamper, nonce2);
         expect(await postageStampStamper.firstBatchId()).to.equal(batch1);
@@ -483,13 +428,7 @@ describe('PostageStamp', function () {
         await mintAndApprove(deployer, stamper, postageStampStamper.address, transferAmount0.toString());
 
         const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000001234';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk0,
-          batch.depth,
-          batch.bucketDepth,
-          nonce0
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk0, batch.depth, batch.bucketDepth, nonce0);
 
         const buyStamp0Block = await getBlockNumber();
 
@@ -509,13 +448,7 @@ describe('PostageStamp', function () {
         await mintAndApprove(deployer, stamper, postageStampStamper.address, transferAmount1.toString());
 
         const nonce1 = '0x0000000000000000000000000000000000000000000000000000000000001235';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk1,
-          batch.depth,
-          batch.bucketDepth,
-          nonce1
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk1, batch.depth, batch.bucketDepth, nonce1);
 
         const buyStamp1Block = await getBlockNumber();
 
@@ -543,13 +476,7 @@ describe('PostageStamp', function () {
         await mintAndApprove(deployer, stamper, postageStampStamper.address, transferAmount2.toString());
 
         const nonce2 = '0x0000000000000000000000000000000000000000000000000000000000001236';
-        await postageStampStamper.createBatch(
-          stamper,
-          initialPaymentPerChunk2,
-          batch.depth,
-          batch.bucketDepth,
-          nonce2
-        );
+        await postageStampStamper.createBatch(stamper, initialPaymentPerChunk2, batch.depth, batch.bucketDepth, nonce2);
 
         const buyStamp2Block = await getBlockNumber();
 
@@ -1148,14 +1075,7 @@ describe('PostageStamp', function () {
           )
         )
           .to.emit(postageStampStamper, 'BatchCreated')
-          .withArgs(
-            batch.nonce,
-            transferAmount,
-            batch.initialPaymentPerChunk,
-            stamper,
-            batch.depth,
-            batch.bucketDepth
-          );
+          .withArgs(batch.nonce, transferAmount, batch.initialPaymentPerChunk, stamper, batch.depth, batch.bucketDepth);
       });
 
       it('should store the batch', async function () {
@@ -1199,31 +1119,6 @@ describe('PostageStamp', function () {
         expect(stamp[3]).to.equal(11);
       });
 
-      // it('should transfer the token', async function () {
-      //   await postageStampStamper.copyBatch(
-      //     stamper,
-      //     batch.initialPaymentPerChunk,
-      //     batch.depth,
-      //     batch.bucketDepth,
-      //     batch.nonce,
-      //     batch.immutable
-      //   );
-      //   expect(await token.balanceOf(stamper)).to.equal(0);
-      // });
-
-      // it('should not create batch if insufficient funds', async function () {
-      //   await expect(
-      //     postageStampStamper.copyBatch(
-      //       stamper,
-      //       batch.initialPaymentPerChunk + 1,
-      //       batch.depth,
-      //       batch.bucketDepth,
-      //       batch.nonce,
-      //       batch.immutable
-      //     )
-      //   ).to.be.revertedWith(errors.erc20.exceedsBalance);
-      // });
-
       it('should not allow zero address as owner', async function () {
         await expect(
           postageStampStamper.copyBatch(
@@ -1238,13 +1133,7 @@ describe('PostageStamp', function () {
 
       it('should not allow zero as bucket depth', async function () {
         await expect(
-          postageStampStamper.copyBatch(
-            stamper,
-            batch.initialPaymentPerChunk,
-            batch.depth,
-            0,
-            batch.nonce
-          )
+          postageStampStamper.copyBatch(stamper, batch.initialPaymentPerChunk, batch.depth, 0, batch.nonce)
         ).to.be.revertedWith('InvalidDepth()');
       });
 
@@ -1262,24 +1151,12 @@ describe('PostageStamp', function () {
 
       it('should not allow bucket depth equal to depth', async function () {
         await expect(
-          postageStampStamper.copyBatch(
-            stamper,
-            batch.initialPaymentPerChunk,
-            batch.depth,
-            batch.depth,
-            batch.nonce
-          )
+          postageStampStamper.copyBatch(stamper, batch.initialPaymentPerChunk, batch.depth, batch.depth, batch.nonce)
         ).to.be.revertedWith('InvalidDepth()');
       });
 
       it('should not allow duplicate batch', async function () {
-        await postageStampStamper.copyBatch(
-          stamper,
-          1000,
-          batch.depth,
-          batch.bucketDepth,
-          batch.nonce
-        );
+        await postageStampStamper.copyBatch(stamper, 1000, batch.depth, batch.bucketDepth, batch.nonce);
         await expect(
           postageStampStamper.copyBatch(stamper, 1000, batch.depth, batch.bucketDepth, batch.nonce)
         ).to.be.revertedWith('BatchExists()');
@@ -1334,14 +1211,7 @@ describe('PostageStamp', function () {
           )
         )
           .to.emit(postageStampStamper, 'BatchCreated')
-          .withArgs(
-            batch.id,
-            transferAmount,
-            expectedNormalisedBalance,
-            stamper,
-            batch.depth,
-            batch.bucketDepth
-          );
+          .withArgs(batch.id, transferAmount, expectedNormalisedBalance, stamper, batch.depth, batch.bucketDepth);
         const stamp = await postageStampStamper.batches(batch.id);
         expect(stamp[3]).to.equal(expectedNormalisedBalance);
       });
@@ -1364,14 +1234,7 @@ describe('PostageStamp', function () {
           )
         )
           .to.emit(postageStampStamper, 'BatchCreated')
-          .withArgs(
-            batch.id,
-            transferAmount,
-            expectedNormalisedBalance,
-            stamper,
-            batch.depth,
-            batch.bucketDepth
-          );
+          .withArgs(batch.id, transferAmount, expectedNormalisedBalance, stamper, batch.depth, batch.bucketDepth);
         const stamp = await postageStampStamper.batches(batch.id);
         expect(stamp[3]).to.equal(expectedNormalisedBalance);
       });

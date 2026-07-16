@@ -301,13 +301,7 @@ contract PostageStamp is AccessControl, Pausable {
         for (uint i = 0; i < bulkBatches.length; i++) {
             ImportBatch memory _batch = bulkBatches[i];
             try
-                this.copyBatch(
-                    _batch.owner,
-                    _batch.remainingBalance,
-                    _batch.depth,
-                    _batch.bucketDepth,
-                    _batch.batchId
-                )
+                this.copyBatch(_batch.owner, _batch.remainingBalance, _batch.depth, _batch.bucketDepth, _batch.batchId)
             {
                 // Successful copyBatch call
             } catch {
