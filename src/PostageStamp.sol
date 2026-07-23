@@ -261,22 +261,42 @@ contract PostageStamp is AccessControl, Pausable {
             revert AdministratorOnly();
         }
 
+        if (!_copyBatch(_owner, _initialBalancePerChunk, _depth, _bucketDepth, _batchId, _immutable)) {
+            if (_owner == address(0)) revert ZeroAddress();
+            if (_bucketDepth == 0 || _bucketDepth >= _depth) revert InvalidDepth();
+            if (batches[_batchId].owner != address(0)) revert BatchExists();
+            if (currentTotalOutPayment() + _initialBalancePerChunk == 0) revert ZeroBalance();
+        }
+    }
+
+    function _copyBatch(
+        address _owner,
+        uint256 _initialBalancePerChunk,
+        uint8 _depth,
+        uint8 _bucketDepth,
+        bytes32 _batchId,
+        bool _immutable
+    ) internal returns (bool) {
+        if (paused()) {
+            return false;
+        }
+
         if (_owner == address(0)) {
-            revert ZeroAddress();
+            return false;
         }
 
         if (_bucketDepth == 0 || _bucketDepth >= _depth) {
-            revert InvalidDepth();
+            return false;
         }
 
         if (batches[_batchId].owner != address(0)) {
-            revert BatchExists();
+            return false;
         }
 
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
         uint256 normalisedBalance = currentTotalOutPayment() + (_initialBalancePerChunk);
         if (normalisedBalance == 0) {
-            revert ZeroBalance();
+            return false;
         }
 
         //update validChunkCount to remove currently expired batches
@@ -296,6 +316,8 @@ contract PostageStamp is AccessControl, Pausable {
         tree.insert(_batchId, normalisedBalance);
 
         emit BatchCreated(_batchId, totalAmount, normalisedBalance, _owner, _depth, _bucketDepth, _immutable);
+
+        return true;
     }
 
     /**
@@ -310,8 +332,8 @@ contract PostageStamp is AccessControl, Pausable {
         }
         for (uint i = 0; i < bulkBatches.length; i++) {
             ImportBatch memory _batch = bulkBatches[i];
-            try
-                this.copyBatch(
+            if (
+                !_copyBatch(
                     _batch.owner,
                     _batch.remainingBalance,
                     _batch.depth,
@@ -319,10 +341,7 @@ contract PostageStamp is AccessControl, Pausable {
                     _batch.batchId,
                     _batch.immutableFlag
                 )
-            {
-                // Successful copyBatch call
-            } catch {
-                // copyBatch failed, handle error
+            ) {
                 emit CopyBatchFailed(i, _batch.batchId);
             }
         }
