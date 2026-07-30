@@ -166,7 +166,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
   for (let i = 0; i < nodes.length; i++) {
     const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
     await mintAndApprove(deployer, nodes[i], sr_node.address, stakes[i]);
-    await sr_node.manageStake(nonce, stakes[i], 0);
+    await sr_node.createDeposit(nonce, stakes[i], 0);
   }
 
   const winDist: Outcome[] = [];
@@ -257,7 +257,7 @@ describe('Stats', async function () {
       this.timeout(120000);
       const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
-      const effectiveStakes = ['99999999999984000', '300000000000000000'];
+      const effectiveStakes = ['100000000000000000', '300000000000000000'];
       const nodes = [others[0], others[1]];
 
       const dist = await nPlayerGames(nodes, stakes, effectiveStakes, trials);

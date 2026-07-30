@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+import "./Constants.sol";
+
 library TransformedBMTChunk {
-    // max chunk payload size
-    uint256 public constant MAX_CHUNK_PAYLOAD_SIZE = 4096;
-    // segment byte size
-    uint256 public constant SEGMENT_SIZE = 32;
+    uint256 public constant MAX_CHUNK_PAYLOAD_SIZE = Constants.MAX_CHUNK_PAYLOAD_SIZE;
+    uint256 public constant SEGMENT_SIZE = Constants.SEGMENT_SIZE;
 
     /** Calculates the root hash from the provided inclusion proof segments and its corresponding segment index
      * @param _proofSegments Proof segments.

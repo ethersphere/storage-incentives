@@ -15,6 +15,8 @@ import {
   getWalletOfFdpPlayQueen,
   WITNESS_COUNT,
   skippedRoundsIncrease,
+  ROUND_LENGTH,
+  PHASE_LENGTH,
 } from './util/tools';
 import { proximity } from './util/tools';
 import { node5_proof1, node5_soc_proof1 } from './claim-proofs';
@@ -35,8 +37,8 @@ import { randomBytes } from 'crypto';
 import { constructPostageStamp } from './util/postage';
 
 const { read, execute } = deployments;
-const phaseLength = 38;
-const roundLength = 152;
+const phaseLength = PHASE_LENGTH;
+const roundLength = ROUND_LENGTH;
 
 const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
@@ -59,13 +61,11 @@ const depth_0 = '0x06';
 const reveal_nonce_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const stakeAmount_0 = '100000000000000000';
 const stakeAmount_0_n_2 = '400000000000000000';
-const effectiveStakeAmount_0 = '99999999999984000';
+const effectiveStakeAmount_0 = '100000000000000000';
 const obfuscatedHash_0 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_0 = 0;
 const height_0_n_2 = 2;
 
-//fake
-const overlay_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
 const depth_f = '0x0000000000000000000000000000000000000000000000000000000000000007';
 const reveal_nonce_f = '0xf4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f4153f415';
 
@@ -83,8 +83,9 @@ const height_1 = 0;
 let node_2: string;
 const overlay_2 = '0xa40db58e368ea6856a24c0264ebd73b049f3dc1c2347b1babc901d3e09842dec';
 const stakeAmount_2 = '100000000000000000';
-const effectiveStakeAmount_2 = '99999999999984000';
-const effectiveStakeAmount_2_n_2 = '100000000000000000';
+const effectiveStakeAmount_2 = '100000000000000000';
+const topUpStakeAmount_2_n_2 = '300000000000000000';
+const effectiveStakeAmount_2_n_2 = '400000000000000000';
 const nonce_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const hash_2 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const depth_2 = '0x06';
@@ -100,7 +101,8 @@ const hash_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b
 const depth_3 = '0x06';
 const reveal_nonce_3 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const height_3_n_2 = 3;
-const effectiveStakeAmount_3 = '100000000000000000';
+const topUpStakeAmount_3_n_2 = '700000000000000000';
+const effectiveStakeAmount_3 = '800000000000000000';
 
 let node_4: string;
 const overlay_4 = '0xaedb2a8007316805b4d64b249ea39c5a1c4a9ce51dc8432724241f41ecb02efb';
@@ -112,28 +114,11 @@ const height_4 = 0;
 let node_5: string;
 const overlay_5 = '0x676720d79d609ed462fadf6f14eb1bf9ec1a90999dd45a671d79a89c7b5ac9d8';
 const stakeAmount_5 = '100000000000000000';
-const effectiveStakeAmount_5 = '99999999999984000';
+const effectiveStakeAmount_5 = '100000000000000000';
 const nonce_5 = '0x0000000000000000000000000000000000000000000000000000000000003ba6';
 const reveal_nonce_5 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 const { depth: depth_5, hash: hash_5 } = node5_proof1;
 const height_5 = 0;
-
-let node_6: string;
-const overlay_6 = '0x141680b0d9c7ab250672fd4603ac13e39e47de6e2c93d71bbdc66459a6c5e39f';
-const stakeAmount_6 = '100000000000000000';
-
-const nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_6 = '0x06';
-const reveal_nonce_6 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
-let node_7: string;
-const overlay_7 = '0x152d169abc6e6a0e0a2a7b78dcfea0bebe32942f05e9bb10ee2996203d5361ef';
-const stakeAmount_7 = '100000000000000000';
-const nonce_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const hash_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-const depth_7 = '0x06';
-const reveal_nonce_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 // start round number after startRoundFixture()
 const startRoundNumber = 3;
@@ -165,15 +150,12 @@ before(async function () {
   node_3 = namedAccounts.node_3;
   node_4 = namedAccounts.node_4;
   node_5 = namedAccounts.node_5;
-  node_6 = namedAccounts.node_6;
-  node_7 = namedAccounts.node_7;
 });
 
 const errors = {
   commit: {
     notOwner: 'NotMatchingOwner()',
     notStaked: 'NotStaked()',
-    mustStake2Rounds: 'MustStake2Rounds()',
     alreadyCommitted: 'AlreadyCommitted()',
   },
   reveal: {
@@ -186,6 +168,7 @@ const errors = {
   claim: {
     noReveals: 'NoReveals()',
     alreadyClaimed: 'AlreadyClaimed()',
+    postageWithdrawFailed: 'OnlyRedistributor()',
     randomCheckFailed: 'RandomElementCheckFailed()',
     outOfDepth: 'OutOfDepth()',
     reserveCheckFailed: 'ReserveCheckFailed()',
@@ -204,7 +187,7 @@ const errors = {
     noBalance: 'ERC20: insufficient allowance',
     noZeroAddress: 'owner cannot be the zero address',
     onlyOwner: 'Unauthorized()',
-    belowMinimum: 'BelowMinimumStake()',
+    belowMinimum: 'BelowMinimumStake',
   },
   general: {
     onlyPauser: 'OnlyPauser()',
@@ -244,7 +227,6 @@ describe('Redistribution', function () {
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      const currentRound = await r_node_0.currentRound();
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
         errors.commit.notStaked
       );
@@ -253,26 +235,26 @@ describe('Redistribution', function () {
     it('should not create a commit with recently staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.mustStake2Rounds
+        errors.commit.notStaked
       );
     });
 
     it('should create a commit with staked node', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.mustStake2Rounds
+        errors.commit.notStaked
       );
     });
 
@@ -280,7 +262,7 @@ describe('Redistribution', function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
 
-      await expect(sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0_n_2)).to.be.revertedWith(
+      await expect(sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0_n_2)).to.be.revertedWith(
         errors.deposit.belowMinimum
       );
     });
@@ -288,13 +270,13 @@ describe('Redistribution', function () {
     it('should create a commit with staked node and height 2', async function () {
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0_n_2);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0_n_2, height_0_n_2);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0_n_2, height_0_n_2);
 
       expect(await redistribution.currentPhaseCommit()).to.be.true;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
-        errors.commit.mustStake2Rounds
+        errors.commit.notStaked
       );
     });
   });
@@ -347,32 +329,33 @@ describe('Redistribution', function () {
 
       const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
       await mintAndApprove(deployer, node_0, sr_node_0.address, stakeAmount_0);
-      await sr_node_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      await sr_node_0.createDeposit(nonce_0, stakeAmount_0, height_0);
 
       const sr_node_1 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1.address, stakeAmount_1);
-      await sr_node_1.manageStake(nonce_1, stakeAmount_1, height_1);
+      await sr_node_1.createDeposit(nonce_1, stakeAmount_1, height_1);
 
       // 16 depth neighbourhood with node_5
       const sr_node_1_n_25 = await ethers.getContract('StakeRegistry', node_1);
       await mintAndApprove(deployer, node_1, sr_node_1_n_25.address, stakeAmount_1);
-      await sr_node_1_n_25.manageStake(nonce_1_n_25, stakeAmount_1, height_1);
+      await sr_node_1_n_25.addTokens(stakeAmount_1);
+      await sr_node_1_n_25.changeOverlay(nonce_1_n_25);
 
       const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
       await mintAndApprove(deployer, node_2, sr_node_2.address, stakeAmount_2);
-      await sr_node_2.manageStake(nonce_2, stakeAmount_2, height_2);
+      await sr_node_2.createDeposit(nonce_2, stakeAmount_2, height_2);
 
       const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
       await mintAndApprove(deployer, node_3, sr_node_3.address, stakeAmount_3);
-      await sr_node_3.manageStake(nonce_3, stakeAmount_3, height_4);
+      await sr_node_3.createDeposit(nonce_3, stakeAmount_3, height_4);
 
       const sr_node_4 = await ethers.getContract('StakeRegistry', node_4);
       await mintAndApprove(deployer, node_4, sr_node_4.address, stakeAmount_3);
-      await sr_node_4.manageStake(nonce_4, stakeAmount_3, height_4);
+      await sr_node_4.createDeposit(nonce_4, stakeAmount_3, height_4);
 
       const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
-      await sr_node_5.manageStake(nonce_5, stakeAmount_5, height_5);
+      await sr_node_5.createDeposit(nonce_5, stakeAmount_5, height_5);
 
       // We need to mine 2 rounds to make the staking possible
       // as this is the minimum time between staking and committing
@@ -473,6 +456,21 @@ describe('Redistribution', function () {
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_3, depth_3)).to.be.true;
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_4, depth_4)).to.be.true;
       });
+
+      it('should use next-round stake state during claim-phase eligibility checks', async function () {
+        const sr_node_0 = await ethers.getContract('StakeRegistry', node_0);
+        const r_node_0 = await ethers.getContract('Redistribution', node_0);
+
+        await sr_node_0.exit();
+        await mineNBlocks(roundLength + phaseLength * 2);
+
+        expect(await redistribution.currentRound()).to.be.eq(startRoundNumber + 1);
+        expect(await redistribution.currentPhaseClaim()).to.be.true;
+
+        await expect(r_node_0['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.revertedWith(
+          errors.commit.notStaked
+        );
+      });
     });
 
     describe('commit phase with no reveals', async function () {
@@ -530,7 +528,9 @@ describe('Redistribution', function () {
 
         // Change height and check if node is playing
         const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
-        await sr_node_3.manageStake(nonce_3, 0, height_3_n_2);
+        await mintAndApprove(deployer, node_3, sr_node_3.address, topUpStakeAmount_3_n_2);
+        await sr_node_3.addTokens(topUpStakeAmount_3_n_2);
+        await sr_node_3.increaseHeight(height_3_n_2);
         await mineNBlocks(3 * phaseLength);
         await mineToNode(redistribution, 3);
 
@@ -584,7 +584,9 @@ describe('Redistribution', function () {
       it('should create a commit with successful reveal if the overlay is within the reported depth with height 2', async function () {
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
         const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
-        await sr_node_2.manageStake(nonce_2, 0, height_2_n_2);
+        await mintAndApprove(deployer, node_2, sr_node_2.address, topUpStakeAmount_2_n_2);
+        await sr_node_2.addTokens(topUpStakeAmount_2_n_2);
+        await sr_node_2.increaseHeight(height_2_n_2);
 
         await mineToNode(redistribution, 2);
         expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -783,7 +785,7 @@ describe('Redistribution', function () {
 
         await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_2))
           .to.emit(redistribution, 'Revealed')
-          .withArgs(currentRound, overlay_2, effectiveStakeAmount_2, '6399999999998976000', hash_2, parseInt(depth_2));
+          .withArgs(currentRound, overlay_2, effectiveStakeAmount_2, '6400000000000000000', hash_2, parseInt(depth_2));
       });
     });
 
@@ -1166,7 +1168,7 @@ describe('Redistribution', function () {
             const { proofParams } = await generatedSampling(true);
 
             // alter the identifier into random one
-            proofParams.proof1.socProof![0].identifier = randomBytes(32);
+            proofParams.proof1.socProof![0].identifier = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1178,7 +1180,7 @@ describe('Redistribution', function () {
 
             proofParams.proof1.socProof![0] = await getSocProofAttachment(
               proofParams.proof1.socProof![0].chunkAddr,
-              randomBytes(32),
+              Uint8Array.from(randomBytes(32)),
               depth
             );
 
@@ -1194,7 +1196,7 @@ describe('Redistribution', function () {
 
             const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(2 ** 30, 4);
-            proofParams.proof1.postageProof.index = index;
+            proofParams.proof1.postageProof.index = Uint8Array.from(index);
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1228,7 +1230,7 @@ describe('Redistribution', function () {
             const chunkAddr = Buffer.from(proofParams.proof1.proveSegment);
             const { index, signature, timeStamp } = await constructPostageStamp(batchId, chunkAddr, wallet);
 
-            proofParams.proof1.postageProof.postageId = batchId;
+            proofParams.proof1.postageProof.postageId = Uint8Array.from(batchId);
             proofParams.proof1.postageProof.signature = signature;
             proofParams.proof1.postageProof.index = index;
             proofParams.proof1.postageProof.timeStamp = timeStamp;
@@ -1243,7 +1245,7 @@ describe('Redistribution', function () {
 
             const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(0, 0);
-            proofParams.proof1.postageProof.index = index;
+            proofParams.proof1.postageProof.index = Uint8Array.from(index);
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1255,7 +1257,7 @@ describe('Redistribution', function () {
 
             const index = Buffer.from(proofParams.proof1.postageProof.index);
             index.writeUInt32BE(1, 4);
-            proofParams.proof1.postageProof.index = index;
+            proofParams.proof1.postageProof.index = Uint8Array.from(index);
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1267,7 +1269,7 @@ describe('Redistribution', function () {
           it('wrong proof segments for the reserve commitment', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments[0] = randomBytes(32);
+            proofParams.proof1.proofSegments[0] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1277,7 +1279,7 @@ describe('Redistribution', function () {
           it('wrong proof segments for the original chunk', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments2[1] = randomBytes(32);
+            proofParams.proof1.proofSegments2[1] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1287,7 +1289,7 @@ describe('Redistribution', function () {
           it('wrong proof segments for the transformed chunk', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments3[1] = randomBytes(32);
+            proofParams.proof1.proofSegments3[1] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1297,7 +1299,7 @@ describe('Redistribution', function () {
           it('first inclusion proof segment of transformed and original do not match', async function () {
             const { proofParams } = await generatedSampling();
 
-            proofParams.proof1.proofSegments2[0] = randomBytes(32);
+            proofParams.proof1.proofSegments2[0] = Uint8Array.from(randomBytes(32));
 
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
@@ -1376,8 +1378,23 @@ describe('Redistribution', function () {
               }
             }
 
-            // <sig need something special to get at child events to check stakefrozen event
-            // https://github.com/ethers-io/ethers.js/discussions/3057?sort=top
+            const sr = await ethers.getContract('StakeRegistry');
+            const expectedFreezeDuration = 2 * roundLength * 2 ** parseInt(depth_5);
+            const stakeFrozenLogs = (receipt2.logs as Array<{ topics: string[]; data: string }>)
+              .map((log) => {
+                try {
+                  return sr.interface.parseLog(log);
+                } catch {
+                  return null;
+                }
+              })
+              .filter((parsed) => parsed?.name === 'StakeFrozen');
+            const node1Frozen = stakeFrozenLogs.find(
+              (parsed) => parsed!.args.frozen.toLowerCase() === node_1.toLowerCase()
+            );
+            expect(node1Frozen).to.not.be.undefined;
+            expect(node1Frozen!.args.overlay).to.be.eq(overlay_1_n_25);
+            expect(node1Frozen!.args.durationBlocks).to.be.eq(expectedFreezeDuration);
 
             const expectedPotPayout =
               (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
@@ -1410,16 +1427,14 @@ describe('Redistribution', function () {
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
             );
 
-            const sr = await ethers.getContract('StakeRegistry');
-
             //node_2 stake is preserved and not frozen
             expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(stakeAmount_2);
 
-            //node_1 is frozen but not slashed
+            //node_1 is frozen
             expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(0);
           });
 
-          it('if both reveal, should select correct winner', async function () {
+          it('if both reveal, should select a valid winner and pay that node', async function () {
             const nodesInNeighbourhood = 2;
 
             await r_node_1.reveal(depth_5, hash_5, reveal_nonce_1);
@@ -1427,10 +1442,16 @@ describe('Redistribution', function () {
 
             await mineNBlocks(phaseLength);
 
-            expect(await r_node_1.isWinner(overlay_1_n_25)).to.be.false;
-            expect(await r_node_5.isWinner(overlay_5)).to.be.true;
+            const node1Won = await r_node_1.isWinner(overlay_1_n_25);
+            const node5Won = await r_node_5.isWinner(overlay_5);
+            expect(node1Won).to.not.be.eq(node5Won);
 
-            const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
+            const winnerOwner = node1Won ? node_1 : node_5;
+            const winnerOverlay = node1Won ? overlay_1_n_25 : overlay_5;
+            const winnerStake = node1Won ? stakeAmount_1_n_25 : effectiveStakeAmount_5;
+            const winnerContract = node1Won ? r_node_1 : r_node_5;
+
+            const tx2 = await winnerContract.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
             let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
@@ -1453,16 +1474,16 @@ describe('Redistribution', function () {
               (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
               (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
 
-            expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
+            expect(await token.balanceOf(winnerOwner)).to.be.eq(expectedPotPayout);
 
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(2);
 
-            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
-            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
+            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(winnerOwner);
+            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(winnerOverlay);
+            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(winnerStake);
             expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-              calculateStakeDensity(effectiveStakeAmount_5, Number(depth_5))
+              calculateStakeDensity(winnerStake, Number(depth_5))
             );
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
@@ -1487,6 +1508,30 @@ describe('Redistribution', function () {
             expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
 
             await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
+          });
+
+          it('should revert claim when postage payout fails and allow retry', async function () {
+            await r_node_1.reveal(depth_5, hash_5, reveal_nonce_1);
+            await r_node_5.reveal(depth_5, hash_5, reveal_nonce_5);
+
+            await mineNBlocks(phaseLength);
+
+            const postageDeployer = await ethers.getContract('PostageStamp', deployer);
+            const redistribution = await ethers.getContract('Redistribution');
+            const redistributorRole = await postageDeployer.REDISTRIBUTOR_ROLE();
+            const claimRoundBefore = await redistribution.currentClaimRound();
+
+            await postageDeployer.revokeRole(redistributorRole, redistribution.address);
+
+            await expect(r_node_5.claim(proof1, proof2, proofLast)).to.be.revertedWith(
+              errors.claim.postageWithdrawFailed
+            );
+            expect(await redistribution.currentClaimRound()).to.be.eq(claimRoundBefore);
+
+            await postageDeployer.grantRole(redistributorRole, redistribution.address);
+
+            await expect(r_node_5.claim(proof1, proof2, proofLast)).to.not.be.reverted;
+            expect(await redistribution.currentClaimRound()).to.be.eq(await redistribution.currentRound());
           });
 
           it('if incorrect winner claims, correct winner is paid', async function () {

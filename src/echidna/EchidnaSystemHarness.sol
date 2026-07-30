@@ -6,6 +6,7 @@ import "../PostageStamp.sol";
 import "../PriceOracle.sol";
 import "../Redistribution.sol" as RedistMod;
 import "../Staking.sol" as StakingMod;
+import "../Util/Constants.sol";
 import "./RedistributionExposed.sol";
 
 contract EchidnaSystemActor {
@@ -26,12 +27,12 @@ contract EchidnaSystemActor {
         token.approve(address(stamp), type(uint256).max);
     }
 
-    function callManageStake(bytes32 setNonce, uint256 addAmount, uint8 height) external returns (bool ok) {
-        (ok, ) = address(stake).call(abi.encodeWithSelector(stake.manageStake.selector, setNonce, addAmount, height));
+    function callCreateDeposit(bytes32 setNonce, uint256 amount, uint8 height) external returns (bool ok) {
+        (ok, ) = address(stake).call(abi.encodeWithSelector(stake.createDeposit.selector, setNonce, amount, height));
     }
 
-    function callWithdrawFromStake() external returns (bool ok) {
-        (ok, ) = address(stake).call(abi.encodeWithSelector(stake.withdrawFromStake.selector));
+    function callApplyUpdates() external returns (bool ok) {
+        (ok, ) = address(stake).call(abi.encodeWithSelector(stake.applyUpdates.selector, address(this)));
     }
 
     function callCreateBatch(
@@ -116,8 +117,8 @@ contract EchidnaSystemHarness {
         // Wire roles: the oracle must be able to call PostageStamp.setPrice.
         stamp.grantRole(stamp.PRICE_ORACLE_ROLE(), address(oracle));
 
-        // Deploy stake registry (uses oracle.currentPrice()).
-        stake = new StakingMod.StakeRegistry(address(token), 1, address(oracle));
+        // Deploy stake registry (queued-update model; wait rounds kept small for fuzzing).
+        stake = new StakingMod.StakeRegistry(address(token), 1, 2, 2, 2);
 
         // Deploy redistribution (uses stake/stamp/oracle). Exposed wrapper adds length helpers for harness scans.
         redist = RedistMod.Redistribution(
@@ -134,8 +135,8 @@ contract EchidnaSystemHarness {
             bootstrapNonce[i] = keccak256(abi.encodePacked("bootstrap", i));
             // Mint enough for both staking and postage operations.
             token.mint(address(actors[i]), 1e28);
-            // Bootstrap a stake early so that after 2 rounds pass, commit() can succeed.
-            actors[i].callManageStake(bootstrapNonce[i], 1e24, uint8(BOOTSTRAP_HEIGHT));
+            // Bootstrap a queued deposit; applyUpdates + round delays activate it during fuzzing.
+            actors[i].callCreateDeposit(bootstrapNonce[i], 1e24, uint8(BOOTSTRAP_HEIGHT));
         }
 
         // Create a dedicated price updater (actor[0]) for adjustPrice.
@@ -150,16 +151,16 @@ contract EchidnaSystemHarness {
     /// helping the fuzzer walk through round phases.
     function act_tick() external {}
 
-    function act_actor_manageStake(uint8 actorId, bytes32 setNonce, uint256 addAmount, uint8 height) external {
+    function act_actor_createDeposit(uint8 actorId, bytes32 setNonce, uint256 addAmount, uint8 height) external {
         EchidnaSystemActor a = actors[uint256(actorId) % ACTOR_COUNT];
         uint8 h = uint8(height % 32);
         uint256 amt = _boundStakeAdd(addAmount);
-        a.callManageStake(setNonce, amt, h);
+        a.callCreateDeposit(setNonce, amt, h);
     }
 
-    function act_actor_withdrawSurplus(uint8 actorId) external {
+    function act_actor_applyStakeUpdates(uint8 actorId) external {
         EchidnaSystemActor a = actors[uint256(actorId) % ACTOR_COUNT];
-        a.callWithdrawFromStake();
+        a.callApplyUpdates();
     }
 
     function act_actor_createBatch(
@@ -223,15 +224,13 @@ contract EchidnaSystemHarness {
         if (redist.paused()) return;
         if (!redist.currentPhaseCommit()) return;
         // Avoid the commit-phase last-block restriction.
-        if (block.number % 152 == (152 / 4) - 1) return;
+        if (block.number % Constants.ROUND_LENGTH == Constants.PHASE_LENGTH - 1) return;
 
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaSystemActor a = actors[idx];
 
-        // Must have staked at least 2 rounds prior.
-        uint256 lastUpdated = stake.lastUpdatedBlockNumberOfAddress(address(a));
-        if (lastUpdated == 0) return;
-        if (lastUpdated >= block.number - 2 * 152) return;
+        // Must have active effective stake (deposit applied and not frozen).
+        if (stake.nodeEffectiveStake(address(a)) == 0) return;
 
         // Use the actor's current staking height as the reveal depth (depthResponsibility = 0 => proximity always passes).
         uint8 height = stake.heightOfAddress(address(a));

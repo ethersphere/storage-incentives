@@ -1,7 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts, getUnnamedAccounts } from 'hardhat';
 import { Contract } from 'ethers';
-import { mineNBlocks, getBlockNumber } from './util/tools';
+import { mineNBlocks, getBlockNumber, ROUND_LENGTH } from './util/tools';
 
 // Named accounts used by tests.
 let updater: string;
@@ -17,7 +17,7 @@ before(async function () {
 });
 
 const changeRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
-const roundLength = 152;
+const roundLength = ROUND_LENGTH;
 
 const errors = {
   manual: {
@@ -29,13 +29,9 @@ const errors = {
 };
 
 describe('PriceOracle', function () {
-  let minimumPrice: number;
-
   describe('when deploying contract', function () {
     beforeEach(async function () {
       await deployments.fixture();
-      const priceOracle = await ethers.getContract('PriceOracle');
-      minimumPrice = await priceOracle.minimumPrice();
     });
 
     it('should deploy PriceOracle', async function () {
@@ -179,7 +175,6 @@ describe('PriceOracle', function () {
     describe('automatic update', function () {
       let minPriceString: string;
       let priceOracle: Contract, postageStamp: Contract;
-      let priceBaseString: string;
       let priceBase: number;
 
       beforeEach(async function () {
@@ -196,7 +191,6 @@ describe('PriceOracle', function () {
 
         // Set price base
         priceBase = await priceOracle.priceBase();
-        priceBaseString = priceBase.toString();
       });
 
       it('if redundany factor is 0', async function () {
