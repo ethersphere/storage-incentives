@@ -625,20 +625,29 @@ contract Redistribution is AccessControl, Pausable {
 
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
-            delete currentReveals;
+            // Bounded clear — reveals are capped by MAX_COMMITS.
+            while (currentReveals.length > 0) {
+                currentReveals.pop();
+            }
             // We set currentRevealRound ONLY after we set current anchor
             currentRevealRound = cr;
             emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
             updateRandomness();
         }
 
-        bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
-        uint256 id = findCommit(_overlay, obfuscatedHash);
+        // Locate the sender's commit by overlay first so DepthMismatch is reachable
+        // before the wrapCommit pre-image check (depth is part of the pre-image).
+        uint256 id = findCommitByOverlay(_overlay);
         Commit memory revealedCommit = currentCommits[id];
 
         // Reported depth must match the depth declared at commit time.
         if (_depth != revealedCommit.declaredDepth) {
             revert DepthMismatch();
+        }
+
+        bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
+        if (obfuscatedHash != revealedCommit.obfuscatedHash) {
+            revert NoMatchingCommit();
         }
 
         uint8 depthResponsibility = _depth - revealedCommit.height;
@@ -1117,6 +1126,21 @@ contract Redistribution is AccessControl, Pausable {
     function findCommit(bytes32 _overlay, bytes32 _obfuscatedHash) internal view returns (uint256) {
         for (uint256 i = 0; i < currentCommits.length; ) {
             if (currentCommits[i].overlay == _overlay && _obfuscatedHash == currentCommits[i].obfuscatedHash) {
+                return i;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+        revert NoMatchingCommit();
+    }
+
+    /**
+     * @notice Locate a commit by overlay alone (used by reveal before depth/hash checks).
+     */
+    function findCommitByOverlay(bytes32 _overlay) internal view returns (uint256) {
+        for (uint256 i = 0; i < currentCommits.length; ) {
+            if (currentCommits[i].overlay == _overlay) {
                 return i;
             }
             unchecked {
