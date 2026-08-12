@@ -67,8 +67,10 @@ contract EchidnaSystemActor {
         (ok, ) = address(stamp).call(abi.encodeWithSelector(stamp.expireLimited.selector, type(uint256).max));
     }
 
-    function callCommit(bytes32 obfuscatedHash, uint64 roundNumber) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.commit.selector, obfuscatedHash, roundNumber));
+    function callCommit(bytes32 obfuscatedHash, uint64 roundNumber, uint8 depth) external returns (bool ok) {
+        (ok, ) = address(redist).call(
+            abi.encodeWithSelector(redist.commit.selector, obfuscatedHash, roundNumber, depth)
+        );
     }
 
     function callReveal(uint8 depth, bytes32 hash, bytes32 nonce) external returns (bool ok) {
@@ -233,14 +235,14 @@ contract EchidnaSystemHarness {
         if (lastUpdated == 0) return;
         if (lastUpdated >= block.number - 2 * 152) return;
 
-        // Use the actor's current staking height as the reveal depth (depthResponsibility = 0 => proximity always passes).
+        // SWIP-51 requires depth > height; use height + 1 (depthResponsibility = 1).
         uint8 height = stake.heightOfAddress(address(a));
-        uint8 depth = height;
+        uint8 depth = height + 1;
 
         bytes32 overlay = stake.overlayOfAddress(address(a));
         bytes32 obfuscated = redist.wrapCommit(overlay, depth, hash, revealNonce);
 
-        bool ok = a.callCommit(obfuscated, redist.currentRound());
+        bool ok = a.callCommit(obfuscated, redist.currentRound(), depth);
         if (!ok) return;
 
         trackedHasCommit[idx] = true;
@@ -330,14 +332,14 @@ contract EchidnaSystemHarness {
                 abi.encodeWithSignature("currentCommits(uint256)", i)
             );
             if (!ok) break;
-            (bytes32 ov, address ow, bool rev, uint8 h, uint256 st, bytes32 obf, uint256 ri) = abi.decode(
-                data,
-                (bytes32, address, bool, uint8, uint256, bytes32, uint256)
-            );
+            (bytes32 ov, address ow, bool rev, uint8 h, uint8 dd, uint256 st, uint256 pr, bytes32 obf, uint256 ri) = abi
+                .decode(data, (bytes32, address, bool, uint8, uint8, uint256, uint256, bytes32, uint256));
             ov;
             rev;
             h;
+            dd;
             st;
+            pr;
             ri;
             if (ow == owner && obf == obfuscated) return true;
         }

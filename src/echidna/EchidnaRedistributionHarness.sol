@@ -66,8 +66,10 @@ contract EchidnaRedistributionActor {
         redist = r;
     }
 
-    function callCommit(bytes32 obfuscatedHash, uint64 roundNumber) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.commit.selector, obfuscatedHash, roundNumber));
+    function callCommit(bytes32 obfuscatedHash, uint64 roundNumber, uint8 depth) external returns (bool ok) {
+        (ok, ) = address(redist).call(
+            abi.encodeWithSelector(redist.commit.selector, obfuscatedHash, roundNumber, depth)
+        );
     }
 
     function callReveal(uint8 depth, bytes32 hash, bytes32 nonce) external returns (bool ok) {
@@ -132,7 +134,9 @@ contract EchidnaRedistributionHarness {
         address owner;
         bool revealed;
         uint8 height;
+        uint8 declaredDepth;
         uint256 stake;
+        uint256 priority;
         bytes32 obfuscatedHash;
         uint256 revealIndex;
     }
@@ -207,7 +211,8 @@ contract EchidnaRedistributionHarness {
         uint64 rn = cr;
         if (roundDelta < 0 && uint64(uint8(-roundDelta)) < cr) rn = cr - uint64(uint8(-roundDelta));
         if (roundDelta > 0) rn = cr + uint64(uint8(roundDelta));
-        a.callCommit(obfuscatedHash, rn);
+        // Depth must exceed the actor's height; use height+1 so eligibility can pass.
+        a.callCommit(obfuscatedHash, rn, uint8(stakeMock.heightOfAddress(address(a)) + 1));
     }
 
     function act_reveal(uint8 actorId, uint8 depth, bytes32 hash, bytes32 nonce) external {
@@ -268,7 +273,8 @@ contract EchidnaRedistributionHarness {
         bytes32 overlay = keccak256(abi.encodePacked("overlay", idx, anchor));
 
         uint8 h = uint8(height % 16);
-        uint8 d = h;
+        // Depth must exceed height (SWIP-51); depthResponsibility = 1 so proximity may still pass.
+        uint8 d = h + 1;
         uint256 stake = _boundStake(stakeAmount);
         uint256 lastUpdated = _backdateLastUpdated();
 
@@ -279,7 +285,7 @@ contract EchidnaRedistributionHarness {
         if (_commitOverlayExists(overlay)) return;
 
         bytes32 obfuscated = redist.wrapCommit(overlay, d, reserveHash, nonce);
-        bool ok = a.callCommit(obfuscated, redist.currentRound());
+        bool ok = a.callCommit(obfuscated, redist.currentRound(), d);
         if (!ok) return;
 
         trackedHasCommit[idx] = true;
@@ -522,9 +528,9 @@ contract EchidnaRedistributionHarness {
         bytes memory data;
         (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
         if (!ok) return (false, bytes32(0), address(0), false, 0);
-        (overlay, owner, revealed, , , , revealIndex) = abi.decode(
+        (overlay, owner, revealed, , , , , , revealIndex) = abi.decode(
             data,
-            (bytes32, address, bool, uint8, uint256, bytes32, uint256)
+            (bytes32, address, bool, uint8, uint8, uint256, uint256, bytes32, uint256)
         );
     }
 
@@ -533,8 +539,12 @@ contract EchidnaRedistributionHarness {
         (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
         if (!ok) return (false, bytes32(0), address(0), false, 0);
         // Commit struct getter returns:
-        // (bytes32 overlay, address owner, bool revealed, uint8 height, uint256 stake, bytes32 obfuscatedHash, uint256 revealIndex)
-        (ov, ow, rev, , , , ri) = abi.decode(data, (bytes32, address, bool, uint8, uint256, bytes32, uint256));
+        // (bytes32 overlay, address owner, bool revealed, uint8 height, uint8 declaredDepth,
+        //  uint256 stake, uint256 priority, bytes32 obfuscatedHash, uint256 revealIndex)
+        (ov, ow, rev, , , , , , ri) = abi.decode(
+            data,
+            (bytes32, address, bool, uint8, uint8, uint256, uint256, bytes32, uint256)
+        );
     }
 
     function _revealOverlayOwner(uint256 i) internal view returns (bool ok, bytes32 ov, address ow) {
@@ -565,9 +575,9 @@ contract EchidnaRedistributionHarness {
         bytes memory data;
         (ok, data) = address(redist).staticcall(abi.encodeWithSignature("currentCommits(uint256)", i));
         if (!ok) return (false, bytes32(0), address(0), false, 0, 0, bytes32(0), 0);
-        (overlay, owner, revealed, height, stake, obfuscatedHash, revealIndex) = abi.decode(
+        (overlay, owner, revealed, height, , stake, , obfuscatedHash, revealIndex) = abi.decode(
             data,
-            (bytes32, address, bool, uint8, uint256, bytes32, uint256)
+            (bytes32, address, bool, uint8, uint8, uint256, uint256, bytes32, uint256)
         );
     }
 

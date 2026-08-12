@@ -67,7 +67,9 @@ contract Redistribution is AccessControl, Pausable {
         address owner;
         bool revealed;
         uint8 height;
+        uint8 declaredDepth;
         uint256 stake;
+        uint256 priority; // lower is better
         bytes32 obfuscatedHash;
         uint256 revealIndex;
     }
@@ -158,6 +160,25 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
 
+    // ----------------------------- SWIP-51 Option B ------------------------------
+
+    // Maximum number of commits admitted per round. Bounds every loop over commits/reveals.
+    uint8 public constant MAX_COMMITS = 128;
+
+    // Domain separator for the stake-weighted admission priority pre-image.
+    bytes32 private constant ADMISSION_DOMAIN = keccak256("swarm.redistribution.admit.v1");
+
+    // Tracks rounds whose participation (non-reveal freezes + tentative winner) has been finalized.
+    mapping(uint64 => bool) public participationFinalized;
+    // Tracks rounds whose disagreement penalties have been applied (during claim).
+    mapping(uint64 => bool) public disagreePenaltiesApplied;
+    // Beneficiary of a claim whose pot withdraw failed and is awaiting retry.
+    address public pendingWithdrawOwner;
+    // Round for which a pot withdraw is pending retry.
+    uint64 public pendingWithdrawRound;
+    // Redundancy count (matching reveals) of the finalized round, consumed by the oracle in claim.
+    uint16 public lastRedundancyCount;
+
     // ----------------------------- Events ------------------------------
 
     /**
@@ -184,11 +205,31 @@ contract Redistribution is AccessControl, Pausable {
     /**
      * @dev Logs that an overlay has committed
      */
-    event Committed(uint256 roundNumber, bytes32 overlay, uint8 height);
+    event Committed(uint256 roundNumber, bytes32 overlay, uint8 height, uint8 depth);
     /**
      * @dev Emit from Postagestamp contract valid chunk count at the end of claim
      */
     event ChunkCount(uint256 validChunkCount);
+
+    /**
+     * @dev Emitted when a round's participation is finalized (non-reveal freezes + tentative winner).
+     */
+    event ParticipationFinalized(uint64 roundNumber, uint256 revealCount);
+
+    /**
+     * @dev Emitted when a commit is admitted into the bounded commit set.
+     */
+    event CommitSelected(uint256 roundNumber, bytes32 overlay, uint8 height, uint8 depth, uint256 priority);
+
+    /**
+     * @dev Emitted when an admitted commit is evicted by a strictly better newcomer.
+     */
+    event CommitEvicted(uint256 roundNumber, bytes32 overlay);
+
+    /**
+     * @dev Emitted when a newcomer is rejected because the commit set is full and it is not better.
+     */
+    event CommitRejected(uint256 roundNumber, bytes32 overlay);
 
     /**
      * @dev Bytes32 anhor of current reveal round
@@ -225,6 +266,13 @@ contract Redistribution is AccessControl, Pausable {
     // ----------------------------- Errors ------------------------------
 
     error NotCommitPhase(); // Game is not in commit phase
+    error DepthNotGreaterThanHeight(); // Reported depth must be strictly greater than the node's height
+    error OutOfDepth(); // Overlay is out of reported depth of the commit anchor
+    error DepthMismatch(); // Revealed depth does not match the committed declared depth
+    error ParticipationNotFinalized(); // Round participation has not been finalized yet
+    error NoWinner(); // No winner was selected for the round
+    error PayoutPending(); // A pot withdraw is pending retry for this round
+    error NothingToFinalize(); // No round is eligible to be finalized
     error NoCommitsReceived(); // Round didn't receive any commits
     error PhaseLastBlock(); // We don't permit commits in last block of the phase
     error CommitRoundOver(); // Commit phase in this round is over
@@ -288,13 +336,14 @@ contract Redistribution is AccessControl, Pausable {
      * and be derived from the same key pair as the message sender.
      * @param _roundNumber Node needs to provide round number for which commit is valid
      */
-    function commit(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
+    function commit(bytes32 _obfuscatedHash, uint64 _roundNumber, uint8 _depth) external whenNotPaused {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
         uint256 _stake = Stakes.nodeEffectiveStake(msg.sender);
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
         uint8 _height = Stakes.heightOfAddress(msg.sender);
 
+        // 1. Checks that can revert must run BEFORE any finalize side effects.
         if (_lastUpdate == 0) {
             revert NotStaked();
         }
@@ -319,38 +368,241 @@ contract Redistribution is AccessControl, Pausable {
             revert PhaseLastBlock();
         }
 
-        // if we are in a new commit phase, reset the array of commits and
-        // set the currentCommitRound to be the current one
+        // 2. Eligibility: depth must exceed height and the overlay must be in proximity of the anchor.
+        if (_depth <= _height) {
+            revert DepthNotGreaterThanHeight();
+        }
+
+        if (!inProximity(_overlay, currentRoundAnchor(), _depth - _height)) {
+            revert OutOfDepth();
+        }
+
+        // 3. Finalize prior rounds before we mutate the commit set for the new round.
+        _ensurePriorRoundsFinalized(cr);
+
+        // 4. If we are in a new commit phase, clear the previous round's commits/reveals (bounded)
+        // and set the currentCommitRound to be the current one.
         if (cr != currentCommitRound) {
-            delete currentCommits;
+            _clearRoundArrays();
             currentCommitRound = cr;
         }
 
+        // 5. Reject duplicate overlay for this round.
         uint256 commitsArrayLength = currentCommits.length;
-
         for (uint256 i = 0; i < commitsArrayLength; ) {
             if (currentCommits[i].overlay == _overlay) {
                 revert AlreadyCommitted();
             }
-
             unchecked {
                 ++i;
             }
         }
 
-        currentCommits.push(
-            Commit({
-                overlay: _overlay,
-                owner: msg.sender,
-                revealed: false,
-                height: _height,
-                stake: _stake,
-                obfuscatedHash: _obfuscatedHash,
-                revealIndex: 0
-            })
-        );
+        // 6. Admit under MAX_COMMITS using stake-weighted priority (lower is better).
+        Commit memory newCommit = Commit({
+            overlay: _overlay,
+            owner: msg.sender,
+            revealed: false,
+            height: _height,
+            declaredDepth: _depth,
+            stake: _stake,
+            priority: admissionPriority(cr, currentSeed(), _overlay, _stake),
+            obfuscatedHash: _obfuscatedHash,
+            revealIndex: 0
+        });
 
-        emit Committed(_roundNumber, _overlay, _height);
+        if (_admitCommit(newCommit, _roundNumber)) {
+            emit Committed(_roundNumber, _overlay, _height, _depth);
+        }
+    }
+
+    /**
+     * @notice Admit a commit into the bounded set, evicting the worst commit when full.
+     * @return admitted True if the commit was admitted (pushed or replaced), false if rejected.
+     * @dev Never reverts on rejection so that any finalize performed earlier in the tx persists.
+     */
+    function _admitCommit(Commit memory newCommit, uint64 roundNumber) internal returns (bool admitted) {
+        uint256 commitsArrayLength = currentCommits.length;
+
+        if (commitsArrayLength < MAX_COMMITS) {
+            currentCommits.push(newCommit);
+            emit CommitSelected(roundNumber, newCommit.overlay, newCommit.height, newCommit.declaredDepth, newCommit.priority);
+            return true;
+        }
+
+        // Find the worst admitted commit: highest priority, tie-break by higher overlay uint.
+        uint256 worstIndex = 0;
+        uint256 worstPriority = currentCommits[0].priority;
+        bytes32 worstOverlay = currentCommits[0].overlay;
+        for (uint256 i = 1; i < commitsArrayLength; ) {
+            uint256 p = currentCommits[i].priority;
+            bytes32 o = currentCommits[i].overlay;
+            if (p > worstPriority || (p == worstPriority && uint256(o) > uint256(worstOverlay))) {
+                worstIndex = i;
+                worstPriority = p;
+                worstOverlay = o;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Newcomer must be strictly better than the worst admitted commit.
+        bool betterThanWorst = newCommit.priority < worstPriority ||
+            (newCommit.priority == worstPriority && uint256(newCommit.overlay) < uint256(worstOverlay));
+
+        if (!betterThanWorst) {
+            emit CommitRejected(roundNumber, newCommit.overlay);
+            return false;
+        }
+
+        emit CommitEvicted(roundNumber, worstOverlay);
+        currentCommits[worstIndex] = newCommit;
+        emit CommitSelected(roundNumber, newCommit.overlay, newCommit.height, newCommit.declaredDepth, newCommit.priority);
+        return true;
+    }
+
+    /**
+     * @notice Stake-weighted admission priority (lower is better).
+     * @dev weight = max(stake, 1); ties in priority are broken elsewhere by higher overlay uint.
+     */
+    function admissionPriority(
+        uint64 round,
+        bytes32 anchor,
+        bytes32 overlay,
+        uint256 stake
+    ) public pure returns (uint256) {
+        uint256 weight = stake > 0 ? stake : 1;
+        return uint256(keccak256(abi.encodePacked(ADMISSION_DOMAIN, round, anchor, overlay))) / weight;
+    }
+
+    /**
+     * @notice Bounded clear of the current round's commit and reveal arrays.
+     * @dev Arrays are capped at MAX_COMMITS so the pop loops are bounded.
+     */
+    function _clearRoundArrays() internal {
+        while (currentCommits.length > 0) {
+            currentCommits.pop();
+        }
+        while (currentReveals.length > 0) {
+            currentReveals.pop();
+        }
+    }
+
+    /**
+     * @notice Ensures the previous participation rounds are finalized before a new commit round begins.
+     * @dev Finalizes the last round that received commits, and marks empty skipped rounds as finalized.
+     */
+    function _ensurePriorRoundsFinalized(uint64 cr) internal {
+        if (currentCommitRound != 0 && currentCommitRound < cr && !participationFinalized[currentCommitRound]) {
+            _finalizeParticipation(currentCommitRound);
+        }
+
+        // Covers rounds that were skipped entirely (no commits) so they are never left dangling.
+        if (cr > 0 && !participationFinalized[cr - 1]) {
+            participationFinalized[cr - 1] = true;
+        }
+    }
+
+    /**
+     * @notice Permissionlessly finalize participation for a round: freeze non-revealers and select
+     * the tentative winner. No-op if already finalized. Must succeed for zero reveals.
+     * @param round The round to finalize.
+     */
+    function finalizeParticipation(uint64 round) external whenNotPaused {
+        if (participationFinalized[round]) {
+            return;
+        }
+
+        if (currentRound() == round) {
+            if (!currentPhaseClaim()) {
+                revert NotClaimPhase();
+            }
+        } else if (currentRound() <= round) {
+            revert WrongPhase();
+        }
+
+        if (currentCommitRound != round) {
+            revert NothingToFinalize();
+        }
+
+        _finalizeParticipation(round);
+    }
+
+    /**
+     * @notice Internal finalize: freeze non-revealers (using declaredDepth so zero-reveal rounds are safe)
+     * and, when reveals exist for the round, compute the truth and store the tentative winner.
+     * @dev Does not apply disagreement penalties, adjust the oracle, or withdraw the pot.
+     */
+    function _finalizeParticipation(uint64 round) internal {
+        if (participationFinalized[round]) {
+            return;
+        }
+
+        uint256 commitsArrayLength = currentCommits.length;
+        emit CountCommits(commitsArrayLength);
+        emit CountReveals(currentReveals.length);
+
+        // Freeze every non-revealer using its declared depth (independent of any truth).
+        for (uint256 i = 0; i < commitsArrayLength; ) {
+            Commit memory currentCommit = currentCommits[i];
+            if (!currentCommit.revealed) {
+                Stakes.freezeDeposit(
+                    currentCommit.owner,
+                    penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** currentCommit.declaredDepth)
+                );
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        uint256 revealCount = 0;
+
+        if (currentRevealRound == round && currentReveals.length > 0) {
+            revealCount = currentReveals.length;
+
+            (bytes32 truthRevealedHash, uint8 truthRevealedDepth) = getCurrentTruth();
+            emit TruthSelected(truthRevealedHash, truthRevealedDepth);
+
+            uint256 currentWinnerSelectionSum = 0;
+            uint256 redundancyCount = 0;
+            bytes32 randomNumber;
+            uint256 randomNumberTrunc;
+            string memory winnerSelectionAnchor = _winnerSelectionAnchor();
+
+            for (uint256 i = 0; i < commitsArrayLength; ) {
+                Commit memory currentCommit = currentCommits[i];
+                Reveal memory currentReveal = currentReveals[currentCommit.revealIndex];
+
+                if (
+                    currentCommit.revealed &&
+                    truthRevealedHash == currentReveal.hash &&
+                    truthRevealedDepth == currentReveal.depth
+                ) {
+                    currentWinnerSelectionSum += currentReveal.stakeDensity;
+                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
+                    randomNumberTrunc = uint256(randomNumber & MAX_H);
+
+                    if (
+                        randomNumberTrunc * currentWinnerSelectionSum <
+                        currentReveal.stakeDensity * (uint256(MAX_H) + 1)
+                    ) {
+                        winner = currentReveal;
+                    }
+
+                    redundancyCount++;
+                }
+                unchecked {
+                    ++i;
+                }
+            }
+
+            lastRedundancyCount = uint16(redundancyCount);
+        }
+
+        participationFinalized[round] = true;
+        emit ParticipationFinalized(round, revealCount);
     }
 
     /**
@@ -383,6 +635,12 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
         uint256 id = findCommit(_overlay, obfuscatedHash);
         Commit memory revealedCommit = currentCommits[id];
+
+        // Reported depth must match the depth declared at commit time.
+        if (_depth != revealedCommit.declaredDepth) {
+            revert DepthMismatch();
+        }
+
         uint8 depthResponsibility = _depth - revealedCommit.height;
 
         // Check that commit is in proximity of the current anchor
@@ -427,9 +685,34 @@ contract Redistribution is AccessControl, Pausable {
         ChunkInclusionProof calldata entryProof2,
         ChunkInclusionProof calldata entryProofLast
     ) external whenNotPaused {
-        winnerSelection();
+        uint64 cr = currentRound();
+
+        // 1. Must be claim phase; finalize participation (winner selection + non-reveal freezes) if needed.
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
+
+        if (!participationFinalized[cr]) {
+            _finalizeParticipation(cr);
+        }
+
+        // A pending payout for this round must be retried via retryPayout(), not replayed through claim().
+        if (pendingWithdrawOwner != address(0) && pendingWithdrawRound == cr) {
+            revert PayoutPending();
+        }
+
+        // 2. Guards: participation finalized, reveals belong to this round, and it is not already claimed.
+        if (cr != currentRevealRound || currentReveals.length == 0) {
+            revert NoReveals();
+        }
+
+        if (cr <= currentClaimRound) {
+            revert AlreadyClaimed();
+        }
 
         Reveal memory winnerSelected = winner;
+
+        // 3. Proofs first, verified against the tentative winner stored during finalize.
         uint256 indexInRC1;
         uint256 indexInRC2;
         bytes32 _currentRevealRoundAnchor = currentRevealRoundAnchor;
@@ -477,102 +760,95 @@ contract Redistribution is AccessControl, Pausable {
 
         estimateSize(entryProofLast.proofSegments[0]);
 
-        // Do the check if the withdraw was success
-        (bool success, ) = address(PostageContract).call(
-            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
-        );
-        if (!success) {
-            emit WithdrawFailed(winnerSelected.owner);
+        // 4. Apply disagreement penalties once per round, after proofs have passed.
+        if (!disagreePenaltiesApplied[cr]) {
+            disagreePenaltiesApplied[cr] = true;
+            _applyDisagreePenalties();
         }
 
-        emit WinnerSelected(winnerSelected);
-        emit ChunkCount(PostageContract.validChunkCount());
+        // 5. Adjust the oracle price using the redundancy computed at finalize time.
+        bool success = OracleContract.adjustPrice(lastRedundancyCount);
+        if (!success) {
+            emit PriceAdjustmentSkipped(lastRedundancyCount);
+        }
+
+        // 6. Attempt the pot payout to the winner.
+        (bool withdrawn, ) = address(PostageContract).call(
+            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
+        );
+
+        if (withdrawn) {
+            currentClaimRound = cr;
+            pendingWithdrawOwner = address(0);
+            emit WinnerSelected(winnerSelected);
+            emit ChunkCount(PostageContract.validChunkCount());
+        } else {
+            // Selection/penalties/oracle already applied; keep the round open for retryPayout().
+            emit WithdrawFailed(winnerSelected.owner);
+            pendingWithdrawOwner = winnerSelected.owner;
+            pendingWithdrawRound = cr;
+        }
     }
 
-    function winnerSelection() internal {
+    /**
+     * @notice Retry a pot payout whose withdraw failed during claim, without replaying selection or penalties.
+     * @dev Only valid while still in the claim phase of the pending round.
+     */
+    function retryPayout() external whenNotPaused {
         uint64 cr = currentRound();
 
         if (!currentPhaseClaim()) {
             revert NotClaimPhase();
         }
 
-        if (cr != currentRevealRound) {
-            revert NoReveals();
+        if (pendingWithdrawOwner == address(0) || pendingWithdrawRound != cr) {
+            revert PayoutPending();
         }
 
         if (cr <= currentClaimRound) {
             revert AlreadyClaimed();
         }
 
-        uint256 currentWinnerSelectionSum = 0;
-        uint256 redundancyCount = 0;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
+        (bool withdrawn, ) = address(PostageContract).call(
+            abi.encodeWithSignature("withdraw(address)", pendingWithdrawOwner)
+        );
 
-        bytes32 truthRevealedHash;
-        uint8 truthRevealedDepth;
-        uint256 currentCommitsLength = currentCommits.length;
+        if (withdrawn) {
+            currentClaimRound = cr;
+            pendingWithdrawOwner = address(0);
+            emit WinnerSelected(winner);
+            emit ChunkCount(PostageContract.validChunkCount());
+        } else {
+            emit WithdrawFailed(pendingWithdrawOwner);
+        }
+    }
 
-        emit CountCommits(currentCommitsLength);
-        emit CountReveals(currentReveals.length);
+    /**
+     * @notice Applies disagreement freezes to revealers whose values differ from the round truth.
+     * @dev Recomputes the truth deterministically from the stored seed; bounded by MAX_COMMITS.
+     */
+    function _applyDisagreePenalties() internal {
+        (bytes32 truthRevealedHash, uint8 truthRevealedDepth) = getCurrentTruth();
+        uint256 commitsArrayLength = currentCommits.length;
 
-        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
-        emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
-
-        for (uint256 i = 0; i < currentCommitsLength; ) {
+        for (uint256 i = 0; i < commitsArrayLength; ) {
             Commit memory currentCommit = currentCommits[i];
-            uint256 revIndex = currentCommit.revealIndex;
-            Reveal memory currentReveal = currentReveals[revIndex];
-
-            // Select winner with valid truth
-            if (
-                currentCommit.revealed &&
-                truthRevealedHash == currentReveal.hash &&
-                truthRevealedDepth == currentReveal.depth
-            ) {
-                currentWinnerSelectionSum += currentReveal.stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-                randomNumberTrunc = uint256(randomNumber & MAX_H);
-
-                if (randomNumberTrunc * currentWinnerSelectionSum < currentReveal.stakeDensity * (uint256(MAX_H) + 1)) {
-                    winner = currentReveal;
+            if (currentCommit.revealed) {
+                Reveal memory currentReveal = currentReveals[currentCommit.revealIndex];
+                if (
+                    (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth) &&
+                    (block.prevrandao % 100 < penaltyRandomFactor)
+                ) {
+                    Stakes.freezeDeposit(
+                        currentReveal.owner,
+                        penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
+                    );
                 }
-
-                redundancyCount++;
-            }
-
-            // Freeze deposit if any truth is false, make it a penaltyRandomFactor chance for this to happen
-            if (
-                currentCommit.revealed &&
-                (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth) &&
-                (block.prevrandao % 100 < penaltyRandomFactor)
-            ) {
-                Stakes.freezeDeposit(
-                    currentReveal.owner,
-                    penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
-                );
-            }
-
-            // Slash deposits if revealed is false
-            if (!currentCommit.revealed) {
-                // slash in later phase (ph5)
-                // Stakes.slashDeposit(currentCommits[i].overlay, currentCommits[i].stake);
-                Stakes.freezeDeposit(
-                    currentCommit.owner,
-                    penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
-                );
             }
             unchecked {
                 ++i;
             }
         }
-
-        bool success = OracleContract.adjustPrice(uint16(redundancyCount));
-        if (!success) {
-            emit PriceAdjustmentSkipped(uint16(redundancyCount));
-        }
-        currentClaimRound = cr;
     }
 
     function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
@@ -733,32 +1009,18 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice The random value used to choose the selected truth teller.
+     * @dev Guardless: derived purely from the current seed so it can be used during finalize regardless
+     * of phase. The seed is only advanced by reveals, so this is stable between reveal end and next reveal.
      */
-    function currentTruthSelectionAnchor() private view returns (string memory) {
-        if (!currentPhaseClaim()) {
-            revert NotClaimPhase();
-        }
-
-        uint64 cr = currentRound();
-        if (cr != currentRevealRound) {
-            revert NoReveals();
-        }
-
+    function _truthSelectionAnchor() private view returns (string memory) {
         return string(abi.encodePacked(seed, "0"));
     }
 
     /**
      * @notice The random value used to choose the selected beneficiary.
+     * @dev Guardless counterpart of {_truthSelectionAnchor}; see its note.
      */
-    function currentWinnerSelectionAnchor() private view returns (string memory) {
-        if (!currentPhaseClaim()) {
-            revert NotClaimPhase();
-        }
-        uint64 cr = currentRound();
-        if (cr != currentRevealRound) {
-            revert NoReveals();
-        }
-
+    function _winnerSelectionAnchor() private view returns (string memory) {
         return string(abi.encodePacked(seed, "1"));
     }
 
@@ -824,7 +1086,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function isParticipatingInUpcomingRound(address _owner, uint8 _depth) public view returns (bool) {
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(_owner);
-        uint8 _depthResponsibility = _depth - Stakes.heightOfAddress(_owner);
+        uint8 _height = Stakes.heightOfAddress(_owner);
 
         if (currentPhaseReveal()) {
             revert WrongPhase();
@@ -838,7 +1100,12 @@ contract Redistribution is AccessControl, Pausable {
             revert MustStake2Rounds();
         }
 
-        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depthResponsibility);
+        // Depth must be strictly greater than height to have a valid proximity responsibility.
+        if (_depth <= _height) {
+            return false;
+        }
+
+        return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth - _height);
     }
 
     // ----------------------------- Reveal ------------------------------
@@ -922,7 +1189,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 revIndex;
-        string memory truthSelectionAnchor = currentTruthSelectionAnchor();
+        string memory truthSelectionAnchor = _truthSelectionAnchor();
         uint256 commitsArrayLength = currentCommits.length;
 
         for (uint256 i = 0; i < commitsArrayLength; ) {
@@ -970,6 +1237,11 @@ contract Redistribution is AccessControl, Pausable {
             revert AlreadyClaimed();
         }
 
+        // Once finalized, the tentative winner is fixed and can be compared directly.
+        if (participationFinalized[cr]) {
+            return (winner.overlay == _overlay);
+        }
+
         uint256 currentWinnerSelectionSum;
         bytes32 winnerIs;
         bytes32 randomNumber;
@@ -977,7 +1249,7 @@ contract Redistribution is AccessControl, Pausable {
         bytes32 truthRevealedHash;
         uint8 truthRevealedDepth;
         uint256 revIndex;
-        string memory winnerSelectionAnchor = currentWinnerSelectionAnchor();
+        string memory winnerSelectionAnchor = _winnerSelectionAnchor();
         uint256 redundancyCount = 0;
 
         // Get current truth

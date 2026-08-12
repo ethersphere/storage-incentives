@@ -89,10 +89,37 @@ contract RedistributionClaimStub is Redistribution {
         address oracleContract
     ) Redistribution(staking, postageContract, oracleContract) {}
 
-    /// @notice Fuzz-only claim: run real winnerSelection(), then withdraw pot to winner.
-    /// @dev Bypasses inclusion/SOC/stamp proof verification entirely.
+    /// @notice Fuzz-only claim: finalize participation + disagreement penalties + oracle, then withdraw pot.
+    /// @dev Bypasses inclusion/SOC/stamp proof verification entirely. Retains the H-1 "consume round even
+    /// if withdraw fails" behavior of the original single-shot winnerSelection() for the fuzz properties.
     function claimStub() external whenNotPaused {
-        winnerSelection();
+        uint64 cr = currentRound();
+
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
+        if (!participationFinalized[cr]) {
+            _finalizeParticipation(cr);
+        }
+        if (cr != currentRevealRound || currentReveals.length == 0) {
+            revert NoReveals();
+        }
+        if (cr <= currentClaimRound) {
+            revert AlreadyClaimed();
+        }
+
+        if (!disagreePenaltiesApplied[cr]) {
+            disagreePenaltiesApplied[cr] = true;
+            _applyDisagreePenalties();
+        }
+
+        bool priceOk = OracleContract.adjustPrice(lastRedundancyCount);
+        if (!priceOk) {
+            emit PriceAdjustmentSkipped(lastRedundancyCount);
+        }
+
+        currentClaimRound = cr;
+
         Reveal memory winnerSelected = winner;
 
         (bool success, ) = address(PostageContract).call(
@@ -114,8 +141,10 @@ contract EchidnaRedistributionClaimActor {
         redist = r;
     }
 
-    function callCommit(bytes32 obfuscatedHash, uint64 roundNumber) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.commit.selector, obfuscatedHash, roundNumber));
+    function callCommit(bytes32 obfuscatedHash, uint64 roundNumber, uint8 depth) external returns (bool ok) {
+        (ok, ) = address(redist).call(
+            abi.encodeWithSelector(redist.commit.selector, obfuscatedHash, roundNumber, depth)
+        );
     }
 
     function callReveal(uint8 depth, bytes32 hash, bytes32 nonce) external returns (bool ok) {
@@ -222,16 +251,16 @@ contract EchidnaRedistributionClaimHarness {
         uint256 idx = uint256(actorId) % ACTOR_COUNT;
         EchidnaRedistributionClaimActor a = actors[idx];
 
-        // Make proximity always pass by setting depth == height (depthResponsibility=0).
+        // SWIP-51 requires depth > height; use height 0 / depth 1 (depthResponsibility = 1).
         bytes32 overlay = keccak256(abi.encodePacked("overlay", idx, redist.currentRoundAnchor()));
         uint8 height = 0;
-        uint8 depth = 0;
+        uint8 depth = 1;
 
         // Ensure staking is old enough.
         stakeMock.setNode(address(a), overlay, height, 1e18, _backdateLastUpdated());
 
         bytes32 obf = redist.wrapCommit(overlay, depth, hash, nonce);
-        bool ok = a.callCommit(obf, redist.currentRound());
+        bool ok = a.callCommit(obf, redist.currentRound(), depth);
         if (!ok) return;
 
         trackedHasCommit[idx] = true;

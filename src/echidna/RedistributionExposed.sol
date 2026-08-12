@@ -12,8 +12,32 @@ contract RedistributionExposed is Redistribution {
         address oracleContract
     ) Redistribution(staking, postageContract, oracleContract) {}
 
+    /// @notice Fuzz-only equivalent of the old single-shot winnerSelection(): finalize participation
+    /// (non-reveal freezes + tentative winner) then apply disagreement penalties and consume the round.
     function exposedWinnerSelection() external {
-        winnerSelection();
+        uint64 cr = currentRound();
+
+        if (!currentPhaseClaim()) {
+            revert NotClaimPhase();
+        }
+        if (cr != currentRevealRound) {
+            revert NoReveals();
+        }
+        if (cr <= currentClaimRound) {
+            revert AlreadyClaimed();
+        }
+        if (participationFinalized[cr]) {
+            revert AlreadyClaimed();
+        }
+
+        _finalizeParticipation(cr);
+        _applyDisagreePenalties();
+
+        bool success = OracleContract.adjustPrice(lastRedundancyCount);
+        if (!success) {
+            emit PriceAdjustmentSkipped(lastRedundancyCount);
+        }
+        currentClaimRound = cr;
     }
 
     function currentCommitsLength() external view returns (uint256) {
