@@ -706,5 +706,10 @@ describe('Staking', function () {
         errors.commitment.decrease
       );
     });
+
+    it('should reject height increase when potential stake is below MIN_STAKE * 2^height', async function () {
+      // Height 1 requires at least 2 * MIN_STAKE; current stake is only MIN_STAKE at height 0.
+      await expect(stakeRegistry.manageStake(nonce_0, 0, height_0_n_1)).to.be.revertedWith(errors.deposit.belowMinimum);
+    });
   });
 });
