@@ -123,11 +123,6 @@ contract StakeRegistry is AccessControl, Pausable {
         uint256 _stakingSet = stakes[msg.sender].lastUpdatedBlockNumber;
         bytes32 _newOverlay = keccak256(abi.encodePacked(msg.sender, reverse(NetworkId), _setNonce));
 
-        // First time adding stake, check the minimum is added, take into account height
-        if (_addAmount < MIN_STAKE * 2 ** _height && _stakingSet == 0) {
-            revert BelowMinimumStake();
-        }
-
         if (_stakingSet != 0 && !addressNotFrozen(msg.sender)) revert Frozen();
         // Set current values, used also when changing overlay
         uint256 updatedPotentialStake = stakes[msg.sender].potentialStake;
@@ -147,6 +142,11 @@ contract StakeRegistry is AccessControl, Pausable {
             }
 
             updatedCommittedStake = newCommittedStake;
+        }
+
+        // Enforce MIN_STAKE * 2^height on every manageStake, including height-only updates.
+        if (updatedPotentialStake < MIN_STAKE * 2 ** _height) {
+            revert BelowMinimumStake();
         }
 
         stakes[msg.sender] = Stake({
