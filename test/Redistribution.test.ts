@@ -525,10 +525,12 @@ describe('Redistribution', function () {
           errors.commit.outOfDepth
         );
 
-        // Change height and check if node is playing
+        // Change height and check if node is playing.
+        // manageStake always resets lastUpdatedBlockNumber, so wait 2 rounds even on amount=0.
         const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
         await sr_node_3.manageStake(nonce_3, 0, height_3_n_2);
-        await mineNBlocks(3 * phaseLength);
+        await mineNBlocks(roundLength * 2);
+        await startRoundFixture();
         await mineToNode(redistribution, 3);
 
         expect(await redistribution.currentPhaseCommit()).to.be.true;
