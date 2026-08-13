@@ -272,11 +272,9 @@ Failure to reveal is objective after the reveal deadline. Disagreement is relati
 
 Only non-reveal penalties belong in proof-independent finalization. Disagreement penalties and oracle adjustment require a validated truth.
 
-### Gap 5: payout failure is currently treated as success (bug)
+### Gap 5: payout failure must not consume the round
 
-`claim()` makes a low-level `PostageStamp.withdraw()` call, emits `WithdrawFailed` on failure, and still completes. Because `currentClaimRound` was already set, the winner cannot retry that round.
-
-Settlement must revert or retain an explicit retryable payout state when withdrawal fails. It must never emit final success or consume the round's payout right after a failed transfer.
+`claim()` must not mark the round claimed if `PostageStamp.withdraw()` fails. A reverting withdraw rolls back the whole `claim()` (no pay, no claim). Replay `claim()` if the failure was transient.
 
 ### Who gets penalized today (only if full `claim()` succeeds)
 
@@ -411,7 +409,7 @@ Separate weight from random priority:
 
 ```text
 weight = objectivelyLockedEffectiveStake(owner)
-entropy = H(domain, round, fixedRoundSeed, overlay)
+entropy = H(round, fixedRoundSeed, overlay)
 priority = auditedWeightedPriority(entropy, weight)
 ```
 

@@ -200,7 +200,7 @@ Finalizes the round and pays the pot if proofs verify.
 8. Estimate reserve size
 9. Withdraw pot from PostageStamp to `winner.owner`
 
-**Atomicity:** `winnerSelection()` runs inside the same transaction as proof checks. If proofs revert or the tx runs out of gas, **penalties and `currentClaimRound` are rolled back**. Freezes apply only after a fully successful `claim()`.
+**Atomicity:** Proofs, penalties, oracle, and withdraw run in one transaction. If proofs fail, withdraw reverts, or the tx runs out of gas, **nothing persists**. Freezes and `currentClaimRound` apply only after a fully successful `claim()`.
 
 #### isWinner()
 Determines if caller is the winner for the current round.
@@ -403,7 +403,6 @@ event TruthSelected(bytes32 hash, uint8 depth);
 event ChunkCount(uint256 validChunkCount);
 event CurrentRevealAnchor(uint256 roundNumber, bytes32 anchor);
 event PriceAdjustmentSkipped(uint16 redundancyCount);
-event WithdrawFailed(address owner);
 ```
 
 ## Deployment Configuration

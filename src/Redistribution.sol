@@ -165,17 +165,8 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum number of commits admitted per round. Bounds every loop over commits/reveals.
     uint8 public constant MAX_COMMITS = 128;
 
-    // Domain separator for the stake-weighted admission priority pre-image.
-    bytes32 private constant ADMISSION_DOMAIN = keccak256("swarm.redistribution.admit.v1");
-
     // Tracks rounds whose participation (non-reveal freezes + tentative winner) has been finalized.
     mapping(uint64 => bool) public participationFinalized;
-    // Tracks rounds whose disagreement penalties have been applied (during claim).
-    mapping(uint64 => bool) public disagreePenaltiesApplied;
-    // Beneficiary of a claim whose pot withdraw failed and is awaiting retry.
-    address public pendingWithdrawOwner;
-    // Round for which a pot withdraw is pending retry.
-    uint64 public pendingWithdrawRound;
     // Redundancy count (matching reveals) of the finalized round, consumed by the oracle in claim.
     uint16 public lastRedundancyCount;
 
@@ -242,11 +233,6 @@ contract Redistribution is AccessControl, Pausable {
     event PriceAdjustmentSkipped(uint16 redundancyCount);
 
     /**
-     * @dev Withdraw not successful in claim
-     */
-    event WithdrawFailed(address owner);
-
-    /**
      * @dev Logs that an overlay has revealed
      */
     event Revealed(
@@ -271,7 +257,6 @@ contract Redistribution is AccessControl, Pausable {
     error DepthMismatch(); // Revealed depth does not match the committed declared depth
     error ParticipationNotFinalized(); // Round participation has not been finalized yet
     error NoWinner(); // No winner was selected for the round
-    error PayoutPending(); // A pot withdraw is pending retry for this round
     error NoCommitsReceived(); // Round didn't receive any commits
     error PhaseLastBlock(); // We don't permit commits in last block of the phase
     error CommitRoundOver(); // Commit phase in this round is over
@@ -666,11 +651,6 @@ contract Redistribution is AccessControl, Pausable {
             _finalizeParticipation(cr);
         }
 
-        // A pending payout for this round must be retried via retryPayout(), not replayed through claim().
-        if (pendingWithdrawOwner != address(0) && pendingWithdrawRound == cr) {
-            revert PayoutPending();
-        }
-
         // 2. Guards: participation finalized, reveals belong to this round, and it is not already claimed.
         if (cr != currentRevealRound || currentReveals.length == 0) {
             revert NoReveals();
@@ -730,11 +710,8 @@ contract Redistribution is AccessControl, Pausable {
 
         estimateSize(entryProofLast.proofSegments[0]);
 
-        // 4. Apply disagreement penalties once per round, after proofs have passed.
-        if (!disagreePenaltiesApplied[cr]) {
-            disagreePenaltiesApplied[cr] = true;
-            _applyDisagreePenalties();
-        }
+        // 4. Apply disagreement penalties after proofs have passed.
+        _applyDisagreePenalties();
 
         // 5. Adjust the oracle price using the redundancy computed at finalize time.
         bool success = OracleContract.adjustPrice(lastRedundancyCount);
@@ -742,55 +719,12 @@ contract Redistribution is AccessControl, Pausable {
             emit PriceAdjustmentSkipped(lastRedundancyCount);
         }
 
-        // 6. Attempt the pot payout to the winner.
-        (bool withdrawn, ) = address(PostageContract).call(
-            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
-        );
+        // 6. Pay the pot. If this reverts, the whole claim rolls back (no pay, no claim).
+        PostageContract.withdraw(winnerSelected.owner);
 
-        if (withdrawn) {
-            currentClaimRound = cr;
-            pendingWithdrawOwner = address(0);
-            emit WinnerSelected(winnerSelected);
-            emit ChunkCount(PostageContract.validChunkCount());
-        } else {
-            // Selection/penalties/oracle already applied; keep the round open for retryPayout().
-            emit WithdrawFailed(winnerSelected.owner);
-            pendingWithdrawOwner = winnerSelected.owner;
-            pendingWithdrawRound = cr;
-        }
-    }
-
-    /**
-     * @notice Retry a pot payout whose withdraw failed during claim, without replaying selection or penalties.
-     * @dev Only valid while still in the claim phase of the pending round.
-     */
-    function retryPayout() external whenNotPaused {
-        uint64 cr = currentRound();
-
-        if (!currentPhaseClaim()) {
-            revert NotClaimPhase();
-        }
-
-        if (pendingWithdrawOwner == address(0) || pendingWithdrawRound != cr) {
-            revert PayoutPending();
-        }
-
-        if (cr <= currentClaimRound) {
-            revert AlreadyClaimed();
-        }
-
-        (bool withdrawn, ) = address(PostageContract).call(
-            abi.encodeWithSignature("withdraw(address)", pendingWithdrawOwner)
-        );
-
-        if (withdrawn) {
-            currentClaimRound = cr;
-            pendingWithdrawOwner = address(0);
-            emit WinnerSelected(winner);
-            emit ChunkCount(PostageContract.validChunkCount());
-        } else {
-            emit WithdrawFailed(pendingWithdrawOwner);
-        }
+        currentClaimRound = cr;
+        emit WinnerSelected(winnerSelected);
+        emit ChunkCount(PostageContract.validChunkCount());
     }
 
     /**
@@ -1089,7 +1023,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 stake
     ) public pure returns (uint256) {
         uint256 weight = stake > 0 ? stake : 1;
-        return uint256(keccak256(abi.encodePacked(ADMISSION_DOMAIN, round, anchor, overlay))) / weight;
+        return uint256(keccak256(abi.encodePacked(round, anchor, overlay))) / weight;
     }
 
     // ----------------------------- Reveal ------------------------------

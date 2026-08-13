@@ -17,7 +17,7 @@ This document is the detailed change note for reviewers and Bee implementers. It
 | Commit API | **Breaking:** `commit(obfuscatedHash, round, depth)` — depth declared and proximity checked at commit. |
 | Cap | `MAX_COMMITS = 128` with stake-weighted online admission (lower priority wins). |
 | Depth floor | Winner-derived `currentMinimumDepth()` remains **removed** (no floor jacking). |
-| Payout | Failed pot withdraw no longer burns the round; use `retryPayout()`. |
+| Payout | Failed pot withdraw reverts the whole `claim()` (no pay, no claim). Replay `claim()` if it was transient. |
 | Deferred | Proof-before-selection / round-scoped postage (SWIP-49/50). Truth-poison coalition worst case still open. |
 
 ---
@@ -29,17 +29,17 @@ SWIP-51 offers two Layer-3 claim paths after a shared package:
 - **Option A** — split claim into `finalizeParticipation` → `verifyWinner` → `settleRound` (fixes penalty rollback now).
 - **Option B** — keep one `claim()`; fix B1 later via STS / proof-before-selection (SWIP-49/50).
 
-This branch implements **Option B** plus the **shared §4.1** Redistribution package (admission, eligibility, Layer 2 gate, B2 retry). The §4.1 staking height-min rule is **not** in this PR — `StakeRegistry` is unchanged; that lands with the upcoming staking rewrite. Bee keeps a single claim transaction for payout; it must still learn the new commit signature and that skipped/failed claims are closed by the next round’s first commit.
+This branch implements **Option B** plus the **shared §4.1** Redistribution package (admission, eligibility, Layer 2 gate, atomic payout). The §4.1 staking height-min rule is **not** in this PR — `StakeRegistry` is unchanged; that lands with the upcoming staking rewrite. Bee keeps a single claim transaction for payout; it must still learn the new commit signature and that skipped/failed claims are closed by the next round’s first commit.
 
 ```text
   Layer 1 — SHARED (§4.1)          ← implemented
-  MAX_COMMITS · eligibility · fixed-cap clear · B2 · commit gate
+  MAX_COMMITS · eligibility · fixed-cap clear · atomic withdraw · commit gate
            │
   Layer 2 — PARTICIPATION CLOSE    ← implemented (internal)
   _finalizeParticipation from claim() or next commit
            │
   Layer 3 — Option B               ← implemented (atomic claim)
-  claim(proofs…) + retryPayout()
+  claim(proofs…) — withdraw must succeed
            │
   Later — SWIP-49 / SWIP-50        ← not in this branch
 ```
@@ -63,9 +63,9 @@ Round R claim
       • if reveals exist: store tentative truth + winner + redundancy
   → claim(proofs):
       • verify proofs against stored winner
-      • apply disagree penalties once
+      • apply disagree penalties
       • adjust oracle
-      • withdraw pot → on failure: pending + retryPayout()
+      • withdraw pot — if this reverts, the whole claim rolls back
 
 Round R+1 commit
   → must finalize R if still open (gate), then admit into R+1
@@ -91,14 +91,13 @@ Zero-reveal rounds: `claim()` reverts `NoReveals()`. The next round’s first `c
 | `delete currentCommits` / `delete currentReveals` on rollover | Bounded `pop` loops |
 | `Committed(round, overlay, height)` | `Committed(round, overlay, height, depth)` |
 | Penalties + proofs + payout in one reverting `claim` path | Non-reveal freezes in `_finalizeParticipation` (from `claim` or next `commit`); proofs then disagree then payout in `claim` |
-| Failed `withdraw` still left round “done” via selection path | Failed withdraw → `WithdrawFailed` + `pendingWithdraw*`; `retryPayout()` |
+| Failed `withdraw` still left round “done” via selection path | Failed withdraw reverts `claim()`; replay the same call. No `retryPayout`. |
 
 #### New / notable functions
 
 | Function | Role |
 |----------|------|
-| `retryPayout()` | Retry pot withdraw after a failed claim withdraw (same round, claim phase). |
-| `admissionPriority(round, seed, overlay, stake)` | View/pure helper: `keccak256(domain, round, seed, overlay) / max(stake, 1)` — **lower is better**. |
+| `admissionPriority(round, seed, overlay, stake)` | View/pure helper: `keccak256(round, seed, overlay) / max(stake, 1)` — **lower is better**. |
 | `participationFinalized(round)` | Whether Layer 2 ran for that round (`claim` or the next `commit` gate). |
 
 #### New events
@@ -113,7 +112,6 @@ Zero-reveal rounds: `claim()` reverts `NoReveals()`. The next round’s first `c
 - `DepthNotGreaterThanHeight`
 - `OutOfDepth` — commit-time proximity failure
 - `DepthMismatch` — reveal depth ≠ `declaredDepth`
-- `PayoutPending` — call `retryPayout()` instead of replaying `claim`
 - `NoWinner` / `ParticipationNotFinalized` — reserved / used where applicable
 
 #### Admission rule (stake-weighted)
@@ -129,16 +127,14 @@ Zero-reveal rounds: `claim()` reverts `NoReveals()`. The next round’s first `c
 
 1. Require claim phase.
 2. If needed, `_finalizeParticipation(cr)` (non-reveal freezes + tentative winner).
-3. If payout already pending for this round → revert `PayoutPending`.
-4. Require reveals for this round; not already claimed.
-5. **Proofs first** against stored `winner`.
-6. Apply disagreement freezes once (`disagreePenaltiesApplied[round]`).
-7. `OracleContract.adjustPrice(lastRedundancyCount)`.
-8. `PostageStamp.withdraw(winner.owner)`:
-   - success → set `currentClaimRound`, emit `WinnerSelected` / `ChunkCount`
-   - failure → `WithdrawFailed`, set `pendingWithdrawOwner` / `pendingWithdrawRound` (selection & penalties already persisted)
+3. Require reveals for this round; not already claimed.
+4. **Proofs first** against stored `winner`.
+5. Apply disagreement freezes.
+6. `OracleContract.adjustPrice(lastRedundancyCount)`.
+7. `PostageStamp.withdraw(winner.owner)` — reverts the whole `claim` on failure.
+8. Set `currentClaimRound`, emit `WinnerSelected` / `ChunkCount`.
 
-Disagree penalties still sit in the same tx as a successful proof path; full “proof-before-selection” weight (B1 via STS) waits for SWIP-50. If `claim` reverts, non-reveal freezes from that same tx roll back; the next round’s first `commit` reapplies them.
+Disagree penalties sit in the same tx as proofs and payout; full “proof-before-selection” weight (B1 via STS) waits for SWIP-50. If `claim` reverts (bad proofs or failed withdraw), nothing from that tx sticks; the next round’s first `commit` still freezes non-revealers.
 
 #### Removed / not reintroduced
 
@@ -178,14 +174,12 @@ New: redistribution.commit(obfuscatedHash, round, depth)
 | `CommitEvicted` | Previously selected overlay lost its slot — stop planning reveal for that identity. |
 | `CommitRejected` | Not admitted; do not reveal. |
 | `ParticipationFinalized(round, revealCount)` | Round participation closed; non-revealers frozen. |
-| `WithdrawFailed` | Winner path should call `retryPayout()` while still in claim phase. |
 
 ### 4. Claim path (mostly same UX)
 
 - Still submit one `claim(entryProof1, entryProof2, entryProofLast)` with inclusion / stamp / SOC proofs for the **stored winner**.
-- There is **no** separate `finalizeParticipation` call. `claim()` finalizes if needed; skipped or failed claims are closed by the next round’s first `commit`.
-- If `claim` emits `WithdrawFailed` or later calls revert `PayoutPending`, call `retryPayout()` (winner or relayer).
-- Do **not** assume failed withdraw left the round unpenalized or fully open for a full `claim` replay.
+- There is **no** separate `finalizeParticipation` or `retryPayout`. `claim()` finalizes if needed and must withdraw successfully; skipped or failed claims are closed by the next round’s first `commit`.
+- If `claim` reverts on withdraw, replay `claim()` in the same claim phase. Nothing from the failed tx is persisted.
 
 ### 5. Eligibility helpers
 
@@ -222,7 +216,7 @@ Regenerate Go bindings (or equivalent) from the new `Redistribution` ABI. Old 2-
 | 2 / B1 | Truth poison / penalty rollback | Partially: non-reveal freezes persist on the next `commit` gate; a reverting `claim` still undoes freezes from that tx. Disagree still after proofs in `claim`. Full fix → SWIP-50 |
 | 2 worst case | All admitted sybils same fake hash | **Open** (needs validity / timeout) |
 | 3 | Floor jacking | Mitigated: no winner-derived floor |
-| B2 | Payout failure treated as success | Mitigated: pending + `retryPayout()` (global pot still not round-escrowed → SWIP-49) |
+| B2 | Payout failure treated as success | Mitigated: failed withdraw reverts `claim()` (no pay, no claim). Replay `claim()`. |
 
 ---
 
@@ -252,14 +246,14 @@ f2efa6b test: cover SWIP-51 Option B eligibility, finalize, and gate
 
 **Body sketch:**
 
-- Implement SWIP-51 §4.1 (MAX_COMMITS, commit-time eligibility, stake-weighted admission, B2 retry) and Layer 2 close via `claim()` plus the next-round commit gate.
+- Implement SWIP-51 §4.1 (MAX_COMMITS, commit-time eligibility, stake-weighted admission, atomic withdraw) and Layer 2 close via `claim()` plus the next-round commit gate.
 - Keep single-transaction `claim()` (Option B); defer STS / postage redesign to SWIP-49/50.
 - Breaking Bee API: `commit(..., depth)`; reveal must match declared depth.
 
 **Test plan:**
 
 - [ ] `npx hardhat test test/Redistribution.test.ts`
-- [ ] Bee integration: commit with depth, reject depth≤height, reveal match, claim + optional `retryPayout`
+- [ ] Bee integration: commit with depth, reject depth≤height, reveal match, claim
 - [ ] Confirm event ABI consumers updated for `Committed` + admission events
 
 ---

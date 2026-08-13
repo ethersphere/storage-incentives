@@ -90,8 +90,7 @@ contract RedistributionClaimStub is Redistribution {
     ) Redistribution(staking, postageContract, oracleContract) {}
 
     /// @notice Fuzz-only claim: finalize participation + disagreement penalties + oracle, then withdraw pot.
-    /// @dev Bypasses inclusion/SOC/stamp proof verification entirely. Retains the H-1 "consume round even
-    /// if withdraw fails" behavior of the original single-shot winnerSelection() for the fuzz properties.
+    /// @dev Bypasses inclusion/SOC/stamp proof verification. Withdraw reverts the whole claim (no pay, no claim).
     function claimStub() external whenNotPaused {
         uint64 cr = currentRound();
 
@@ -108,27 +107,17 @@ contract RedistributionClaimStub is Redistribution {
             revert AlreadyClaimed();
         }
 
-        if (!disagreePenaltiesApplied[cr]) {
-            disagreePenaltiesApplied[cr] = true;
-            _applyDisagreePenalties();
-        }
+        _applyDisagreePenalties();
 
         bool priceOk = OracleContract.adjustPrice(lastRedundancyCount);
         if (!priceOk) {
             emit PriceAdjustmentSkipped(lastRedundancyCount);
         }
 
-        currentClaimRound = cr;
-
         Reveal memory winnerSelected = winner;
+        PostageContract.withdraw(winnerSelected.owner);
 
-        (bool success, ) = address(PostageContract).call(
-            abi.encodeWithSignature("withdraw(address)", winnerSelected.owner)
-        );
-        if (!success) {
-            emit WithdrawFailed(winnerSelected.owner);
-        }
-
+        currentClaimRound = cr;
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
     }
@@ -345,25 +334,10 @@ contract EchidnaRedistributionClaimHarness {
         return increased == 1;
     }
 
-    /// @notice H-1 scenario: when withdraw fails, claim still succeeds (round consumed)
-    /// but pot is preserved and no actor balances change.
-    function echidna_failed_withdraw_preserves_pot_and_consumes_round() external view returns (bool) {
+    /// @notice Failed withdraw must not mark the round claimed (no pay, no claim).
+    function echidna_failed_withdraw_does_not_succeed_claim() external view returns (bool) {
         if (!pendingClaim) return true;
-        if (!pendingWithdrawShouldFail) return true;
-        if (redist.currentClaimRound() != pendingClaimRound) return true;
-
-        // Round must still be marked as claimed even though withdraw failed.
-        // (This is the H-1 behavior: currentClaimRound is set inside winnerSelection()
-        // before withdraw runs, and the .call() swallows the revert.)
-
-        // Pot must be unchanged — withdraw reverted so no transfer happened.
-        if (stampMock.pot() != pendingPotBefore) return false;
-
-        // No actor balances should have changed.
-        for (uint256 i = 0; i < ACTOR_COUNT; i++) {
-            if (token.balanceOf(address(actors[i])) != pendingActorBalBefore[i]) return false;
-        }
-        return true;
+        return !pendingWithdrawShouldFail;
     }
 
     function echidna_claim_triggers_oracle_adjustPrice() external view returns (bool) {

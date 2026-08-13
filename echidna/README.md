@@ -61,7 +61,7 @@ Echidna then tries many such sequences (**`testLimit`**, default **60 000**). 
 | Oracle | `EchidnaPriceOracleHarness.sol` | `PriceOracle` | price, pause, `adjustPrice`, postage callback fail/revert |
 | Postage | `EchidnaPostageStampHarness.sol` | `PostageStamp` | batches, pot, expiry, roles |
 | Redistribution (base) | `EchidnaRedistributionHarness.sol` | `RedistributionExposed` | commit/reveal ledger, `winnerSelection`, dummy `claim()` |
-| Redistribution (claim) | `EchidnaRedistributionClaimHarness.sol` | `RedistributionClaimStub` | claim-phase pot, withdraw, rounds, H-1 |
+| Redistribution (claim) | `EchidnaRedistributionClaimHarness.sol` | `RedistributionClaimStub` | claim-phase pot, withdraw, rounds |
 | System | `EchidnaSystemHarness.sol` | full wired stack | cross-contract invariants only |
 
 **Support (not Echidna targets):** `RedistributionExposed.sol` (`winnerSelection`, safe array lengths); `EchidnaMocks.sol` (stake + oracle mocks for redistribution harnesses).
@@ -104,7 +104,7 @@ Patterns: **must-never-happen** (auth), **global invariants**, **post-conditions
 - **Postage:** forbidden calls; batch post-conditions; `expireAll`; withdraw/pot; `echidna_pot_never_decreases_except_withdraw`
 - **Redistribution (base):** `echidna_commit_overlays_unique`, `revealed_commit_indices_valid`, `reveal_entries_imply_matching_commit`, `winnerSelection_only_once_per_round`, `last_winnerSelection_freezes_nonrevealed`, `tracked_commit_matches_storage`, `tracked_reveal_matches_storage`  
   _(AccessControl/Pausable/phase math: Hardhat, not fuzzed here.)_
-- **Redistribution (claim):** `echidna_claim_only_once_per_round`, `claim_withdraws_pot_to_winner_when_successful`, `failed_withdraw_preserves_pot_and_consumes_round`, `claim_triggers_oracle_adjustPrice`, `nonrevealers_frozen_after_claim_selection`
+- **Redistribution (claim):** `echidna_claim_only_once_per_round`, `claim_withdraws_pot_to_winner_when_successful`, `failed_withdraw_does_not_succeed_claim`, `claim_triggers_oracle_adjustPrice`, `nonrevealers_frozen_after_claim_selection`
 - **System:** oracle price ↔ stamp `lastPrice`; stamp pot ≤ balance; unauthorized oracle adjust fails; tracked commit/reveal in storage
 
 ## Triage example

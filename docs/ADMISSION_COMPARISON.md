@@ -131,7 +131,7 @@ Among eligible commits, rank by audited stake-weighted priority:
 
 ```text
 weight = objectivelyLockedEffectiveStake(owner)   // snapshotted at commit
-entropy = H(domain, round, fixedRoundSeed, overlay)
+entropy = H(round, fixedRoundSeed, overlay)
 priority = auditedWeightedPriority(entropy, weight) // larger is better
 ```
 
@@ -149,7 +149,7 @@ Proximity and declared depth are **eligibility only**, not eviction weight.
 
 - Expected admission probability scales with locked weight under a correctly specified weighted-sampling algorithm
 - Reduces reliance on XOR position alone
-- Entropy from `(domain, round, seed, overlay)` limits tx-order and user-grindable field advantage
+- Entropy from `(round, seed, overlay)` limits tx-order and user-grindable field advantage
 - Mature identities can evaluate ticket strength before committing, but cannot grind obfuscated hash or reveal nonce
 
 ### Known limitations
