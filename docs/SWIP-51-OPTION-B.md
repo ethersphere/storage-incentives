@@ -111,7 +111,6 @@ Zero-reveal rounds: `claim()` reverts `NoReveals()`. The next round’s first `c
 - `DepthNotGreaterThanHeight`
 - `OutOfDepth` — commit-time proximity failure
 - `DepthMismatch` — reveal depth ≠ `declaredDepth`
-- `NoWinner` / `ParticipationNotFinalized` — reserved / used where applicable
 
 #### Admission rule (stake-weighted)
 
@@ -144,59 +143,59 @@ Disagree penalties sit in the same tx as proofs and payout; full “proof-before
 
 ## What Bee must change
 
-### 1. Commit transaction (required, breaking)
+Bee still plays the same three phases. The chain now checks more at commit, caps the set, and may freeze last round’s non-revealers on the first commit of the next round.
+
+### 1. Commit (required, breaking)
 
 ```text
 Old: redistribution.commit(obfuscatedHash, round)
 New: redistribution.commit(obfuscatedHash, round, depth)
 ```
 
-- Choose **storage depth before commit** (same depth later used in `wrapCommit` / reveal).
-- Enforce locally: `depth > height`.
-- Enforce locally: overlay in proximity of **commit-phase** `currentRoundAnchor()` with `depthResponsibility = depth - height`.
-- Do **not** commit at `depth == height` — chain rejects it.
-- Listen for `CommitSelected` / `CommitEvicted` / `CommitRejected`. If rejected, the node is **not** in the round (no reveal obligation from an admission that never stuck); gas was still spent.
+Before sending the tx, locally:
+
+- Pick **storage depth** (same value later used in `wrapCommit` / reveal).
+- Require `depth > height`. `depth == height` is rejected on chain (`DepthNotGreaterThanHeight`).
+- Require overlay in proximity of the **commit-phase** `currentRoundAnchor()` with `depthResponsibility = depth - height`.
+- Confirm the node has been staked for two full rounds (`MustStake2Rounds`).
+- Do not send in the last block of commit phase (`PhaseLastBlock`).
+
+Admission is not first-come-first-served once the set is full (`MAX_COMMITS = 128`):
+
+- `CommitSelected` — this overlay is in the round. Plan to reveal.
+- `CommitEvicted` — a previously selected overlay lost its slot. **Stop** planning reveal for that identity; it has no reveal obligation.
+- `CommitRejected` — set full and this commit was not strictly better. The node is **not** in the round. Gas was still spent. Do not reveal.
+- `Committed` now includes `depth`. Update decoders.
+
+A commit tx that is rejected still succeeds on chain (no revert) so a prior-round finalize in the same tx sticks. Treat `CommitRejected` as “not participating,” not as a failed transaction.
+
+If this node is the **first committer of a new round** after a skipped or failed claim, the tx may also freeze up to 128 non-revealers from the previous round. Set a high gas limit on commit (not a wallet default of a few hundred thousand).
 
 ### 2. Reveal (required)
 
-- Reveal depth **must equal** commit `declaredDepth`.
-- Re-check proximity against **reveal** anchor (`currentRevealRoundAnchor` after first reveal).
-- Wrong depth → `DepthMismatch` (checked before hash mismatch).
+- Reveal depth **must equal** the depth declared at commit (`DepthMismatch` if not; checked before hash mismatch).
+- Re-check proximity against the **reveal** anchor (`currentRevealRoundAnchor` after the first reveal).
 - Wrong nonce/hash with matching depth → `NoMatchingCommit`.
+- Only reveal if this overlay still has `CommitSelected` and was not later `CommitEvicted`.
 
-### 3. Events / indexing
+### 3. Claim (mostly same UX)
 
-| Event | Bee use |
-|-------|---------|
-| `Committed(..., depth)` | Extra indexed field vs old ABI — update decoders. |
-| `CommitSelected` | Confirm admission into the capped set. |
-| `CommitEvicted` | Previously selected overlay lost its slot — stop planning reveal for that identity. |
-| `CommitRejected` | Not admitted; do not reveal. |
-| `ParticipationFinalized(round, revealCount)` | Round participation closed; non-revealers frozen. |
+- Still one `claim(entryProof1, entryProof2, entryProofLast)` with proofs for the **stored winner**.
+- No `finalizeParticipation` and no `retryPayout`. `claim()` finalizes if needed and must withdraw successfully.
+- If withdraw reverts, replay **`claim()`** in the same claim phase. Nothing from the failed tx is persisted.
+- Skipped or failed claims are closed by the next round’s first `commit` (non-revealers frozen then).
+- After a non-reveal freeze, effective stake is 0 until the freeze ends; `lastUpdatedBlockNumber` is bumped, so the two-round wait applies again.
 
-### 4. Claim path (mostly same UX)
-
-- Still submit one `claim(entryProof1, entryProof2, entryProofLast)` with inclusion / stamp / SOC proofs for the **stored winner**.
-- There is **no** separate `finalizeParticipation` or `retryPayout`. `claim()` finalizes if needed and must withdraw successfully; skipped or failed claims are closed by the next round’s first `commit`.
-- If `claim` reverts on withdraw, replay `claim()` in the same claim phase. Nothing from the failed tx is persisted.
-
-### 5. Eligibility helpers
+### 4. Eligibility helper
 
 - `isParticipatingInUpcomingRound(owner, depth)` returns `false` if `depth <= height` (does not revert for that case).
-- Local pre-checks should mirror on-chain: maturity (2 rounds), depth, proximity to the correct phase anchor.
+- Mirror on chain locally: maturity, `depth > height`, proximity to the correct phase anchor with `depth - height`.
 
-### 7. ABI / bindings
+### 5. ABI / bindings
 
-Regenerate Go bindings (or equivalent) from the new `Redistribution` ABI. Old 2-arg `commit` will not exist on the new deployment. `StakeRegistry` is unchanged.
+Regenerate Go bindings from the new `Redistribution` ABI. Old 2-arg `commit` will not exist on the new deployment. `StakeRegistry` is unchanged.
 
-### 6. Operational notes for node operators
-
-- First committer of a new round may pay **finalize gas** for the previous round (O(`MAX_COMMITS`) freezes). Acceptable while K is bounded.
-- A node that committed but was **evicted** must not expect to reveal or win.
-- After a non-reveal freeze, effective stake is zero until the freeze window ends; the freeze also bumps `lastUpdatedBlockNumber`, so the usual two-round wait applies before the next commit.
-- `MAX_COMMITS = 128` means a neighbourhood can be capacity-constrained; higher stake improves admission odds but does not guarantee a slot.
-
-### 7. Out of scope for Bee in this release
+### 6. Out of scope for Bee in this release
 
 - SWIP-49 round-scoped postage / price-after-proofs.
 - SWIP-50 STS-1 proof-before-selection weights / unfinished-commit carry-over.
@@ -233,6 +232,9 @@ Regenerate Go bindings (or equivalent) from the new `Redistribution` ABI. Old 2-
 2a60202 feat(redistribution): implement SWIP-51 Option B
 756e5c0 fix(redistribution): check declaredDepth before wrapCommit match
 f2efa6b test: cover SWIP-51 Option B eligibility, finalize, and gate
+417b0a1 refactor(redistribution): drop public finalize
+5604235 refactor(redistribution): no pay, no claim
+61bfa6f refactor(redistribution): delete arrays on rollover
 ```
 
 (Plus earlier docs on `fix/minimal_depth_resolve`: admission comparison, minimum-depth options, spam/griefing notes, removal of `currentMinimumDepth`.)
@@ -252,7 +254,7 @@ f2efa6b test: cover SWIP-51 Option B eligibility, finalize, and gate
 **Test plan:**
 
 - [ ] `npx hardhat test test/Redistribution.test.ts`
-- [ ] Bee integration: commit with depth, reject depth≤height, reveal match, claim
+- [ ] Bee integration: 3-arg commit, depth>height + proximity locally, `CommitSelected`/`Evicted`/`Rejected`, high gas on first commit after skip-claim, claim replay on withdraw revert
 - [ ] Confirm event ABI consumers updated for `Committed` + admission events
 
 ---
@@ -262,4 +264,4 @@ f2efa6b test: cover SWIP-51 Option B eligibility, finalize, and gate
 - [SPAM_GRIEFING.md](./SPAM_GRIEFING.md) — threat model and staged-finalization design notes  
 - [ADMISSION_COMPARISON.md](./ADMISSION_COMPARISON.md) — proximity vs stake-weighted admission  
 - [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md) — floor policy (Option A = none near term)  
-- [REDISTRIBUTION.md](./REDISTRIBUTION.md) — general contract overview (update in follow-up if needed to match this branch)
+- [REDISTRIBUTION.md](./REDISTRIBUTION.md) — general contract overview

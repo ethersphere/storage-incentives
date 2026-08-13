@@ -255,13 +255,10 @@ contract Redistribution is AccessControl, Pausable {
     error DepthNotGreaterThanHeight(); // Reported depth must be strictly greater than the node's height
     error OutOfDepth(); // Overlay is out of reported depth of the commit anchor
     error DepthMismatch(); // Revealed depth does not match the committed declared depth
-    error ParticipationNotFinalized(); // Round participation has not been finalized yet
-    error NoWinner(); // No winner was selected for the round
     error NoCommitsReceived(); // Round didn't receive any commits
     error PhaseLastBlock(); // We don't permit commits in last block of the phase
     error CommitRoundOver(); // Commit phase in this round is over
     error CommitRoundNotStarted(); // Commit phase in this round has not started yet
-    error NotMatchingOwner(); // Sender of commit is not matching the overlay address
     error MustStake2Rounds(); // Before entering the game node must stake 2 rounds prior
     error NotStaked(); // Node didn't add any staking
     error WrongPhase(); // Checking in wrong phase, need to check duing claim phase of current round for next round or commit in current round
@@ -364,8 +361,8 @@ contract Redistribution is AccessControl, Pausable {
         // 3. Finalize prior rounds before we mutate the commit set for the new round.
         _ensurePriorRoundsFinalized(cr);
 
-        // 4. If we are in a new commit phase, clear the previous round's commits/reveals (bounded)
-        // and set the currentCommitRound to be the current one.
+        // 4. If we are in a new commit phase, clear the previous round's commits
+        // and set the currentCommitRound to be the current one. 
         if (cr != currentCommitRound) {
             delete currentCommits;
             currentCommitRound = cr;

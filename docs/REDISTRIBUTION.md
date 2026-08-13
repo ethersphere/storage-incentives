@@ -1,5 +1,7 @@
 # Redistribution Contract
 
+This overview matches the current `Redistribution.sol` on `feat/swip-51-option-b`. Bee-facing API and behaviour: [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md).
+
 ## Overview
 
 The `Redistribution` contract implements a Schelling coordination game for forming consensus around the Reserve Commitment (RC) hash. This is the core incentive mechanism that rewards nodes for storing data honestly.
@@ -40,7 +42,8 @@ Each round consists of three consecutive phases:
    - Truth is determined from reveals (stake-density-weighted lottery)
    - Winner is randomly selected from truth-tellers (same weighting)
    - Anyone may submit `claim()` with proofs; pot goes to `winner.owner`
-   - If proofs fail, the whole transaction reverts (including penalties)
+   - If proofs or withdraw fail, the whole transaction reverts (no pay, no claim)
+   - Skipped claims: the next round’s first `commit` freezes non-revealers
 
 ### Proximity and Anchors
 
@@ -49,7 +52,8 @@ Each round consists of three consecutive phases:
 
 ```solidity
 function inProximity(bytes32 A, bytes32 B, uint8 minimum) pure returns (bool) {
-    return uint256(A ^ B) < uint256(2 ** (256 - minimum))
+    if (minimum == 0) return true;
+    return uint256(A ^ B) < uint256(2 ** (256 - minimum));
 }
 ```
 
@@ -85,22 +89,26 @@ Commits to an obfuscated hash for the current round.
 **Parameters**:
 - `_obfuscatedHash`: Hash of (overlay, depth, hash, nonce)
 - `_roundNumber`: Round number for this commit
+- `_depth`: Declared storage depth (must match later reveal)
 
 **Requirements**:
 - Must be in commit phase
 - Node must be staked for 2+ rounds
+- `depth > height` (`DepthNotGreaterThanHeight`)
+- Overlay in proximity of the commit-phase anchor with `depth - height` (`OutOfDepth`)
 - Node must not have already committed
 - Not in last block of commit phase (prevents front-running)
 
-**Note:** `commit()` does **not** check proximity today. Any staked node can enter `currentCommits`. Proximity is enforced only at `reveal()`. See [SPAM_GRIEFING.md](./SPAM_GRIEFING.md) for griefing implications and planned mitigations.
+At most `MAX_COMMITS` (128) commits are kept. Extra eligible commits may evict a worse slot (`CommitSelected` / `CommitEvicted`) or be dropped without revert (`CommitRejected`). The first commit of a new round finalizes the previous round if it is still open (freezes non-revealers).
 
 **Logic**:
 ```solidity
 bytes32 overlay = get from StakeRegistry
 uint256 stake = get effective stake from StakeRegistry
 uint8 height = get from StakeRegistry
-// Check 2-round staking requirement
-// Store commit with obfuscated hash
+// Check 2-round staking, depth > height, proximity
+// Finalize prior round if needed; delete previous currentCommits
+// Admit under MAX_COMMITS (stake-weighted priority)
 ```
 
 **Commit Structure**:
@@ -110,7 +118,9 @@ struct Commit {
     address owner;
     bool revealed;
     uint8 height;
+    uint8 declaredDepth;
     uint256 stake;
+    uint256 priority; // lower is better
     bytes32 obfuscatedHash;
     uint256 revealIndex;
 }
@@ -123,7 +133,7 @@ Checks if node is eligible for NEXT round's commit phase.
 - `_owner`: Node address
 - `_depth`: Intended storage depth
 
-**Returns**: True if node's overlay is in proximity to NEXT round's anchor
+**Returns**: True if the node is staked long enough, `depth > height`, and overlay is in proximity of the current anchor with `depth - height`. Returns `false` (does not revert) when `depth <= height`.
 
 **Use**: Called during reveal/claim phases to check next round eligibility
 
@@ -139,7 +149,8 @@ Reveals the actual values used to create a commit.
 
 **Requirements**:
 - Must be in reveal phase
-- Anchor must be in range of reported depth
+- Revealed depth must equal `declaredDepth` from commit
+- Anchor must be in range of `depth - height`
 - Commit must exist and match
 
 **Logic**:
@@ -190,15 +201,13 @@ Finalizes the round and pays the pot if proofs verify.
 **Caller:** There is **no `msg.sender` check**. Any party may call `claim()` and pay gas. The pot is withdrawn to `winner.owner`, not the caller. A relayer or griefer can submit the transaction.
 
 **Logic**:
-1. `winnerSelection()`: truth, winner, penalties, oracle adjustment, `currentClaimRound` (all in one internal call)
-2. Calculate random chunk indices from seed
-3. Verify proximity for all three chunks
-4. Verify inclusion proofs for all three chunks
-5. Verify stamp proofs for all chunks
-6. Verify SOC proofs (if applicable)
-7. Check ordering of chunks
-8. Estimate reserve size
-9. Withdraw pot from PostageStamp to `winner.owner`
+1. Finalize participation if needed (non-reveal freezes + tentative winner)
+2. Require reveals for this round; not already claimed
+3. Verify proofs against the stored winner (proximity, inclusion, stamp, SOC, order, reserve size)
+4. Apply disagreement freezes
+5. `OracleContract.adjustPrice(lastRedundancyCount)`
+6. `PostageStamp.withdraw(winner.owner)` — reverts the whole claim on failure
+7. Set `currentClaimRound`, emit `WinnerSelected` / `ChunkCount`
 
 **Atomicity:** Proofs, penalties, oracle, and withdraw run in one transaction. If proofs fail, withdraw reverts, or the tx runs out of gas, **nothing persists**. Freezes and `currentClaimRound` apply only after a fully successful `claim()`.
 
@@ -207,7 +216,7 @@ Determines if caller is the winner for the current round.
 
 **Returns**: True if caller's overlay matches the selected winner
 
-**Logic**: Same winner selection as `claim()` but without doing actions
+**Logic**: If the round is already finalized, compares overlay to the stored `winner`. Otherwise recomputes the same lottery `claim()` would.
 
 ### Admin Functions
 
@@ -395,7 +404,7 @@ The `redundancyCount` is the number of nodes that revealed the correct truth, wh
 ## Events
 
 ```solidity
-event Committed(uint256 roundNumber, bytes32 overlay, uint8 height);
+event Committed(uint256 roundNumber, bytes32 overlay, uint8 height, uint8 depth);
 event Revealed(uint256 roundNumber, bytes32 overlay, uint256 stake, 
                uint256 stakeDensity, bytes32 reserveCommitment, uint8 depth);
 event WinnerSelected(Reveal winner);
@@ -403,6 +412,10 @@ event TruthSelected(bytes32 hash, uint8 depth);
 event ChunkCount(uint256 validChunkCount);
 event CurrentRevealAnchor(uint256 roundNumber, bytes32 anchor);
 event PriceAdjustmentSkipped(uint16 redundancyCount);
+event ParticipationFinalized(uint64 roundNumber, uint256 revealCount);
+event CommitSelected(uint256 roundNumber, bytes32 overlay, uint8 height, uint8 depth, uint256 priority);
+event CommitEvicted(uint256 roundNumber, bytes32 overlay);
+event CommitRejected(uint256 roundNumber, bytes32 overlay);
 ```
 
 ## Deployment Configuration
@@ -444,11 +457,10 @@ Block 152075: Reveal phase ends
 ```
 Block 152076: Node A checks isWinner()
 Block 152100: Winner claims pot
-  → truth = getCurrentTruth()
-  → winner = winnerSelection()
-  → verify proofs
+  → finalize participation if needed
+  → verify proofs against stored winner
+  → disagree freezes + adjustPrice
   → withdraw pot
-  → adjustPrice()
 ```
 
 ### Round N+1: Block 152152
@@ -486,6 +498,9 @@ For each chunk in the claim:
 ```solidity
 error NotCommitPhase();               // Wrong phase
 error NoCommitsReceived();            // No commits in round
+error DepthNotGreaterThanHeight();    // depth must exceed height
+error OutOfDepth();                    // commit-time proximity failed
+error DepthMismatch();                 // reveal depth ≠ declaredDepth
 error AlreadyCommitted();              // Already committed this round
 error MustStake2Rounds();             // Need to stake 2 rounds first
 error NotStaked();                    // Not staked
@@ -521,7 +536,7 @@ bytes32 obfuscatedHash = Redistribution(redis).wrapCommit(
     nonce
 );
 
-Redistribution(redis).commit(obfuscatedHash, currentRound());
+Redistribution(redis).commit(obfuscatedHash, currentRound(), depth);
 ```
 
 ### Revealing
@@ -558,13 +573,13 @@ bool eligible = Redistribution(redis).isParticipatingInUpcomingRound(
 ## Security Considerations
 
 1. **Random Nonce**: Must be truly random and never reused
-2. **Proximity Calculations**: Proper depth responsibility (`depth - height`); `depth == height` makes proximity vacuous
+2. **Proximity Calculations**: Proper depth responsibility (`depth - height`); `depth > height` is required or proximity is vacuous
 3. **Freeze Protection**: Prevents stake manipulation during freeze
 4. **Proof Verification**: Comprehensive validation prevents fake claims
 5. **Random Selection**: Weighted fairly by stake density
 6. **Truth Selection**: Stake-weighted lottery over exact `(hash, depth)` tuples, not majority vote or correctness check
-7. **Sybil / claim gas griefing**: Unbounded `currentCommits` makes `claim()` O(N); see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md)
-8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()` before penalties; round is permanently unclaimable after rollover
+7. **Sybil / claim gas griefing**: `MAX_COMMITS = 128` bounds loops; see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md)
+8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()`; the next round’s first `commit` freezes non-revealers
 9. **Open caller on `claim()`**: Anyone can submit; economic incentive is on `winner.owner` to provide proofs
 
 ## Related Documentation
