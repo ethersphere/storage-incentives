@@ -272,7 +272,6 @@ contract Redistribution is AccessControl, Pausable {
     error ParticipationNotFinalized(); // Round participation has not been finalized yet
     error NoWinner(); // No winner was selected for the round
     error PayoutPending(); // A pot withdraw is pending retry for this round
-    error NothingToFinalize(); // No round is eligible to be finalized
     error NoCommitsReceived(); // Round didn't receive any commits
     error PhaseLastBlock(); // We don't permit commits in last block of the phase
     error CommitRoundOver(); // Commit phase in this round is over
@@ -463,20 +462,6 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Stake-weighted admission priority (lower is better).
-     * @dev weight = max(stake, 1); ties in priority are broken elsewhere by higher overlay uint.
-     */
-    function admissionPriority(
-        uint64 round,
-        bytes32 anchor,
-        bytes32 overlay,
-        uint256 stake
-    ) public pure returns (uint256) {
-        uint256 weight = stake > 0 ? stake : 1;
-        return uint256(keccak256(abi.encodePacked(ADMISSION_DOMAIN, round, anchor, overlay))) / weight;
-    }
-
-    /**
      * @notice Bounded clear of the current round's commit and reveal arrays.
      * @dev Arrays are capped at MAX_COMMITS so the pop loops are bounded.
      */
@@ -505,34 +490,10 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Permissionlessly finalize participation for a round: freeze non-revealers and select
-     * the tentative winner. No-op if already finalized. Must succeed for zero reveals.
-     * @param round The round to finalize.
-     */
-    function finalizeParticipation(uint64 round) external whenNotPaused {
-        if (participationFinalized[round]) {
-            return;
-        }
-
-        if (currentRound() == round) {
-            if (!currentPhaseClaim()) {
-                revert NotClaimPhase();
-            }
-        } else if (currentRound() <= round) {
-            revert WrongPhase();
-        }
-
-        if (currentCommitRound != round) {
-            revert NothingToFinalize();
-        }
-
-        _finalizeParticipation(round);
-    }
-
-    /**
      * @notice Internal finalize: freeze non-revealers (using declaredDepth so zero-reveal rounds are safe)
      * and, when reveals exist for the round, compute the truth and store the tentative winner.
-     * @dev Does not apply disagreement penalties, adjust the oracle, or withdraw the pot.
+     * @dev Called from claim() and from the next round's first commit. Does not apply disagreement
+     * penalties, adjust the oracle, or withdraw the pot.
      */
     function _finalizeParticipation(uint64 round) internal {
         if (participationFinalized[round]) {
@@ -1115,6 +1076,20 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         return inProximity(Stakes.overlayOfAddress(_owner), currentRoundAnchor(), _depth - _height);
+    }
+
+    /**
+     * @notice Stake-weighted admission priority (lower is better).
+     * @dev weight = max(stake, 1); ties in priority are broken elsewhere by higher overlay uint.
+     */
+    function admissionPriority(
+        uint64 round,
+        bytes32 anchor,
+        bytes32 overlay,
+        uint256 stake
+    ) public pure returns (uint256) {
+        uint256 weight = stake > 0 ? stake : 1;
+        return uint256(keccak256(abi.encodePacked(ADMISSION_DOMAIN, round, anchor, overlay))) / weight;
     }
 
     // ----------------------------- Reveal ------------------------------

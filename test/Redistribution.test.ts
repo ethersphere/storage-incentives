@@ -1629,33 +1629,13 @@ describe('Redistribution', function () {
       await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_2)).to.be.revertedWith(errors.reveal.depthMismatch);
     });
 
-    it('finalizeParticipation freezes commit-only non-revealers', async function () {
+    it('next-round commit gate auto-finalizes the prior round', async function () {
       const r_node_2 = await ethers.getContract('Redistribution', node_2);
       const sr = await ethers.getContract('StakeRegistry');
       const currentRound = await r_node_2.currentRound();
       const obfuscatedHash = encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
-
       await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
       expect(await sr.nodeEffectiveStake(node_2)).to.not.eq(0);
-
-      // Skip reveal; enter claim phase and finalize.
-      await mineNBlocks(phaseLength * 2);
-      expect(await redistribution.currentPhaseClaim()).to.be.true;
-
-      await expect(r_node_2.finalizeParticipation(currentRound))
-        .to.emit(redistribution, 'ParticipationFinalized')
-        .withArgs(currentRound, 0);
-
-      expect(await redistribution.participationFinalized(currentRound)).to.be.true;
-      // Non-revealer is frozen → effective stake reads as 0.
-      expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(0);
-    });
-
-    it('next-round commit gate auto-finalizes the prior round', async function () {
-      const r_node_2 = await ethers.getContract('Redistribution', node_2);
-      const currentRound = await r_node_2.currentRound();
-      const obfuscatedHash = encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
-      await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
 
       // Advance exactly one round into the next commit phase. Use node_0 so the
       // prior non-revealer (node_2), frozen by finalize, is not also the committer.
@@ -1683,6 +1663,8 @@ describe('Redistribution', function () {
         .withArgs(currentRound, 0);
 
       expect(await redistribution.participationFinalized(currentRound)).to.be.true;
+      // Non-revealer is frozen → effective stake reads as 0.
+      expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(0);
     });
 
     it('exposes stake-weighted admissionPriority (lower is better with higher stake)', async function () {
