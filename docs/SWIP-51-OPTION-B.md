@@ -88,7 +88,6 @@ Zero-reveal rounds: `claim()` reverts `NoReveals()`. The next round’s first `c
 | Depth chosen only at reveal | Depth **declared at commit**; reveal must match (`DepthMismatch`) |
 | `depth == height` allowed (proximity always true) | **`depth > height` required** (`DepthNotGreaterThanHeight`) |
 | Unbounded `currentCommits` | Cap `MAX_COMMITS = 128`; eviction by stake-weighted priority |
-| `delete currentCommits` / `delete currentReveals` on rollover | Bounded `pop` loops |
 | `Committed(round, overlay, height)` | `Committed(round, overlay, height, depth)` |
 | Penalties + proofs + payout in one reverting `claim` path | Non-reveal freezes in `_finalizeParticipation` (from `claim` or next `commit`); proofs then disagree then payout in `claim` |
 | Failed `withdraw` still left round “done” via selection path | Failed withdraw reverts `claim()`; replay the same call. No `retryPayout`. |

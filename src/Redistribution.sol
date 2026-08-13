@@ -327,7 +327,7 @@ contract Redistribution is AccessControl, Pausable {
         uint256 _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
         uint8 _height = Stakes.heightOfAddress(msg.sender);
 
-        // 1. Checks that can revert must run BEFORE any finalize side effects.
+        // 1. Run reverting checks before finalizing a prior round.
         if (_lastUpdate == 0) {
             revert NotStaked();
         }
@@ -367,7 +367,7 @@ contract Redistribution is AccessControl, Pausable {
         // 4. If we are in a new commit phase, clear the previous round's commits/reveals (bounded)
         // and set the currentCommitRound to be the current one.
         if (cr != currentCommitRound) {
-            _clearRoundArrays();
+            delete currentCommits;
             currentCommitRound = cr;
         }
 
@@ -408,6 +408,7 @@ contract Redistribution is AccessControl, Pausable {
     function _admitCommit(Commit memory newCommit, uint64 roundNumber) internal returns (bool admitted) {
         uint256 commitsArrayLength = currentCommits.length;
 
+        // Early exit if the commit set is not full.
         if (commitsArrayLength < MAX_COMMITS) {
             currentCommits.push(newCommit);
             emit CommitSelected(roundNumber, newCommit.overlay, newCommit.height, newCommit.declaredDepth, newCommit.priority);
@@ -446,18 +447,6 @@ contract Redistribution is AccessControl, Pausable {
         return true;
     }
 
-    /**
-     * @notice Bounded clear of the current round's commit and reveal arrays.
-     * @dev Arrays are capped at MAX_COMMITS so the pop loops are bounded.
-     */
-    function _clearRoundArrays() internal {
-        while (currentCommits.length > 0) {
-            currentCommits.pop();
-        }
-        while (currentReveals.length > 0) {
-            currentReveals.pop();
-        }
-    }
 
     /**
      * @notice Ensures the previous participation rounds are finalized before a new commit round begins.
@@ -571,10 +560,8 @@ contract Redistribution is AccessControl, Pausable {
 
         if (cr != currentRevealRound) {
             currentRevealRoundAnchor = currentRoundAnchor();
-            // Bounded clear — reveals are capped by MAX_COMMITS.
-            while (currentReveals.length > 0) {
-                currentReveals.pop();
-            }
+            // Reveals are capped by MAX_COMMITS, so delete is bounded.
+            delete currentReveals;
             // We set currentRevealRound ONLY after we set current anchor
             currentRevealRound = cr;
             emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
