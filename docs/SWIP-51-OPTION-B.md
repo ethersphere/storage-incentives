@@ -17,7 +17,6 @@ This document is the detailed change note for reviewers and Bee implementers. It
 | Commit API | **Breaking:** `commit(obfuscatedHash, round, depth)` — depth declared and proximity checked at commit. |
 | Cap | `MAX_COMMITS = 128` with stake-weighted online admission (lower priority wins). |
 | Depth floor | Winner-derived `currentMinimumDepth()` remains **removed** (no floor jacking). |
-| Staking | Every `manageStake` must leave `potentialStake >= MIN_STAKE * 2^height` (incl. height-only updates). |
 | Payout | Failed pot withdraw no longer burns the round; use `retryPayout()`. |
 | Deferred | Proof-before-selection / round-scoped postage (SWIP-49/50). Truth-poison coalition worst case still open. |
 
@@ -30,7 +29,7 @@ SWIP-51 offers two Layer-3 claim paths after a shared package:
 - **Option A** — split claim into `finalizeParticipation` → `verifyWinner` → `settleRound` (fixes penalty rollback now).
 - **Option B** — keep one `claim()`; fix B1 later via STS / proof-before-selection (SWIP-49/50).
 
-This branch implements **Option B** plus the **shared §4.1** package (admission, eligibility, Layer 2 gate, B2 retry). Bee keeps a single claim transaction for payout; it must still learn the new commit signature and the finalize/gate behaviour.
+This branch implements **Option B** plus the **shared §4.1** Redistribution package (admission, eligibility, Layer 2 gate, B2 retry). The §4.1 staking height-min rule is **not** in this PR — `StakeRegistry` is unchanged; that lands with the upcoming staking rewrite. Bee keeps a single claim transaction for payout; it must still learn the new commit signature and the finalize/gate behaviour.
 
 ```text
   Layer 1 — SHARED (§4.1)          ← implemented
@@ -146,15 +145,7 @@ Disagree penalties still sit in the same tx as a successful proof path; full “
 #### Removed / not reintroduced
 
 - Winner-derived `currentMinimumDepth()` — not restored (floor jacking). Near-term: no on-chain floor; eligibility is `depth > height` + proximity. See `MINIMUM_DEPTH_OPTIONS.md`.
-
-### `Staking.sol`
-
-```text
-Before: MIN_STAKE * 2^height checked only on first deposit
-After:  after every manageStake, potentialStake >= MIN_STAKE * 2^height
-```
-
-Zero-deposit height bumps that would leave stake below the new height’s minimum revert `BelowMinimumStake()`.
+- `StakeRegistry` / `manageStake` min-stake-on-height-change — **deferred** to the staking rewrite.
 
 ---
 
@@ -198,33 +189,29 @@ New: redistribution.commit(obfuscatedHash, round, depth)
 - If `claim` emits `WithdrawFailed` or later calls revert `PayoutPending`, call `retryPayout()` (winner or relayer).
 - Do **not** assume failed withdraw left the round unpenalized or fully open for a full `claim` replay.
 
-### 5. Staking / height
-
-- Before raising `height` via `manageStake(nonce, amount, height)`, ensure `potentialStake + amount >= MIN_STAKE * 2^height`.
-- Height-only updates (`amount == 0`) that underfund the new height will revert.
-
-### 6. Eligibility helpers
+### 5. Eligibility helpers
 
 - `isParticipatingInUpcomingRound(owner, depth)` returns `false` if `depth <= height` (does not revert for that case).
 - Local pre-checks should mirror on-chain: maturity (2 rounds), depth, proximity to the correct phase anchor.
 
 ### 7. ABI / bindings
 
-Regenerate Go bindings (or equivalent) from the new `Redistribution` and `StakeRegistry` ABIs. Old 2-arg `commit` will not exist on the new deployment.
+Regenerate Go bindings (or equivalent) from the new `Redistribution` ABI. Old 2-arg `commit` will not exist on the new deployment. `StakeRegistry` is unchanged.
 
-### 8. Operational notes for node operators
+### 6. Operational notes for node operators
 
 - First committer of a new round may pay **finalize gas** for the previous round (O(`MAX_COMMITS`) freezes). Acceptable while K is bounded.
 - A node that committed but was **evicted** must not expect to reveal or win.
 - After a non-reveal freeze, effective stake is zero until the freeze window ends; the freeze also bumps `lastUpdatedBlockNumber`, so the usual two-round wait applies before the next commit.
 - `MAX_COMMITS = 128` means a neighbourhood can be capacity-constrained; higher stake improves admission odds but does not guarantee a slot.
 
-### 9. Out of scope for Bee in this release
+### 7. Out of scope for Bee in this release
 
 - SWIP-49 round-scoped postage / price-after-proofs.
 - SWIP-50 STS-1 proof-before-selection weights / unfinished-commit carry-over.
 - On-chain adaptive depth floor (Option E in `MINIMUM_DEPTH_OPTIONS.md`).
 - Reveal-time hash validity / claim-window timeout for the all-sybil fabricated-hash coalition.
+- `MIN_STAKE * 2^height` on every `manageStake` (staking rewrite).
 
 ---
 
@@ -245,7 +232,6 @@ Regenerate Go bindings (or equivalent) from the new `Redistribution` and `StakeR
 
 - Existing Redistribution suite updated for 3-arg `commit` and new `Committed` args.
 - New `SWIP-51 Option B` block: depth≤height reject, `DepthMismatch`, finalize freezes non-revealers, commit gate auto-finalizes prior round, `admissionPriority` stake effect.
-- Staking: height bump below `MIN_STAKE * 2^height` reverts.
 - Intentionally skipped: bee SOC fixture at depth 0; Stats 1:3 fairness sim (needs depth≥1 remine).
 
 ---
@@ -253,7 +239,6 @@ Regenerate Go bindings (or equivalent) from the new `Redistribution` and `StakeR
 ## Commits on this branch (implementation)
 
 ```text
-40f6a05 fix(staking): enforce MIN_STAKE on every height change
 2a60202 feat(redistribution): implement SWIP-51 Option B
 756e5c0 fix(redistribution): check declaredDepth before wrapCommit match
 f2efa6b test: cover SWIP-51 Option B eligibility, finalize, and gate
@@ -271,11 +256,11 @@ f2efa6b test: cover SWIP-51 Option B eligibility, finalize, and gate
 
 - Implement SWIP-51 §4.1 (MAX_COMMITS, commit-time eligibility, stake-weighted admission, B2 retry) and Layer 2 `finalizeParticipation` with commit gate.
 - Keep single-transaction `claim()` (Option B); defer STS / postage redesign to SWIP-49/50.
-- Breaking Bee API: `commit(..., depth)`; reveal must match declared depth; height changes need full min stake.
+- Breaking Bee API: `commit(..., depth)`; reveal must match declared depth.
 
 **Test plan:**
 
-- [ ] `npx hardhat test test/Redistribution.test.ts test/Staking.test.ts`
+- [ ] `npx hardhat test test/Redistribution.test.ts`
 - [ ] Bee integration: commit with depth, reject depth≤height, reveal match, claim + optional `retryPayout`
 - [ ] Confirm event ABI consumers updated for `Committed` + admission events
 

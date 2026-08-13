@@ -525,13 +525,10 @@ describe('Redistribution', function () {
           errors.commit.outOfDepth
         );
 
-        // Top up and change height to 3 (Staking enforces MIN_STAKE * 2^height).
+        // Change height and check if node is playing
         const sr_node_3 = await ethers.getContract('StakeRegistry', node_3);
-        await mintAndApprove(deployer, node_3, sr_node_3.address, '700000000000000000');
-        await sr_node_3.manageStake(nonce_3, '700000000000000000', height_3_n_2);
-        // The top-up resets the staking maturity clock; wait 2 rounds, then align to a commit phase.
-        await mineNBlocks(roundLength * 2);
-        await startRoundFixture();
+        await sr_node_3.manageStake(nonce_3, 0, height_3_n_2);
+        await mineNBlocks(3 * phaseLength);
         await mineToNode(redistribution, 3);
 
         expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -544,15 +541,13 @@ describe('Redistribution', function () {
 
         expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash2);
 
-        const expectedStake = await sr_node_3.nodeEffectiveStake(node_3);
-
         await mineNBlocks(phaseLength);
         await r_node_3.reveal(depth_3, hash_3, reveal_nonce_3);
 
         expect((await r_node_3.currentReveals(0)).hash).to.be.eq(hash_3);
         expect((await r_node_3.currentReveals(0)).overlay).to.be.eq(overlay_3);
         expect((await r_node_3.currentReveals(0)).owner).to.be.eq(node_3);
-        expect((await r_node_3.currentReveals(0)).stake).to.be.eq(expectedStake);
+        expect((await r_node_3.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_3);
         expect((await r_node_3.currentReveals(0)).depth).to.be.eq(parseInt(depth_3));
       });
 
@@ -586,9 +581,7 @@ describe('Redistribution', function () {
       it('should create a commit with successful reveal if the overlay is within the reported depth with height 2', async function () {
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
         const sr_node_2 = await ethers.getContract('StakeRegistry', node_2);
-        // Staking now enforces MIN_STAKE * 2^height, so top up to MIN_STAKE * 4 before moving to height 2.
-        await mintAndApprove(deployer, node_2, sr_node_2.address, '300000000000000000');
-        await sr_node_2.manageStake(nonce_2, '300000000000000000', height_2_n_2);
+        await sr_node_2.manageStake(nonce_2, 0, height_2_n_2);
 
         await mineToNode(redistribution, 2);
         expect(await redistribution.currentPhaseCommit()).to.be.true;
@@ -603,8 +596,6 @@ describe('Redistribution', function () {
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
-        const expectedStake = await sr_node_2.nodeEffectiveStake(node_2);
-
         await mineNBlocks(phaseLength);
 
         await r_node_2.reveal(depth_2, hash_2, reveal_nonce_2);
@@ -612,7 +603,7 @@ describe('Redistribution', function () {
         expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
         expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
         expect((await r_node_2.currentReveals(0)).owner).to.be.eq(node_2);
-        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(expectedStake);
+        expect((await r_node_2.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_2_n_2);
         expect((await r_node_2.currentReveals(0)).depth).to.be.eq(parseInt(depth_2));
       });
 
