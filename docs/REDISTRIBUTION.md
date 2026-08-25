@@ -1,6 +1,6 @@
 # Redistribution Contract
 
-This overview matches the current `Redistribution.sol` on `feat/swip-51-option-b`. Bee-facing API and behaviour: [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md).
+This overview matches the current `Redistribution.sol`. Bee-facing API: [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md). Attack catalog: [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md).
 
 ## Overview
 
@@ -578,14 +578,14 @@ bool eligible = Redistribution(redis).isParticipatingInUpcomingRound(
 4. **Proof Verification**: Comprehensive validation prevents fake claims
 5. **Random Selection**: Weighted fairly by stake density
 6. **Truth Selection**: Stake-weighted lottery over exact `(hash, depth)` tuples, not majority vote or correctness check
-7. **Sybil / claim gas griefing**: `MAX_COMMITS = 128` bounds loops; see [SPAM_GRIEFING.md](./SPAM_GRIEFING.md)
+7. **Sybil / claim gas griefing**: `MAX_COMMITS = 128` bounds loops; catalog in [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md)
 8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()`; the next round’s first `commit` freezes non-revealers
 9. **Open caller on `claim()`**: Anyone can submit; economic incentive is on `winner.owner` to provide proofs
 
 ## Related Documentation
 
-- [SPAM_GRIEFING.md](./SPAM_GRIEFING.md): sybil spam, claim gas griefing, planned mitigations
-- [MINIMUM_DEPTH_OPTIONS.md](./MINIMUM_DEPTH_OPTIONS.md): depth floor policy options
+- [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md): attack catalog and mitigations
+- [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md): Bee / client migration for this implementation
 
 ## Related Contracts
 

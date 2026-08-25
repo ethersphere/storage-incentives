@@ -11,13 +11,7 @@ This directory contains comprehensive documentation for the Swarm storage incent
 - **[PriceOracle](./PRICE_ORACLE.md)** - Dynamic price oracle system
 - **[StakeRegistry](./STAKING.md)** - Staking registry for node operators
 - **[Redistribution](./REDISTRIBUTION.md)** - Schelling game for reserve commitment
-- **[SWIP-51 Option B](./SWIP-51-OPTION-B.md)** - Pre-PR change note: redistribution mitigations + Bee migration
-
-### Security / design notes
-
-- **[Spam & griefing](./SPAM_GRIEFING.md)** - Attack catalog context and staged finalization notes
-- **[Admission comparison](./ADMISSION_COMPARISON.md)** - Proximity vs stake-weighted bounded admission
-- **[Minimum depth options](./MINIMUM_DEPTH_OPTIONS.md)** - Depth-floor policy options
+- **[SWIP-51 Option B](./SWIP-51-OPTION-B.md)** - Bee migration note for the current Redistribution changes ([spec](https://github.com/ethersphere/swip-51/blob/main/swip-51.md))
 
 ### Deployment
 
