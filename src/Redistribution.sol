@@ -362,7 +362,7 @@ contract Redistribution is AccessControl, Pausable {
         _ensurePriorRoundsFinalized(cr);
 
         // 4. If we are in a new commit phase, clear the previous round's commits
-        // and set the currentCommitRound to be the current one. 
+        // and set the currentCommitRound to be the current one.
         if (cr != currentCommitRound) {
             delete currentCommits;
             currentCommitRound = cr;
@@ -408,7 +408,13 @@ contract Redistribution is AccessControl, Pausable {
         // Early exit if the commit set is not full.
         if (commitsArrayLength < MAX_COMMITS) {
             currentCommits.push(newCommit);
-            emit CommitSelected(roundNumber, newCommit.overlay, newCommit.height, newCommit.declaredDepth, newCommit.priority);
+            emit CommitSelected(
+                roundNumber,
+                newCommit.overlay,
+                newCommit.height,
+                newCommit.declaredDepth,
+                newCommit.priority
+            );
             return true;
         }
 
@@ -440,10 +446,15 @@ contract Redistribution is AccessControl, Pausable {
 
         emit CommitEvicted(roundNumber, worstOverlay);
         currentCommits[worstIndex] = newCommit;
-        emit CommitSelected(roundNumber, newCommit.overlay, newCommit.height, newCommit.declaredDepth, newCommit.priority);
+        emit CommitSelected(
+            roundNumber,
+            newCommit.overlay,
+            newCommit.height,
+            newCommit.declaredDepth,
+            newCommit.priority
+        );
         return true;
     }
-
 
     /**
      * @notice Ensures the previous participation rounds are finalized before a new commit round begins.
