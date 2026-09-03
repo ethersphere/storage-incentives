@@ -1,0 +1,15 @@
+testMode: property
+
+# PR smoke campaign: reduced budget so the job finishes inside a strict timeout.
+seqLen: 80
+testLimit: 4000
+shrinkLimit: 200
+
+# Same round-length bound as the default config so commit → reveal remains reachable.
+maxTimeDelay: 0
+maxBlockDelay: 152
+
+corpusDir: echidna/corpus
+coverage: false
+workers: 2
+format: text

@@ -125,10 +125,33 @@ yarn echidna   # all harnesses; needs Docker
 | `seqLen` | 320 | `ECHIDNA_SEQ_LEN` |
 | `maxBlockDelay` | 152 | — |
 | workers | yaml | `ECHIDNA_WORKERS` |
+| seed | random | `ECHIDNA_SEED` |
+| timeout (seconds) | none | `ECHIDNA_TIMEOUT` |
 
 Single harness: `ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna` (also: `EchidnaStakeRegistryHarness`, `EchidnaPriceOracleHarness`, `EchidnaPostageStampHarness`, `EchidnaRedistributionClaimHarness`, `EchidnaSystemHarness`).
 
-Config: `echidna/echidna.yaml` (`ECHIDNA_CONFIG` to override). Corpus/coverage: `echidna/corpus/by-contract/<HarnessName>/` (gitignored). Crytic: `crytic-export/`.
+Config: `echidna/echidna.yaml` (`ECHIDNA_CONFIG` to override). Corpus/coverage: `echidna/corpus/by-contract/<HarnessName>/` (gitignored). Logs: `echidna/logs/` (gitignored). Crytic: `crytic-export/`.
+
+## CI
+
+Workflow: [`.github/workflows/echidna.yml`](../.github/workflows/echidna.yml).
+
+| Job | When | Budget | Timeout |
+|-----|------|--------|---------|
+| Fast | Every pull request | `echidna/echidna.ci.fast.yaml` (`testLimit` 4000, `seqLen` 80) | 20 minutes per harness (Echidna `--timeout` 900s) |
+| Nightly | 03:00 UTC + manual `workflow_dispatch` | `echidna/echidna.ci.nightly.yaml` (`testLimit` 100000, `seqLen` 320), seeds `1 2 3` | 180 minutes per harness |
+
+Both jobs run one GitHub Actions matrix entry per harness so a failure names the broken invariant surface. On failure the workflow uploads `echidna/logs/`, corpus reproducers under `echidna/corpus/by-contract/`, and `crytic-export/` as artifacts.
+
+Reproduce a CI counterexample locally:
+
+```bash
+ECHIDNA_CONFIG=echidna/echidna.ci.fast.yaml \
+ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness \
+yarn echidna
+```
+
+Nightly campaigns only run automatically after this workflow is on the repository default branch (`master`). Until then, trigger **Echidna** via `workflow_dispatch`.
 
 ## Extend
 
