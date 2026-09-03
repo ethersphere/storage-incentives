@@ -47,8 +47,9 @@ jobs:
       - name: Run Echidna
         env:
           ECHIDNA_CONTRACT: ${{ matrix.contract }}
-          # Stop cleanly before the 180-minute job timeout (setup + compile need headroom).
-          ECHIDNA_TIMEOUT: '10200'
+          # 9000s leaves ~30 min for checkout, yarn, compile, and image pull
+          # inside the 180-minute job cap so a timeout still uploads artifacts.
+          ECHIDNA_TIMEOUT: '9000'
         run: yarn echidna
 
       - name: Upload reproducers and logs
