@@ -119,7 +119,7 @@ Harness layout, properties, and troubleshooting are documented in [echidna/READM
 yarn echidna
 ```
 
-CI runs Echidna on every pull request. See [echidna/README.md](./echidna/README.md#ci).
+CI runs the full Echidna campaign on every pull request. See [echidna/README.md](./echidna/README.md#ci).
 
 ## Run
 

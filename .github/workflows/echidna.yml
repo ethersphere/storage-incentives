@@ -19,7 +19,7 @@ jobs:
   echidna:
     name: Echidna / ${{ matrix.contract }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -46,9 +46,9 @@ jobs:
 
       - name: Run Echidna
         env:
-          ECHIDNA_CONFIG: echidna/echidna.ci.yaml
           ECHIDNA_CONTRACT: ${{ matrix.contract }}
-          ECHIDNA_TIMEOUT: '900'
+          # Stop cleanly before the 180-minute job timeout (setup + compile need headroom).
+          ECHIDNA_TIMEOUT: '10200'
         run: yarn echidna
 
       - name: Upload reproducers and logs

@@ -136,12 +136,11 @@ Config: `echidna/echidna.yaml` (`ECHIDNA_CONFIG` to override). Corpus/coverage: 
 
 Workflow: [`.github/workflows/echidna.yml`](../.github/workflows/echidna.yml). Runs on every pull request (and manual `workflow_dispatch`).
 
-One matrix job per harness, using `echidna/echidna.ci.yaml` (`testLimit` 4000, `seqLen` 80) with a 20-minute job timeout and Echidna `--timeout` 900s. On failure the workflow uploads `echidna/logs/`, corpus reproducers under `echidna/corpus/by-contract/`, and `crytic-export/` as artifacts.
+One matrix job per harness, using the same campaign as local `yarn echidna` (`echidna/echidna.yaml`: `testLimit` 60000, `seqLen` 320). Each job has a 180-minute cap and Echidna `--timeout` 10200s so the fuzzer stops cleanly. On failure the workflow uploads `echidna/logs/`, corpus reproducers under `echidna/corpus/by-contract/`, and `crytic-export/` as artifacts.
 
 Reproduce a CI counterexample locally:
 
 ```bash
-ECHIDNA_CONFIG=echidna/echidna.ci.yaml \
 ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness \
 yarn echidna
 ```
