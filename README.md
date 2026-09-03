@@ -119,7 +119,7 @@ Harness layout, properties, and troubleshooting are documented in [echidna/READM
 yarn echidna
 ```
 
-CI runs a fast Echidna campaign on pull requests and a deeper multi-seed campaign nightly. See [echidna/README.md](./echidna/README.md#ci).
+CI runs Echidna on every pull request. See [echidna/README.md](./echidna/README.md#ci).
 
 ## Run
 

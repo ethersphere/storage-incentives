@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: echidna-fast-${{ github.event.pull_request.number || github.ref }}
+  group: echidna-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -16,8 +16,8 @@ env:
   ECHIDNA_IMAGE: ghcr.io/crytic/echidna/echidna:v2.3.1
 
 jobs:
-  echidna-fast:
-    name: Echidna (fast) / ${{ matrix.contract }}
+  echidna:
+    name: Echidna / ${{ matrix.contract }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -44,9 +44,9 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Run Echidna (fast)
+      - name: Run Echidna
         env:
-          ECHIDNA_CONFIG: echidna/echidna.ci.fast.yaml
+          ECHIDNA_CONFIG: echidna/echidna.ci.yaml
           ECHIDNA_CONTRACT: ${{ matrix.contract }}
           ECHIDNA_TIMEOUT: '900'
         run: yarn echidna
@@ -55,7 +55,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: echidna-fast-${{ matrix.contract }}
+          name: echidna-${{ matrix.contract }}
           path: |
             echidna/logs/
             echidna/corpus/by-contract/

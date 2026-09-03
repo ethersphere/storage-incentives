@@ -1,6 +1,6 @@
 testMode: property
 
-# PR smoke campaign: reduced budget so the job finishes inside a strict timeout.
+# PR campaign: reduced budget so the job finishes inside a strict timeout.
 seqLen: 80
 testLimit: 4000
 shrinkLimit: 200
