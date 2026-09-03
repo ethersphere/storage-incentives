@@ -125,10 +125,26 @@ yarn echidna   # all harnesses; needs Docker
 | `seqLen` | 320 | `ECHIDNA_SEQ_LEN` |
 | `maxBlockDelay` | 152 | — |
 | workers | yaml | `ECHIDNA_WORKERS` |
+| seed | random | `ECHIDNA_SEED` |
+| timeout (seconds) | none | `ECHIDNA_TIMEOUT` |
 
 Single harness: `ECHIDNA_CONTRACT=EchidnaRedistributionHarness yarn echidna` (also: `EchidnaStakeRegistryHarness`, `EchidnaPriceOracleHarness`, `EchidnaPostageStampHarness`, `EchidnaRedistributionClaimHarness`, `EchidnaSystemHarness`).
 
-Config: `echidna/echidna.yaml` (`ECHIDNA_CONFIG` to override). Corpus/coverage: `echidna/corpus/by-contract/<HarnessName>/` (gitignored). Crytic: `crytic-export/`.
+Config: `echidna/echidna.yaml` (`ECHIDNA_CONFIG` to override). Corpus/coverage: `echidna/corpus/by-contract/<HarnessName>/` (gitignored). Logs: `echidna/logs/` (gitignored). Crytic: `crytic-export/`.
+
+## CI
+
+Workflow: [`.github/workflows/echidna.yml`](../.github/workflows/echidna.yml). Runs on every pull request (and manual `workflow_dispatch`).
+
+One matrix job per harness, using the same campaign as local `yarn echidna` (`echidna/echidna.yaml`: `testLimit` 60000, `seqLen` 320). Each job has a 180-minute cap and Echidna `--timeout` 9000s so setup plus fuzzing fit under the GitHub Actions limit and a timeout still uploads artifacts. On failure the workflow uploads `echidna/logs/`, corpus reproducers under `echidna/corpus/by-contract/`, and `crytic-export/` as artifacts.
+
+CI does not pin `ECHIDNA_SEED` (a new seed each run). To replay a CI counterexample, copy `Seed: N` from the uploaded log and pass it locally:
+
+```bash
+ECHIDNA_CONTRACT=EchidnaStakeRegistryHarness \
+ECHIDNA_SEED=N \
+yarn echidna
+```
 
 ## Extend
 
