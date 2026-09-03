@@ -1,25 +1,27 @@
-name: Echidna
+name: Echidna nightly
 
 on:
-  pull_request:
+  schedule:
+    # Deep campaign (03:00 UTC). Scheduled workflows only run from the default branch.
+    - cron: '0 3 * * *'
   workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
-  group: echidna-fast-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: echidna-nightly-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   NODEJS_VERSION: '20'
   ECHIDNA_IMAGE: ghcr.io/crytic/echidna/echidna:v2.3.1
 
 jobs:
-  echidna-fast:
-    name: Echidna (fast) / ${{ matrix.contract }}
+  echidna-nightly:
+    name: Echidna (nightly) / ${{ matrix.contract }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -44,21 +46,29 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Run Echidna (fast)
+      - name: Run Echidna (nightly, 3 seeds)
         env:
-          ECHIDNA_CONFIG: echidna/echidna.ci.fast.yaml
+          ECHIDNA_CONFIG: echidna/echidna.ci.nightly.yaml
           ECHIDNA_CONTRACT: ${{ matrix.contract }}
-          ECHIDNA_TIMEOUT: '900'
-        run: yarn echidna
+          # Per-seed cap so 3 seeds plus compile fit inside the 180-minute job timeout.
+          ECHIDNA_TIMEOUT: '3000'
+        run: |
+          status=0
+          for seed in 1 2 3; do
+            echo "::group::Echidna seed ${seed}"
+            ECHIDNA_SEED="${seed}" ECHIDNA_LOG_DIR="echidna/logs/seed-${seed}" yarn echidna || status=1
+            echo "::endgroup::"
+          done
+          exit "${status}"
 
       - name: Upload reproducers and logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: echidna-fast-${{ matrix.contract }}
+          name: echidna-nightly-${{ matrix.contract }}
           path: |
             echidna/logs/
             echidna/corpus/by-contract/
             crytic-export/
           if-no-files-found: warn
-          retention-days: 14
+          retention-days: 30

@@ -134,7 +134,7 @@ Config: `echidna/echidna.yaml` (`ECHIDNA_CONFIG` to override). Corpus/coverage: 
 
 ## CI
 
-Workflow: [`.github/workflows/echidna.yml`](../.github/workflows/echidna.yml).
+Workflows: [`.github/workflows/echidna.yml`](../.github/workflows/echidna.yml) (PRs) and [`.github/workflows/echidna-nightly.yml`](../.github/workflows/echidna-nightly.yml) (schedule).
 
 | Job | When | Budget | Timeout |
 |-----|------|--------|---------|
