@@ -6,9 +6,6 @@ const func: DeployFunction = async function ({ deployments, network }) {
   const { log, get } = deployments;
 
   if (process.env.TESTNET_ETHERSCAN_KEY) {
-    const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
-
-    // Verify TestNet token
     const token = await get('TestToken');
     const argsToken = ['sBZZ', 'sBZZ', '1250000000000000000000000'];
 
@@ -16,36 +13,38 @@ const func: DeployFunction = async function ({ deployments, network }) {
     await verify(token.address, argsToken);
     log('----------------------------------------------------');
 
-    // Verify postageStamp
     const postageStamp = await get('PostageStamp');
-    const argsStamp = [token.address, 16];
-
-    log('PostageStamp');
-    await verify(postageStamp.address, argsStamp);
+    log('PostageStamp implementation');
+    if (postageStamp.implementation) {
+      await verify(postageStamp.implementation, []);
+    }
     log('----------------------------------------------------');
 
-    // Verify oracle
     const priceOracle = await get('PriceOracle');
-    const argsOracle = [postageStamp.address];
-
-    log('PriceOracle');
-    await verify(priceOracle.address, argsOracle);
+    log('PriceOracle implementation');
+    if (priceOracle.implementation) {
+      await verify(priceOracle.implementation, []);
+    }
     log('----------------------------------------------------');
 
-    // Verify staking
     const staking = await get('StakeRegistry');
-    const argStaking = [token.address, swarmNetworkID, priceOracle.address];
-
-    log('Staking');
-    await verify(staking.address, argStaking);
+    log('StakeRegistry implementation');
+    if (staking.implementation) {
+      await verify(staking.implementation, []);
+    }
     log('----------------------------------------------------');
 
-    // Verify redistribution
     const redistribution = await get('Redistribution');
-    const argRedistribution = [staking.address, postageStamp.address, priceOracle.address];
+    log('Redistribution implementation');
+    if (redistribution.implementation) {
+      await verify(redistribution.implementation, []);
+    }
+    log('----------------------------------------------------');
 
-    log('Redistribution');
-    await verify(redistribution.address, argRedistribution);
+    const registryRouter = await get('VersionedRegistryRouter');
+    const proxyAdmin = await get('DefaultProxyAdmin');
+    log('VersionedRegistryRouter');
+    await verify(registryRouter.address, [proxyAdmin.address]);
     log('----------------------------------------------------');
   }
 };

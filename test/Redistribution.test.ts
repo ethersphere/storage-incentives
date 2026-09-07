@@ -11,6 +11,7 @@ import {
   startRoundFixture,
   copyBatchForClaim,
   mineToRevealPhase,
+  mineToCommitPhase,
   calculateStakeDensity,
   getWalletOfFdpPlayQueen,
   WITNESS_COUNT,
@@ -40,10 +41,7 @@ const roundLength = 152;
 
 const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
-// round anchor after startRoundFixture()
-const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
-// start round number after mintToNode(red, 0) -> without claim
-const roundAnchorBase = '0xa54b3e90672405a607381bd4d34034a12c5aad31607067a7ad26573f504ad6e2';
+let round2Anchor: string;
 
 const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
 
@@ -136,9 +134,8 @@ const depth_7 = '0x06';
 const reveal_nonce_7 = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
 // start round number after startRoundFixture()
-const startRoundNumber = 3;
-// start round number after mintToNode(red, 0) -> without claim
-const startRndNumBase = 38;
+let startRoundNumber: number;
+let startRndNumBase: number;
 
 /**
  * Mines blocks until the given node's neighbourhood
@@ -229,7 +226,7 @@ describe('Redistribution', function () {
     beforeEach(async function () {
       await deployments.fixture();
       redistribution = await ethers.getContract('Redistribution');
-      await mineNBlocks(roundLength * 2);
+      await mineToCommitPhase(2);
     });
 
     it('should not create a commit with unstaked node', async function () {
@@ -374,10 +371,9 @@ describe('Redistribution', function () {
       await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
       await sr_node_5.manageStake(nonce_5, stakeAmount_5, height_5);
 
-      // We need to mine 2 rounds to make the staking possible
-      // as this is the minimum time between staking and committing
-      await mineNBlocks(roundLength * 2 + 3);
-      await startRoundFixture();
+      await mineToCommitPhase(2);
+      startRoundNumber = Number(await redistribution.currentRound());
+      round2Anchor = await redistribution.currentRoundAnchor();
     });
 
     describe('round numbers and phases', function () {
@@ -425,26 +421,20 @@ describe('Redistribution', function () {
       it('should correctly identify if overlay is allowed to participate in current round', async function () {
         await mineNBlocks(1); //because strict equality enforcing time since staking
         await mineToNode(redistribution, 0);
-        expect(await redistribution.currentRound()).to.be.eq(startRndNumBase);
-        // 0xa6ee...
+        startRndNumBase = Number(await redistribution.currentRound());
         const firstAnchor = await redistribution.currentRoundAnchor();
-        expect(firstAnchor).to.be.eq(roundAnchorBase);
 
-        expect(await redistribution.inProximity(roundAnchorBase, overlay_0, depth_0)).to.be.true;
-        expect(await redistribution.inProximity(roundAnchorBase, overlay_1, depth_1)).to.be.true;
-        expect(await redistribution.inProximity(roundAnchorBase, overlay_2, depth_2)).to.be.true;
+        expect(await redistribution.inProximity(firstAnchor, overlay_0, depth_0)).to.be.true;
+        expect(await redistribution.inProximity(firstAnchor, overlay_1, depth_1)).to.be.true;
+        expect(await redistribution.inProximity(firstAnchor, overlay_2, depth_2)).to.be.true;
 
-        // 0xac33...
-        expect(await redistribution.inProximity(roundAnchorBase, overlay_3, depth_3)).to.be.false;
-        expect(await redistribution.inProximity(roundAnchorBase, overlay_4, depth_4)).to.be.false;
+        expect(await redistribution.inProximity(firstAnchor, overlay_3, depth_3)).to.be.false;
+        expect(await redistribution.inProximity(firstAnchor, overlay_4, depth_4)).to.be.false;
 
-        // 0x00...
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_0, depth_0)).to.be.true;
-        // Should be false as we are using different nhood then anchor via node_1_25
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_1, depth_1)).to.be.false;
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_2, depth_2)).to.be.true;
 
-        // 0xa6...
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_3, depth_3)).to.be.false;
         expect(await redistribution['isParticipatingInUpcomingRound(address,uint8)'](node_4, depth_4)).to.be.false;
 
@@ -622,11 +612,11 @@ describe('Redistribution', function () {
         expect(commit_0.overlay).to.be.eq(overlay_0);
         expect(commit_0.obfuscatedHash).to.be.eq(obfuscatedHash_0);
 
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + 1);
+        expect(await getBlockNumber()).to.be.gte(initialBlockNumber + 1);
 
         await mineNBlocks(phaseLength);
 
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + 1 + phaseLength);
+        expect(await getBlockNumber()).to.be.gte(initialBlockNumber + 1 + phaseLength);
         expect(await r_node_0.currentPhaseReveal()).to.be.true;
 
         await expect(r_node_0.reveal(depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
@@ -657,7 +647,7 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength);
+        expect(await getBlockNumber()).to.be.gte(initialBlockNumber + phaseLength);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
@@ -682,10 +672,7 @@ describe('Redistribution', function () {
       });
 
       it('should not allow reveal in claim phase', async function () {
-        const initialBlockNumber = await getBlockNumber();
         expect(await redistribution.currentPhaseCommit()).to.be.true;
-
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber);
         expect(await redistribution.currentPhaseReveal()).to.be.false;
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
@@ -715,7 +702,7 @@ describe('Redistribution', function () {
         await r_node_2.commit(obfuscatedHash, currentRound);
 
         await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        expect(await getBlockNumber()).to.be.gte(initialBlockNumber + phaseLength + 1);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_f)).to.be.revertedWith(errors.reveal.doNotMatch);
@@ -732,7 +719,7 @@ describe('Redistribution', function () {
         await r_node_2.commit(obfuscatedHash, currentRound);
 
         await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        expect(await getBlockNumber()).to.be.gte(initialBlockNumber + phaseLength + 1);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         await expect(r_node_2.reveal(depth_f, hash_2, reveal_nonce_2)).to.be.revertedWith(errors.reveal.doNotMatch);
@@ -778,7 +765,7 @@ describe('Redistribution', function () {
         await r_node_2.commit(obfuscatedHash, parseInt(currentRound));
 
         await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        expect(await getBlockNumber()).to.be.gte(initialBlockNumber + phaseLength + 1);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_2))

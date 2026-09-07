@@ -1,22 +1,20 @@
 import { DeployFunction } from 'hardhat-deploy/types';
+import { ethers } from 'hardhat';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
-  const { get, read, execute, log } = deployments;
+  const { get, execute, log, read } = deployments;
   const { deployer } = await getNamedAccounts();
 
-  log('Setting Oracles roles');
+  log('Setting Oracle roles');
 
-  const adminRole = await read('PriceOracle', 'DEFAULT_ADMIN_ROLE');
+  const adminRole = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
   if (await read('PriceOracle', 'hasRole', adminRole, deployer)) {
+    const updaterRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('PRICE_UPDATER_ROLE'));
     const redisAddress = (await get('Redistribution')).address;
-    const updaterRole = await read('PriceOracle', 'PRICE_UPDATER_ROLE');
-    // We need to do this here and not in constructor as oracle is deployed before redis in order of deployment so it would be old
-    // redis assigned, can't be solved with calculating the contract address in front as we dont know the nonce of redis,
-    // depends on if there will be a new staking contract or not
     await execute('PriceOracle', { from: deployer }, 'grantRole', updaterRole, redisAddress);
   } else {
-    log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN THE REDISTRIBUTION ROLE, PLEASE ASSIGN IT OR GRANT ROLE MANUALLY');
+    log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN ROLES, PLEASE GRANT ROLE MANUALLY');
   }
 
   log('----------------------------------------------------');

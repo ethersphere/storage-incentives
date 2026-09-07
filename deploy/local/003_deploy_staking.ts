@@ -7,12 +7,20 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const swarmNetworkID = networkConfig[network.name]?.swarmNetworkId;
 
   const token = await get('TestToken');
-  const oracleAddress = (await get('PriceOracle')).address;
+  const oracle = await get('PriceOracle');
 
-  const args = [token.address, swarmNetworkID, oracleAddress];
   await deploy('StakeRegistry', {
     from: deployer,
-    args: args,
+    proxy: {
+      proxyContract: 'TransparentUpgradeableProxy',
+      viaAdminContract: 'DefaultProxyAdmin',
+      execute: {
+        init: {
+          methodName: 'initialize',
+          args: [token.address, swarmNetworkID, oracle.address],
+        },
+      },
+    },
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 1,
   });

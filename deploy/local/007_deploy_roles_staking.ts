@@ -1,14 +1,15 @@
 import { DeployFunction } from 'hardhat-deploy/types';
+import { ethers } from 'hardhat';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
-  const { get, read, execute, log } = deployments;
+  const { get, execute, log } = deployments;
   const { deployer } = await getNamedAccounts();
 
   log('Setting Staking roles');
 
   const redisAddress = (await get('Redistribution')).address;
 
-  const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
+  const redisRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
   await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
   log('----------------------------------------------------');
 };
