@@ -1,50 +1,63 @@
-# SWIP-51 Option B — Redistribution changes
+# SWIP-51 Option B — what actually landed in this contract
 
-Spec: [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md)  
-Claim path: **Option B** — keep a single atomic `claim()`, ship shared §4.1 + Layer 2 now; leave B1 / STS to **SWIP-49 + SWIP-50**.
+Bee / reviewer note for **this repo**. Attack catalog and design options stay in [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md). Contract overview: [REDISTRIBUTION.md](./REDISTRIBUTION.md).
 
-This is the Bee / implementer note for what landed in this repo. The attack catalog and design options stay in SWIP-51 (including [admission comparison](https://github.com/ethersphere/swip-51/blob/main/docs/ADMISSION_COMPARISON.md) and [depth-floor options](https://github.com/ethersphere/swip-51/blob/main/docs/MINIMUM_DEPTH_OPTIONS.md)).
+Claim path: **Option B** — still one `claim()`. Shared admission + automatic participation close ship now. Proof-before-selection (B1 / STS) waits for **SWIP-49 + SWIP-50**.
 
-Contract overview: [REDISTRIBUTION.md](./REDISTRIBUTION.md).
+## Read this first
 
-## Summary
+Bee still calls the same three functions: `commit` → `reveal` → `claim`. There is **no new public function** to “finalize” a round.
 
-| Area | Change |
-|------|--------|
-| Claim UX | Still one `claim(proofs…)` call (Option B). No `verifyWinner` / `settleRound`. |
-| Participation | Layer 2 close inside `claim()` and the **commit gate** on the next round’s first `commit`. |
-| Commit API | **Breaking:** `commit(obfuscatedHash, round, depth)` — depth declared and proximity checked at commit. |
-| Cap | `MAX_COMMITS = 128` with stake-weighted online admission (lower priority wins). |
-| Depth floor | Winner-derived `currentMinimumDepth()` remains **removed** (no floor jacking). |
-| Payout | Failed pot withdraw reverts the whole `claim()` (no pay, no claim). Replay `claim()` if it was transient. |
-| Deferred | Proof-before-selection / round-scoped postage (SWIP-49/50). Truth-poison coalition worst case still open. `StakeRegistry` height-min is not in this PR. |
+| SWIP-51 name | In this contract? | What Bee does |
+|--------------|-------------------|---------------|
+| `commit(hash, round, depth)` | **Yes — new ABI** | Call this. Depth is now required. |
+| `reveal` / `claim` | Yes — same names | Still call these. Reveal depth must match commit. |
+| `finalizeParticipation(round)` | **No public function** | Internal `_finalizeParticipation`. Runs automatically from `claim()` and from the **next round’s first `commit()`**. Do not look for it on the ABI. |
+| `verifyWinner` / `settleRound` | **Not here** | Option A only. Claim stays one tx. |
+| `retryPayout` | **Not here** | If withdraw fails, replay `claim()` in the same claim phase. |
 
-## Round lifecycle
+## What is new vs not
+
+### New (this PR)
+
+- **`commit(obfuscatedHash, round, depth)`** — breaking. Depth is declared here; proximity is checked at commit against the **commit-phase** anchor; `depth > height` is required.
+- **Cap `MAX_COMMITS = 128`** — stake-weighted admission (lower `admissionPriority` wins). Watch `CommitSelected` / `CommitEvicted` / `CommitRejected`.
+- **`Committed` event** now includes `depth`.
+- **Automatic participation close** — first `commit` of round R+1 freezes non-revealers from R if `claim()` never ran. Zero-reveal rounds: `claim()` reverts `NoReveals()`; the next `commit` still freezes everyone who committed and did not reveal.
+- **Failed pot withdraw reverts the whole `claim()`** — no pay, no claim. Replay `claim()`.
+
+### Unchanged
+
+- Still one `claim(entryProof1, entryProof2, entryProofLast)`.
+- `reveal(depth, hash, nonce)` name and proof-of-commit flow.
+- `StakeRegistry` ABI.
+
+### Not in this PR
+
+- Public `finalizeParticipation`, `verifyWinner`, `settleRound`.
+- Proof-before-selection / round-scoped postage (SWIP-49/50).
+- All-sybil same-fake-hash coalition (still open).
+- `StakeRegistry` min-stake-on-height-change.
+
+## Round lifecycle (what the contract does for you)
 
 ```text
 Round R commit
-  → first commit in R may finalize R−1 (gate)
-  → eligibility + stake-weighted admission (≤ MAX_COMMITS)
+  → if R−1 is still open, this tx finalizes it (freeze non-revealers)
+  → then admit into R (eligibility + MAX_COMMITS)
 
 Round R reveal
   → depth must equal declaredDepth
-  → proximity re-checked against reveal anchor
+  → proximity re-checked against the reveal anchor
 
-Round R claim
-  → _finalizeParticipation(R) if not done
-      • freeze all non-revealers (uses declaredDepth)
-      • if reveals exist: store tentative truth + winner + redundancy
-  → claim(proofs):
-      • verify proofs against stored winner
-      • apply disagree penalties
-      • adjust oracle
-      • withdraw pot — if this reverts, the whole claim rolls back
+Round R claim          (optional — someone may skip it)
+  → same internal finalize if not done yet
+  → verify proofs → disagree penalties → oracle → withdraw
+  → if withdraw reverts, the whole claim rolls back
 
-Round R+1 commit
-  → must finalize R if still open (gate), then admit into R+1
+Round R+1 first commit
+  → if R never got a successful claim, this tx finalizes R, then admits into R+1
 ```
-
-Zero-reveal rounds: `claim()` reverts `NoReveals()`. The next round’s first `commit` freezes every admitted non-revealer, marks participation closed, and the pot carries.
 
 ## Breaking API (`Redistribution.sol`)
 
@@ -58,9 +71,9 @@ Zero-reveal rounds: `claim()` reverts `NoReveals()`. The next round’s first `c
 | `Committed(round, overlay, height)` | `Committed(round, overlay, height, depth)` |
 | Failed `withdraw` still left round “done” | Failed withdraw reverts `claim()`. No `retryPayout`. |
 
-Notable helpers / events: `admissionPriority` (lower is better), `participationFinalized`, `CommitSelected` / `CommitEvicted` / `CommitRejected`. `CommitRejected` does **not** revert the tx (so a prior-round finalize in the same tx still sticks).
-
 Admission: eligible commits enter until `length == MAX_COMMITS`; when full, replace the worst slot only if the newcomer is strictly better. Weight is snapshotted effective stake; depth/proximity are eligibility only. `MAX_COMMITS = 128` is a placeholder until Gnosis fork benchmarks (see SWIP-51).
+
+`CommitRejected` does **not** revert the tx (so a prior-round freeze in the same tx still sticks).
 
 ## What Bee must change
 
@@ -91,7 +104,7 @@ If this node is the **first committer of a new round** after a skipped or failed
 ### 3. Claim
 
 - Still one `claim(entryProof1, entryProof2, entryProofLast)` with proofs for the **stored winner**.
-- No `finalizeParticipation` and no `retryPayout`. If withdraw reverts, replay **`claim()`** in the same claim phase.
+- Do not wait for a `finalizeParticipation` tx — there isn’t one. If withdraw reverts, replay **`claim()`** in the same claim phase.
 - Skipped or failed claims are closed by the next round’s first `commit`.
 
 ### 4. Eligibility / ABI
