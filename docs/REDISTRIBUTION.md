@@ -579,7 +579,7 @@ bool eligible = Redistribution(redis).isParticipatingInUpcomingRound(
 5. **Random Selection**: Weighted fairly by stake density
 6. **Truth Selection**: Stake-weighted lottery over exact `(hash, depth)` tuples, not majority vote or correctness check
 7. **Sybil / claim gas griefing**: `MAX_COMMITS = 128` bounds loops; catalog in [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md)
-8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()`; the next round’s first `commit` freezes non-revealers
+8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()`; the next round’s first `commit` freezes non-revealers at last winner depth (floor `MIN_NONREVEAL_FREEZE_DEPTH` if none)
 9. **Open caller on `claim()`**: Anyone can submit; economic incentive is on `winner.owner` to provide proofs
 
 ## Related Documentation

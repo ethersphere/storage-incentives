@@ -23,7 +23,7 @@ Bee would still call the same three functions: `commit` → `reveal` → `claim`
 - **`commit(obfuscatedHash, round, depth)`** — breaking. Depth is declared here; proximity is checked at commit against the **commit-phase** anchor; `depth > height` is required.
 - **Cap `MAX_COMMITS = 128`** — stake-weighted admission (lower `admissionPriority` wins). Watch `CommitSelected` / `CommitEvicted` / `CommitRejected`.
 - **`Committed` event** now includes `depth`.
-- **Automatic participation close** — first `commit` of round R+1 freezes non-revealers from R if `claim()` never ran. Zero-reveal rounds: `claim()` reverts `NoReveals()`; the next `commit` still freezes everyone who committed and did not reveal.
+- **Automatic participation close** — first `commit` of round R+1 freezes non-revealers from R if `claim()` never ran. Freeze duration uses selected truth depth, or last winner depth if nobody revealed (not the committer’s declared depth). Zero-reveal rounds: `claim()` reverts `NoReveals()`; the next `commit` still freezes everyone who committed and did not reveal.
 - **Failed pot withdraw reverts the whole `claim()`** — no pay, no claim. Replay `claim()`.
 
 ### Unchanged

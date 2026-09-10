@@ -165,6 +165,9 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum number of commits admitted per round. Bounds every loop over commits/reveals.
     uint8 public constant MAX_COMMITS = 128;
 
+    // Floor so a zero-reveal finalize before any winner exists cannot freeze at 2^0.
+    uint8 public constant MIN_NONREVEAL_FREEZE_DEPTH = 8;
+
     // Tracks rounds whose participation (non-reveal freezes + tentative winner) has been finalized.
     mapping(uint64 => bool) public participationFinalized;
     // Redundancy count (matching reveals) of the finalized round, consumed by the oracle in claim.
@@ -472,10 +475,10 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Internal finalize: freeze non-revealers (using declaredDepth so zero-reveal rounds are safe)
-     * and, when reveals exist for the round, compute the truth and store the tentative winner.
-     * @dev Called from claim() and from the next round's first commit. Does not apply disagreement
-     * penalties, adjust the oracle, or withdraw the pot.
+     * @notice Internal finalize: freeze non-revealers and, when reveals exist, store the tentative winner.
+     * @dev Freeze duration uses selected truth depth (same as master / disagreement). If nobody revealed,
+     * use the last winner's depth. Called from claim() and from the next round's first commit. Does not
+     * apply disagreement penalties, adjust the oracle, or withdraw the pot.
      */
     function _finalizeParticipation(uint64 round) internal {
         if (participationFinalized[round]) {
@@ -486,26 +489,15 @@ contract Redistribution is AccessControl, Pausable {
         emit CountCommits(commitsArrayLength);
         emit CountReveals(currentReveals.length);
 
-        // Freeze every non-revealer using its declared depth (independent of any truth).
-        for (uint256 i = 0; i < commitsArrayLength; ) {
-            Commit memory currentCommit = currentCommits[i];
-            if (!currentCommit.revealed) {
-                Stakes.freezeDeposit(
-                    currentCommit.owner,
-                    penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** currentCommit.declaredDepth)
-                );
-            }
-            unchecked {
-                ++i;
-            }
-        }
-
+        bool hasReveals = currentRevealRound == round && currentReveals.length > 0;
+        uint8 freezeDepth = winner.depth;
         uint256 revealCount = 0;
 
-        if (currentRevealRound == round && currentReveals.length > 0) {
+        if (hasReveals) {
             revealCount = currentReveals.length;
 
             (bytes32 truthRevealedHash, uint8 truthRevealedDepth) = getCurrentTruth();
+            freezeDepth = truthRevealedDepth;
             emit TruthSelected(truthRevealedHash, truthRevealedDepth);
 
             uint256 currentWinnerSelectionSum = 0;
@@ -544,8 +536,29 @@ contract Redistribution is AccessControl, Pausable {
             lastRedundancyCount = uint16(redundancyCount);
         }
 
+        uint256 freezeDuration = _nonRevealFreezeDuration(freezeDepth);
+        for (uint256 i = 0; i < commitsArrayLength; ) {
+            Commit memory currentCommit = currentCommits[i];
+            if (!currentCommit.revealed) {
+                Stakes.freezeDeposit(currentCommit.owner, freezeDuration);
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
         participationFinalized[round] = true;
         emit ParticipationFinalized(round, revealCount);
+    }
+
+    /**
+     * @notice Non-reveal freeze length: multiplier * ROUND_LENGTH * 2^depth, never using a zero depth.
+     */
+    function _nonRevealFreezeDuration(uint8 freezeDepth) private view returns (uint256) {
+        if (freezeDepth == 0) {
+            freezeDepth = MIN_NONREVEAL_FREEZE_DEPTH;
+        }
+        return penaltyMultiplierNonRevealed * ROUND_LENGTH * uint256(2 ** freezeDepth);
     }
 
     /**

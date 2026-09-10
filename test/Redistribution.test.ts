@@ -1657,9 +1657,13 @@ describe('Redistribution', function () {
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       const obfuscatedHash0 = encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0);
+      const minFreezeDepth = await redistribution.MIN_NONREVEAL_FREEZE_DEPTH();
+      const expectedFreeze = BigNumber.from(2).mul(roundLength).mul(BigNumber.from(2).pow(minFreezeDepth));
       await expect(r_node_0.commit(obfuscatedHash0, nextRound, '0x01'))
         .to.emit(redistribution, 'ParticipationFinalized')
-        .withArgs(currentRound, 0);
+        .withArgs(currentRound, 0)
+        .and.to.emit(sr, 'StakeFrozen')
+        .withArgs(node_2, overlay_2, expectedFreeze);
 
       expect(await redistribution.participationFinalized(currentRound)).to.be.true;
       // Non-revealer is frozen → effective stake reads as 0.
