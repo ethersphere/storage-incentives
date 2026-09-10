@@ -1,24 +1,24 @@
-# SWIP-51 Option B — what actually landed in this contract
+# SWIP-51 Option B — proposed Redistribution changes
 
-Bee / reviewer note for **this repo**. Attack catalog and design options stay in [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md). Contract overview: [REDISTRIBUTION.md](./REDISTRIBUTION.md).
+Bee / reviewer note for **this PR** (under review, not deployed). Attack catalog and design options stay in [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md). Contract overview: [REDISTRIBUTION.md](./REDISTRIBUTION.md).
 
-Claim path: **Option B** — still one `claim()`. Shared admission + automatic participation close ship now. Proof-before-selection (B1 / STS) waits for **SWIP-49 + SWIP-50**.
+Claim path: **Option B** — still one `claim()`. This PR proposes shared admission + automatic participation close. Proof-before-selection (B1 / STS) waits for **SWIP-49 + SWIP-50**.
 
 ## Read this first
 
-Bee still calls the same three functions: `commit` → `reveal` → `claim`. There is **no new public function** to “finalize” a round.
+Bee would still call the same three functions: `commit` → `reveal` → `claim`. There is no new public function to “finalize” a round.
 
-| SWIP-51 name | In this contract? | What Bee does |
-|--------------|-------------------|---------------|
-| `commit(hash, round, depth)` | **Yes — new ABI** | Call this. Depth is now required. |
+| SWIP-51 name | In this PR? | What Bee would do |
+|--------------|-------------|-------------------|
+| `commit(hash, round, depth)` | **Yes — new ABI** | Call this. Depth is required. |
 | `reveal` / `claim` | Yes — same names | Still call these. Reveal depth must match commit. |
-| `finalizeParticipation(round)` | **No public function** | Internal `_finalizeParticipation`. Runs automatically from `claim()` and from the **next round’s first `commit()`**. Do not look for it on the ABI. |
-| `verifyWinner` / `settleRound` | **Not here** | Option A only. Claim stays one tx. |
-| `retryPayout` | **Not here** | If withdraw fails, replay `claim()` in the same claim phase. |
+| `finalizeParticipation(round)` | **No public function** | Internal `_finalizeParticipation`. Would run from `claim()` and from the **next round’s first `commit()`**. Not on the ABI. |
+| `verifyWinner` / `settleRound` | **Not in this PR** | Option A only. Claim stays one tx. |
+| `retryPayout` | **Not in this PR** | If withdraw fails, replay `claim()` in the same claim phase. |
 
 ## What is new vs not
 
-### New (this PR)
+### Proposed in this PR
 
 - **`commit(obfuscatedHash, round, depth)`** — breaking. Depth is declared here; proximity is checked at commit against the **commit-phase** anchor; `depth > height` is required.
 - **Cap `MAX_COMMITS = 128`** — stake-weighted admission (lower `admissionPriority` wins). Watch `CommitSelected` / `CommitEvicted` / `CommitRejected`.
@@ -39,7 +39,7 @@ Bee still calls the same three functions: `commit` → `reveal` → `claim`. The
 - All-sybil same-fake-hash coalition (still open).
 - `StakeRegistry` min-stake-on-height-change.
 
-## Round lifecycle (what the contract does for you)
+## Round lifecycle (if this PR is merged)
 
 ```text
 Round R commit
@@ -75,7 +75,7 @@ Admission: eligible commits enter until `length == MAX_COMMITS`; when full, repl
 
 `CommitRejected` does **not** revert the tx (so a prior-round freeze in the same tx still sticks).
 
-## What Bee must change
+## What Bee would change
 
 ### 1. Commit (required, breaking)
 

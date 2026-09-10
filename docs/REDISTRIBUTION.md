@@ -1,6 +1,6 @@
 # Redistribution Contract
 
-This overview matches the current `Redistribution.sol`. Bee-facing API: [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md). Attack catalog: [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md).
+This overview matches `Redistribution.sol` on this PR branch (proposed, under review — not deployed). Bee-facing API: [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md). Attack catalog: [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md).
 
 ## Overview
 
