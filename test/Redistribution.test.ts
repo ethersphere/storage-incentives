@@ -1423,6 +1423,7 @@ describe('Redistribution', function () {
 
             //node_1 is frozen but not slashed
             expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(0);
+            expect(await r_node_5.lastClaimedDepth()).to.be.eq(parseInt(depth_5));
           });
 
           it('if both reveal, should select correct winner', async function () {
@@ -1667,6 +1668,94 @@ describe('Redistribution', function () {
 
       expect(await redistribution.participationFinalized(currentRound)).to.be.true;
       // Non-revealer is frozen → effective stake reads as 0.
+      expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(0);
+    });
+
+    it('rejects a no-show closer after auto-finalize so they cannot take the next slot', async function () {
+      const r_node_2 = await ethers.getContract('Redistribution', node_2);
+      const sr = await ethers.getContract('StakeRegistry');
+      const currentRound = await r_node_2.currentRound();
+      await r_node_2.commit(encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2), currentRound, '0x01');
+
+      await mineNBlocks(roundLength);
+      let seed = await redistribution.currentSeed();
+      while (proximity(seed, overlay_2) < 1) {
+        await mineNBlocks(roundLength);
+        seed = await redistribution.currentSeed();
+      }
+      while (!(await redistribution.currentPhaseCommit())) {
+        await mineNBlocks(1);
+      }
+
+      const nextRound = await redistribution.currentRound();
+      expect(nextRound).to.be.gt(currentRound);
+
+      await expect(r_node_2.commit(encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2), nextRound, '0x01'))
+        .to.emit(redistribution, 'ParticipationFinalized')
+        .withArgs(currentRound, 0)
+        .and.to.emit(redistribution, 'CommitRejected')
+        .withArgs(nextRound, overlay_2);
+
+      expect(await redistribution.participationFinalized(currentRound)).to.be.true;
+      expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(0);
+      expect(await redistribution.currentCommitRound()).to.be.eq(nextRound);
+
+      seed = await redistribution.currentSeed();
+      while (proximity(seed, overlay_0) < 1) {
+        await mineNBlocks(roundLength);
+        seed = await redistribution.currentSeed();
+      }
+      while (!(await redistribution.currentPhaseCommit())) {
+        await mineNBlocks(1);
+      }
+      const admitRound = await redistribution.currentRound();
+      const r_node_0 = await ethers.getContract('Redistribution', node_0);
+      await expect(r_node_0.commit(encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0), admitRound, '0x01')).to.emit(
+        redistribution,
+        'Committed'
+      );
+    });
+
+    it('freezes a no-show at truth depth, not their declared depth', async function () {
+      const r_node_2 = await ethers.getContract('Redistribution', node_2);
+      const r_node_0 = await ethers.getContract('Redistribution', node_0);
+      const sr = await ethers.getContract('StakeRegistry');
+
+      let seed = await redistribution.currentSeed();
+      while (proximity(seed, overlay_0) < 6 || proximity(seed, overlay_2) < 1) {
+        await mineNBlocks(roundLength);
+        seed = await redistribution.currentSeed();
+      }
+      while (!(await redistribution.currentPhaseCommit())) {
+        await mineNBlocks(1);
+      }
+
+      const currentRound = await redistribution.currentRound();
+      await r_node_2.commit(encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2), currentRound, '0x01');
+      await r_node_0.commit(encodeAndHash(overlay_0, depth_0, hash_0, reveal_nonce_0), currentRound, depth_0);
+
+      await mineNBlocks(phaseLength);
+      await r_node_0.reveal(depth_0, hash_0, reveal_nonce_0);
+
+      await mineNBlocks(roundLength);
+      seed = await redistribution.currentSeed();
+      while (proximity(seed, overlay_0) < 1) {
+        await mineNBlocks(roundLength);
+        seed = await redistribution.currentSeed();
+      }
+      while (!(await redistribution.currentPhaseCommit())) {
+        await mineNBlocks(1);
+      }
+
+      const nextRound = await redistribution.currentRound();
+      const truthDepth = parseInt(depth_0);
+      const expectedFreeze = BigNumber.from(2).mul(roundLength).mul(BigNumber.from(2).pow(truthDepth));
+      await expect(r_node_0.commit(encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0), nextRound, '0x01'))
+        .to.emit(redistribution, 'ParticipationFinalized')
+        .withArgs(currentRound, 1)
+        .and.to.emit(sr, 'StakeFrozen')
+        .withArgs(node_2, overlay_2, expectedFreeze);
+
       expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(0);
     });
 

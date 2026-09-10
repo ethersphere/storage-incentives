@@ -23,7 +23,7 @@ Bee would still call the same three functions: `commit` → `reveal` → `claim`
 - **`commit(obfuscatedHash, round, depth)`** — breaking. Depth is declared here; proximity is checked at commit against the **commit-phase** anchor; `depth > height` is required.
 - **Cap `MAX_COMMITS = 128`** — stake-weighted admission (lower `admissionPriority` wins). Watch `CommitSelected` / `CommitEvicted` / `CommitRejected`.
 - **`Committed` event** now includes `depth`.
-- **Automatic participation close** — first `commit` of round R+1 freezes non-revealers from R if `claim()` never ran. Freeze duration uses selected truth depth, or last winner depth if nobody revealed (not the committer’s declared depth). Zero-reveal rounds: `claim()` reverts `NoReveals()`; the next `commit` still freezes everyone who committed and did not reveal.
+- **Automatic participation close** — first `commit` of round R+1 freezes non-revealers from R if `claim()` never ran. Freeze duration is `max(truth, lastClaimedDepth)` when someone revealed, or `lastClaimedDepth` if nobody did (floor `MIN_NONREVEAL_FREEZE_DEPTH` if unset). `lastClaimedDepth` is written only after a successful `claim()`, so a skipped-claim fake-low truth cannot shrink the freeze. A no-show who is that first committer closes R but is `CommitRejected` for R+1 (finalize sticks; they do not get a slot). Zero-reveal rounds: `claim()` reverts `NoReveals()`; the next `commit` still freezes everyone who committed and did not reveal.
 - **Failed pot withdraw reverts the whole `claim()`** — no pay, no claim. Replay `claim()`.
 
 ### Unchanged
@@ -56,7 +56,8 @@ Round R claim          (optional — someone may skip it)
   → if withdraw reverts, the whole claim rolls back
 
 Round R+1 first commit
-  → if R never got a successful claim, this tx finalizes R, then admits into R+1
+  → if R never got a successful claim, this tx finalizes R
+  → then re-checks stake; a just-frozen no-show is CommitRejected and is not admitted
 ```
 
 ## Breaking API (`Redistribution.sol`)
@@ -90,10 +91,10 @@ Once the set is full (`MAX_COMMITS = 128`):
 
 - `CommitSelected` — this overlay is in the round. Plan to reveal.
 - `CommitEvicted` — stop planning reveal for that identity; no reveal obligation.
-- `CommitRejected` — not in the round. Gas was still spent. Do not reveal. Treat as “not participating,” not as a failed transaction.
+- `CommitRejected` — not in the round. Gas was still spent. Do not reveal. Treat as “not participating,” not as a failed transaction. Also emitted if this node just got frozen by auto-finalize in the same tx (no-show closer).
 - `Committed` now includes `depth`. Update decoders.
 
-If this node is the **first committer of a new round** after a skipped or failed claim, the tx may freeze up to 128 non-revealers from the previous round. Set a high gas limit on commit.
+If this node is the **first committer of a new round** after a skipped or failed claim, the tx may freeze up to 128 non-revealers from the previous round. Set a high gas limit on commit. If this node itself failed to reveal in that prior round, the tx still finalizes (and freezes them) but emits `CommitRejected` — they are not in the new round.
 
 ### 2. Reveal
 

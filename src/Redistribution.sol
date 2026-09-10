@@ -172,6 +172,9 @@ contract Redistribution is AccessControl, Pausable {
     mapping(uint64 => bool) public participationFinalized;
     // Redundancy count (matching reveals) of the finalized round, consumed by the oracle in claim.
     uint16 public lastRedundancyCount;
+    // Depth of the last successfully claimed winner. Used so an unproven / skipped-claim
+    // truth cannot shrink non-reveal freeze duration below a proven network depth.
+    uint8 public lastClaimedDepth;
 
     // ----------------------------- Events ------------------------------
 
@@ -371,7 +374,16 @@ contract Redistribution is AccessControl, Pausable {
             currentCommitRound = cr;
         }
 
-        // 5. Reject duplicate overlay for this round.
+        // 5. A no-show closer is frozen by step 3. Do not revert (finalize must stick);
+        // reject admission so they cannot take a slot in this round with pre-freeze stake.
+        _lastUpdate = Stakes.lastUpdatedBlockNumberOfAddress(msg.sender);
+        _stake = Stakes.nodeEffectiveStake(msg.sender);
+        if (_lastUpdate >= block.number - 2 * ROUND_LENGTH || _stake == 0) {
+            emit CommitRejected(_roundNumber, _overlay);
+            return;
+        }
+
+        // 6. Reject duplicate overlay for this round.
         uint256 commitsArrayLength = currentCommits.length;
         for (uint256 i = 0; i < commitsArrayLength; ) {
             if (currentCommits[i].overlay == _overlay) {
@@ -382,7 +394,7 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        // 6. Admit under MAX_COMMITS using stake-weighted priority (lower is better).
+        // 7. Admit under MAX_COMMITS using stake-weighted priority (lower is better).
         Commit memory newCommit = Commit({
             overlay: _overlay,
             owner: msg.sender,
@@ -476,9 +488,11 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Internal finalize: freeze non-revealers and, when reveals exist, store the tentative winner.
-     * @dev Freeze duration uses selected truth depth (same as master / disagreement). If nobody revealed,
-     * use the last winner's depth. Called from claim() and from the next round's first commit. Does not
-     * apply disagreement penalties, adjust the oracle, or withdraw the pot.
+     * @dev Freeze duration is max(selected truth, lastClaimedDepth) when reveals exist, otherwise
+     * lastClaimedDepth, floored at MIN_NONREVEAL_FREEZE_DEPTH. lastClaimedDepth is only written after
+     * a successful claim, so a skipped-claim fake-low truth cannot shrink the freeze. Called from
+     * claim() and from the next round's first commit. Does not apply disagreement penalties, adjust
+     * the oracle, or withdraw the pot.
      */
     function _finalizeParticipation(uint64 round) internal {
         if (participationFinalized[round]) {
@@ -490,14 +504,14 @@ contract Redistribution is AccessControl, Pausable {
         emit CountReveals(currentReveals.length);
 
         bool hasReveals = currentRevealRound == round && currentReveals.length > 0;
-        uint8 freezeDepth = winner.depth;
+        uint8 freezeDepth = lastClaimedDepth;
         uint256 revealCount = 0;
 
         if (hasReveals) {
             revealCount = currentReveals.length;
 
             (bytes32 truthRevealedHash, uint8 truthRevealedDepth) = getCurrentTruth();
-            freezeDepth = truthRevealedDepth;
+            freezeDepth = truthRevealedDepth > lastClaimedDepth ? truthRevealedDepth : lastClaimedDepth;
             emit TruthSelected(truthRevealedHash, truthRevealedDepth);
 
             uint256 currentWinnerSelectionSum = 0;
@@ -730,6 +744,7 @@ contract Redistribution is AccessControl, Pausable {
         // 6. Pay the pot. If this reverts, the whole claim rolls back (no pay, no claim).
         PostageContract.withdraw(winnerSelected.owner);
 
+        lastClaimedDepth = winnerSelected.depth;
         currentClaimRound = cr;
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
