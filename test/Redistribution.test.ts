@@ -1710,10 +1710,9 @@ describe('Redistribution', function () {
       }
       const admitRound = await redistribution.currentRound();
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      await expect(r_node_0.commit(encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0), admitRound, '0x01')).to.emit(
-        redistribution,
-        'Committed'
-      );
+      await expect(
+        r_node_0.commit(encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0), admitRound, '0x01')
+      ).to.emit(redistribution, 'Committed');
     });
 
     it('freezes a no-show at truth depth, not their declared depth', async function () {
