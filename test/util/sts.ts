@@ -1,6 +1,6 @@
 import { Chunk, getSpanValue, makeChunk, Utils as BmtUtils } from '@fairdatasociety/bmt-js';
 import { BigNumber, Wallet } from 'ethers';
-import { arrayify, hexlify, solidityKeccak256, keccak256, concat } from 'ethers/lib/utils';
+import { arrayify, hexlify, solidityKeccak256, keccak256, concat, defaultAbiCoder } from 'ethers/lib/utils';
 import { createSignature } from './postage';
 
 // Helpers for building SWIP-050 STS-1 round material in tests: the 16 entry stamp sample, the
@@ -118,6 +118,13 @@ export function stsChunkSegmentIndex(proofSeed: string, chunkAddress: string): n
   return BigNumber.from(hash).mod(SEGMENTS_IN_CHUNK).toNumber();
 }
 
+export type SocAttachment = {
+  signer: string;
+  signature: string;
+  identifier: string;
+  chunkAddr: string;
+};
+
 export type StampEntry = {
   /** Chunk payload; the chunk itself is makeChunk(payload). */
   payload: Uint8Array;
@@ -127,6 +134,8 @@ export type StampEntry = {
   fullIndex: BigNumber;
   transformedStampValue: string;
   transformedChunkAddress: string;
+  /** Present when this entry is a single owner chunk. */
+  soc?: SocAttachment;
 };
 
 /**
@@ -261,6 +270,8 @@ export async function buildStampProof(params: {
     timeStamp,
     signature: hexlify(signature),
     chunkProof: {
+      // For a SOC this is the SOC address, which is also what the batch owner stamped. The BMT
+      // reconstruction below is checked against the wrapped chunk address instead.
       proveSegment: entry.chunkAddress,
       proofSegments2: ogChunk.inclusionProof(segmentIndex).map((segment) => hexlify(segment)),
       proveSegment2: hexlify(
@@ -268,7 +279,7 @@ export async function buildStampProof(params: {
       ),
       chunkSpan: getSpanValue(ogChunk.span()),
       proofSegments3: trChunk.inclusionProof(segmentIndex).map((segment) => hexlify(segment)),
-      socProof: [],
+      socProof: entry.soc ? [entry.soc] : [],
     },
     chunkTransformProofSegments: transformTree.proofForLeaf(entry.transformedChunkAddress),
   };
@@ -306,4 +317,53 @@ export function inProximity(a: Uint8Array, b: Uint8Array, minimum: number): bool
     }
   }
   return true;
+}
+
+/**
+ * Turn an ordinary entry into a single owner chunk entry.
+ *
+ * A SOC's own address is `keccak256(identifier, signer)`; the chunk data behind it stays the
+ * wrapped chunk. The batch owner stamps the SOC address, the BMT same-data proof reconstructs the
+ * wrapped address, and the leaf offered to chunkTransformRoot is the transformed wrapped address
+ * hashed together with the SOC address.
+ */
+export async function toSocEntry(
+  entry: StampEntry,
+  roundAnchor: string,
+  claimedDepth: number,
+  bucketDepth: number
+): Promise<StampEntry> {
+  const anchorBytes = arrayify(roundAnchor);
+  const wallet = Wallet.createRandom();
+  const owner = arrayify(wallet.address);
+
+  let identifier: Uint8Array;
+  let socAddress: Uint8Array;
+  for (;;) {
+    identifier = arrayify(solidityKeccak256(['bytes32', 'uint256'], [entry.chunkAddress, (Math.random() * 1e12) | 0]));
+    socAddress = arrayify(solidityKeccak256(['bytes32', 'address'], [hexlify(identifier), wallet.address]));
+    if (inProximity(socAddress, anchorBytes, claimedDepth)) break;
+  }
+
+  const wrappedAddress = arrayify(entry.chunkAddress);
+  const digest = keccak256Hash(identifier, wrappedAddress);
+  const signature = await wallet.signMessage(digest);
+
+  const transformedWrapped = arrayify(entry.transformedChunkAddress);
+  const leaf = keccak256(
+    defaultAbiCoder.encode(['bytes32', 'bytes32'], [hexlify(socAddress), hexlify(transformedWrapped)])
+  );
+
+  return {
+    ...entry,
+    chunkAddress: hexlify(socAddress),
+    bucket: addressToBucket(socAddress, bucketDepth),
+    transformedChunkAddress: leaf,
+    soc: {
+      signer: wallet.address,
+      signature,
+      identifier: hexlify(identifier),
+      chunkAddr: entry.chunkAddress,
+    },
+  };
 }

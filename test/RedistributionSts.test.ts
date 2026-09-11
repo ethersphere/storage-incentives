@@ -20,6 +20,7 @@ import {
   StampEntry,
   ZERO32,
   inProximity,
+  toSocEntry,
 } from './util/sts';
 
 // End to end coverage of the SWIP-050 STS-1 round: the six phase schedule, the ordering of the
@@ -144,7 +145,13 @@ describe('Redistribution STS-1', function () {
    */
   async function playRound(
     nodes: string[],
-    opts: { chunkSampleHashes?: string[]; skipStampCommit?: number[]; skipProof?: number[] } = {}
+    opts: {
+      chunkSampleHashes?: string[];
+      skipStampCommit?: number[];
+      skipProof?: number[];
+      /** Sample positions (pre-sort) to turn into single owner chunks. */
+      socEntries?: number[];
+    } = {}
   ): Promise<{ round: number; players: Player[]; anchor: string; stampAnchor: string; proofSeed: string }> {
     const overlays: string[] = [];
     for (const node of nodes) overlays.push(await overlayOf(node));
@@ -189,6 +196,9 @@ describe('Redistribution STS-1', function () {
         // sample. What differs between them is only what they report as the chunk side value.
         startNonce: 0,
       });
+      for (const socIndex of opts.socEntries ?? []) {
+        entries[socIndex] = await toSocEntry(entries[socIndex], anchor, CLAIMED_DEPTH, BUCKET_DEPTH);
+      }
       player.entries = entries;
       player.transformTree = new SortedPairMerkleTree(entries.map((e) => e.transformedChunkAddress));
       player.chunkTransformRoot = player.transformTree.root;
@@ -556,6 +566,25 @@ describe('Redistribution STS-1', function () {
       await mineToPhase(STS_PHASES.claim);
       await players[0].contract.claim();
       await expect(players[0].contract.claim()).to.be.revertedWith('AlreadyClaimed');
+    });
+
+    // A SOC's own address is what the batch owner stamps, while the BMT same-data proof
+    // reconstructs the wrapped chunk address behind it. SWIP-050's appendix compares the stamped
+    // address to the wrapped one, which would reject every honest SOC witness; see
+    // docs/SWIP-49-50-SCRUTINY.md 2.17.
+    it('accepts a single owner chunk witness', async function () {
+      // Every entry is a SOC, so whichever positions the proof seed picks exercise the path.
+      const { players } = await playRound([node_5], { socEntries: [...Array(16).keys()] });
+
+      // Guard against the test passing vacuously: every entry must really be a SOC.
+      expect(players[0].entries.every((e) => e.soc !== undefined)).to.be.true;
+
+      const reveal = await redistribution.currentReveals(0);
+      expect(reveal.proofSubmitted).to.be.true;
+
+      await mineToPhase(STS_PHASES.claim);
+      await players[0].contract.claim();
+      expect(await redistribution.pendingRedistributionPayouts(node_5)).to.be.gt(0);
     });
 
     it('refuses a payout withdrawal with nothing accrued', async function () {

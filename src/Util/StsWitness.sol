@@ -270,7 +270,11 @@ library StsWitness {
             return (FAIL_ORIGINAL_ADDRESS, transformedChunkAddress);
         }
 
-        if (ordinaryChunkAddress != proof.chunkAddress) {
+        // The stamp is issued against the chunk's own address, which for a SOC is the SOC address
+        // and not the wrapped chunk address the BMT check above reconstructs. SWIP-050's appendix
+        // compares the stamped address to `ordinaryChunkAddress`, which conflates the two and
+        // would reject every honest SOC witness. See docs/SWIP-49-50-SCRUTINY.md 2.17.
+        if (chunkProof.proveSegment != proof.chunkAddress) {
             return (FAIL_CHUNK_MISMATCH, transformedChunkAddress);
         }
 

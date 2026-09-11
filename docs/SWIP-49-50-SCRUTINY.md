@@ -527,6 +527,50 @@ This is invisible in the SWIP because its appendix never shows the client side. 
 stated normatively, alongside the rest of the tree construction (2.9), or every client will find
 it the hard way.
 
+### 2.17 BLOCKER — the SOC binding conflates two different chunk addresses
+
+`transformedChunkAddressForStampedChunk` in Appendix A.8 ends with:
+
+```solidity
+bytes32 ordinaryChunkAddress = chunkProof.socProof.length > 0
+    ? chunkProof.socProof[0].chunkAddr
+    : chunkProof.proveSegment;
+...
+if (ordinaryChunkAddress != stampedChunkAddress) revert ChunkAddressMismatch();
+```
+
+For a single owner chunk these are two different things. `socProof[0].chunkAddr` is the
+**wrapped** chunk address, the thing the BMT reconstruction produces. `proveSegment` is the
+**SOC address**, `keccak256(identifier, signer)`, and that is what Bee stamps and what the
+existing Phase 4 `stampFunction` verifies the batch-owner signature against. Requiring the
+stamped address to equal the wrapped address rejects **every honest SOC witness**.
+
+The current contract keeps the two apart deliberately: `stampFunction` uses
+`entryProof.proveSegment` for bucket alignment, signature recovery and proximity, while
+`inclusionFunction` compares the BMT reconstruction against `socProof[0].chunkAddr`. SWIP-050
+collapses that into one variable and loses the distinction.
+
+**Fix:** compare the stamped address against `chunkProof.proveSegment` — which is the SOC address
+for a SOC and the plain chunk address otherwise — and keep the BMT reconstruction checked against
+`ordinaryChunkAddress`.
+
+_This branch:_ implements the fix, and covers it with a round in which all sixteen sample entries
+are SOCs. That test fails against the appendix as written.
+
+### 2.18 NOTE — the stamp anchor is derived after the round seed advances
+
+`reveal` calls `updateRandomness()` and then derives the stamp anchor from the updated `seed`. In
+the current contract the BMT transform key (`currentRevealRoundAnchor`) is fixed _before_
+`updateRandomness()` and is therefore not grindable by a revealer. The stamp anchor is, in the
+same first-mover sense as 2.7: whoever reveals first picks their block and re-rolls every
+transformed stamp value in the round.
+
+The gain is small — the density witness is the sixteenth smallest of a sample the node builds
+_after_ seeing the anchor, so re-rolling mostly shuffles which of its own stamps are smallest —
+but it is a property the chunk-side anchor deliberately does not have, and the SWIP does not say
+whether that difference is intended. Deriving the stamp anchor from `currentRevealRoundAnchor`
+rather than from the post-update `seed` would remove it at no cost.
+
 ---
 
 ## 3. Summary of deviations implemented on this branch
@@ -542,8 +586,8 @@ it the hard way.
 | 2.4 | dropped `pendingCompletion`; extended Option B finalize                            | unbounded loop bricks `claim`                        |
 | 2.5 | explicit BZZ custody; remainder to highest-weight entry; withdrawal survives pause | underspecified                                       |
 
-Items **1.1, 1.2, 2.1, 2.2, 2.3, 2.4** are the ones worth raising in the PRs before the SWIPs
-are finalised. **2.5** is a deployment-topology question. **2.16** needs one normative sentence.
+Items **1.1, 1.2, 2.1, 2.2, 2.3, 2.4, 2.17** are the ones worth raising in the PRs before the
+SWIPs are finalised. **2.5** is a deployment-topology question. **2.16** needs one normative sentence.
 The rest are editorial.
 
 Implementation notes for Bee and for reviewers: [STS-1.md](./STS-1.md).
