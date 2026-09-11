@@ -1212,9 +1212,12 @@ describe('Redistribution', function () {
 
             const wallet = getWalletOfFdpPlayQueen();
             const postage = await ethers.getContract('PostageStamp', deployer);
-            const validityBlockTx = await postage.setMinimumValidityBlocks(1);
-            await validityBlockTx.wait();
-            const initialPaymentPerChunk = price1 * 2 - 1;
+
+            // SWIP-049 forbids creating a batch below six redistribution rounds of balance, so
+            // the batch cannot be born nearly expired any more. Create it at exactly the
+            // minimum, then spike the price for two blocks so its outpayment overtakes it. The
+            // batch backing the claim proofs holds far more and survives the spike.
+            const initialPaymentPerChunk = (await postage.minimumInitialBalancePerChunk()).toNumber();
             const batchSize = 2 ** batch.depth;
             const transferAmount = initialPaymentPerChunk * batchSize;
             await mintAndApprove(deployer, deployer, postage.address, transferAmount.toString());
@@ -1226,8 +1229,16 @@ describe('Redistribution', function () {
               '0x00000000000000000000000000000000000000000000000000000000b0bafe77',
               batch.immutable
             );
-            await mineNBlocks(1); // in order to expire batch
-            await postage.expireLimited(1); // remove batch
+
+            // Driven through PostageStamp directly: PriceOracle.setPrice shifts a uint32 left by
+            // ten before widening, so it truncates well below the price needed here.
+            const priceOracleRole = await postage.PRICE_ORACLE_ROLE();
+            await postage.grantRole(priceOracleRole, deployer);
+            const spikePrice = initialPaymentPerChunk + price1; // one spike block outruns the batch
+            await postage.setPrice(spikePrice); // snapshots outpayment, arms the spike
+            await postage.expireLimited(maxInt256); // one spike block has now accrued
+            await postage.setPrice(price1);
+
             const batchReceipt = await batchTx.wait();
             const batchCreatedEvent = batchReceipt.events.filter((e: { event: string }) => e.event === 'BatchCreated');
             const batchId = Buffer.from(arrayify(batchCreatedEvent[0].args[0]));

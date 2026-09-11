@@ -57,6 +57,17 @@ contract EchidnaPostageStampMock is IPostageStamp {
     {
         return (address(0), 0, 0, false, 0, 0);
     }
+
+    function redistributionMinimumNormalisedBalance(uint256) external pure returns (uint256) {
+        return 0;
+    }
+
+    function redistributionBatchAt(
+        bytes32,
+        uint256
+    ) external pure returns (address owner, uint8 depthAtSamplingStart, uint8 bucketDepth, uint256 normalisedBalance) {
+        return (address(0), 0, 0, 0);
+    }
 }
 
 contract EchidnaRedistributionActor {

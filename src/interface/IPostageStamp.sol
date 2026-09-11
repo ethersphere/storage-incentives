@@ -31,4 +31,13 @@ interface IPostageStamp {
             uint256 normalisedBalance,
             uint256 lastUpdatedBlockNumber
         );
+
+    // ----------------------------- SWIP-049 ------------------------------
+
+    function redistributionMinimumNormalisedBalance(uint256 samplingStartBlock) external view returns (uint256);
+
+    function redistributionBatchAt(
+        bytes32 batchId,
+        uint256 samplingStartBlock
+    ) external view returns (address owner, uint8 depthAtSamplingStart, uint8 bucketDepth, uint256 normalisedBalance);
 }

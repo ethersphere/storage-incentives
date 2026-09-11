@@ -146,7 +146,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
   await postageStampOracle.setPrice(price1);
 
   const postageStampAdmin = await ethers.getContract('PostageStamp', deployer);
-  await postageStampAdmin.setMinimumValidityBlocks(0);
+  await postageStampAdmin.setMinimumValidityBlocks(912);
 
   const { postageDepth, initialBalance, batchId, batchOwner } = await copyBatchForClaim(
     deployer,

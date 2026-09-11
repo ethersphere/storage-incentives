@@ -70,6 +70,42 @@ contract PostageStamp is AccessControl, Pausable {
     // Block at which the last update occured.
     uint64 public lastUpdatedBlock;
 
+    // ----------------------------- SWIP-049 ------------------------------
+
+    // Length of a redistribution round in blocks. Mirrors Redistribution.ROUND_LENGTH.
+    uint64 public constant REDISTRIBUTION_ROUND_BLOCKS = 152;
+
+    // Offset of the first reveal block within a round. Sampling for round `r` starts at the
+    // first reveal block of round `r - 1`, i.e. (r - 1) * 152 + 38.
+    uint64 public constant REDISTRIBUTION_REVEAL_OFFSET = 38;
+
+    // Balance, in blocks at the price in force at sampling start, that a batch must hold to be
+    // usable by a redistribution round. Covers the 266 block sampling-to-claim window with
+    // headroom for the preceding round's price increase.
+    uint64 public constant ROUND_USABILITY_BLOCKS = 456;
+
+    // Six complete redistribution rounds. Floor for the configurable operation minimum, so a
+    // later top-up or dilution can never cross the usability boundary of an open round.
+    uint64 public constant MIN_OPERATION_VALIDITY_BLOCKS = 6 * REDISTRIBUTION_ROUND_BLOCKS;
+
+    // The price that was in force immediately before `lastPrice`.
+    uint64 public previousPrice;
+
+    // The block in which `previousPrice` became active. Needed to prove that the price period
+    // being rolled back through actually covered the requested sampling start block; without it
+    // the reconstruction silently returns a wrong answer whenever more than one price update has
+    // happened since. See docs/SWIP-49-50-SCRUTINY.md 1.1.
+    uint64 public previousPriceUpdatedBlock;
+
+    // Superseded batch depths that were visible at a sampling boundary. Two slots are needed
+    // because neighbouring sampling-to-claim windows overlap: a later round can fix its batch
+    // scope while the preceding round is still claimable.
+    mapping(bytes32 => DepthHistory) private depthHistory;
+
+    // Every batch id ever created or imported, so an expired id can never be reincarnated and
+    // make old signatures usable under a new batch.
+    mapping(bytes32 => bool) public batchIdUsed;
+
     // ----------------------------- Type declarations ------------------------------
 
     struct Batch {
@@ -85,6 +121,17 @@ contract PostageStamp is AccessControl, Pausable {
         uint256 normalisedBalance;
         // When was this batch last updated
         uint256 lastUpdatedBlockNumber;
+    }
+
+    struct DepthHistory {
+        // Most recent superseded depth that was visible at a sampling boundary.
+        uint64 previousDepthBlock;
+        // One older boundary-visible depth, needed while two round scopes overlap.
+        uint64 olderDepthBlock;
+        // A live batch always has depth > bucketDepth >= minimumBucketDepth >= 1, so zero is a
+        // safe "slot empty" sentinel for both depths.
+        uint8 previousDepth;
+        uint8 olderDepth;
     }
 
     struct ImportBatch {
@@ -140,7 +187,7 @@ contract PostageStamp is AccessControl, Pausable {
 
     error ZeroAddress(); // Owner cannot be the zero address
     error InvalidDepth(); // Invalid bucket depth
-    error BatchExists(); // Batch already exists
+    error BatchExists(); // Deprecated by SWIP-049: batch id collisions now revert BatchIdAlreadyUsed
     error InsufficientBalance(); // Insufficient initial balance for 24h minimum validity
     error TransferFailed(); // Failed transfer of BZZ tokens
     error ZeroBalance(); // NormalisedBalance cannot be zero
@@ -156,6 +203,11 @@ contract PostageStamp is AccessControl, Pausable {
     error NoBatchesExist(); // There are no batches
     error OnlyPauser(); // Only Pauser role can pause or unpause contracts
     error OnlyRedistributor(); // Only redistributor role can withdraw from the contract
+    error BatchIdAlreadyUsed(bytes32 batchId); // Batch id was already consumed, even if since expired
+    error BatchNotUsableForRedistribution(bytes32 batchId); // Batch absent, expired, or had no depth at sampling start
+    error FutureSamplingStartBlock(); // Sampling start block is in the future
+    error MinimumValidityTooShort(); // Operation minimum below six redistribution rounds
+    error PriceHistoryUnavailable(); // Price at the requested sampling start cannot be reconstructed
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -203,9 +255,7 @@ contract PostageStamp is AccessControl, Pausable {
         }
 
         bytes32 batchId = keccak256(abi.encode(msg.sender, _nonce));
-        if (batches[batchId].owner != address(0)) {
-            revert BatchExists();
-        }
+        _consumeBatchId(batchId);
 
         if (_initialBalancePerChunk < minimumInitialBalancePerChunk()) {
             revert InsufficientBalance();
@@ -269,8 +319,12 @@ contract PostageStamp is AccessControl, Pausable {
             revert InvalidDepth();
         }
 
-        if (batches[_batchId].owner != address(0)) {
-            revert BatchExists();
+        _consumeBatchId(_batchId);
+
+        // Imports are held to the same creation minimum as ordinary batches, so an imported
+        // batch can never enter a round already below the operation minimum.
+        if (_initialBalancePerChunk < minimumInitialBalancePerChunk()) {
+            revert InsufficientBalance();
         }
 
         uint256 totalAmount = _initialBalancePerChunk * (1 << _depth);
@@ -349,7 +403,10 @@ contract PostageStamp is AccessControl, Pausable {
             revert BatchTooSmall();
         }
 
-        if (remainingBalance(_batchId) + (_topupAmountPerChunk) < minimumInitialBalancePerChunk()) {
+        // Checked before the top-up, not after: a batch that has already fallen below the
+        // operation minimum must not be rescuable into a redistribution round that is already
+        // open. Note this makes the drop permanent - see docs/SWIP-49-50-SCRUTINY.md 1.2.
+        if (remainingBalance(_batchId) < minimumInitialBalancePerChunk()) {
             revert InsufficientBalance();
         }
 
@@ -375,38 +432,165 @@ contract PostageStamp is AccessControl, Pausable {
      * @param _newDepth the new (larger than the previous one) depth for this batch.
      */
     function increaseDepth(bytes32 _batchId, uint8 _newDepth) external whenNotPaused {
-        Batch memory batch = batches[_batchId];
+        Batch storage batch = batches[_batchId];
 
         if (batch.owner != msg.sender) {
             revert NotBatchOwner();
         }
 
-        if (!(minimumBucketDepth < _newDepth && batch.depth < _newDepth)) {
+        uint8 oldDepth = batch.depth;
+        if (!(minimumBucketDepth < _newDepth && oldDepth < _newDepth)) {
             revert DepthNotIncreasing();
         }
 
-        if (batch.normalisedBalance <= currentTotalOutPayment()) {
+        uint256 outPayment = currentTotalOutPayment();
+        uint256 oldNormalisedBalance = batch.normalisedBalance;
+        if (oldNormalisedBalance <= outPayment) {
             revert BatchExpired();
         }
 
-        uint8 depthChange = _newDepth - batch.depth;
-        uint256 newRemainingBalance = remainingBalance(_batchId) / (1 << depthChange);
+        uint256 newRemainingBalance = (oldNormalisedBalance - outPayment) / (uint256(1) << (_newDepth - oldDepth));
 
+        // The post-dilution balance must still clear the operation minimum, so a dilution can
+        // never push a batch out of a redistribution round that is already open.
         if (newRemainingBalance < minimumInitialBalancePerChunk()) {
             revert InsufficientBalance();
         }
 
         expireLimited(type(uint256).max);
-        validChunkCount += (1 << _newDepth) - (1 << batch.depth);
-        tree.remove(_batchId, batch.normalisedBalance);
-        batches[_batchId].depth = _newDepth;
-        batches[_batchId].lastUpdatedBlockNumber = block.number;
 
-        batch.normalisedBalance = currentTotalOutPayment() + newRemainingBalance;
-        batches[_batchId].normalisedBalance = batch.normalisedBalance;
-        tree.insert(_batchId, batch.normalisedBalance);
+        // `lastUpdatedBlockNumber` is the block in which `oldDepth` became current; top-ups do
+        // not touch it, so it is the correct introduction block for the depth being superseded.
+        _recordDepthBeforeIncrease(_batchId, oldDepth, batch.lastUpdatedBlockNumber);
 
-        emit BatchDepthIncrease(_batchId, _newDepth, batch.normalisedBalance);
+        validChunkCount += (uint256(1) << _newDepth) - (uint256(1) << oldDepth);
+        tree.remove(_batchId, oldNormalisedBalance);
+
+        uint256 newNormalisedBalance = outPayment + newRemainingBalance;
+        batch.depth = _newDepth;
+        batch.lastUpdatedBlockNumber = block.number;
+        batch.normalisedBalance = newNormalisedBalance;
+
+        tree.insert(_batchId, newNormalisedBalance);
+
+        emit BatchDepthIncrease(_batchId, _newDepth, newNormalisedBalance);
+    }
+
+    // ----------------------------- SWIP-049 internals ------------------------------
+
+    /**
+     * @notice Consume a batch id permanently.
+     * @dev An id is never released, not even by expiry. Reincarnating an expired id would make
+     * signatures issued against the old batch valid against the new one.
+     */
+    function _consumeBatchId(bytes32 batchId) internal {
+        if (batchIdUsed[batchId] || batches[batchId].owner != address(0)) {
+            revert BatchIdAlreadyUsed(batchId);
+        }
+        batchIdUsed[batchId] = true;
+    }
+
+    /**
+     * @notice The first sampling-start block strictly after `blockNumber`.
+     * @dev Sampling for round `r` starts at `(r - 1) * 152 + 38`. A depth introduced in a
+     * sampling-start block is too late for that round, which reads the state at the end of the
+     * preceding block, so the boundary that could have observed `blockNumber` is the next one.
+     */
+    function _firstSamplingStartAfter(uint256 blockNumber) internal pure returns (uint256) {
+        if (blockNumber < REDISTRIBUTION_REVEAL_OFFSET) {
+            return REDISTRIBUTION_REVEAL_OFFSET;
+        }
+
+        uint256 completedIntervals = (blockNumber - REDISTRIBUTION_REVEAL_OFFSET) / REDISTRIBUTION_ROUND_BLOCKS;
+
+        return REDISTRIBUTION_REVEAL_OFFSET + (completedIntervals + 1) * REDISTRIBUTION_ROUND_BLOCKS;
+    }
+
+    /**
+     * @notice Retain a superseded depth, but only if a sampling boundary ever observed it.
+     * @dev Dilutions that happen before the next sampling start replace an intermediate value no
+     * round ever fixed, so they must not consume a history slot. This is what allows repeated
+     * dilution without losing a depth an open claim still needs.
+     *
+     * Worked example from SWIP-049 (depth 20 from block 120, sampling starts 190, 342, 494):
+     *   dilute at 220 (20 -> 21): 190 has passed, record previous = depth 20 from block 120
+     *   dilute at 260 (21 -> 22): next boundary 342 not reached, no round fixed 21, record nothing
+     *   dilute at 360 (22 -> 23): 342 has passed, rotate to older = depth 20 from block 120, previous = depth 22 from block 260
+     * Both old depths are then live at once: the round sampled at 190 is still claimable while
+     * the round sampled at 342 must use 22.
+     */
+    function _recordDepthBeforeIncrease(bytes32 batchId, uint8 oldDepth, uint256 oldDepthBlock) internal {
+        uint256 firstSamplingStartThatCouldUseOldDepth = _firstSamplingStartAfter(oldDepthBlock);
+
+        // Strictly less than: an increase in the sampling-start block itself is too late for that
+        // round, so the old depth is the one that round must use and has to be retained.
+        if (block.number < firstSamplingStartThatCouldUseOldDepth) {
+            return;
+        }
+
+        DepthHistory storage history = depthHistory[batchId];
+
+        history.olderDepth = history.previousDepth;
+        history.olderDepthBlock = history.previousDepthBlock;
+        history.previousDepth = oldDepth;
+        history.previousDepthBlock = uint64(oldDepthBlock);
+    }
+
+    /**
+     * @notice Reconstruct the price and cumulative outpayment in force at `samplingStartBlock`.
+     * @dev The rollback branch is only sound when the previous price period actually covered
+     * `samplingStartBlock`. SWIP-049 argues that from claim ordering; this checks it instead,
+     * because PriceOracle also exposes an unrestricted admin setPrice.
+     */
+    function _priceStateAtSamplingStart(
+        uint256 samplingStartBlock
+    ) internal view returns (uint64 priceAtStart, uint256 outPaymentAtStart) {
+        if (samplingStartBlock > block.number) {
+            revert FutureSamplingStartBlock();
+        }
+
+        uint256 priceUpdateBlock = uint256(lastUpdatedBlock);
+        if (priceUpdateBlock < samplingStartBlock) {
+            return (lastPrice, totalOutPayment + (samplingStartBlock - priceUpdateBlock) * uint256(lastPrice));
+        }
+
+        if (previousPrice == 0) {
+            revert PriceHistoryUnavailable();
+        }
+
+        if (uint256(previousPriceUpdatedBlock) > samplingStartBlock) {
+            revert PriceHistoryUnavailable();
+        }
+
+        uint256 rollback = (priceUpdateBlock - samplingStartBlock) * uint256(previousPrice);
+        if (rollback > totalOutPayment) {
+            revert PriceHistoryUnavailable();
+        }
+
+        return (previousPrice, totalOutPayment - rollback);
+    }
+
+    /**
+     * @notice The newest recorded depth introduced strictly before `samplingStartBlock`.
+     */
+    function _depthAtSamplingStart(
+        bytes32 batchId,
+        Batch storage batch,
+        uint256 samplingStartBlock
+    ) internal view returns (uint8) {
+        if (batch.lastUpdatedBlockNumber < samplingStartBlock) {
+            return batch.depth;
+        }
+
+        DepthHistory storage history = depthHistory[batchId];
+        if (history.previousDepth != 0 && uint256(history.previousDepthBlock) < samplingStartBlock) {
+            return history.previousDepth;
+        }
+        if (history.olderDepth != 0 && uint256(history.olderDepthBlock) < samplingStartBlock) {
+            return history.olderDepth;
+        }
+
+        revert BatchNotUsableForRedistribution(batchId);
     }
 
     /**
@@ -419,11 +603,18 @@ contract PostageStamp is AccessControl, Pausable {
             revert PriceOracleOnly();
         }
 
-        if (lastPrice != 0) {
-            totalOutPayment = currentTotalOutPayment();
-        }
+        uint64 newPrice = uint64(_price);
 
-        lastPrice = uint64(_price);
+        if (lastPrice == 0) {
+            // Bootstrap: there is no earlier price period to roll back through.
+            previousPrice = newPrice;
+        } else {
+            totalOutPayment = currentTotalOutPayment();
+            previousPrice = lastPrice;
+        }
+        previousPriceUpdatedBlock = lastUpdatedBlock;
+
+        lastPrice = newPrice;
         lastUpdatedBlock = uint64(block.number);
 
         emit PriceUpdate(_price);
@@ -432,6 +623,10 @@ contract PostageStamp is AccessControl, Pausable {
     function setMinimumValidityBlocks(uint64 _value) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
+        }
+
+        if (_value < MIN_OPERATION_VALIDITY_BLOCKS) {
+            revert MinimumValidityTooShort();
         }
 
         minimumValidityBlocks = _value;
@@ -476,7 +671,9 @@ contract PostageStamp is AccessControl, Pausable {
             // remaining normalised payout for this batch only
             pot += batchSize * (batch.normalisedBalance - _lastExpiryBalance);
             tree.remove(fbi, batch.normalisedBalance);
+            delete depthHistory[fbi];
             delete batches[fbi];
+            // batchIdUsed[fbi] deliberately stays true: the id is permanently consumed.
 
             unchecked {
                 ++i;
@@ -638,5 +835,57 @@ contract PostageStamp is AccessControl, Pausable {
 
     function batchLastUpdatedBlockNumber(bytes32 _batchId) public view returns (uint256) {
         return batches[_batchId].lastUpdatedBlockNumber;
+    }
+
+    // ----------------------------- SWIP-049 reads ------------------------------
+
+    /**
+     * @notice The normalised balance a batch must hold to be usable by the round that started
+     * sampling at `samplingStartBlock`.
+     * @dev Bee and Redistribution must use this same value. It is fixed at sampling start and a
+     * later price update does not move it.
+     */
+    function redistributionMinimumNormalisedBalance(uint256 samplingStartBlock) external view returns (uint256) {
+        (uint64 priceAtStart, uint256 outPaymentAtStart) = _priceStateAtSamplingStart(samplingStartBlock);
+        return outPaymentAtStart + uint256(ROUND_USABILITY_BLOCKS) * uint256(priceAtStart);
+    }
+
+    /**
+     * @notice The batch as a redistribution round that started sampling at `samplingStartBlock`
+     * may use it.
+     * @dev Reverts unless the batch is present, still live, and had a depth before sampling
+     * began. The returned depth is the historical one, so a later dilution cannot widen the
+     * index range an open claim is verified against.
+     */
+    function redistributionBatchAt(
+        bytes32 batchId,
+        uint256 samplingStartBlock
+    ) external view returns (address owner, uint8 depthAtSamplingStart, uint8 bucketDepth, uint256 normalisedBalance) {
+        if (samplingStartBlock > block.number) {
+            revert FutureSamplingStartBlock();
+        }
+
+        Batch storage batch = batches[batchId];
+        if (batch.owner == address(0) || batch.normalisedBalance <= currentTotalOutPayment()) {
+            revert BatchNotUsableForRedistribution(batchId);
+        }
+
+        return (
+            batch.owner,
+            _depthAtSamplingStart(batchId, batch, samplingStartBlock),
+            batch.bucketDepth,
+            batch.normalisedBalance
+        );
+    }
+
+    /**
+     * @notice Retained depth history of a batch. Exposed so Bee can check its own reconstruction
+     * against the contract rather than inferring it from events alone.
+     */
+    function batchDepthHistory(
+        bytes32 batchId
+    ) external view returns (uint8 previousDepth, uint64 previousDepthBlock, uint8 olderDepth, uint64 olderDepthBlock) {
+        DepthHistory storage history = depthHistory[batchId];
+        return (history.previousDepth, history.previousDepthBlock, history.olderDepth, history.olderDepthBlock);
     }
 }

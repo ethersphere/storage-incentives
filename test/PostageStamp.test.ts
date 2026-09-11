@@ -41,13 +41,17 @@ const errors = {
   },
   createBatch: {
     invalidDepth: 'InvalidDepth()',
-    alreadyExists: 'BatchExists()',
+    alreadyExists: 'BatchIdAlreadyUsed',
     paused: 'Pausable: paused',
   },
   firstBatchId: {
     noneExist: 'NoBatchesExist()',
   },
 };
+
+// SWIP-049: every balance-reducing operation must leave at least six redistribution rounds
+// (6 * 152) of balance, and setMinimumValidityBlocks may not be set below that floor.
+const MIN_VALIDITY_BLOCKS = 912;
 
 describe('PostageStamp', function () {
   let minimumPrice: number;
@@ -98,7 +102,7 @@ describe('PostageStamp', function () {
     beforeEach(async function () {
       await deployments.fixture();
       const postageStamp = await ethers.getContract('PostageStamp', deployer);
-      await postageStamp.setMinimumValidityBlocks(0);
+      await postageStamp.setMinimumValidityBlocks(MIN_VALIDITY_BLOCKS);
       const priceOracle = await ethers.getContract('PriceOracle');
       minimumPrice = await priceOracle.minimumPrice();
       price0 = minimumPrice;
@@ -118,7 +122,7 @@ describe('PostageStamp', function () {
 
         batch = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-          initialPaymentPerChunk: price0 * 10, //good for ten blocks at minimum price
+          initialPaymentPerChunk: price0 * 20 * MIN_VALIDITY_BLOCKS, // well clear of the six-round minimum
           depth: 17,
           immutable: false,
           bucketDepth: 16,
@@ -200,7 +204,7 @@ describe('PostageStamp', function () {
           batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
 
         expect(normalisedBalance1).to.be.equal(expectedNormalisedBalance1);
-        await mineNBlocks(12);
+        await mineNBlocks(batch.initialPaymentPerChunk / price0 + 2);
 
         const expectedNormalisedBalance2 =
           batch.initialPaymentPerChunk - ((await getBlockNumber()) - buyStampBlock) * price0;
@@ -217,9 +221,12 @@ describe('PostageStamp', function () {
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
-        const initialPaymentPerChunk0 = 3300;
-        const initialPaymentPerChunk1 = 1100;
-        const initialPaymentPerChunk2 = 2200;
+        // Descending, and separated by far more than the outpayment accrued between the
+        // creation transactions, so the assertions below test balance ordering rather than
+        // creation order. Every value clears the six-round minimum SWIP-049 introduces.
+        const initialPaymentPerChunk0 = price0 * (MIN_VALIDITY_BLOCKS + 3000);
+        const initialPaymentPerChunk1 = price0 * (MIN_VALIDITY_BLOCKS + 2000);
+        const initialPaymentPerChunk2 = price0 * (MIN_VALIDITY_BLOCKS + 1000);
 
         const nonce0 = '0x0000000000000000000000000000000000000000000000000000000000001234';
         await postageStampStamper.createBatch(
@@ -360,7 +367,7 @@ describe('PostageStamp', function () {
       });
 
       it('should correctly return if batches are empty', async function () {
-        const initialPaymentPerChunk0 = 2048;
+        const initialPaymentPerChunk0 = price0 * MIN_VALIDITY_BLOCKS;
         const blocksElapsed = (await getBlockNumber()) - setPrice0Block;
         const expectedNormalisedBalance = initialPaymentPerChunk0 + blocksElapsed * price0;
 
@@ -381,7 +388,7 @@ describe('PostageStamp', function () {
         expect(stamp[4]).to.equal(expectedNormalisedBalance);
         expect(await postageStampStamper.isBatchesTreeEmpty()).equal(false);
 
-        mineNBlocks(10);
+        await mineNBlocks(MIN_VALIDITY_BLOCKS + 10);
         await postageStampStamper.expireLimited(maxInt256);
 
         expect(await postageStampStamper.isBatchesTreeEmpty()).equal(true);
@@ -430,9 +437,9 @@ describe('PostageStamp', function () {
       });
 
       it('should delete expired batches', async function () {
-        const initialPaymentPerChunk0 = price0 * 8;
-        const initialPaymentPerChunk1 = price0 * 4;
-        const initialPaymentPerChunk2 = price0 * 16;
+        const initialPaymentPerChunk0 = price0 * (MIN_VALIDITY_BLOCKS + 8);
+        const initialPaymentPerChunk1 = price0 * (MIN_VALIDITY_BLOCKS + 4);
+        const initialPaymentPerChunk2 = price0 * (MIN_VALIDITY_BLOCKS + 16);
 
         const transferAmount0 = initialPaymentPerChunk0 * 2 ** batch.depth;
         await mintAndApprove(deployer, stamper, postageStampStamper.address, transferAmount0.toString());
@@ -483,7 +490,7 @@ describe('PostageStamp', function () {
         expect(await postageStampStamper.firstBatchId()).to.equal(batch1);
         expect(await postageStampStamper.firstBatchId()).not.to.equal(batch2);
 
-        await mineNBlocks(1);
+        await mineNBlocks(MIN_VALIDITY_BLOCKS + 1);
 
         expect(await postageStampStamper.firstBatchId()).to.equal(batch1);
         expect(await postageStampStamper.firstBatchId()).not.to.equal(batch2);
@@ -496,13 +503,13 @@ describe('PostageStamp', function () {
       });
 
       it('should calculate the correct remaining balances and update the pot', async function () {
-        const blocksBeforeExpired0 = 8;
+        const blocksBeforeExpired0 = MIN_VALIDITY_BLOCKS + 8;
         const initialPaymentPerChunk0 = price0 * blocksBeforeExpired0;
 
-        const blocksBeforeExpired1 = 4;
+        const blocksBeforeExpired1 = MIN_VALIDITY_BLOCKS + 4;
         const initialPaymentPerChunk1 = price0 * blocksBeforeExpired1;
 
-        const blocksBeforeExpired2 = 16;
+        const blocksBeforeExpired2 = MIN_VALIDITY_BLOCKS + 16;
         const initialPaymentPerChunk2 = price0 * blocksBeforeExpired2;
 
         const transferAmount0 = initialPaymentPerChunk0 * 2 ** batch.depth;
@@ -603,7 +610,7 @@ describe('PostageStamp', function () {
 
         expect(await postageStampStamper.pot()).equal(expectedPot2);
 
-        await mineNBlocks(1);
+        await mineNBlocks(MIN_VALIDITY_BLOCKS + 1);
 
         await postageStampStamper.expireLimited(maxInt256);
 
@@ -635,7 +642,7 @@ describe('PostageStamp', function () {
       let setPrice0Block: number, buyStampBlock: number;
       let topupAmountPerChunk: number;
 
-      const initialBatchBlocks = 10;
+      const initialBatchBlocks = MIN_VALIDITY_BLOCKS + 100;
 
       beforeEach(async function () {
         postageStamp = await ethers.getContract('PostageStamp', stamper);
@@ -722,7 +729,7 @@ describe('PostageStamp', function () {
       });
 
       it('should keep batches ordered by normalisedBalance', async function () {
-        const batch2Blocks = 20;
+        const batch2Blocks = MIN_VALIDITY_BLOCKS + 150;
         const batch2 = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abc1',
           initialPaymentPerChunk: price0 * batch2Blocks,
@@ -747,7 +754,7 @@ describe('PostageStamp', function () {
 
         expect(await postageStamp.firstBatchId()).equal(batch.id);
 
-        const batch0TopUpBlocks = 40;
+        const batch0TopUpBlocks = 100;
         const topUpAmountBatch0 = price0 * batch0TopUpBlocks;
         const batch2TopUpTransferAmount = price0 * topUpAmountBatch0 * 2 ** batch2.depth;
 
@@ -764,7 +771,7 @@ describe('PostageStamp', function () {
       let batch: Batch;
       let batchSize: number, transferAmount: number;
       let setPrice0Block: number, buyStampBlock: number;
-      const initialBatchBlocks = 100;
+      const initialBatchBlocks = MIN_VALIDITY_BLOCKS * 8;
       const newDepth = 18;
       let depthChange: number;
 
@@ -852,7 +859,7 @@ describe('PostageStamp', function () {
 
       it('should not increase depth of expired batches', async function () {
         // one price applied so far, this ensures the currentTotalOutpayment will be exactly the batch value when increaseDepth is called
-        await mineNBlocks(100);
+        await mineNBlocks(initialBatchBlocks + 10);
         await expect(postageStamp.increaseDepth(batch.id, newDepth)).to.be.revertedWith('BatchExpired()');
       });
 
@@ -878,7 +885,7 @@ describe('PostageStamp', function () {
 
       it('should keep batches ordered by normalisedBalance', async function () {
         const batch2NewDepth = 20;
-        const batch2Blocks = 200;
+        const batch2Blocks = MIN_VALIDITY_BLOCKS * 16;
         const batch2 = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abc1',
           initialPaymentPerChunk: price0 * batch2Blocks,
@@ -908,10 +915,14 @@ describe('PostageStamp', function () {
         expect(await postageStamp.firstBatchId()).equal(batch2Id);
       });
 
-      it('should delete expired batches', async function () {
+      // SWIP-049: a dilution must leave at least six redistribution rounds of balance, so a
+      // dilution can no longer be used to drive a batch out of an open round. The first dilution
+      // here is sized to land exactly on that floor; the second one would fall through it and
+      // must revert instead of expiring the batch.
+      it('should not let dilution push a batch below the six-round minimum', async function () {
         const batch2NewDepth = 24;
         const batch2NewDepth2 = 36;
-        const batch2Blocks = 200;
+        const batch2Blocks = MIN_VALIDITY_BLOCKS * 2 * 2 ** (24 - 17);
         const batch2 = {
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abc1',
           initialPaymentPerChunk: price0 * batch2Blocks,
@@ -938,13 +949,14 @@ describe('PostageStamp', function () {
 
         await postageStamp.increaseDepth(batch2Id, batch2NewDepth);
 
+        // Diluted down to roughly two six-round minimums, which is below the fixture batch.
         expect(await postageStamp.firstBatchId()).equal(batch2Id);
 
-        await postageStamp.increaseDepth(batch2Id, batch2NewDepth2);
+        await expect(postageStamp.increaseDepth(batch2Id, batch2NewDepth2)).to.be.revertedWith('InsufficientBalance()');
 
+        // The batch is still alive and still the cheapest, because the dilution was rejected.
         await postageStamp.expireLimited(maxInt256);
-
-        expect(await postageStamp.firstBatchId()).equal(batch.id);
+        expect(await postageStamp.firstBatchId()).equal(batch2Id);
       });
     });
 
@@ -1029,9 +1041,9 @@ describe('PostageStamp', function () {
       let batch0Size: number, transferAmount0: number;
       let batch1Size: number, transferAmount1: number;
       let batch2Size: number, transferAmount2: number;
-      const initialBatch0Blocks = 10;
-      const initialBatch1Blocks = 10;
-      const initialBatch2Blocks = 200;
+      const initialBatch0Blocks = MIN_VALIDITY_BLOCKS + 10;
+      const initialBatch1Blocks = MIN_VALIDITY_BLOCKS + 10;
+      const initialBatch2Blocks = MIN_VALIDITY_BLOCKS + 200;
       let batch1Id: string, batch2Id: string;
 
       beforeEach(async function () {
@@ -1112,7 +1124,7 @@ describe('PostageStamp', function () {
       });
 
       it('expire should update the pot and delete expired batches', async function () {
-        await mineNBlocks(20);
+        await mineNBlocks(MIN_VALIDITY_BLOCKS + 20);
 
         expect(await postageStamp.expiredBatchesExist()).equal(true);
 
@@ -1126,7 +1138,7 @@ describe('PostageStamp', function () {
 
         expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
 
-        await mineNBlocks(200);
+        await mineNBlocks(MIN_VALIDITY_BLOCKS + 210);
 
         await postageStamp.expireLimited(maxInt256);
 
@@ -1134,7 +1146,7 @@ describe('PostageStamp', function () {
       });
 
       it('expireLimited should update the pot and delete expired batches', async function () {
-        await mineNBlocks(20);
+        await mineNBlocks(MIN_VALIDITY_BLOCKS + 20);
         await postageStamp.expireLimited(1);
 
         expect(await postageStamp.firstBatchId()).to.be.equal(batch1Id);
@@ -1151,7 +1163,7 @@ describe('PostageStamp', function () {
 
         expect(await postageStamp.firstBatchId()).to.be.equal(batch2Id);
 
-        await mineNBlocks(200);
+        await mineNBlocks(MIN_VALIDITY_BLOCKS + 210);
 
         await postageStamp.expireLimited(1);
 
@@ -1171,7 +1183,7 @@ describe('PostageStamp', function () {
         batch = {
           id: '0x000000000000000000000000000000000000000000000000000000000000abcd',
           nonce: '0x000000000000000000000000000000000000000000000000000000000000abcd',
-          initialPaymentPerChunk: 10240,
+          initialPaymentPerChunk: 10240 * MIN_VALIDITY_BLOCKS,
           depth: 17,
           immutable: false,
           bucketDepth: 16,
@@ -1339,7 +1351,7 @@ describe('PostageStamp', function () {
         );
         await expect(
           postageStampStamper.copyBatch(stamper, 1000, batch.depth, batch.bucketDepth, batch.nonce, batch.immutable)
-        ).to.be.revertedWith('BatchExists()');
+        ).to.be.revertedWith('BatchIdAlreadyUsed');
       });
 
       it('should not allow normalized balance to be zero', async function () {

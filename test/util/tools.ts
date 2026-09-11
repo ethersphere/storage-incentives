@@ -229,7 +229,7 @@ export async function copyBatchForClaim(
   const postageAdmin = await ethers.getContract('PostageStamp', deployer);
   // set minimum required blocks for postage stamp lifetime to 0 for tests
 
-  await postageAdmin.setMinimumValidityBlocks(0);
+  await postageAdmin.setMinimumValidityBlocks(912);
   const initialBalance = 100_000_000;
   const postageDepth = 27;
   const bzzFund = BigNumber.from(initialBalance).mul(BigNumber.from(2).pow(postageDepth));
