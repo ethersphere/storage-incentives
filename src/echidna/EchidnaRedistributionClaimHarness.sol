@@ -121,6 +121,10 @@ contract RedistributionClaimStub is Redistribution {
         emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
     }
+
+    function currentCommitsLength() external view returns (uint256) {
+        return currentCommits.length;
+    }
 }
 
 contract EchidnaRedistributionClaimActor {
@@ -251,6 +255,8 @@ contract EchidnaRedistributionClaimHarness {
         bytes32 obf = redist.wrapCommit(overlay, depth, hash, nonce);
         bool ok = a.callCommit(obf, redist.currentRound(), depth);
         if (!ok) return;
+        // commit() does not revert on CommitRejected (frozen closer after auto-finalize).
+        if (!_commitExists(obf, address(a))) return;
 
         trackedHasCommit[idx] = true;
         trackedHasReveal[idx] = false;
@@ -368,5 +374,22 @@ contract EchidnaRedistributionClaimHarness {
         uint256 twoRounds = 2 * ROUND_LENGTH;
         if (block.number > twoRounds + 1) return block.number - twoRounds - 1;
         return 1;
+    }
+
+    function _commitExists(bytes32 obfuscated, address owner) internal view returns (bool) {
+        uint256 lim = redist.currentCommitsLength();
+        if (lim > 25) lim = 25;
+        for (uint256 i = 0; i < lim; i++) {
+            (bool ok, bytes memory data) = address(redist).staticcall(
+                abi.encodeWithSignature("currentCommits(uint256)", i)
+            );
+            if (!ok) break;
+            (, address ow, , , , , , bytes32 obf, ) = abi.decode(
+                data,
+                (bytes32, address, bool, uint8, uint8, uint256, uint256, bytes32, uint256)
+            );
+            if (ow == owner && obf == obfuscated) return true;
+        }
+        return false;
     }
 }

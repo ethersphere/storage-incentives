@@ -244,6 +244,8 @@ contract EchidnaSystemHarness {
 
         bool ok = a.callCommit(obfuscated, redist.currentRound(), depth);
         if (!ok) return;
+        // commit() does not revert on CommitRejected (frozen closer after auto-finalize).
+        if (!_commitExists(obfuscated, address(a))) return;
 
         trackedHasCommit[idx] = true;
         trackedHasReveal[idx] = false;

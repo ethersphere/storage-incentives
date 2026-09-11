@@ -287,6 +287,9 @@ contract EchidnaRedistributionHarness {
         bytes32 obfuscated = redist.wrapCommit(overlay, d, reserveHash, nonce);
         bool ok = a.callCommit(obfuscated, redist.currentRound(), d);
         if (!ok) return;
+        // commit() does not revert on CommitRejected (frozen closer after auto-finalize).
+        (bool admitted, ) = _findCommit(overlay, obfuscated);
+        if (!admitted) return;
 
         trackedHasCommit[idx] = true;
         trackedHasReveal[idx] = false;
