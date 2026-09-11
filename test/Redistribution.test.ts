@@ -45,6 +45,23 @@ const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace67
 // start round number after mintToNode(red, 0) -> without claim
 const roundAnchorBase = '0xa54b3e90672405a607381bd4d34034a12c5aad31607067a7ad26573f504ad6e2';
 
+// SWIP-050 binds a commitment to its round and fixes the chunk transform root in stage one.
+// These tests exercise the commit/reveal state machine rather than the stamp binding, so they
+// use an empty root; the binding itself is covered in test/RedistributionSts.test.ts.
+const ZERO_ROOT = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+async function commitHash(
+  overlay: string,
+  depth: string,
+  hash: string,
+  nonce: string,
+  round?: number
+): Promise<string> {
+  const redistribution = await ethers.getContract('Redistribution');
+  const commitRound = round ?? (await redistribution.currentRound()).toNumber();
+  return encodeAndHash(commitRound, overlay, depth, hash, ZERO_ROOT, nonce);
+}
+
 const maxInt256 = 0xffff; //js can't handle the full maxInt256 value
 
 // Named accounts used by tests.
@@ -413,13 +430,16 @@ describe('Redistribution', function () {
 
     describe('utilities', function () {
       it('should correctly wrap a commit', async function () {
-        const obfuscatedHash = encodeAndHash(overlay_0, depth_0, hash_0, reveal_nonce_0);
+        const obfuscatedHash = await commitHash(overlay_0, depth_0, hash_0, reveal_nonce_0);
 
-        expect(await redistribution.wrapCommit(overlay_0, depth_0, hash_0, reveal_nonce_0)).to.be.eq(obfuscatedHash);
+        const round = (await redistribution.currentRound()).toNumber();
+        expect(await redistribution.wrapCommit(round, overlay_0, depth_0, hash_0, ZERO_ROOT, reveal_nonce_0)).to.be.eq(
+          obfuscatedHash
+        );
       });
 
       it('should correctly wrap another commit', async function () {
-        const obfuscatedHash = encodeAndHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
+        const obfuscatedHash = await commitHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
 
         expect(await redistribution.wrapCommit(overlay_3, depth_3, hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
       });
@@ -504,7 +524,7 @@ describe('Redistribution', function () {
         const r_node_3 = await ethers.getContract('Redistribution', node_3);
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
-        const obfuscatedHash = encodeAndHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
+        const obfuscatedHash = await commitHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
         expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
         const currentRound = await r_node_3.currentRound();
         // SWIP-51: proximity is now enforced at commit time, so this out-of-depth commit reverts.
@@ -518,7 +538,7 @@ describe('Redistribution', function () {
         const r_node_3 = await ethers.getContract('Redistribution', node_3);
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
-        const obfuscatedHash = encodeAndHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
+        const obfuscatedHash = await commitHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
         expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
         const currentRound = await r_node_3.currentRound();
         await expect(r_node_3.commit(obfuscatedHash, currentRound, '0x08')).to.be.revertedWith(
@@ -534,7 +554,7 @@ describe('Redistribution', function () {
         await mineToNode(redistribution, 3);
 
         expect(await redistribution.currentPhaseCommit()).to.be.true;
-        const obfuscatedHash2 = encodeAndHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
+        const obfuscatedHash2 = await commitHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
         const currentRound2 = await r_node_3.currentRound();
 
         await expect(r_node_3.commit(obfuscatedHash2, currentRound2, depth_3))
@@ -544,7 +564,7 @@ describe('Redistribution', function () {
         expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash2);
 
         await mineNBlocks(phaseLength);
-        await r_node_3.reveal(depth_3, hash_3, reveal_nonce_3);
+        await r_node_3.reveal(depth_3, hash_3, ZERO_ROOT, reveal_nonce_3);
 
         expect((await r_node_3.currentReveals(0)).hash).to.be.eq(hash_3);
         expect((await r_node_3.currentReveals(0)).overlay).to.be.eq(overlay_3);
@@ -559,7 +579,7 @@ describe('Redistribution', function () {
         await mineToNode(redistribution, 2);
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = await commitHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
 
@@ -571,7 +591,7 @@ describe('Redistribution', function () {
 
         await mineNBlocks(phaseLength);
 
-        await r_node_2.reveal(depth_2, hash_2, reveal_nonce_2);
+        await r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2);
 
         expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
         expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
@@ -588,7 +608,7 @@ describe('Redistribution', function () {
         await mineToNode(redistribution, 2);
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = await commitHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
 
@@ -600,7 +620,7 @@ describe('Redistribution', function () {
 
         await mineNBlocks(phaseLength);
 
-        await r_node_2.reveal(depth_2, hash_2, reveal_nonce_2);
+        await r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2);
 
         expect((await r_node_2.currentReveals(0)).hash).to.be.eq(hash_2);
         expect((await r_node_2.currentReveals(0)).overlay).to.be.eq(overlay_2);
@@ -629,7 +649,7 @@ describe('Redistribution', function () {
         expect(await r_node_0.currentPhaseReveal()).to.be.true;
 
         // Same declared depth, but scrambled reveal args → NoMatchingCommit.
-        await expect(r_node_0.reveal('0x01', reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+        await expect(r_node_0.reveal('0x01', reveal_nonce_0, ZERO_ROOT, revealed_overlay_0)).to.be.revertedWith(
           errors.reveal.doNotMatch
         );
       });
@@ -639,7 +659,7 @@ describe('Redistribution', function () {
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = await commitHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
 
@@ -665,7 +685,7 @@ describe('Redistribution', function () {
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
 
-        await expect(r_node_0.reveal(depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+        await expect(r_node_0.reveal(depth_0, reveal_nonce_0, ZERO_ROOT, revealed_overlay_0)).to.be.revertedWith(
           errors.reveal.noCommits
         );
       });
@@ -679,7 +699,7 @@ describe('Redistribution', function () {
         const currentRound = await r_node_0.currentRound();
         await r_node_0.commit(obfuscatedHash_0, currentRound, '0x01');
 
-        await expect(r_node_0.reveal(depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+        await expect(r_node_0.reveal(depth_0, reveal_nonce_0, ZERO_ROOT, revealed_overlay_0)).to.be.revertedWith(
           errors.reveal.notInReveal
         );
       });
@@ -701,7 +721,7 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseClaim()).to.be.true;
 
         // commented out to allow other tests to pass for now
-        await expect(r_node_0.reveal(depth_0, reveal_nonce_0, revealed_overlay_0)).to.be.revertedWith(
+        await expect(r_node_0.reveal(depth_0, reveal_nonce_0, ZERO_ROOT, revealed_overlay_0)).to.be.revertedWith(
           errors.reveal.notInReveal
         );
       });
@@ -712,7 +732,7 @@ describe('Redistribution', function () {
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
 
-        const obfuscatedHash = encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
+        const obfuscatedHash = await commitHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
         await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
@@ -721,7 +741,9 @@ describe('Redistribution', function () {
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-        await expect(r_node_2.reveal('0x01', hash_2, reveal_nonce_f)).to.be.revertedWith(errors.reveal.doNotMatch);
+        await expect(r_node_2.reveal('0x01', hash_2, ZERO_ROOT, reveal_nonce_f)).to.be.revertedWith(
+          errors.reveal.doNotMatch
+        );
       });
 
       it('should not allow an overlay to reveal without with the incorrect depth', async function () {
@@ -729,7 +751,7 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
-        const obfuscatedHash = encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
+        const obfuscatedHash = await commitHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
         await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
@@ -739,7 +761,9 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         // Depth differs from declaredDepth → DepthMismatch (SWIP-51).
-        await expect(r_node_2.reveal(depth_f, hash_2, reveal_nonce_2)).to.be.revertedWith(errors.reveal.depthMismatch);
+        await expect(r_node_2.reveal(depth_f, hash_2, ZERO_ROOT, reveal_nonce_2)).to.be.revertedWith(
+          errors.reveal.depthMismatch
+        );
       });
 
       describe('when pausing', function () {
@@ -776,7 +800,7 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
         const r_node_2 = await ethers.getContract('Redistribution', node_2);
-        const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+        const obfuscatedHash = await commitHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
 
         const currentRound = await r_node_2.currentRound();
         await r_node_2.commit(obfuscatedHash, parseInt(currentRound), depth_2);
@@ -785,852 +809,14 @@ describe('Redistribution', function () {
         expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-        await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_2))
+        await expect(r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2))
           .to.emit(redistribution, 'Revealed')
           .withArgs(currentRound, overlay_2, effectiveStakeAmount_2, '6399999999998976000', hash_2, parseInt(depth_2));
       });
     });
 
-    describe('claim phase', async function () {
-      let skippedRounds: number;
-      describe('single player', async function () {
-        let copyBatch: Awaited<ReturnType<typeof copyBatchForClaim>>, currentSeed: string, r_node_5: Contract;
-        const depth = 1;
-        const generatedSampling = async (socAttachment = false) => {
-          const anchor1 = arrayify(currentSeed);
-          const witnessChunks = socAttachment
-            ? await setWitnesses('claim-pot-soc', anchor1, depth, true)
-            : await setWitnesses('claim-pot', anchor1, depth);
-
-          const sampleChunk = makeSample(witnessChunks);
-
-          const sampleHashString = hexlify(sampleChunk.address());
-
-          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, currentRound, hexlify(depth));
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const anchor2 = await redistribution.currentSeed();
-
-          const { proofParams } = await getClaimProofs(
-            witnessChunks,
-            sampleChunk,
-            anchor1,
-            anchor2,
-            copyBatch.batchOwner,
-            copyBatch.batchId
-          );
-
-          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sampleHashString);
-          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
-          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
-          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(depth);
-
-          await mineNBlocks(phaseLength);
-
-          return { proofParams, sampleHashString };
-        };
-        const claimEventChecks = async (
-          claimTx: ContractTransaction,
-          sanityHash: string,
-          sanityDepth: string,
-          options?: {
-            additionalReward?: number; // in case of there was another copybatch before claim
-          }
-        ) => {
-          const receipt2 = await claimTx.wait();
-
-          let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
-          if (!receipt2.events) {
-            throw new Error('The transaction does not produced any events');
-          }
-          for (const e of receipt2.events) {
-            if (e.event == 'WinnerSelected') {
-              WinnerSelectedEvent = e;
-            }
-            if (e.event == 'TruthSelected') {
-              TruthSelectedEvent = e;
-            }
-            if (e.event == 'CountCommits') {
-              CountCommitsEvent = e;
-            }
-            if (e.event == 'CountReveals') {
-              CountRevealsEvent = e;
-            }
-          }
-          if (!CountCommitsEvent || !CountCommitsEvent.args) {
-            throw new Error('CountCommitsEvent has not triggered');
-          }
-          if (!WinnerSelectedEvent || !WinnerSelectedEvent.args) {
-            throw new Error('CountCommitsEvent has not triggered');
-          }
-          if (!CountRevealsEvent || !CountRevealsEvent.args) {
-            throw new Error('CountCommitsEvent has not triggered');
-          }
-          if (!TruthSelectedEvent || !TruthSelectedEvent.args) {
-            throw new Error('CountCommitsEvent has not triggered');
-          }
-
-          const expectedPotPayout =
-            (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
-            (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth + // batch in the beforeHook
-            (options?.additionalReward ? options?.additionalReward : 0);
-
-          expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
-
-          expect(CountCommitsEvent.args[0]).to.be.eq(1);
-          expect(CountRevealsEvent.args[0]).to.be.eq(1);
-
-          expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
-          expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
-          expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
-          expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-            BigNumber.from(effectiveStakeAmount_0).mul(BigNumber.from(2).pow(parseInt(sanityDepth)))
-          );
-          expect(WinnerSelectedEvent.args[0].hash).to.be.eq(sanityHash);
-          expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(sanityDepth));
-
-          expect(TruthSelectedEvent.args[0]).to.be.eq(sanityHash);
-          expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(sanityDepth));
-        };
-
-        beforeEach(async () => {
-          //copying batch for claim
-          copyBatch = await copyBatchForClaim(
-            deployer,
-            '0x5bee6f33f47fbe2c3ff4c853dbc95f1a6a4a4191a1a7e3ece999a76c2790a83f'
-          );
-          // anchor fixture
-          await mineToNode(redistribution, 5);
-          currentSeed = await redistribution.currentSeed();
-          expect(await redistribution.currentPhaseCommit()).to.be.true;
-          r_node_5 = await ethers.getContract('Redistribution', node_5);
-        });
-
-        it('should claim pot by bee CAC sampling', async function () {
-          const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_proof1;
-
-          const obfuscatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, currentRound, sanityDepth);
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(sanityDepth, sanityHash, reveal_nonce_5);
-
-          currentSeed = await redistribution.currentSeed();
-
-          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
-          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
-          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
-          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
-
-          await mineNBlocks(phaseLength);
-
-          const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
-          await claimEventChecks(tx2, sanityHash, sanityDepth);
-        });
-
-        // SKIPPED under SWIP-51 Option B: the node5_soc_proof1 fixture reports depth 0, but commit now
-        // requires depth > height (here height 0), so this depth-0 fixture can no longer be committed.
-        // Re-enable once a SOC fixture with depth >= 1 is generated.
-        it.skip('should claim pot by bee SOC sampling', async function () {
-          //copying batch for claim because pull sync does not work correctly
-          const copyBatch2 = await copyBatchForClaim(
-            deployer,
-            '0x6cccd65a68bc5f7c19a273e9567ebf4b968a13c9be74fc99ad90159730eff219'
-          );
-
-          const { proof1, proof2, proofLast, hash: sanityHash, depth: sanityDepth } = node5_soc_proof1;
-
-          const obsfucatedHash = encodeAndHash(overlay_5, sanityDepth, sanityHash, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obsfucatedHash, currentRound);
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obsfucatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(sanityDepth, sanityHash, reveal_nonce_5);
-
-          currentSeed = await redistribution.currentSeed();
-
-          expect((await r_node_5.currentReveals(0)).hash).to.be.eq(sanityHash);
-          expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
-          expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-          expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
-          expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(sanityDepth));
-
-          await mineNBlocks(phaseLength);
-
-          const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
-          const receipt2 = await tx2.wait();
-          await claimEventChecks(tx2, sanityHash, sanityDepth, {
-            additionalReward:
-              (receipt2.blockNumber - copyBatch2.tx.blockNumber) * price1 * 2 ** copyBatch2.postageDepth,
-          });
-        });
-
-        it('should claim pot by generated CAC sampling', async function () {
-          const { sampleHashString, proofParams } = await generatedSampling();
-
-          expect(proofParams.proof1.socProof).to.have.length(0);
-          expect(proofParams.proof2.socProof).to.have.length(0);
-          expect(proofParams.proofLast.socProof).to.have.length(0);
-          const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
-          await claimEventChecks(tx2, sampleHashString, hexlify(depth));
-        });
-
-        it('should claim pot by generated SOC sampling', async function () {
-          const { sampleHashString, proofParams } = await generatedSampling(true);
-
-          expect(proofParams.proof1.socProof).to.have.length(1);
-          expect(proofParams.proof2.socProof).to.have.length(1);
-          expect(proofParams.proofLast.socProof).to.have.length(1);
-          const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
-          await claimEventChecks(tx2, sampleHashString, hexlify(depth));
-        });
-
-        it('should not claim pot because of wrong witness order', async () => {
-          const anchor1 = arrayify(currentSeed);
-
-          let witnessChunks = loadWitnesses('claim-pot');
-          witnessChunks = witnessChunks.reverse();
-
-          const sampleChunk = makeSample(witnessChunks);
-
-          const sampleHashString = hexlify(sampleChunk.address());
-
-          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, currentRound, hexlify(depth));
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const anchor2 = await redistribution.currentSeed();
-
-          await mineNBlocks(phaseLength);
-
-          const { proofParams } = await getClaimProofs(
-            witnessChunks,
-            sampleChunk,
-            anchor1,
-            anchor2,
-            copyBatch.batchOwner,
-            copyBatch.batchId
-          );
-
-          await expect(
-            r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith(errors.claim.randomCheckFailed);
-        });
-
-        it('should not claim pot because of a witness is not in depth', async () => {
-          const anchor1 = arrayify(currentSeed);
-
-          // create witnesses
-          let witnessChunks: ReturnType<typeof mineCacWitness>[] = [];
-
-          for (let i = 0; i < WITNESS_COUNT; i++) {
-            // NOTE do not do estimation mining because that takes long
-            const nonce = i;
-            const nonceBuf = numberToArray(nonce);
-            const transformedAddress = calculateTransformedAddress(nonceBuf, anchor1);
-            witnessChunks.push({ nonce, transformedAddress });
-          }
-          // sort witness chunks to be descendant because of the
-          witnessChunks = witnessChunks.sort((a, b) => {
-            const aBn = BigNumber.from(a.transformedAddress);
-            const bBn = BigNumber.from(b.transformedAddress);
-            if (aBn.lt(bBn)) {
-              return -1;
-            }
-            if (bBn.lt(aBn)) {
-              return 1;
-            }
-            return 0;
-          });
-
-          const sampleChunk = makeSample(witnessChunks);
-
-          const sampleHashString = hexlify(sampleChunk.address());
-
-          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, currentRound, hexlify(depth));
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const anchor2 = await redistribution.currentSeed();
-
-          await mineNBlocks(phaseLength);
-
-          const { proofParams } = await getClaimProofs(
-            witnessChunks,
-            sampleChunk,
-            anchor1,
-            anchor2,
-            copyBatch.batchOwner,
-            copyBatch.batchId
-          );
-
-          await expect(
-            r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith(errors.claim.outOfDepth);
-        });
-
-        it('should not claim pot because of estimation check', async () => {
-          const anchor1 = arrayify(currentSeed);
-
-          // create witnesses
-          let witnessChunks: ReturnType<typeof mineCacWitness>[] = [];
-
-          let j = 0;
-          for (let i = 0; i < WITNESS_COUNT; i++) {
-            // mine nonce until transformed address is in depth
-            while (true) {
-              const nonce = j++;
-              const nonceBuf = numberToArray(nonce);
-              const transformedAddress = calculateTransformedAddress(nonceBuf, anchor1);
-              if (inProximity(makeChunk(nonceBuf).address(), anchor1, depth)) {
-                witnessChunks.push({ nonce, transformedAddress });
-                j++;
-                break;
-              }
-            }
-          }
-          // sort witness chunks to be descendant because of the order check
-          witnessChunks = witnessChunks.sort((a, b) => {
-            const aBn = BigNumber.from(a.transformedAddress);
-            const bBn = BigNumber.from(b.transformedAddress);
-            if (aBn.lt(bBn)) {
-              return -1;
-            }
-            if (bBn.lt(aBn)) {
-              return 1;
-            }
-            return 0;
-          });
-
-          const sampleChunk = makeSample(witnessChunks);
-
-          const sampleHashString = hexlify(sampleChunk.address());
-
-          const obfuscatedHash = encodeAndHash(overlay_5, hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const currentRound = await r_node_5.currentRound();
-          await r_node_5.commit(obfuscatedHash, currentRound, hexlify(depth));
-
-          expect((await r_node_5.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
-
-          await mineToRevealPhase();
-
-          await r_node_5.reveal(hexlify(depth), sampleHashString, reveal_nonce_5);
-
-          const anchor2 = await redistribution.currentSeed();
-
-          await mineNBlocks(phaseLength);
-
-          const { proofParams } = await getClaimProofs(
-            witnessChunks,
-            sampleChunk,
-            anchor1,
-            anchor2,
-            copyBatch.batchOwner,
-            copyBatch.batchId
-          );
-
-          await expect(
-            r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-          ).to.be.revertedWith(errors.claim.reserveCheckFailed);
-        });
-
-        describe('should not claim pot because of SOC checks', async () => {
-          it('wrong SOC signature', async function () {
-            const { proofParams } = await generatedSampling(true);
-
-            // alter the identifier into random one
-            proofParams.proof1.socProof![0].identifier = randomBytes(32);
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.socVerificationFailed);
-          });
-
-          it('SOC attachment does not match with witness', async function () {
-            const { proofParams } = await generatedSampling(true);
-
-            proofParams.proof1.socProof![0] = await getSocProofAttachment(
-              proofParams.proof1.socProof![0].chunkAddr,
-              randomBytes(32),
-              depth
-            );
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.socCalcNotMatching);
-          });
-        });
-
-        describe('should not claim pot because of postage stamp checks', async () => {
-          it('stamp index is out of range', async function () {
-            const { proofParams } = await generatedSampling();
-
-            const index = Buffer.from(proofParams.proof1.postageProof.index);
-            index.writeUInt32BE(2 ** 30, 4);
-            proofParams.proof1.postageProof.index = index;
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.indexOutsideSet);
-          });
-
-          // SWIP-049: the index range is frozen at sampling start too. A dilution mid-round
-          // creates real, uploadable indexes immediately, but a claim for a round that is
-          // already open must still be verified against the smaller range that existed when
-          // that round fixed its scope.
-          it('dilution mid-round cannot widen the index range this claim may use', async function () {
-            const { proofParams } = await generatedSampling();
-
-            const postage = await ethers.getContract('PostageStamp', deployer);
-            const batchId = copyBatch.batchId;
-            const bucketDepth = await postage.batchBucketDepth(batchId);
-            const depthBefore = await postage.batchDepth(batchId);
-
-            // Fund the batch owner so it can send the dilution itself.
-            const owner = copyBatch.batchOwner.connect(ethers.provider);
-            const funder = await ethers.getSigner(deployer);
-            await funder.sendTransaction({ to: owner.address, value: ethers.utils.parseEther('1') });
-            await (await postage.connect(owner).increaseDepth(batchId, depthBefore + 1)).wait();
-
-            expect(await postage.batchDepth(batchId)).to.equal(depthBefore + 1);
-
-            const currentRound = await r_node_5.currentRound();
-            const samplingStart = await r_node_5.samplingStartBlock(currentRound);
-            const asOfSampling = await postage.redistributionBatchAt(batchId, samplingStart);
-            expect(asOfSampling.depthAtSamplingStart).to.equal(depthBefore);
-
-            // An index that only the post-dilution depth makes room for.
-            const indexCountBefore = 2 ** (depthBefore - bucketDepth);
-            const index = Buffer.from(proofParams.proof1.postageProof.index);
-            index.writeUInt32BE(indexCountBefore + 1, 4);
-            proofParams.proof1.postageProof.index = index;
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.indexOutsideSet);
-          });
-
-          // SWIP-049: the usable batch set is frozen at the first reveal block of the preceding
-          // round. A batch bought after a node has already seen the anchor is valid for uploads
-          // immediately, but it cannot be used by a round that is already open.
-          it('batch bought after sampling started cannot be used by this round', async function () {
-            const { proofParams } = await generatedSampling();
-
-            const wallet = getWalletOfFdpPlayQueen();
-            const postage = await ethers.getContract('PostageStamp', deployer);
-
-            const initialPaymentPerChunk = (await postage.minimumInitialBalancePerChunk()).mul(2);
-            const batchSize = 2 ** batch.depth;
-            const transferAmount = initialPaymentPerChunk.mul(batchSize);
-            await mintAndApprove(deployer, deployer, postage.address, transferAmount.toString());
-            const batchTx = await postage.createBatch(
-              wallet.address,
-              initialPaymentPerChunk,
-              batch.depth,
-              batch.bucketDepth,
-              '0x00000000000000000000000000000000000000000000000000000000b0bafe77',
-              batch.immutable
-            );
-
-            const batchReceipt = await batchTx.wait();
-            const batchCreatedEvent = batchReceipt.events.filter((e: { event: string }) => e.event === 'BatchCreated');
-            const batchId = Buffer.from(arrayify(batchCreatedEvent[0].args[0]));
-            const chunkAddr = Buffer.from(proofParams.proof1.proveSegment);
-            const { index, signature, timeStamp } = await constructPostageStamp(batchId, chunkAddr, wallet);
-
-            proofParams.proof1.postageProof.postageId = batchId;
-            proofParams.proof1.postageProof.signature = signature;
-            proofParams.proof1.postageProof.index = index;
-            proofParams.proof1.postageProof.timeStamp = timeStamp;
-
-            // The batch is live, fully funded and its stamp is perfectly valid. It is rejected
-            // only because it did not exist when this round fixed its scope.
-            expect(await postage.batchOwner(batchId)).to.equal(wallet.address);
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.batchNotUsable);
-          });
-
-          it('postage bucket and address bucket do not match', async function () {
-            const { proofParams } = await generatedSampling();
-
-            const index = Buffer.from(proofParams.proof1.postageProof.index);
-            index.writeUInt32BE(0, 0);
-            proofParams.proof1.postageProof.index = index;
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.bucketDiffers);
-          });
-
-          it('wrong postage stamp signature', async function () {
-            const { proofParams } = await generatedSampling();
-
-            const index = Buffer.from(proofParams.proof1.postageProof.index);
-            index.writeUInt32BE(1, 4);
-            proofParams.proof1.postageProof.index = index;
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.sigRecoveryFailed);
-          });
-        });
-
-        describe('should not claim pot because of inclusion proof checks', async () => {
-          it('wrong proof segments for the reserve commitment', async function () {
-            const { proofParams } = await generatedSampling();
-
-            proofParams.proof1.proofSegments[0] = randomBytes(32);
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.inclusionProofFailed1);
-          });
-
-          it('wrong proof segments for the original chunk', async function () {
-            const { proofParams } = await generatedSampling();
-
-            proofParams.proof1.proofSegments2[1] = randomBytes(32);
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.inclusionProofFailed3);
-          });
-
-          it('wrong proof segments for the transformed chunk', async function () {
-            const { proofParams } = await generatedSampling();
-
-            proofParams.proof1.proofSegments3[1] = randomBytes(32);
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.inclusionProofFailed4);
-          });
-
-          it('first inclusion proof segment of transformed and original do not match', async function () {
-            const { proofParams } = await generatedSampling();
-
-            proofParams.proof1.proofSegments2[0] = randomBytes(32);
-
-            await expect(
-              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.inclusionProofFailed2);
-          });
-        });
-
-        describe('two commits with equal stakes', async function () {
-          let priceOracle: Contract;
-          let r_node_1: Contract;
-          let r_node_5: Contract;
-          let currentRound: number;
-          let basePrice: number;
-          let currentPriceUpScaled: number;
-          let proof1: unknown, proof2: unknown, proofLast: unknown;
-
-          // no need to mineToNode function call in test cases
-          beforeEach(async () => {
-            await startRoundFixture(3);
-            // anchor fixture
-            await mineToNode(redistribution, 5);
-
-            priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-            r_node_1 = await ethers.getContract('Redistribution', node_1);
-            r_node_5 = await ethers.getContract('Redistribution', node_5);
-
-            // Set price base
-            basePrice = await priceOracle.priceBase();
-            currentRound = await r_node_1.currentRound();
-            currentPriceUpScaled = await priceOracle.currentPriceUpScaled();
-
-            const obfuscatedHash_1 = encodeAndHash(overlay_1_n_25, depth_5, hash_5, reveal_nonce_1);
-            await r_node_1.commit(obfuscatedHash_1, currentRound, depth_5);
-
-            const obfuscatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
-            await r_node_5.commit(obfuscatedHash_5, currentRound, depth_5);
-
-            proof1 = node5_proof1.proof1;
-            proof2 = node5_proof1.proof2;
-            proofLast = node5_proof1.proofLast;
-
-            await mineToRevealPhase();
-          });
-
-          it('if only one reveal, should freeze non-revealer and select revealer as winner', async function () {
-            const nodesInNeighbourhood = 1;
-
-            //do not reveal node_1
-            await r_node_5.reveal(depth_5, hash_5, reveal_nonce_5);
-
-            expect((await r_node_5.currentReveals(0)).hash).to.be.eq(hash_5);
-            expect((await r_node_5.currentReveals(0)).overlay).to.be.eq(overlay_5);
-            expect((await r_node_5.currentReveals(0)).owner).to.be.eq(node_5);
-            expect((await r_node_5.currentReveals(0)).stake).to.be.eq(effectiveStakeAmount_5);
-            expect((await r_node_5.currentReveals(0)).depth).to.be.eq(parseInt(depth_5));
-
-            await mineNBlocks(phaseLength);
-
-            const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
-            const receipt2 = await tx2.wait();
-
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
-            for (const e of receipt2.events) {
-              if (e.event == 'WinnerSelected') {
-                WinnerSelectedEvent = e;
-              }
-              if (e.event == 'TruthSelected') {
-                TruthSelectedEvent = e;
-              }
-              if (e.event == 'CountCommits') {
-                CountCommitsEvent = e;
-              }
-              if (e.event == 'CountReveals') {
-                CountRevealsEvent = e;
-              }
-            }
-
-            // <sig need something special to get at child events to check stakefrozen event
-            // https://github.com/ethers-io/ethers.js/discussions/3057?sort=top
-
-            const expectedPotPayout =
-              (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
-              (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
-
-            expect(await token.balanceOf(node_5)).to.be.eq(expectedPotPayout);
-
-            expect(CountCommitsEvent.args[0]).to.be.eq(2);
-            expect(CountRevealsEvent.args[0]).to.be.eq(1);
-
-            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
-            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
-            expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
-
-            expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-              calculateStakeDensity(effectiveStakeAmount_5, Number(depth_5))
-            );
-            expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
-            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
-
-            expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
-            expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
-
-            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
-
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
-            skippedRounds = 3;
-            expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
-            );
-
-            const sr = await ethers.getContract('StakeRegistry');
-
-            //node_2 stake is preserved and not frozen
-            expect(await sr.nodeEffectiveStake(node_2)).to.be.eq(stakeAmount_2);
-
-            //node_1 is frozen but not slashed
-            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(0);
-            expect(await r_node_5.lastClaimedDepth()).to.be.eq(parseInt(depth_5));
-          });
-
-          it('if both reveal, should select correct winner', async function () {
-            const nodesInNeighbourhood = 2;
-
-            await r_node_1.reveal(depth_5, hash_5, reveal_nonce_1);
-            await r_node_5.reveal(depth_5, hash_5, reveal_nonce_5);
-
-            await mineNBlocks(phaseLength);
-
-            // Equal-stake lottery: exactly one of the two truth-tellers is the winner.
-            const node1Wins = await r_node_1.isWinner(overlay_1_n_25);
-            const node5Wins = await r_node_5.isWinner(overlay_5);
-            expect(node1Wins).to.not.eq(node5Wins);
-
-            const winnerOwner = node5Wins ? node_5 : node_1;
-            const winnerOverlay = node5Wins ? overlay_5 : overlay_1_n_25;
-
-            const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
-            const receipt2 = await tx2.wait();
-
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
-            for (const e of receipt2.events) {
-              if (e.event == 'WinnerSelected') {
-                WinnerSelectedEvent = e;
-              }
-              if (e.event == 'TruthSelected') {
-                TruthSelectedEvent = e;
-              }
-              if (e.event == 'CountCommits') {
-                CountCommitsEvent = e;
-              }
-              if (e.event == 'CountReveals') {
-                CountRevealsEvent = e;
-              }
-            }
-
-            const expectedPotPayout =
-              (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
-              (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
-
-            expect(await token.balanceOf(winnerOwner)).to.be.eq(expectedPotPayout);
-
-            expect(CountCommitsEvent.args[0]).to.be.eq(2);
-            expect(CountRevealsEvent.args[0]).to.be.eq(2);
-
-            expect(WinnerSelectedEvent.args[0].owner).to.be.eq(winnerOwner);
-            expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(winnerOverlay);
-            expect(WinnerSelectedEvent.args[0].stakeDensity).to.be.eq(
-              calculateStakeDensity(WinnerSelectedEvent.args[0].stake.toString(), Number(depth_5))
-            );
-            expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
-            expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
-
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
-            skippedRounds = 3;
-            expect(await postage.lastPrice()).to.be.eq(
-              await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
-            );
-
-            expect(TruthSelectedEvent.args[0]).to.be.eq(hash_5);
-            expect(TruthSelectedEvent.args[1]).to.be.eq(parseInt(depth_5));
-
-            const sr = await ethers.getContract('StakeRegistry');
-
-            // node_1 stake is preserved and not frozen
-            // stake is double the size as it has been deposited 2 times
-            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(stakeAmount_1_n_25);
-
-            //node_2 stake is preserved and not frozen
-            expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
-
-            await expect(r_node_1.claim(proof1, proof2, proofLast)).to.be.revertedWith(errors.claim.alreadyClaimed);
-          });
-
-          it('if incorrect winner claims, correct winner is paid', async function () {
-            await r_node_1.reveal(depth_5, hash_5, reveal_nonce_1);
-            await r_node_5.reveal(depth_5, hash_5, reveal_nonce_5);
-
-            await mineNBlocks(phaseLength);
-
-            const node5Wins = await r_node_5.isWinner(overlay_5);
-            const winnerOwner = node5Wins ? node_5 : node_1;
-
-            const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
-            const receipt2 = await tx2.wait();
-
-            const expectedPotPayout =
-              (receipt2.blockNumber - copyBatch.tx.blockNumber) * price1 * 2 ** copyBatch.postageDepth +
-              (receipt2.blockNumber - stampCreatedBlock) * price1 * 2 ** batch.depth; // batch in the beforeHook
-            expect(await token.balanceOf(winnerOwner)).to.be.eq(expectedPotPayout);
-
-            const sr = await ethers.getContract('StakeRegistry');
-
-            // node_1 stake is preserved and not frozen
-            expect(await sr.nodeEffectiveStake(node_5)).to.be.eq(stakeAmount_5);
-            // node_2 stake is preserved and not frozen
-            // amount is double the size on node_1 as deposit has been made twice
-            expect(await sr.nodeEffectiveStake(node_1)).to.be.eq(stakeAmount_1_n_25);
-          });
-
-          // describe('testing skipped rounds and price changes', async function () {
-          //   let priceOracle: Contract;
-          //   let r_node_5: Contract;
-          //   let r_node_6: Contract;
-          //   let currentRound: number;
-          //   let priceBaseNumber: number;
-
-          //   beforeEach(async () => {
-          //     // //  This 2 nodes are used for round 5
-          //     const sr_node_5 = await ethers.getContract('StakeRegistry', node_5);
-          //     await mintAndApprove(deployer, node_5, sr_node_5.address, stakeAmount_5);
-          //     await sr_node_5.manageStake(node_5, nonce_5, stakeAmount_5);
-
-          //     const sr_node_6 = await ethers.getContract('StakeRegistry', node_6);
-          //     await mintAndApprove(deployer, node_6, sr_node_6.address, stakeAmount_6);
-          //     await sr_node_6.manageStake(node_6, nonce_6, stakeAmount_6);
-
-          //     priceOracle = await ethers.getContract('PriceOracle', deployer);
-
-          //     // Set price base
-          //     basePrice = await priceOracle.priceBase();
-          //
-          //     // We skip N rounds to test price changes, we choose 3 rounds as good enough random range
-          //     // Each transaction mines one addtional block, so we get to phase limit after many transactions
-          //     // So to offset that we need to substract number of blocks mined
-          //     await mineNBlocks(roundLength * 3 - 10);
-
-          //     r_node_5 = await ethers.getContract('Redistribution', node_5);
-          //     r_node_6 = await ethers.getContract('Redistribution', node_6);
-
-          //     currentRound = await r_node_5.currentRound();
-
-          //     const obsfucatedHash_5 = encodeAndHash(overlay_5, depth_5, hash_5, reveal_nonce_5);
-          //     await r_node_5.commit(obsfucatedHash_5, currentRound);
-
-          //     const obsfucatedHash_6 = encodeAndHash(overlay_6, depth_6, hash_6, reveal_nonce_6);
-          //     await r_node_6.commit(obsfucatedHash_6, currentRound);
-
-          //     await mineNBlocks(phaseLength);
-
-          //     await r_node_5.reveal( depth_5, hash_5, reveal_nonce_5);
-          //     await r_node_6.reveal( depth_6, hash_6, reveal_nonce_6);
-          //     await mineNBlocks(phaseLength - 1);
-
-          //     expect(await r_node_5.isWinner(overlay_5)).to.be.true;
-          //     expect(await r_node_6.isWinner(overlay_6)).to.be.false;
-
-          //     await r_node_6.claim();
-          //   });
-
-          //   it('if both reveal, after 4 skipped rounds, check proper price increase', async function () {
-          //     const nodesInNeighbourhood = 2;
-
-          //     // Check if the increase is properly applied, we have four skipped rounds here
-          //     const newPrice = Math.floor((increaseRate[nodesInNeighbourhood] * price1) / basePrice);
-          //     skippedRounds = 4;
-          //     expect(await postage.lastPrice()).to.be.eq(
-          //       await skippedRoundsIncrease(skippedRounds, newPrice, basePrice, increaseRate[0])
-          //     );
-          //   });
-          // });
-        });
-      });
-    });
+    // The chunk-sample claim path this block exercised no longer exists: SWIP-050 replaces it
+    // with the STS-1 stamp witness path, covered end to end in test/RedistributionSts.test.ts.
   });
 
   describe('SWIP-51 Option B', function () {
@@ -1658,7 +844,7 @@ describe('Redistribution', function () {
     it('rejects commit when depth is not greater than height', async function () {
       const r_node_2 = await ethers.getContract('Redistribution', node_2);
       const currentRound = await r_node_2.currentRound();
-      const obfuscatedHash = encodeAndHash(overlay_2, '0x00', hash_2, reveal_nonce_2);
+      const obfuscatedHash = await commitHash(overlay_2, '0x00', hash_2, reveal_nonce_2);
 
       await expect(r_node_2.commit(obfuscatedHash, currentRound, '0x00')).to.be.revertedWith(
         errors.commit.depthNotGreaterThanHeight
@@ -1670,18 +856,20 @@ describe('Redistribution', function () {
       const currentRound = await r_node_2.currentRound();
       // The obfuscated hash encodes depth 6 (so the reveal at depth 6 resolves the commit), but the
       // declaredDepth passed to commit is 1. The reveal then trips the declaredDepth mismatch check.
-      const obfuscatedHash = encodeAndHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
+      const obfuscatedHash = await commitHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
       await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
 
       await mineNBlocks(phaseLength);
-      await expect(r_node_2.reveal(depth_2, hash_2, reveal_nonce_2)).to.be.revertedWith(errors.reveal.depthMismatch);
+      await expect(r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2)).to.be.revertedWith(
+        errors.reveal.depthMismatch
+      );
     });
 
     it('next-round commit gate auto-finalizes the prior round', async function () {
       const r_node_2 = await ethers.getContract('Redistribution', node_2);
       const sr = await ethers.getContract('StakeRegistry');
       const currentRound = await r_node_2.currentRound();
-      const obfuscatedHash = encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
+      const obfuscatedHash = await commitHash(overlay_2, '0x01', hash_2, reveal_nonce_2);
       await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
       expect(await sr.nodeEffectiveStake(node_2)).to.not.eq(0);
 
@@ -1705,7 +893,7 @@ describe('Redistribution', function () {
       expect(await redistribution.participationFinalized(currentRound)).to.be.false;
 
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
-      const obfuscatedHash0 = encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0);
+      const obfuscatedHash0 = await commitHash(overlay_0, '0x01', hash_0, reveal_nonce_0);
       const minFreezeDepth = await redistribution.MIN_NONREVEAL_FREEZE_DEPTH();
       const expectedFreeze = BigNumber.from(2).mul(roundLength).mul(BigNumber.from(2).pow(minFreezeDepth));
       await expect(r_node_0.commit(obfuscatedHash0, nextRound, '0x01'))
@@ -1723,7 +911,7 @@ describe('Redistribution', function () {
       const r_node_2 = await ethers.getContract('Redistribution', node_2);
       const sr = await ethers.getContract('StakeRegistry');
       const currentRound = await r_node_2.currentRound();
-      await r_node_2.commit(encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2), currentRound, '0x01');
+      await r_node_2.commit(await commitHash(overlay_2, '0x01', hash_2, reveal_nonce_2), currentRound, '0x01');
 
       await mineNBlocks(roundLength);
       let seed = await redistribution.currentSeed();
@@ -1738,7 +926,7 @@ describe('Redistribution', function () {
       const nextRound = await redistribution.currentRound();
       expect(nextRound).to.be.gt(currentRound);
 
-      await expect(r_node_2.commit(encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2), nextRound, '0x01'))
+      await expect(r_node_2.commit(await commitHash(overlay_2, '0x01', hash_2, reveal_nonce_2), nextRound, '0x01'))
         .to.emit(redistribution, 'ParticipationFinalized')
         .withArgs(currentRound, 0)
         .and.to.emit(redistribution, 'CommitRejected')
@@ -1759,7 +947,7 @@ describe('Redistribution', function () {
       const admitRound = await redistribution.currentRound();
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       await expect(
-        r_node_0.commit(encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0), admitRound, '0x01')
+        r_node_0.commit(await commitHash(overlay_0, '0x01', hash_0, reveal_nonce_0), admitRound, '0x01')
       ).to.emit(redistribution, 'Committed');
     });
 
@@ -1778,11 +966,11 @@ describe('Redistribution', function () {
       }
 
       const currentRound = await redistribution.currentRound();
-      await r_node_2.commit(encodeAndHash(overlay_2, '0x01', hash_2, reveal_nonce_2), currentRound, '0x01');
-      await r_node_0.commit(encodeAndHash(overlay_0, depth_0, hash_0, reveal_nonce_0), currentRound, depth_0);
+      await r_node_2.commit(await commitHash(overlay_2, '0x01', hash_2, reveal_nonce_2), currentRound, '0x01');
+      await r_node_0.commit(await commitHash(overlay_0, depth_0, hash_0, reveal_nonce_0), currentRound, depth_0);
 
       await mineNBlocks(phaseLength);
-      await r_node_0.reveal(depth_0, hash_0, reveal_nonce_0);
+      await r_node_0.reveal(depth_0, hash_0, ZERO_ROOT, reveal_nonce_0);
 
       await mineNBlocks(roundLength);
       seed = await redistribution.currentSeed();
@@ -1797,7 +985,7 @@ describe('Redistribution', function () {
       const nextRound = await redistribution.currentRound();
       const truthDepth = parseInt(depth_0);
       const expectedFreeze = BigNumber.from(2).mul(roundLength).mul(BigNumber.from(2).pow(truthDepth));
-      await expect(r_node_0.commit(encodeAndHash(overlay_0, '0x01', hash_0, reveal_nonce_0), nextRound, '0x01'))
+      await expect(r_node_0.commit(await commitHash(overlay_0, '0x01', hash_0, reveal_nonce_0), nextRound, '0x01'))
         .to.emit(redistribution, 'ParticipationFinalized')
         .withArgs(currentRound, 1)
         .and.to.emit(sr, 'StakeFrozen')

@@ -202,7 +202,8 @@ contract Redistribution is AccessControl, Pausable {
     // already committed. currentProofSeed selects which sample positions must be opened;
     // currentSelectionSeed drives the weighted truth draw.
     uint64 public currentStampSampleHashRevealRound;
-    bytes32 private currentProofSeed;
+    // Public because nodes need it to derive which chunk segment each witness must open.
+    bytes32 public currentProofSeed;
     bytes32 private currentSelectionSeed;
     bool public currentProofSeedSet;
 

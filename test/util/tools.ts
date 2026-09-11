@@ -136,13 +136,73 @@ async function mintAndApprove(
   return;
 }
 
-function encodeAndHash(overlay_1: string, depth_1: string, hash_1: string, reveal_nonce_1: string): string {
-  const encoded = new Uint8Array(97);
-  encoded.set(arrayify(overlay_1));
-  encoded.set(arrayify(depth_1), 32);
-  encoded.set(arrayify(hash_1), 33);
-  encoded.set(arrayify(reveal_nonce_1), 65);
+/**
+ * SWIP-050 stage one commitment pre-image: the round binding stops a commitment prepared for one
+ * round being opened in another, and chunkTransformRoot is fixed here, while the stamp anchor and
+ * proof seed are still unknown.
+ */
+function encodeAndHash(
+  commitRound: number,
+  overlay_1: string,
+  depth_1: string,
+  hash_1: string,
+  chunkTransformRoot: string,
+  reveal_nonce_1: string
+): string {
+  const encoded = new Uint8Array(137);
+  const roundBuf = Buffer.alloc(8);
+  roundBuf.writeUInt32BE(Math.floor(commitRound / 2 ** 32), 0);
+  roundBuf.writeUInt32BE(commitRound >>> 0, 4);
+  encoded.set(roundBuf, 0);
+  encoded.set(arrayify(overlay_1), 8);
+  encoded.set(arrayify(depth_1), 40);
+  encoded.set(arrayify(hash_1), 41);
+  encoded.set(arrayify(chunkTransformRoot), 73);
+  encoded.set(arrayify(reveal_nonce_1), 105);
   return keccak256(hexlify(encoded));
+}
+
+/**
+ * SWIP-050 stage two commitment pre-image. It does not recommit the depth, chunk sample hash or
+ * chunk transform root: those were fixed by stage one and are read from the stored reveal.
+ */
+function encodeAndHashStampCommit(
+  commitRound: number,
+  overlay_1: string,
+  stampSampleHash: string,
+  reveal_nonce_1: string
+): string {
+  const encoded = new Uint8Array(104);
+  const roundBuf = Buffer.alloc(8);
+  roundBuf.writeUInt32BE(Math.floor(commitRound / 2 ** 32), 0);
+  roundBuf.writeUInt32BE(commitRound >>> 0, 4);
+  encoded.set(roundBuf, 0);
+  encoded.set(arrayify(overlay_1), 8);
+  encoded.set(arrayify(stampSampleHash), 40);
+  encoded.set(arrayify(reveal_nonce_1), 72);
+  return keccak256(hexlify(encoded));
+}
+
+// SWIP-050 six phase schedule, inclusive start offsets within a 152 block round.
+const STS_PHASES = {
+  chunkCommit: 0,
+  chunkReveal: 38,
+  stampCommit: 57,
+  stampReveal: 95,
+  proof: 114,
+  claim: 133,
+};
+
+/** Mine until the next transaction lands in the given phase of the current round. */
+async function mineToPhase(offset: number): Promise<void> {
+  const current = await getBlockNumber();
+  const within = current % ROUND_LENGTH;
+  // The next transaction is included one block later, so aim one short of the target.
+  const target = offset === 0 ? ROUND_LENGTH : offset;
+  if (within + 1 >= target && offset !== 0) {
+    throw new Error(`phase offset ${offset} already passed in this round (at ${within})`);
+  }
+  await mineNBlocks(target - within - 1);
 }
 
 //dev purposes only
@@ -272,6 +332,9 @@ export function getWalletOfFdpPlayQueen(): Wallet {
 }
 
 export {
+  STS_PHASES,
+  mineToPhase,
+  encodeAndHashStampCommit,
   zeroAddress,
   computeBatchId,
   mineNBlocks,

@@ -139,6 +139,10 @@ before(async function () {
   others = await getUnnamedAccounts();
 });
 
+// SWIP-050 fixes chunkTransformRoot in stage one. This suite predates STS-1 and is skipped;
+// it uses an empty root so it still type checks against the current ABI.
+const STATS_ZERO_ROOT = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
 async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: string[], trials: number) {
   const price1 = 100;
 
@@ -191,8 +195,15 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
       const overlay = createOverlay(nodes[i], depth, nonce);
-      const obfuscatedHash = encodeAndHash(overlay, depth, sampleHashString, reveal_nonce);
       const currentRound = await r_node.currentRound();
+      const obfuscatedHash = encodeAndHash(
+        currentRound.toNumber(),
+        overlay,
+        depth,
+        sampleHashString,
+        STATS_ZERO_ROOT,
+        reveal_nonce
+      );
       await r_node.commit(obfuscatedHash, currentRound, depth);
     }
 
@@ -201,7 +212,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
 
     for (let i = 0; i < nodes.length; i++) {
       const r_node = await ethers.getContract('Redistribution', nodes[i]);
-      await r_node.reveal(depth, sampleHashString, reveal_nonce);
+      await r_node.reveal(depth, sampleHashString, STATS_ZERO_ROOT, reveal_nonce);
     }
 
     const anchor2 = await r_node.currentSeed(); // for creating proofs
@@ -211,7 +222,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
     let winnerIndex = 0;
     for (let i = 0; i < winDist.length; i++) {
       const overlay = createOverlay(winDist[i].node, depth, nonce);
-      if (await r_node.isWinner(overlay)) {
+      if (await r_node.matchesSelectedTruth(overlay)) {
         winDist[i].wins++;
         winnerIndex = i;
       }
