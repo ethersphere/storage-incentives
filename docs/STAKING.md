@@ -7,6 +7,7 @@ The `StakeRegistry` (Staking) contract manages staking for node operators partic
 ## Purpose
 
 The contract:
+
 - Tracks node stakes with overlay addresses
 - Manages committed vs potential stake
 - Allows height-based reserve calculations
@@ -18,6 +19,7 @@ The contract:
 ### Overlay Address
 
 Each node has an "overlay address" which is derived from:
+
 ```solidity
 overlay = keccak256(abi.encodePacked(nodeAddress, reverse(networkId), nonce))
 ```
@@ -32,6 +34,7 @@ The contract maintains two types of stake:
 2. **Potential Stake**: Actual BZZ tokens staked
 
 The effective stake (used in redistribution) is the minimum of:
+
 ```solidity
 effectiveStake = min(
     committedStake * price * 2^height,
@@ -42,8 +45,9 @@ effectiveStake = min(
 ### Height Parameter
 
 The `height` parameter allows nodes to register additional capacity:
-- Height 0: Normal capacity (committed stake * price)
-- Height 1: Double capacity (committed stake * price * 2)
+
+- Height 0: Normal capacity (committed stake \* price)
+- Height 1: Double capacity (committed stake _ price _ 2)
 - Height 2: 4x capacity, etc.
 
 This allows nodes to increase their effective stake without depositing more tokens by registering additional storage space.
@@ -53,18 +57,22 @@ This allows nodes to increase their effective stake without depositing more toke
 ### Node Functions
 
 #### manageStake()
+
 Creates or updates a node's stake, optionally changing overlay.
 
 **Parameters**:
+
 - `_setNonce`: Nonce for overlay calculation
 - `_addAmount`: Additional BZZ tokens to add (0 if only changing overlay)
 - `_height`: Height multiplier (0-255)
 
 **Requirements**:
+
 - Minimum stake: `_addAmount >= MIN_STAKE * 2^height` (first deposit only)
 - If frozen: transaction reverts with `Frozen()` error
 
 **Logic**:
+
 1. Calculate new overlay from nonce
 2. If first stake: check minimum deposit requirement
 3. If frozen: revert (can't change stake while frozen)
@@ -79,12 +87,15 @@ Creates or updates a node's stake, optionally changing overlay.
 If overlay changes, emits `OverlayChanged` event (useful for monitoring).
 
 #### withdrawFromStake()
+
 Withdraws surplus stake (difference between potential and effective stake).
 
 **Requirements**:
+
 - No special roles needed (only withdraws surplus)
 
 **Logic**:
+
 ```solidity
 surplus = potentialStake - effectiveStake
 if (surplus > 0) {
@@ -96,9 +107,11 @@ if (surplus > 0) {
 **Use Case**: If price increases or height decreases, effective stake may be less than potential, allowing withdrawal of the difference.
 
 #### migrateStake()
+
 Emergency withdrawal when contract is paused.
 
 **Requirements**:
+
 - Contract must be paused
 - Withdraws entire potential stake
 
@@ -107,16 +120,20 @@ Emergency withdrawal when contract is paused.
 ### Redistributor Functions
 
 #### freezeDeposit()
+
 Freezes a node's stake for a specified time (penalty).
 
 **Parameters**:
+
 - `_owner`: Node address to freeze
 - `_time`: Duration in blocks
 
 **Requirements**:
+
 - Only `REDISTRIBUTOR_ROLE` can call
 
 **Logic**:
+
 ```solidity
 stakes[_owner].lastUpdatedBlockNumber = block.number + _time
 ```
@@ -124,21 +141,26 @@ stakes[_owner].lastUpdatedBlockNumber = block.number + _time
 While frozen: `stakes[_owner].lastUpdatedBlockNumber > block.number`
 
 **Effects**:
+
 - Node cannot call `manageStake()` while frozen
 - `nodeEffectiveStake()` returns 0 while frozen
 - After freeze expires, can resume normal operations
 
 #### slashDeposit()
+
 Slashes (removes) a specified amount from a node's stake.
 
 **Parameters**:
+
 - `_owner`: Node address to slash
 - `_amount`: BZZ amount to remove
 
 **Requirements**:
+
 - Only `REDISTRIBUTOR_ROLE` can call
 
 **Logic**:
+
 ```solidity
 if (potentialStake > _amount) {
     potentialStake -= _amount
@@ -149,37 +171,46 @@ if (potentialStake > _amount) {
 ```
 
 **Use Cases**:
+
 - Severe protocol violations
 - Currently not actively used (freezing is preferred)
 
 ### Admin Functions
 
 #### changeNetworkId()
+
 Changes the Swarm network ID.
 
 **Parameters**:
+
 - `_NetworkId`: New network ID
 
 **Requirements**:
+
 - Only `DEFAULT_ADMIN_ROLE` can call
 
 **Effects**:
+
 - New overlays will use new network ID
 - Existing overlays remain valid
 
 #### pause() / unPause()
+
 Pauses or unpauses the contract.
 
 **Requirements**:
+
 - Only `DEFAULT_ADMIN_ROLE` can call
 
 **Effects**:
+
 - Prevents `manageStake()` calls
 - Allows `migrateStake()` calls
 
 ### View Functions
 
 #### nodeEffectiveStake(address)
+
 Returns the effective stake used in redistribution game.
 
 ```solidity
@@ -195,20 +226,25 @@ if (addressNotFrozen(address)) {
 ```
 
 #### withdrawableStake()
+
 Returns the amount of surplus stake that can be withdrawn.
 
 #### lastUpdatedBlockNumberOfAddress(address)
+
 Returns when stake was last updated (used to check if frozen).
 
 #### overlayOfAddress(address)
+
 Returns the current overlay for a node.
 
 #### heightOfAddress(address)
+
 Returns the height multiplier for a node.
 
 ### Internal Functions
 
 #### calculateEffectiveStake()
+
 Calculates effective stake based on committed stake and height.
 
 ```solidity
@@ -217,23 +253,26 @@ return min(committedStakeBzz, potentialStake)
 ```
 
 #### addressNotFrozen()
+
 Checks if a node is frozen:
+
 ```solidity
 return stakes[_owner].lastUpdatedBlockNumber < block.number
 ```
 
 #### reverse()
+
 Byte-reverses a uint64 (for network ID in overlay calculation).
 
 ## Stake Structure
 
 ```solidity
 struct Stake {
-    bytes32 overlay;                    // Node's overlay address
-    uint256 committedStake;             // Chunks pledged
-    uint256 potentialStake;            // BZZ tokens staked
-    uint256 lastUpdatedBlockNumber;    // Update timestamp / freeze flag
-    uint8 height;                      // Reserve height multiplier
+  bytes32 overlay; // Node's overlay address
+  uint256 committedStake; // Chunks pledged
+  uint256 potentialStake; // BZZ tokens staked
+  uint256 lastUpdatedBlockNumber; // Update timestamp / freeze flag
+  uint8 height; // Reserve height multiplier
 }
 ```
 
@@ -241,12 +280,12 @@ struct Stake {
 
 ```solidity
 event StakeUpdated(
-    address indexed owner,
-    uint256 committedStake,
-    uint256 potentialStake,
-    bytes32 overlay,
-    uint256 lastUpdatedBlock,
-    uint8 height
+  address indexed owner,
+  uint256 committedStake,
+  uint256 potentialStake,
+  bytes32 overlay,
+  uint256 lastUpdatedBlock,
+  uint8 height
 );
 
 event OverlayChanged(address owner, bytes32 overlay);
@@ -334,6 +373,7 @@ freezeDeposit(nodeAddress, 1000 blocks)
 ## Integration with Redistribution
 
 The `nodeEffectiveStake()` value is used in the redistribution game to:
+
 1. Weight commit selection during truth consensus
 2. Calculate stake density for winner selection
 3. Determine eligibility for participation
@@ -386,13 +426,13 @@ StakeRegistry(stakeRegistry).manageStake(
 ## Error Codes
 
 ```solidity
-error TransferFailed();              // Token transfer failed
-error Frozen();                      // Node is frozen
-error Unauthorized();                // Only admin
-error OnlyRedistributor();          // Only redistributor role
-error OnlyPauser();                  // Only pauser role
-error BelowMinimumStake();          // First deposit below minimum
-error DecreasedCommitment();         // Committed stake cannot decrease
+error TransferFailed(); // Token transfer failed
+error Frozen(); // Node is frozen
+error Unauthorized(); // Only admin
+error OnlyRedistributor(); // Only redistributor role
+error OnlyPauser(); // Only pauser role
+error BelowMinimumStake(); // First deposit below minimum
+error DecreasedCommitment(); // Committed stake cannot decrease
 ```
 
 ## Security Considerations
@@ -409,13 +449,13 @@ The `reverse()` function byte-reverses the network ID for the overlay calculatio
 
 ```solidity
 function reverse(uint64 input) internal pure returns (uint64 v) {
-    v = input;
-    // swap bytes
-    v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
-    // swap 2-byte long pairs
-    v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
-    // swap 4-byte long pairs
-    v = (v >> 32) | (v << 32);
+  v = input;
+  // swap bytes
+  v = ((v & 0xFF00FF00FF00FF00) >> 8) | ((v & 0x00FF00FF00FF00FF) << 8);
+  // swap 2-byte long pairs
+  v = ((v & 0xFFFF0000FFFF0000) >> 16) | ((v & 0x0000FFFF0000FFFF) << 16);
+  // swap 4-byte long pairs
+  v = (v >> 32) | (v << 32);
 }
 ```
 
@@ -424,4 +464,3 @@ function reverse(uint64 input) internal pure returns (uint64 v) {
 - **Token**: ERC20 token used for staking
 - **PriceOracle**: Provides current price for calculations
 - **Redistribution**: Uses effective stake for game participation
-

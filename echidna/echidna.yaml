@@ -26,5 +26,9 @@ coverage: true
 # Explicit parallelism inside Docker (host CPU may allow more).
 workers: 4
 
+# SWIP-050 pushes Redistribution close to EIP-170, and the fuzz stubs that inherit it sit just
+# over. They are never deployed on a real chain, so lift the limit for the campaign only.
+codeSize: 0xffff
+
 # Keep output readable in CI.
 format: text

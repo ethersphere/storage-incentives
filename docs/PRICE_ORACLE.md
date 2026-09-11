@@ -7,6 +7,7 @@ The `PriceOracle` contract implements a dynamic pricing mechanism for storage on
 ## Purpose
 
 The oracle:
+
 - Dynamically adjusts per-chunk storage prices based on actual network redundancy
 - Targets a specific redundancy level (default: 4 copies per chunk)
 - Updates prices every 152 blocks (~19 minutes on Ethereum)
@@ -22,6 +23,7 @@ The system aims for a target redundancy of 4, meaning on average each chunk shou
 ### Price Adjustment Mechanism
 
 Prices adjust based on revealed nodes in the redistribution game:
+
 - **High redundancy** (> target): Price decreases (discourage storage)
 - **Low redundancy** (< target): Price increases (encourage storage)
 - **Target redundancy**: Price stays stable
@@ -29,6 +31,7 @@ Prices adjust based on revealed nodes in the redistribution game:
 ### Rounds
 
 The oracle operates in rounds of 152 blocks:
+
 - Roughly 19 minutes on Ethereum (5s blocks)
 - Only one price adjustment per round
 - Skips rounds accumulate maximum price increase
@@ -59,15 +62,19 @@ The index in this array represents: `redundancy - targetRedundancy + 4`
 ### Admin Functions
 
 #### setPrice()
+
 Manually sets the price (for initialization or emergency).
 
 **Parameters**:
+
 - `_price`: New price value
 
 **Requirements**:
+
 - Only `DEFAULT_ADMIN_ROLE` can call
 
 **Logic**:
+
 ```solidity
 currentPriceUpScaled = _price << 10  // upscale by 2^10
 if (currentPriceUpScaled < minimumPriceUpscaled) {
@@ -79,17 +86,21 @@ emit PriceUpdate(currentPrice())
 ```
 
 #### adjustPrice()
+
 Automatically adjusts price based on redundancy (called by Redistribution).
 
 **Parameters**:
+
 - `redundancy`: Number of nodes that revealed in the current round
 
 **Requirements**:
+
 - Only `PRICE_UPDATER_ROLE` can call (typically Redistribution contract)
 - Contract must not be paused
 - Can only be called once per round
 
 **Logic**:
+
 1. Check if already adjusted this round
 2. Cap redundancy at `targetRedundancy + maxConsideredExtraRedundancy`
 3. Apply change rate based on redundancy - target
@@ -99,6 +110,7 @@ Automatically adjusts price based on redundancy (called by Redistribution).
 7. Emit event
 
 **Skipped Rounds Handling**:
+
 ```solidity
 if (skippedRounds > 0) {
     // Apply maximum increase rate for each skipped round
@@ -109,24 +121,30 @@ if (skippedRounds > 0) {
 ```
 
 #### pause() / unPause()
+
 Pauses or unpauses price adjustments.
 
 **Requirements**:
+
 - Only `DEFAULT_ADMIN_ROLE` can call
 
 **Effects**:
+
 - When paused: `adjustPrice()` returns false without doing anything
 - Manual `setPrice()` still works
 
 ### View Functions
 
 #### currentPrice()
+
 Returns the current price (downscaled by 2^10).
 
 #### minimumPrice()
+
 Returns the minimum price floor.
 
 #### currentRound()
+
 Returns the current round number: `block.number / 152`
 
 ### Configuration Parameters
@@ -141,7 +159,7 @@ uint32 priceBase = 1048576;            // Base for change rate (2^20)
 ## Events
 
 ```solidity
-event PriceUpdate(uint256 price);             // Emitted on price changes
+event PriceUpdate(uint256 price); // Emitted on price changes
 event StampPriceUpdateFailed(uint256 attemptedPrice); // If PostageStamp update fails
 ```
 
@@ -159,6 +177,7 @@ constructor(address _postageStamp)
 - `_postageStamp`: Address of PostageStamp contract
 
 **Initialization**:
+
 - Sets up admin role
 - Links to PostageStamp
 - Sets `lastAdjustedRound = currentRound()`
@@ -169,6 +188,7 @@ constructor(address _postageStamp)
 ### Upscaling
 
 Prices are stored upscaled by 2^10 (1024) to avoid rounding errors in integer arithmetic:
+
 - **Stored**: `24000 << 10 = 24576000`
 - **Displayed**: `24576000 >> 10 = 24000`
 - Allows for fractional change rates without floating point
@@ -176,11 +196,13 @@ Prices are stored upscaled by 2^10 (1024) to avoid rounding errors in integer ar
 ### Change Rate Calculation
 
 The change rate is applied multiplicatively:
+
 ```solidity
 newPrice = (changeRate * oldPrice) / priceBase
 ```
 
 For example, with changeRate = 1049417:
+
 ```
 newPrice = (1049417 * 1000000) / 1048576 = 1000800
 // Increase of ~0.08%
@@ -189,6 +211,7 @@ newPrice = (1049417 * 1000000) / 1048576 = 1000800
 ### Minimum Price Enforcement
 
 Prices are bounded from below:
+
 ```solidity
 if (currentPriceUpScaled < minimumPriceUpscaled) {
     currentPriceUpScaled = minimumPriceUpscaled
@@ -202,6 +225,7 @@ This prevents prices from becoming too low and disincentivizing storage.
 ### PostageStamp Integration
 
 After every price change, the oracle updates PostageStamp:
+
 ```solidity
 (bool success, ) = address(postageStamp).call(
     abi.encodeWithSignature("setPrice(uint256)", uint256(currentPrice()))
@@ -255,10 +279,10 @@ uint64 round = PriceOracle(oracle).currentRound();
 ## Error Codes
 
 ```solidity
-error CallerNotAdmin();         // Only admin can call
-error CallerNotPriceUpdater();  // Only price updater can call
-error PriceAlreadyAdjusted();   // Already adjusted this round
-error UnexpectedZero();         // Redundancy must be > 0
+error CallerNotAdmin(); // Only admin can call
+error CallerNotPriceUpdater(); // Only price updater can call
+error PriceAlreadyAdjusted(); // Already adjusted this round
+error UnexpectedZero(); // Redundancy must be > 0
 ```
 
 ## Security Considerations
@@ -272,6 +296,7 @@ error UnexpectedZero();         // Redundancy must be > 0
 ## Pause Mechanism
 
 When paused:
+
 - `adjustPrice()` returns `false` without making changes
 - `setPrice()` still works for manual intervention
 - Can be made immutable by renouncing roles after pausing
@@ -282,31 +307,31 @@ When paused:
 function adjustPrice(redundancy):
     if (contract is paused):
         return false
-    
+
     usedRedundancy = min(redundancy, targetRedundancy + maxConsideredExtraRedundancy)
     currentRoundNum = currentRound()
-    
+
     // Enforce once-per-round
     if (currentRoundNum <= lastAdjustedRound):
         revert PriceAlreadyAdjusted()
-    
+
     skippedRounds = currentRoundNum - lastAdjustedRound - 1
-    
+
     // Apply change rate based on redundancy
     changeRateIndex = usedRedundancy
     newPrice = (changeRate[changeRateIndex] * currentPriceUpScaled) / priceBase
-    
+
     // Apply maximum rate for skipped rounds
     for each skipped round:
         newPrice = (changeRate[0] * newPrice) / priceBase
-    
+
     // Enforce minimum
     if (newPrice < minimumPriceUpscaled):
         newPrice = minimumPriceUpscaled
-    
+
     currentPriceUpScaled = newPrice
     lastAdjustedRound = currentRoundNum
-    
+
     // Update PostageStamp
     update PostageStamp price
     emit PriceUpdate(currentPrice())
@@ -322,4 +347,3 @@ The price oracle creates a self-balancing system:
 3. **Target redundancy** → Stable prices → Sustainable equilibrium
 
 This mechanism ensures the network maintains adequate data redundancy without manual intervention.
-

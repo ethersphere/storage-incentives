@@ -5,11 +5,14 @@ This repository contains the smart contracts for Swarm's storage incentives.
 ## 📚 Documentation
 
 Comprehensive documentation is available in the [`docs/`](docs/) directory:
+
 - [Overview](./docs/OVERVIEW.md) - System architecture and mechanics
 - [PostageStamp](./docs/POSTAGE_STAMP.md) - Postage stamp batch management
 - [PriceOracle](./docs/PRICE_ORACLE.md) - Dynamic pricing system
 - [StakeRegistry](./docs/STAKING.md) - Staking for node operators
 - [Redistribution](./docs/REDISTRIBUTION.md) - Schelling game details
+- [STS-1](./docs/STS-1.md) - SWIP-049 / SWIP-050 mechanics and the Bee-facing API
+- [SWIP-49/50 scrutiny](./docs/SWIP-49-50-SCRUTINY.md) - review of both SWIPs and the deviations implemented
 - [Deployment Guide](./docs/DEPLOYMENT.md) - How to deploy contracts
 
 # Overview

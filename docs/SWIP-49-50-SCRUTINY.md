@@ -37,7 +37,7 @@ also superseded by SWIP-050, which rewrites the claim path wholesale.
 against? If so it should be named in the SWIP, because the diff is unreviewable without it.
 If not, Appendix B should be rebased onto the public Phase 4 + SWIP-51 code.
 
-*This branch:* implements SWIP-049's PostageStamp side in full (that is the substantive part
+_This branch:_ implements SWIP-049's PostageStamp side in full (that is the substantive part
 and it is starting-point independent), then wires the historical scope into the **existing**
 Phase 4 claim path, then layers SWIP-050 on top.
 
@@ -49,7 +49,7 @@ Phase 4 claim path, then layers SWIP-050 on top.
 
 `_priceStateAtSamplingStart` takes the `previousPrice` branch whenever
 `lastUpdatedBlock >= samplingStartBlock`, and rolls `totalOutPayment` back at `previousPrice`.
-That is only correct if the price period *before* `lastUpdatedBlock` actually covered
+That is only correct if the price period _before_ `lastUpdatedBlock` actually covered
 `samplingStartBlock` — i.e. if the second-most-recent price update was at or before
 `samplingStartBlock`.
 
@@ -61,7 +61,7 @@ that argument fails:
    `DEFAULT_ADMIN_ROLE` only — no round limit, no rate limit — and it calls
    `PostageStamp.setPrice`. One admin call during an open round silently corrupts
    `outPaymentAtStart` for every batch in that round's claim, in the direction that lets
-   *under*-funded batches through (if the admin lowered the price) or rejects valid ones
+   _under_-funded batches through (if the admin lowered the price) or rejects valid ones
    (if raised). The SWIP's own Security Considerations do not mention the admin path.
 2. `redistributionMinimumNormalisedBalance` is an unrestricted `view` that Bee is told to
    use. Called for any block older than one price period it returns a plausible but wrong
@@ -75,7 +75,7 @@ require `previousPriceUpdatedBlock <= samplingStartBlock` on the rollback branch
 `PriceHistoryUnavailable` otherwise. This turns a silent wrong answer into a revert and makes
 the invariant checkable on-chain instead of argued in prose.
 
-*This branch:* implements `previousPriceUpdatedBlock` and the check. Also recommends
+_This branch:_ implements `previousPriceUpdatedBlock` and the check. Also recommends
 restricting `PriceOracle.setPrice` — see 1.7.
 
 ### 1.2 BLOCKER — the `topUp` rule change strands batches permanently
@@ -107,14 +107,14 @@ expiry) which the SWIP presents as an incidental hardening.
 
 **Narrower alternative that preserves the intent:** allow a top-up whenever
 `remainingBalance >= ROUND_USABILITY_BLOCKS * lastPrice` — i.e. block only the rescue of a
-batch that is *already outside* the redistribution scope — instead of gating on the full
+batch that is _already outside_ the redistribution scope — instead of gating on the full
 24-hour `minimumInitialBalancePerChunk()`. That still makes rescue-into-an-open-round
 impossible, without a 24h death cliff.
 
 **Question for the PRs:** is the 24h top-up cliff intended, or is `MIN_OPERATION_VALIDITY_BLOCKS`
 (912) meant to be the gate and `minimumValidityBlocks` meant to come down to it?
 
-*This branch:* implements the SWIP as written (gate on `minimumInitialBalancePerChunk()`)
+_This branch:_ implements the SWIP as written (gate on `minimumInitialBalancePerChunk()`)
 because that is what is specified, and adds an explicit test naming the cliff, so the
 behaviour is visible in review rather than discovered in production.
 
@@ -145,7 +145,7 @@ incarnation). Two things the SWIP does not address:
 - **Unbounded state growth.** One 32-byte slot per batch ever created, never reclaimable.
   Acceptable, but it should be an explicit decision rather than a side effect.
 
-*This branch:* implements `batchIdUsed` as specified, and makes `copyBatch` revert
+_This branch:_ implements `batchIdUsed` as specified, and makes `copyBatch` revert
 `BatchIdAlreadyUsed` (distinct from `BatchExists`) so the bulk path's failure reason is
 identifiable off-chain from the emitted index.
 
@@ -156,11 +156,11 @@ identifiable off-chain from the emitted index.
 number silently resolves to the current depth (because `lastUpdatedBlockNumber <
 samplingStartBlock` holds trivially). Harmless inside `claim`, wrong for the Bee-facing view.
 
-*This branch:* guards both.
+_This branch:_ guards both.
 
 ### 1.6 NOTE — the depth-history rotation is correct; one equality is load-bearing
 
-`_firstSamplingStartAfter` returns the first sampling start *strictly after* `oldDepthBlock`,
+`_firstSamplingStartAfter` returns the first sampling start _strictly after_ `oldDepthBlock`,
 and `_recordDepthBeforeIncrease` skips recording when `block.number <
 firstSamplingStartThatCouldUseOldDepth`. Walking the SWIP's own worked example (depth 20 from
 block 120; dilutions at 220, 260, 360, 400, 510; sampling starts 190, 342, 494) reproduces the
@@ -168,9 +168,9 @@ stated `older/previous/current` triples at every step, and the two lookups
 `depthAtSamplingStart(190) = 20` and `depthAtSamplingStart(342) = 22` both resolve. The
 algorithm is right.
 
-The load-bearing detail is that a dilution *in* the sampling-start block must still record the
+The load-bearing detail is that a dilution _in_ the sampling-start block must still record the
 old depth, which is why the comparison is `<` and not `<=`. This is easy to break in a later
-refactor and deserves a regression test naming it. *This branch:* has one.
+refactor and deserves a regression test naming it. _This branch:_ has one.
 
 A second detail the SWIP does not state: `_depthAtSamplingStart` uses `previousDepth != 0` as
 its "slot occupied" sentinel. That is safe only because a valid batch always has
@@ -183,7 +183,7 @@ Verified against the deployed constants (`changeRate[1] = 1049206` for a claimed
 `changeRate[0] = 1049417` per skipped round, `priceBase = 1048576`):
 
 - window `(r-1)*152+38` … `r*152+151` = 266 blocks inclusive ✓
-- earliest preceding-round price update under the *current* schedule is at `samplingStart+38`
+- earliest preceding-round price update under the _current_ schedule is at `samplingStart+38`
   (claim phase starts at `B'+76`), leaving 418 of 456 block-units and a 228-block residual
   window ✓
 - solving `418 / 228 = 1.8333` against the compounded rate gives 755.1 skipped rounds ✓
@@ -192,7 +192,7 @@ Two things to add to the SWIP:
 
 - Under **SWIP-050's** schedule the claim phase starts at `B'+133`, i.e. `samplingStart+95`,
   not `+38`. The worst case improves, so 456 stays conservative — but the SWIP's stated
-  derivation is against the *old* phase table and will read as wrong once 050 lands.
+  derivation is against the _old_ phase table and will read as wrong once 050 lands.
 - The analysis assumes the oracle is the only writer. It is not (see 1.1). Restricting
   `PriceOracle.setPrice` to non-open-round blocks, or removing it post-activation, is the
   change that makes the whole section true rather than approximately true.
@@ -200,7 +200,7 @@ Two things to add to the SWIP:
 ### 1.8 NOTE — the SWIP-049 index check is strictly stronger than today's
 
 `getPostageIndex(fullStampIndex) < postageStampIndexCount(depthAtSamplingStart, bucketDepth)`
-replaces today's check against the *live* depth. A stamp minted on an index created by a
+replaces today's check against the _live_ depth. A stamp minted on an index created by a
 dilution mid-round is now rejected even though it is a perfectly valid stamp for upload
 purposes. That is the point of the SWIP, but it means honest nodes that sampled slightly late
 will produce unclaimable proofs. Bee's sampling boundary must match the contract's exactly or
@@ -230,13 +230,13 @@ If the limit scales with depth, that brake is removed:
 - `L` gains `2^k`, so `L/x` — and therefore the density coefficient — is unchanged;
 - so overreporting is a **free `2^k`**.
 
-The SWIP's own "Coefficient safety argument" only analyses *under*-reporting. It never checks
+The SWIP's own "Coefficient safety argument" only analyses _under_-reporting. It never checks
 the overreporting direction, which is the direction the fixed limit exists to police.
 
 **Fix:** the stamp sample limit must be a depth-independent constant, exactly like
 `sampleMaxValue`. `stampDensityCoefficientQ64` should not take `depth`.
 
-*This branch:* implements `stampSampleMaxValue` as a single admin-settable constant mirroring
+_This branch:_ implements `stampSampleMaxValue` as a single admin-settable constant mirroring
 `sampleMaxValue`, and drops the `depth` parameter. **This needs confirmation before the SWIP
 is finalised** — if a depth-dependent limit was deliberate, the overreporting analysis is
 missing and needs to be supplied.
@@ -257,7 +257,7 @@ ratio of 32768, and a coefficient of **32×**. The cap only bites at `2^32`.
 The SWIP's illustrative table stops at `2×` and the prose says "worse utilization is not
 penalized below 1x", which reads as if the useful range were `1×…2×`. It is not. As specified,
 the cheapest way to multiply your redistribution weight by 32 is: buy a very deep batch, stamp
-only the lowest index of each bucket, and never fill it. That rewards *wasting* batch capacity
+only the lowest index of each bucket, and never fill it. That rewards _wasting_ batch capacity
 — the opposite of the stated motivation ("Batch utilization: lower within-bucket stamp indexes
 receive a continuous benefit because ordinary uploads tend to fill lower indexes before higher
 ones"). The heuristic "uploads fill low indexes first" is true of honest uploaders and trivially
@@ -270,7 +270,7 @@ state the cap in the spec. The safety argument in "Coefficient safety argument" 
 product is `2^(2k/3)`, which is only true if each factor is bounded by the density actually
 proven — an explicit cap is the cheapest way to guarantee it.
 
-*This branch:* caps both coefficients at `2×` (`MAX_COEFFICIENT_Q64 = 2 * Q64`) and tests the
+_This branch:_ caps both coefficients at `2×` (`MAX_COEFFICIENT_Q64 = 2 * Q64`) and tests the
 boundary.
 
 ### 2.3 BLOCKER — `bucketDepth < claimedDepth` rejects every real batch
@@ -289,7 +289,7 @@ The neighbourhood binding the check appears to be reaching for is already provid
 chunk, and `inProximity(chunkAddress, firstAnchor, claimedDepth)` binds the chunk to the
 neighbourhood.
 
-*This branch:* drops the check. If it was guarding something real, the SWIP needs to say what.
+_This branch:_ drops the check. If it was guarding something real, the SWIP needs to say what.
 
 ### 2.4 BLOCKER — `pendingCompletion` is unbounded and bricks the contract
 
@@ -297,14 +297,14 @@ neighbourhood.
 `claim` transaction. Entries are added on every stage-one commit and removed only by a
 successful proof or by a successful claim.
 
-STS-1 has *five* sequential stages a participant must clear. Any round where nothing claims —
+STS-1 has _five_ sequential stages a participant must clear. Any round where nothing claims —
 no valid chunk reveal, no valid stamp reveal, no passing proof, or simply nobody calling
 `claim` — carries its entire commit set forward. After enough such rounds the first successful
 claim runs out of gas, which means **no claim can ever succeed again**, which means the array
 never drains. It is a self-reinforcing brick, and it is reachable without an attacker: a long
 quiet stretch on a small network does it.
 
-It is also reachable *with* an attacker, cheaply: commit from many overlays, never proceed.
+It is also reachable _with_ an attacker, cheaply: commit from many overlays, never proceed.
 
 **Fix:** the bound already exists one layer down. SWIP-51 Option B caps a round at
 `MAX_COMMITS = 128` and `_finalizeParticipation` already freezes non-finishers of the previous
@@ -312,7 +312,7 @@ round, triggered by the next round's first commit — so an unfinished participa
 resolved within one round, from an array that is bounded by construction. A separate
 cross-round carry-over list is not needed to preserve the invariant SWIP-050 wants.
 
-*This branch:* extends Option B's `_finalizeParticipation` to treat "revealed but never
+_This branch:_ extends Option B's `_finalizeParticipation` to treat "revealed but never
 proof-validated" the same as "never revealed", and drops `pendingCompletion` entirely. Every
 freeze loop stays bounded by `MAX_COMMITS`.
 
@@ -338,7 +338,7 @@ material change to the trust surface of a contract that currently holds no funds
 **Question for the PRs:** is Redistribution-as-custodian accepted? It changes the deployment
 topology and the audit scope.
 
-*This branch:* implements custody with an explicit constructor token argument, distributes the
+_This branch:_ implements custody with an explicit constructor token argument, distributes the
 remainder to the **highest-weight** truthy entry rather than the last one (deterministic, not
 order-dependent), and leaves withdrawal callable while paused so a pause cannot strand earned
 funds.
@@ -350,7 +350,7 @@ but keeps `chunkSampleHash` in the selected truth tuple. Nothing in the contract
 it against anything.
 
 Consequence: a participant that can pass the stamp proofs — which requires real batches and
-real chunks, but says nothing about the chunk *sample* — can put an arbitrary value in
+real chunks, but says nothing about the chunk _sample_ — can put an arbitrary value in
 `chunkSampleHash`. If its weight wins the truth draw, every honest node in the neighbourhood
 disagrees with the selected point and is frozen under the disagreement rule, while the attacker
 takes the whole pot. Today that is not possible: the winner must open three chunk witnesses
@@ -362,9 +362,9 @@ nodes is a benefit; being freezable on an unverifiable value is a cost, and the 
 discussed in Security Considerations.
 
 Options worth a sentence in the SWIP: keep one chunk witness; or drop `chunkSampleHash` from
-the truth tuple and let `stampSampleHash` (which *is* proven) carry the Schelling point alone.
+the truth tuple and let `stampSampleHash` (which _is_ proven) carry the Schelling point alone.
 
-*This branch:* implements as specified and adds a test that documents the freeze exposure, so
+_This branch:_ implements as specified and adds a test that documents the freeze exposure, so
 the trade-off is on the record rather than latent.
 
 ### 2.7 NOTE — the proof seed is grindable by the first stamp revealer
@@ -382,13 +382,13 @@ let a node with a partially-supported sample steer away from its weak positions,
 exactly what "This prevents a participant from safely filling a sample with a few repeated
 provable values while avoiding unsupported positions" is meant to stop.
 
-Mitigation worth considering: accumulate `prevrandao` across *all* stamp reveals (as
+Mitigation worth considering: accumulate `prevrandao` across _all_ stamp reveals (as
 `updateRandomness()` already does for the round seed) and derive the proof seed lazily at first
 use in the proof phase, so no single participant fixes it. The last revealer still has an
 advantage — the same trade-off the existing design already accepts — but it is no longer free
 to the first mover.
 
-*This branch:* implements the SWIP as written and flags it. Changing the randomness derivation
+_This branch:_ implements the SWIP as written and flags it. Changing the randomness derivation
 is a spec decision, not an implementation one.
 
 ### 2.8 NOTE — local ordering is not sample ordering
@@ -406,7 +406,7 @@ immediate neighbours".
 ### 2.9 GAP — `MerkleProof.verify` for `chunkTransformRoot` has no position or length binding
 
 `verifyChunkBinding` uses OpenZeppelin's `MerkleProof.verify`, which is a **sorted-pair**
-implementation: it commits to a *set*, not a *list*, with no leaf index and no length. Combined
+implementation: it commits to a _set_, not a _list_, with no leaf index and no length. Combined
 with `chunkTransformRoot` being participant-specific, outside the Schelling point, and
 completeness-unverified, the root proves only "this transformed address is in some multiset I
 committed to before I knew the stamp anchor".
@@ -422,7 +422,7 @@ which stamps would be useful), so this is not a break. But two things should be 
   which subset is useful, the incentive still points at "include everything" — but the word
   "complete" should not appear in a normative sentence when nothing enforces it.
 
-*This branch:* implements as specified and documents the tree construction Bee must match.
+_This branch:_ implements as specified and documents the tree construction Bee must match.
 
 ### 2.10 GAP — a long list of undefined identifiers
 
@@ -479,7 +479,7 @@ Uniform over unordered pairs from `0..14`, no replacement, sorted ✓. Position 
 reveal pairs, Q64.64 cube-root arithmetic, stamp witness verification, chunk binding and
 proportional payout will very likely exceed the EIP-170 24 KB limit at `runs: 1000`.
 
-*This branch:* moves the Q64.64 coefficient arithmetic and the stamp witness verification into
+_This branch:_ moves the Q64.64 coefficient arithmetic and the stamp witness verification into
 libraries. Flagging because it constrains how the SWIP's appendix can be laid out, and because
 a size-driven split changes the deployment scripts.
 
@@ -498,24 +498,52 @@ two need an explicit reconciliation in the SWIP, not just in the implementation 
 whether `lastClaimedDepth`'s floor on freeze duration still applies when the "winner" is now a
 set rather than one entry.
 
-*This branch:* keeps Option B as the participation-tracking layer and folds STS-1 proof
+_This branch:_ keeps Option B as the participation-tracking layer and folds STS-1 proof
 validation into it, per 2.4. `lastClaimedDepth` is retained and set from the selected truth
 depth.
+
+### 2.15 NOTE — `PriceOracle.setPrice` truncates above ~4.2 million
+
+Not a SWIP issue, but it surfaced while testing 1.1 and it bears on the same admin path:
+
+```solidity
+uint64 _currentPriceUpScaled = _price << 10;   // _price is uint32
+```
+
+The shift happens in `uint32` and only then widens to `uint64`, so any `_price >= 2^22`
+(4,194,304) silently loses its high bits. The admin path cannot set a large price even when it
+wants to, and the failure is silent rather than a revert. Worth fixing as `uint64(_price) << 10`
+independently of either SWIP.
+
+### 2.16 NOTE — `chunkTransformRoot` leaf ordering has to be specified
+
+Discovered while implementing: because STS-1 fixes `chunkTransformRoot` in stage one and only
+derives the stamp indexes after the stamp anchor exists, a naive implementation that builds the
+tree in discovery order produces a different root before and after that re-derivation, and every
+membership proof fails. The fix is to hold leaves in canonical (ascending) order, which the
+sorted-pair tree makes natural.
+
+This is invisible in the SWIP because its appendix never shows the client side. It should be
+stated normatively, alongside the rest of the tree construction (2.9), or every client will find
+it the hard way.
 
 ---
 
 ## 3. Summary of deviations implemented on this branch
 
-| # | Deviation | Reason |
-|---|---|---|
-| 1.1 | added `previousPriceUpdatedBlock` + rollback validity check | reconstruction otherwise unverifiable |
-| 1.4 | `copyBatch` reverts distinct `BatchIdAlreadyUsed` | bulk-import failures need a reason |
-| 1.5 | `redistributionBatchAt` rejects future sampling blocks | parity with the balance view |
-| 2.1 | stamp sample limit is depth-**independent** | depth-scaled limit makes overreporting free |
-| 2.2 | both coefficients capped at `2×` | unbounded as written; rewards wasting batch capacity |
-| 2.3 | dropped `bucketDepth < claimedDepth` | rejects every real batch |
-| 2.4 | dropped `pendingCompletion`; extended Option B finalize | unbounded loop bricks `claim` |
-| 2.5 | explicit BZZ custody; remainder to highest-weight entry; withdrawal survives pause | underspecified |
+| #   | Deviation                                                                          | Reason                                               |
+| --- | ---------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| 1.1 | added `previousPriceUpdatedBlock` + rollback validity check                        | reconstruction otherwise unverifiable                |
+| 1.4 | `copyBatch` reverts distinct `BatchIdAlreadyUsed`                                  | bulk-import failures need a reason                   |
+| 1.5 | `redistributionBatchAt` rejects future sampling blocks                             | parity with the balance view                         |
+| 2.1 | stamp sample limit is depth-**independent**                                        | depth-scaled limit makes overreporting free          |
+| 2.2 | both coefficients capped at `2×`                                                   | unbounded as written; rewards wasting batch capacity |
+| 2.3 | dropped `bucketDepth < claimedDepth`                                               | rejects every real batch                             |
+| 2.4 | dropped `pendingCompletion`; extended Option B finalize                            | unbounded loop bricks `claim`                        |
+| 2.5 | explicit BZZ custody; remainder to highest-weight entry; withdrawal survives pause | underspecified                                       |
 
 Items **1.1, 1.2, 2.1, 2.2, 2.3, 2.4** are the ones worth raising in the PRs before the SWIPs
-are finalised. **2.5** is a deployment-topology question. The rest are editorial.
+are finalised. **2.5** is a deployment-topology question. **2.16** needs one normative sentence.
+The rest are editorial.
+
+Implementation notes for Bee and for reviewers: [STS-1.md](./STS-1.md).

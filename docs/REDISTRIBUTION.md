@@ -1,6 +1,12 @@
 # Redistribution Contract
 
-This overview matches `Redistribution.sol` on this PR branch (proposed, under review — not deployed). Bee-facing API: [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md). Attack catalog: [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md).
+> **Superseded in part by STS-1.** This branch implements SWIP-050, which replaces the
+> three-phase chunk-only game described below with a six-phase chunk-and-stamp sequence, and the
+> single-winner payout with a proportional split. Read [STS-1.md](./STS-1.md) for the current
+> mechanics and the Bee-facing API; the sections below still describe the Schelling coordination
+> game, proximity, anchors and freezing correctly, except where marked.
+
+This overview matches `Redistribution.sol` on this PR branch (proposed, under review — not deployed). Bee-facing API: [STS-1.md](./STS-1.md) and [SWIP-51-OPTION-B.md](./SWIP-51-OPTION-B.md). Attack catalog: [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md). Review of the SWIPs themselves: [SWIP-49-50-SCRUTINY.md](./SWIP-49-50-SCRUTINY.md).
 
 ## Overview
 
@@ -9,9 +15,10 @@ The `Redistribution` contract implements a Schelling coordination game for formi
 ## Purpose
 
 The contract:
+
 - Coordinates a three-phase game (Commit, Reveal, Claim)
 - Form consensus on what chunks nodes are storing
-- Randomly select winners who receive the PostageStamp pot
+- Split the PostageStamp pot across every node that proved it holds the agreed data
 - Penalize nodes that reveal dishonest data
 - Automatically adjust prices based on participation
 
@@ -20,30 +27,29 @@ The contract:
 ### Schelling Coordination Game
 
 The game works because:
+
 1. Nodes that store data honestly will have similar reserve commitments
 2. This shared value becomes a "focal point" (Schelling point)
 3. Nodes are incentivized to reveal the true value to maximize chances of winning
 4. Nodes that lie can be caught and penalized
 
-### Three-Phase Design
+### Six-Phase Design (SWIP-050)
 
-Each round consists of three consecutive phases:
+A round is 152 blocks and runs in six phases. Full detail in [STS-1.md](./STS-1.md).
 
-1. **Commit Phase** (25% = 38 blocks ≈ 3 minutes)
-   - Nodes commit to hashed values
-   - Cannot be decoded until reveal
+1. **Chunk sample hash commit** (38 blocks) — commit to `(chunkSampleHash, chunkTransformRoot, depth)`,
+   bound to the round number.
+2. **Chunk sample hash reveal** (19 blocks) — the first valid reveal opens the round's stamp anchor.
+3. **Stamp sample hash commit** (38 blocks) — commit to the 16-entry stamp sample, accepted only
+   from a node that already revealed in this round.
+4. **Stamp sample hash reveal** (19 blocks) — the first valid reveal opens the proof and selection seeds.
+5. **Proof submission** (19 blocks) — open the three selected stamp witnesses. An entry carries no
+   selection weight until this passes.
+6. **Claim** (19 blocks) — weighted draw over proof-validated entries fixes the Schelling point,
+   and the pot is split across every proof-validated entry that reported it.
 
-2. **Reveal Phase** (25% = 38 blocks ≈ 3 minutes)
-   - Nodes reveal their actual values
-   - Randomness updates after each reveal
-   - Only nodes in proximity to anchor can participate
-
-3. **Claim Phase** (50% = 76 blocks ≈ 6 minutes)
-   - Truth is determined from reveals (stake-density-weighted lottery)
-   - Winner is randomly selected from truth-tellers (same weighting)
-   - Anyone may submit `claim()` with proofs; pot goes to `winner.owner`
-   - If proofs or withdraw fail, the whole transaction reverts (no pay, no claim)
-   - Skipped claims: the next round’s first `commit` freezes non-revealers
+Skipped claims: the next round's first `commit` still finalizes the prior round, and a stage one
+commit counts as unfinished until it is proof-validated.
 
 ### Proximity and Anchors
 
@@ -52,8 +58,8 @@ Each round consists of three consecutive phases:
 
 ```solidity
 function inProximity(bytes32 A, bytes32 B, uint8 minimum) pure returns (bool) {
-    if (minimum == 0) return true;
-    return uint256(A ^ B) < uint256(2 ** (256 - minimum));
+  if (minimum == 0) return true;
+  return uint256(A ^ B) < uint256(2 ** (256 - minimum));
 }
 ```
 
@@ -84,14 +90,17 @@ function currentPhaseClaim() {
 ### Commit Phase Functions
 
 #### commit()
+
 Commits to an obfuscated hash for the current round.
 
 **Parameters**:
+
 - `_obfuscatedHash`: Hash of (overlay, depth, hash, nonce)
 - `_roundNumber`: Round number for this commit
 - `_depth`: Declared storage depth (must match later reveal)
 
 **Requirements**:
+
 - Must be in commit phase
 - Node must be staked for 2+ rounds
 - `depth > height` (`DepthNotGreaterThanHeight`)
@@ -102,6 +111,7 @@ Commits to an obfuscated hash for the current round.
 At most `MAX_COMMITS` (128) commits are kept. Extra eligible commits may evict a worse slot (`CommitSelected` / `CommitEvicted`) or be dropped without revert (`CommitRejected`). The first commit of a new round finalizes the previous round if it is still open (freezes non-revealers). If that closer was a non-revealer, they are `CommitRejected` after finalize and are not admitted.
 
 **Logic**:
+
 ```solidity
 bytes32 overlay = get from StakeRegistry
 uint256 stake = get effective stake from StakeRegistry
@@ -112,24 +122,27 @@ uint8 height = get from StakeRegistry
 ```
 
 **Commit Structure**:
+
 ```solidity
 struct Commit {
-    bytes32 overlay;
-    address owner;
-    bool revealed;
-    uint8 height;
-    uint8 declaredDepth;
-    uint256 stake;
-    uint256 priority; // lower is better
-    bytes32 obfuscatedHash;
-    uint256 revealIndex;
+  bytes32 overlay;
+  address owner;
+  bool revealed;
+  uint8 height;
+  uint8 declaredDepth;
+  uint256 stake;
+  uint256 priority; // lower is better
+  bytes32 obfuscatedHash;
+  uint256 revealIndex;
 }
 ```
 
 #### isParticipatingInUpcomingRound()
+
 Checks if node is eligible for NEXT round's commit phase.
 
 **Parameters**:
+
 - `_owner`: Node address
 - `_depth`: Intended storage depth
 
@@ -140,20 +153,24 @@ Checks if node is eligible for NEXT round's commit phase.
 ### Reveal Phase Functions
 
 #### reveal()
+
 Reveals the actual values used to create a commit.
 
 **Parameters**:
+
 - `_depth`: Reported storage depth
 - `_hash`: Reserve commitment hash
 - `_revealNonce`: Nonce used in commit
 
 **Requirements**:
+
 - Must be in reveal phase
 - Revealed depth must equal `declaredDepth` from commit
 - Anchor must be in range of `depth - height`
 - Commit must exist and match
 
 **Logic**:
+
 ```solidity
 // Calculate obfuscated hash from inputs
 bytes32 obfuscatedHash = wrapCommit(overlay, _depth, _hash, _revealNonce)
@@ -163,19 +180,21 @@ bytes32 obfuscatedHash = wrapCommit(overlay, _depth, _hash, _revealNonce)
 ```
 
 **First Reveal Special Handling**:
+
 - Sets `currentRevealRoundAnchor` from seed
 - Initializes reveal array
 - Updates randomness
 
 **Reveal Structure**:
+
 ```solidity
 struct Reveal {
-    bytes32 overlay;
-    address owner;
-    uint8 depth;
-    uint256 stake;
-    uint256 stakeDensity;  // stake * 2^(depth - height)
-    bytes32 hash;
+  bytes32 overlay;
+  address owner;
+  uint8 depth;
+  uint256 stake;
+  uint256 stakeDensity; // stake * 2^(depth - height)
+  bytes32 hash;
 }
 ```
 
@@ -184,86 +203,106 @@ Higher depth → Higher density → Better chance of being selected as truth
 
 ### Claim Phase Functions
 
+#### submitStsProof()
+
+Opens the three selected stamp witnesses. Until this passes, an entry has no selection weight and
+no payout share. See [STS-1.md](./STS-1.md) for the proof shape.
+
+**Requirements**: proof submission phase; a valid stage one reveal and stamp sample reveal in the
+same round; witnesses supplied in the order `selectedStampPositions()` returns.
+
 #### claim()
-Finalizes the round and pays the pot if proofs verify.
 
-**Parameters**:
-- `entryProof1`: Chunk inclusion proof for random index 1
-- `entryProof2`: Chunk inclusion proof for random index 2
-- `entryProofLast`: Chunk inclusion proof for last index
+Finalizes the round and pays every proof-validated entry on the selected Schelling point. Takes no
+arguments: the witnesses were verified in the proof phase.
 
-**Requirements**:
-- Must be in claim phase
-- At least one reveal in the round (`NoReveals()` otherwise)
-- Round not already claimed (`AlreadyClaimed()`)
-- Must provide valid proofs for the selected winner's reserve
-
-**Caller:** There is **no `msg.sender` check**. Any party may call `claim()` and pay gas. The pot is withdrawn to `winner.owner`, not the caller. A relayer or griefer can submit the transaction.
+**Caller:** There is **no `msg.sender` check**. Any party may call `claim()` and pay gas. The pot
+is withdrawn into the Redistribution contract and accrued to beneficiaries, so a relayer gains
+nothing beyond closing the round.
 
 **Logic**:
-1. Finalize participation if needed (non-reveal freezes + tentative winner)
-2. Require reveals for this round; not already claimed
-3. Verify proofs against the stored winner (proximity, inclusion, stamp, SOC, order, reserve size)
-4. Apply disagreement freezes
-5. `OracleContract.adjustPrice(lastRedundancyCount)`
-6. `PostageStamp.withdraw(winner.owner)` — reverts the whole claim on failure
-7. Set `currentClaimRound`, emit `WinnerSelected` / `ChunkCount`
 
-**Atomicity:** Proofs, penalties, oracle, and withdraw run in one transaction. If proofs fail, withdraw reverts, or the tx runs out of gas, **nothing persists**. Freezes and `currentClaimRound` apply only after a fully successful `claim()`.
+1. Finalize participation if needed (truth selection + freezes for unfinished participants)
+2. Require reveals for this round, a selected Schelling point, and that it is not already claimed
+3. `PostageStamp.withdraw(address(this))` — reverts the whole claim on failure
+4. Split the withdrawn amount across matching entries by `effectiveStakeDensity`; freeze
+   proof-validated entries that reported something else
+5. `OracleContract.adjustPrice(redundancy)`
+6. Set `currentClaimRound` and `lastClaimedDepth`, emit `ChunkCount`
 
-#### isWinner()
-Determines if caller is the winner for the current round.
+**Atomicity:** penalties, payout accrual, oracle and withdraw run in one transaction. If any step
+reverts, **nothing persists**.
 
-**Returns**: True if caller's overlay matches the selected winner
+#### withdrawRedistributionPayout()
 
-**Logic**: If the round is already finalized, compares overlay to the stored `winner`. Otherwise recomputes the same lottery `claim()` would.
+Draws down an accrued payout to a chosen receiver. Deliberately callable while the contract is
+paused, so a pause cannot strand funds that were already earned.
+
+#### matchesSelectedTruth()
+
+Whether an overlay is proof-validated and on the Schelling point selected as truth. Replaces
+`isWinner()`: STS-1 pays every such entry, so there is no single winner.
 
 ### Admin Functions
 
 #### setFreezingParams()
+
 Sets the penalty multipliers.
 
 **Parameters**:
+
 - `_penaltyMultiplierDisagreement`: Freeze duration multiplier for disagreeing
 - `_penaltyMultiplierNonRevealed`: Freeze duration multiplier for not revealing
 - `_penaltyRandomFactor`: Random factor for disagreement penalty (0-100)
 
 **Requirements**:
+
 - Only `DEFAULT_ADMIN_ROLE` can call
 
 #### setSampleMaxValue()
+
 Changes the maximum value for reserve size estimation.
 
 **Parameters**:
+
 - `_sampleMaxValue`: New maximum value
 
 **Requirements**:
+
 - Only `DEFAULT_ADMIN_ROLE` can call
 
 #### pause() / unPause()
+
 Pauses or unpauses the contract.
 
 ### View Functions
 
 #### currentRound()
+
 Returns current round number: `block.number / ROUND_LENGTH`
 
 #### currentPhaseCommit() / currentPhaseReveal() / currentPhaseClaim()
+
 Returns true if in respective phase
 
 #### isParticipatingInUpcomingRound(address, uint8)
+
 Checks eligibility for next round
 
 #### currentRoundAnchor()
+
 Returns the anchor for the current phase (proximity calculation)
 
 #### inProximity(bytes32, bytes32, uint8)
+
 Checks if two overlays are within proximity
 
 #### currentRevealRoundAnchor
+
 The anchor set during first reveal
 
 #### seed
+
 Current random seed (updated after each reveal)
 
 ## Proof Verification
@@ -273,16 +312,17 @@ Current random seed (updated after each reveal)
 Verifies that a chunk is included in a Merkle tree (BMT - Binary Merkle Tree).
 
 **Structure**:
+
 ```solidity
 struct ChunkInclusionProof {
-    bytes32[] proofSegments;      // Merkle proof segments
-    bytes32 proveSegment;        // Chunk data
-    bytes32[] proofSegments2;    // Proof for transformed address
-    bytes32 proveSegment2;       // Transformed chunk
-    uint64 chunkSpan;            // Size of chunk span
-    bytes32[] proofSegments3;    // Proof for transformed chunk
-    PostageProof postageProof;   // Postage stamp proof
-    SOCProof[] socProof;          // Single-owner chunk proof
+  bytes32[] proofSegments; // Merkle proof segments
+  bytes32 proveSegment; // Chunk data
+  bytes32[] proofSegments2; // Proof for transformed address
+  bytes32 proveSegment2; // Transformed chunk
+  uint64 chunkSpan; // Size of chunk span
+  bytes32[] proofSegments3; // Proof for transformed chunk
+  PostageProof postageProof; // Postage stamp proof
+  SOCProof[] socProof; // Single-owner chunk proof
 }
 ```
 
@@ -291,12 +331,13 @@ struct ChunkInclusionProof {
 Verifies postage stamp validity for a chunk.
 
 **Structure**:
+
 ```solidity
 struct PostageProof {
-    bytes signature;           // Batch owner signature
-    bytes32 postageId;         // Batch ID
-    uint64 index;              // Stamp index
-    uint64 timeStamp;          // Timestamp
+  bytes signature; // Batch owner signature
+  bytes32 postageId; // Batch ID
+  uint64 index; // Stamp index
+  uint64 timeStamp; // Timestamp
 }
 ```
 
@@ -305,64 +346,53 @@ struct PostageProof {
 Verifies single-owner chunk ownership.
 
 **Structure**:
+
 ```solidity
 struct SOCProof {
-    address signer;            // Ethereum address of signer
-    bytes signature;           // Signature
-    bytes32 identifier;       // Content identifier
-    bytes32 chunkAddr;        // Chunk address
+  address signer; // Ethereum address of signer
+  bytes signature; // Signature
+  bytes32 identifier; // Content identifier
+  bytes32 chunkAddr; // Chunk address
 }
 ```
 
-## Winner Selection Algorithm
+## Truth Selection and Payout
 
-### Truth Selection (from reveals)
+### Truth selection (from proof-validated entries)
 
-Truth is an exact pair `(hash, depth)`. A reveal agrees with truth only if both fields match.
+Truth is the triple `(chunkSampleHash, stampSampleHash, depth)`. Only an entry whose stamp
+witnesses and chunk bindings passed carries weight, so an unproven sample hash can neither become
+the truth nor influence who does.
 
 ```solidity
-function getCurrentTruth() {
-    currentSum = 0
-    for (each commit in currentCommits order) {
-        if (commit.revealed) {
-            currentSum += reveal.stakeDensity
-            if (random(i) * currentSum < reveal.stakeDensity * (MAX_H + 1)) {
-                truthHash = reveal.hash
-                truthDepth = reveal.depth
-            }
+function _selectStsTruth() {
+    anchor = keccak256(selectionSeed, 0)
+    total = 0
+    for (each reveal in currentReveals order) {
+        if (!reveal.proofSubmitted) continue
+        total += reveal.effectiveStakeDensity
+        if (draw(i) * total < reveal.effectiveStakeDensity * (MAX_H + 1)) {
+            truth = (reveal.hash, reveal.stampHash, reveal.depth)
         }
     }
-    return (truthHash, truthDepth)
 }
 ```
 
-Each revealed commit is a candidate. A **stake-density-weighted reservoir lottery** (not a median) walks commits in array order and updates the selected truth tuple when the random draw hits. Higher `stakeDensity` increases the chance a reveal becomes truth, but dishonest reveals can still win if they carry enough weight.
+A **stake-density-weighted reservoir lottery** (not a median) walks entries in array order and
+updates the selected truth when the random draw hits. The weight is not the raw stake density but
+`effectiveStakeDensity`, the base density multiplied by the two STS-1 coefficients.
 
-### Winner Selection (from truth-tellers)
+### Payout (proportional, not a single winner)
 
-```solidity
-function winnerSelection() {
-    (truthHash, truthDepth) = getCurrentTruth()
-    currentSum = 0
-    redundancyCount = 0
-    for (each commit in currentCommits order) {
-        if (commit.revealed && reveal matches truth exactly) {
-            currentSum += reveal.stakeDensity
-            if (random(redundancyCount) * currentSum < reveal.stakeDensity * (MAX_H + 1)) {
-                winner = reveal
-            }
-            redundancyCount++
-        }
-        // also: freeze non-reveal committers; probabilistic freeze for wrong-truth revealers
-    }
-    adjustPrice(redundancyCount)
-    return winner
-}
+```
+payoutShare_i = pot * effectiveStakeDensity_i / sum over matching entries
 ```
 
-The loop iterates **all commits** (O(N)), not only truth-tellers. Winner lottery and `redundancyCount` include only revealed commits whose `(hash, depth)` exactly matches truth. Non-reveal committers and wrong-truth revealers are penalized in the same loop.
-
-A **single winner** is randomly selected from truth-tellers, weighted by stake density.
+The rounding remainder goes to the highest-weight matching entry, which is deterministic and does
+not depend on reveal order. Entries that are proof-validated but reported a different Schelling
+point are frozen under the disagreement rule. Stage one commits that never became proof-validated
+are frozen like non-revealers, at the selected truth depth or `lastClaimedDepth`, whichever is
+greater, floored at `MIN_NONREVEAL_FREEZE_DEPTH`.
 
 ## Penalty System
 
@@ -390,6 +420,7 @@ if (revealed but wrong truth && random(100) < penaltyRandomFactor) {
 ### Depth-Based Scaling
 
 Penalties scale exponentially with reported depth:
+
 - Depth 20: 1x freeze duration
 - Depth 21: 2x freeze duration
 - Depth 22: 4x freeze duration
@@ -398,6 +429,7 @@ Penalties scale exponentially with reported depth:
 ## Price Adjustment Integration
 
 After each claim phase, the contract calls:
+
 ```solidity
 OracleContract.adjustPrice(uint16(redundancyCount))
 ```
@@ -408,9 +440,17 @@ The `redundancyCount` is the number of nodes that revealed the correct truth, wh
 
 ```solidity
 event Committed(uint256 roundNumber, bytes32 overlay, uint8 height, uint8 depth);
-event Revealed(uint256 roundNumber, bytes32 overlay, uint256 stake, 
-               uint256 stakeDensity, bytes32 reserveCommitment, uint8 depth);
-event WinnerSelected(Reveal winner);
+event Revealed(
+  uint256 roundNumber,
+  bytes32 overlay,
+  uint256 stake,
+  uint256 stakeDensity,
+  bytes32 reserveCommitment,
+  uint8 depth
+);
+event StsTruthSelected(uint64 roundNumber, bytes32 hash, bytes32 stampHash, uint8 depth);
+event PayoutAccrued(uint64 roundNumber, bytes32 overlay, address owner, uint256 amount);
+event PayoutWithdrawn(address owner, address receiver, uint256 amount);
 event TruthSelected(bytes32 hash, uint8 depth);
 event ChunkCount(uint256 validChunkCount);
 event CurrentRevealAnchor(uint256 roundNumber, bytes32 anchor);
@@ -440,6 +480,7 @@ constructor(
 ### Round N: Block 152000
 
 **Commit Phase (152000-152037)**:
+
 ```
 Block 152000: Node A commits hash_1
 Block 152001: Node B commits hash_2
@@ -447,6 +488,7 @@ Block 152037: Commit phase ends
 ```
 
 **Reveal Phase (152038-152075)**:
+
 ```
 Block 152038: First node reveals
   → currentRevealRoundAnchor = currentSeed()
@@ -456,19 +498,43 @@ Block 152039: Node B reveals
 Block 152075: Reveal phase ends
 ```
 
-**Claim Phase (152076-152151)**:
+**Stamp Commit (152057-152094)**:
+
 ```
-Block 152076: Node A checks isWinner()
-Block 152100: Winner claims pot
-  → finalize participation if needed
-  → verify proofs against stored winner
-  → disagree freezes + adjustPrice
-  → withdraw pot
+Block 152060: Node A commits its stamp sample hash
+Block 152062: Node B commits its stamp sample hash
+```
+
+**Stamp Reveal (152095-152113)**:
+
+```
+Block 152096: Node A reveals
+  → opens proofSeed and selectionSeed
+Block 152099: Node B reveals
+```
+
+**Proof Submission (152114-152132)**:
+
+```
+Block 152115: Node A opens its three selected stamp witnesses
+Block 152118: Node B opens its three selected stamp witnesses
+```
+
+**Claim Phase (152133-152151)**:
+
+```
+Block 152135: Anyone calls claim()
+  → finalize participation if needed (truth selection + freezes)
+  → withdraw pot into the redistribution contract
+  → split it across proof-validated entries on the truth; freeze the rest
+  → adjustPrice
+Later: each beneficiary calls withdrawRedistributionPayout()
 ```
 
 ### Round N+1: Block 152152
 
 **Commit Phase (152152-152189)**:
+
 - Uses anchor from seed at block 152152
 - Different nodes participate (based on proximity)
 
@@ -477,6 +543,7 @@ Block 152100: Winner claims pot
 ### Inclusion Proof Verification
 
 For each chunk in the claim:
+
 1. Verify chunk is in proximity to anchor
 2. Verify chunk address matches reserve commitment hash
 3. Verify chunk is in transformed address tree
@@ -499,28 +566,28 @@ For each chunk in the claim:
 ## Error Codes
 
 ```solidity
-error NotCommitPhase();               // Wrong phase
-error NoCommitsReceived();            // No commits in round
-error DepthNotGreaterThanHeight();    // depth must exceed height
-error OutOfDepth();                    // commit-time proximity failed
-error DepthMismatch();                 // reveal depth ≠ declaredDepth
-error AlreadyCommitted();              // Already committed this round
-error MustStake2Rounds();             // Need to stake 2 rounds first
-error NotStaked();                    // Not staked
-error NotRevealPhase();                // Wrong phase
-error OutOfDepthReveal(bytes32);      // Anchor out of depth
-error AlreadyRevealed();               // Already revealed
-error NotClaimPhase();                 // Wrong phase
-error AlreadyClaimed();                // Round already claimed
+error NotCommitPhase(); // Wrong phase
+error NoCommitsReceived(); // No commits in round
+error DepthNotGreaterThanHeight(); // depth must exceed height
+error OutOfDepth(); // commit-time proximity failed
+error DepthMismatch(); // reveal depth ≠ declaredDepth
+error AlreadyCommitted(); // Already committed this round
+error MustStake2Rounds(); // Need to stake 2 rounds first
+error NotStaked(); // Not staked
+error NotRevealPhase(); // Wrong phase
+error OutOfDepthReveal(bytes32); // Anchor out of depth
+error AlreadyRevealed(); // Already revealed
+error NotClaimPhase(); // Wrong phase
+error AlreadyClaimed(); // Round already claimed
 error SocVerificationFailed(bytes32); // SOC verification failed
-error IndexOutsideSet(bytes32);       // Stamp index invalid
-error SigRecoveryFailed(bytes32);      // Signature recovery failed
-error BatchDoesNotExist(bytes32);      // Batch not found
-error BucketDiffers(bytes32);         // Bucket mismatch
+error IndexOutsideSet(bytes32); // Stamp index invalid
+error SigRecoveryFailed(bytes32); // Signature recovery failed
+error BatchDoesNotExist(bytes32); // Batch not found
+error BucketDiffers(bytes32); // Bucket mismatch
 error InclusionProofFailed(uint8, bytes32); // Inclusion proof failed
-error RandomElementCheckFailed();      // Chunk order wrong
-error LastElementCheckFailed();        // Last element order wrong
-error ReserveCheckFailed(bytes32);    // Reserve size too large
+error RandomElementCheckFailed(); // Chunk order wrong
+error LastElementCheckFailed(); // Last element order wrong
+error ReserveCheckFailed(bytes32); // Reserve size too large
 ```
 
 ## Examples
@@ -552,17 +619,19 @@ Redistribution(redis).reveal(
 );
 ```
 
-### Checking if Winner
+### Checking if on the selected Schelling point
 
 ```solidity
-bool winner = Redistribution(redis).isWinner(overlay);
-if (winner) {
-    // Generate proofs; winner.owner (or any relayer) calls claim()
-    claim(proof1, proof2, proofLast);
+bool onTruth = Redistribution(redis).matchesSelectedTruth(overlay);
+if (onTruth) {
+    // Anyone may call claim(); the share is accrued and drawn with withdrawRedistributionPayout()
+    claim();
 }
 ```
 
-`isWinner()` mirrors winner selection without applying penalties. `claim()` may be submitted by any address as long as proofs are valid for the selected winner.
+`matchesSelectedTruth()` reads the Schelling point stored at finalize; it returns false before
+the round is finalized. `claim()` may be submitted by any address — the pot is accrued to
+beneficiaries, not to the caller.
 
 ### Checking Eligibility
 
@@ -595,4 +664,3 @@ bool eligible = Redistribution(redis).isParticipatingInUpcomingRound(
 - **StakeRegistry**: Provides stake and overlay info
 - **PostageStamp**: Source of pot, valid chunk count
 - **PriceOracle**: Receives redundancy data for price adjustment
-

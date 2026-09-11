@@ -62,12 +62,14 @@ The contracts must be deployed in this specific order due to dependencies:
 **File**: `deploy/main/000_deploy_token.ts`
 
 For mainnet:
+
 ```bash
 # Expects Token to already exist
 # Will error if not found
 ```
 
 For testnets:
+
 ```bash
 # Deploys TestToken with 16 decimals
 # Mints initial supply to deployer
@@ -78,11 +80,13 @@ For testnets:
 **File**: `deploy/main/001_deploy_postage.ts`
 
 **Constructor**:
+
 ```typescript
-[token.address, 16]  // minimumBucketDepth = 16
+[token.address, 16]; // minimumBucketDepth = 16
 ```
 
 **Deployment**:
+
 ```bash
 npx hardhat deploy --network mainnet --tags postageStamp
 ```
@@ -92,15 +96,18 @@ npx hardhat deploy --network mainnet --tags postageStamp
 **File**: `deploy/main/002_deploy_oracle.ts`
 
 **Constructor**:
+
 ```typescript
-[postageStamp.address]
+[postageStamp.address];
 ```
 
 **Special Handling**:
+
 - If oracle exists, preserves old price
 - Re-applies old price after redeployment
 
 **Deployment**:
+
 ```bash
 npx hardhat deploy --network mainnet --tags oracle
 ```
@@ -110,17 +117,20 @@ npx hardhat deploy --network mainnet --tags oracle
 **File**: `deploy/main/003_deploy_staking.ts`
 
 **Constructor**:
+
 ```typescript
-[token.address, swarmNetworkId, priceOracle.address]
+[token.address, swarmNetworkId, priceOracle.address];
 ```
 
 **Network IDs** (from `helper-hardhat-config.ts`):
+
 - Mainnet: 1
 - Testnet: 10
 - Testnet Light: 5
 - Tenderly: 1
 
 **Deployment**:
+
 ```bash
 npx hardhat deploy --network mainnet --tags staking
 ```
@@ -130,11 +140,13 @@ npx hardhat deploy --network mainnet --tags staking
 **File**: `deploy/main/004_deploy_redistribution.ts`
 
 **Constructor**:
+
 ```typescript
-[stakeRegistry.address, postageStamp.address, priceOracle.address]
+[stakeRegistry.address, postageStamp.address, priceOracle.address];
 ```
 
 **Deployment**:
+
 ```bash
 npx hardhat deploy --network mainnet --tags redistribution
 ```
@@ -146,6 +158,7 @@ npx hardhat deploy --network mainnet --tags redistribution
 **File**: `deploy/main/005_deploy_roles_postage.ts`
 
 **Grants**:
+
 - `PRICE_ORACLE_ROLE` → PriceOracle contract
 - `REDISTRIBUTOR_ROLE` → Redistribution contract
 
@@ -160,6 +173,7 @@ Currently no roles need to be set (constructor handles it).
 **File**: `deploy/main/007_deploy_roles_staking.ts`
 
 **Grants**:
+
 - `REDISTRIBUTOR_ROLE` → Redistribution contract
 
 #### PriceOracle Roles
@@ -167,9 +181,11 @@ Currently no roles need to be set (constructor handles it).
 **File**: `deploy/main/008_deploy_roles_oracle.ts`
 
 **Grants**:
+
 - `PRICE_UPDATER_ROLE` → Redistribution contract
 
 **Deployment**:
+
 ```bash
 npx hardhat deploy --network mainnet --tags roles
 ```
@@ -199,7 +215,7 @@ npx hardhat deploy --network mainnet --tags roles
 **PostageStamp**: 0x...  
 **PriceOracle**: 0x...  
 **StakeRegistry**: 0x...  
-**Redistribution**: 0x...  
+**Redistribution**: 0x...
 
 See `mainnet_deployed.json` for current addresses.
 
@@ -305,6 +321,7 @@ npx hardhat status --target mainnet
 ```
 
 This shows:
+
 - Contract pause status
 - Admin roles
 - Role assignments
@@ -363,21 +380,25 @@ Since contracts are NOT upgradeable, upgrades require:
 ### Mainnet Deployment Steps
 
 1. **Deploy Token** (if not exists)
+
    ```bash
    npx hardhat deploy --network mainnet --tags token
    ```
 
 2. **Deploy Contracts**
+
    ```bash
    npx hardhat deploy --network mainnet --tags contracts
    ```
 
 3. **Setup Roles**
+
    ```bash
    npx hardhat deploy --network mainnet --tags roles
    ```
 
 4. **Set Initial Price**
+
    ```bash
    npx hardhat send-tx --network mainnet \
      --contract PriceOracle \
@@ -386,6 +407,7 @@ Since contracts are NOT upgradeable, upgrades require:
    ```
 
 5. **Grant Additional Admins** (e.g., multisig)
+
    ```bash
    npx hardhat grant-role --network mainnet \
      --contract PostageStamp \
@@ -394,11 +416,13 @@ Since contracts are NOT upgradeable, upgrades require:
    ```
 
 6. **Verify Contracts**
+
    ```bash
    npx hardhat verify --network mainnet --all
    ```
 
 7. **Check Status**
+
    ```bash
    npx hardhat status --target mainnet
    ```
@@ -413,6 +437,7 @@ Since contracts are NOT upgradeable, upgrades require:
 ### hardhat.config.ts
 
 Configures:
+
 - Compiler version (Sol ≥ 0.8.19)
 - Networks (mainnet, testnet, etc.)
 - Etherscan verification
@@ -421,6 +446,7 @@ Configures:
 ### helper-hardhat-config.ts
 
 Defines:
+
 - Network IDs
 - Block confirmations
 - Multisig addresses
@@ -429,6 +455,7 @@ Defines:
 ### deployments/
 
 Stores:
+
 - Deployment artifacts
 - Addresses and ABIs
 - Constructor arguments
@@ -494,6 +521,7 @@ npx hardhat status --target mainnet
 ```
 
 Monitor for:
+
 - Contract pause status
 - Admin role assignments
 - Role configuration
@@ -502,8 +530,8 @@ Monitor for:
 ## Support
 
 For issues or questions:
+
 - Check deployment logs in `deployments/` directory
 - Review error messages in transaction receipts
 - Check contract status using `status` task
 - Verify role setup using events
-

@@ -60,17 +60,20 @@ Node Operator → StakeRegistry.manageStake()
 The redistribution game runs in continuous rounds with three distinct phases:
 
 #### Phase 1: Commit (25% of round = 38 blocks ≈ 3 minutes)
+
 - Nodes calculate reserve commitment hash from stored chunks
 - Create obfuscated commit with random nonce
 - Submit hash commitment
 
 #### Phase 2: Reveal (25% of round = 38 blocks ≈ 3 minutes)
+
 - Nodes reveal the actual values used to create commit
 - Randomness is updated after each reveal
 - Anchor is set for proximity calculations
 - Only revealed commits in proximity are valid
 
 #### Phase 3: Claim (50% of round = 76 blocks ≈ 6 minutes)
+
 - Select truth-teller based on stake density
 - Randomly select winner from truth-tellers
 - Verify proof of chunk inclusion in reserve
@@ -98,6 +101,7 @@ Redistribution → PriceOracle.adjustPrice(redundancy)
 - **Pot**: Accumulated funds from expired batches
 
 **Expiration Formula**:
+
 ```
 Batch expires when: remainingBalance(batchId) <= 0
 remainingBalance = normalisedBalance - currentTotalOutPayment()
@@ -110,9 +114,10 @@ remainingBalance = normalisedBalance - currentTotalOutPayment()
 - **Effective Stake**: `min(committed_stake * price * 2^height, potential_stake)`
 
 **Example**:
+
 - Node stakes 1000 BZZ at price 1000 chunks/BZZ with height 2
 - Committed stake: 100 chunks
-- Effective stake: min(100 * 1000 * 4, 1000 BZZ) = 1000 BZZ
+- Effective stake: min(100 _ 1000 _ 4, 1000 BZZ) = 1000 BZZ
 
 ### Redistribution Economics
 
@@ -128,20 +133,24 @@ remainingBalance = normalisedBalance - currentTotalOutPayment()
 Each contract defines specific roles:
 
 **PostageStamp**:
+
 - `DEFAULT_ADMIN_ROLE`: Full admin control
 - `PRICE_ORACLE_ROLE`: Can update prices (granted to PriceOracle)
 - `REDISTRIBUTOR_ROLE`: Can withdraw pot (granted to Redistribution)
 - `PAUSER_ROLE`: Can pause/unpause contract
 
 **PriceOracle**:
+
 - `DEFAULT_ADMIN_ROLE`: Can manually set price, pause
 - `PRICE_UPDATER_ROLE`: Can adjust price based on redundancy (granted to Redistribution)
 
 **StakeRegistry**:
+
 - `DEFAULT_ADMIN_ROLE`: Change network ID, pause
 - `REDISTRIBUTOR_ROLE`: Freeze and slash deposits (granted to Redistribution)
 
 **Redistribution**:
+
 - `DEFAULT_ADMIN_ROLE`: Adjust freezing parameters, pause
 
 ### Penalties
@@ -150,7 +159,7 @@ Nodes that behave dishonestly face penalties:
 
 1. **Non-Reveal Penalty**: 2x rounds frozen if committed but didn't reveal
 2. **Disagreement Penalty**: 1x rounds frozen (with random factor) if revealed wrong truth
-3. **Depth-Based Penalty**: Freeze duration = base * 2^reported_depth
+3. **Depth-Based Penalty**: Freeze duration = base \* 2^reported_depth
 
 ### Pausability
 
@@ -225,6 +234,7 @@ The `expireLimited()` function allows capping gas usage when many batches expire
 ## Upgrade Path
 
 Currently, contracts are NOT upgradeable. For major updates:
+
 1. Deploy new contracts
 2. Migrate batches using `copyBatch()` (admin only)
 3. Allow users to migrate stakes when paused
@@ -233,6 +243,7 @@ Currently, contracts are NOT upgradeable. For major updates:
 ## Network IDs
 
 Swarm uses different network IDs for different deployments:
+
 - Mainnet: ID 1
 - Testnet (Sepolia): ID 10
 - Testnet Light: ID 5
@@ -246,4 +257,3 @@ This ensures network isolation and prevents overlay conflicts.
 - [StakeRegistry Details](./STAKING.md)
 - [Redistribution Details](./REDISTRIBUTION.md)
 - [Deployment Guide](./DEPLOYMENT.md)
-
