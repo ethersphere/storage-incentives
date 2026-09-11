@@ -1181,7 +1181,7 @@ describe('PostageStamp', function () {
         transferAmount = batch.initialPaymentPerChunk * batchSize;
 
         await token.mint(stamper, transferAmount);
-        (await ethers.getContract('TestToken', stamper)).approve(postageStampStamper.address, transferAmount);
+        await (await ethers.getContract('TestToken', stamper)).approve(postageStampStamper.address, transferAmount);
       });
 
       it('should fire the BatchCreated event', async function () {
@@ -1411,9 +1411,11 @@ describe('PostageStamp', function () {
         const price = 100;
         await setPrice(price);
 
-        const expectedNormalisedBalance = 3 * price + batch.initialPaymentPerChunk;
-
         await mineNBlocks(2);
+
+        const currentTotalOutPayment = parseInt(await postageStampStamper.currentTotalOutPayment());
+        const lastPrice = parseInt(await postageStampStamper.lastPrice());
+        const expectedNormalisedBalance = batch.initialPaymentPerChunk + currentTotalOutPayment + lastPrice;
 
         await expect(
           postageStampStamper.copyBatch(
