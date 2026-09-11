@@ -2,6 +2,8 @@ import { expect } from './util/chai';
 import { ethers, deployments, getNamedAccounts } from 'hardhat';
 import { BigNumber, Contract, ContractTransaction } from 'ethers';
 import {
+  STS_PHASES,
+  mineToPhase,
   mineNBlocks,
   getBlockNumber,
   encodeAndHash,
@@ -422,8 +424,18 @@ describe('Redistribution', function () {
         expect(await getBlockNumber()).to.be.gte(initialBlockNumber + phaseLength);
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
-        await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.gte(initialBlockNumber + 2 * phaseLength);
+        // SWIP-050 inserts stamp commit, stamp reveal and proof submission between reveal and
+        // claim, so the claim phase now opens at block 133 of the round rather than 76.
+        await mineNBlocks(STS_PHASES.stampCommit - STS_PHASES.chunkReveal);
+        expect(await redistribution.currentPhaseStampCommit()).to.be.true;
+
+        await mineNBlocks(STS_PHASES.stampReveal - STS_PHASES.stampCommit);
+        expect(await redistribution.currentPhaseStampReveal()).to.be.true;
+
+        await mineNBlocks(STS_PHASES.proof - STS_PHASES.stampReveal);
+        expect(await redistribution.currentPhaseProof()).to.be.true;
+
+        await mineNBlocks(STS_PHASES.claim - STS_PHASES.proof);
         expect(await redistribution.currentPhaseClaim()).to.be.true;
       });
     });
@@ -441,7 +453,16 @@ describe('Redistribution', function () {
       it('should correctly wrap another commit', async function () {
         const obfuscatedHash = await commitHash(overlay_3, depth_3, hash_3, reveal_nonce_3);
 
-        expect(await redistribution.wrapCommit(overlay_3, depth_3, hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
+        expect(
+          await redistribution.wrapCommit(
+            (await redistribution.currentRound()).toNumber(),
+            overlay_3,
+            depth_3,
+            hash_3,
+            ZERO_ROOT,
+            reveal_nonce_3
+          )
+        ).to.be.eq(obfuscatedHash);
       });
     });
 
@@ -509,12 +530,16 @@ describe('Redistribution', function () {
         expect(await redistribution.currentPhaseReveal()).to.be.true;
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
-        await mineNBlocks(phaseLength);
+        // Once the chunk sample hash reveal phase is over, this round's anchor is spent, so
+        // currentRoundAnchor looks ahead from the stamp commit phase onward. Before SWIP-050
+        // that switch happened at the claim phase, which was the next phase.
+        await mineNBlocks(STS_PHASES.stampCommit - STS_PHASES.chunkReveal);
         const nextAnchor = nextAnchorIfNoReveal(ZERO_32_BYTES, startRoundNumber + 1);
-        expect(await redistribution.currentPhaseClaim()).to.be.true;
+        expect(await redistribution.currentPhaseStampCommit()).to.be.true;
         expect(await redistribution.currentRoundAnchor()).to.be.eq(nextAnchor);
 
-        await mineNBlocks(phaseLength * 2);
+        // Into the commit phase of the next round, where the anchor just derived becomes current.
+        await mineNBlocks(roundLength - STS_PHASES.stampCommit);
         expect(await redistribution.currentRound()).to.be.eq(startRoundNumber + 1);
         expect(await redistribution.currentRoundAnchor()).to.be.eq(nextAnchor);
       });
@@ -525,7 +550,16 @@ describe('Redistribution', function () {
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
         const obfuscatedHash = await commitHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
-        expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
+        expect(
+          await r_node_3.wrapCommit(
+            (await r_node_3.currentRound()).toNumber(),
+            overlay_3,
+            '0x08',
+            hash_3,
+            ZERO_ROOT,
+            reveal_nonce_3
+          )
+        ).to.be.eq(obfuscatedHash);
         const currentRound = await r_node_3.currentRound();
         // SWIP-51: proximity is now enforced at commit time, so this out-of-depth commit reverts.
         await expect(r_node_3.commit(obfuscatedHash, currentRound, '0x08')).to.be.revertedWith(
@@ -539,7 +573,16 @@ describe('Redistribution', function () {
         expect(await redistribution.currentRoundAnchor()).to.be.eq(round2Anchor);
 
         const obfuscatedHash = await commitHash(overlay_3, '0x08', hash_3, reveal_nonce_3);
-        expect(await r_node_3.wrapCommit(overlay_3, '0x08', hash_3, reveal_nonce_3)).to.be.eq(obfuscatedHash);
+        expect(
+          await r_node_3.wrapCommit(
+            (await r_node_3.currentRound()).toNumber(),
+            overlay_3,
+            '0x08',
+            hash_3,
+            ZERO_ROOT,
+            reveal_nonce_3
+          )
+        ).to.be.eq(obfuscatedHash);
         const currentRound = await r_node_3.currentRound();
         await expect(r_node_3.commit(obfuscatedHash, currentRound, '0x08')).to.be.revertedWith(
           errors.commit.outOfDepth
@@ -563,7 +606,7 @@ describe('Redistribution', function () {
 
         expect((await r_node_3.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash2);
 
-        await mineNBlocks(phaseLength);
+        await mineToPhase(STS_PHASES.chunkReveal);
         await r_node_3.reveal(depth_3, hash_3, ZERO_ROOT, reveal_nonce_3);
 
         expect((await r_node_3.currentReveals(0)).hash).to.be.eq(hash_3);
@@ -589,7 +632,7 @@ describe('Redistribution', function () {
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
-        await mineNBlocks(phaseLength);
+        await mineToPhase(STS_PHASES.chunkReveal);
 
         await r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2);
 
@@ -618,7 +661,7 @@ describe('Redistribution', function () {
 
         expect((await r_node_2.currentCommits(0)).obfuscatedHash).to.be.eq(obfuscatedHash);
 
-        await mineNBlocks(phaseLength);
+        await mineToPhase(STS_PHASES.chunkReveal);
 
         await r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2);
 
@@ -679,8 +722,8 @@ describe('Redistribution', function () {
         const initialBlockNumber = await getBlockNumber();
         expect(await redistribution.currentPhaseCommit()).to.be.true;
 
-        await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength);
+        await mineToPhase(STS_PHASES.chunkReveal);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         const r_node_0 = await ethers.getContract('Redistribution', node_0);
@@ -717,7 +760,7 @@ describe('Redistribution', function () {
         const currentRound = await r_node_0.currentRound();
         await r_node_0.commit(obfuscatedHash_0, currentRound, '0x01');
 
-        await mineNBlocks(phaseLength * 2);
+        await mineToPhase(STS_PHASES.claim);
         expect(await redistribution.currentPhaseClaim()).to.be.true;
 
         // commented out to allow other tests to pass for now
@@ -737,8 +780,8 @@ describe('Redistribution', function () {
         const currentRound = await r_node_2.currentRound();
         await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
 
-        await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        await mineToPhase(STS_PHASES.chunkReveal);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         await expect(r_node_2.reveal('0x01', hash_2, ZERO_ROOT, reveal_nonce_f)).to.be.revertedWith(
@@ -756,8 +799,8 @@ describe('Redistribution', function () {
         const currentRound = await r_node_2.currentRound();
         await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
 
-        await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        await mineToPhase(STS_PHASES.chunkReveal);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         // Depth differs from declaredDepth → DepthMismatch (SWIP-51).
@@ -805,8 +848,8 @@ describe('Redistribution', function () {
         const currentRound = await r_node_2.currentRound();
         await r_node_2.commit(obfuscatedHash, parseInt(currentRound), depth_2);
 
-        await mineNBlocks(phaseLength);
-        expect(await getBlockNumber()).to.be.eq(initialBlockNumber + phaseLength + 1);
+        await mineToPhase(STS_PHASES.chunkReveal);
+        expect(await redistribution.currentPhaseReveal()).to.be.true;
         expect(await redistribution.currentPhaseReveal()).to.be.true;
 
         await expect(r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2))
@@ -859,7 +902,7 @@ describe('Redistribution', function () {
       const obfuscatedHash = await commitHash(overlay_2, depth_2, hash_2, reveal_nonce_2);
       await r_node_2.commit(obfuscatedHash, currentRound, '0x01');
 
-      await mineNBlocks(phaseLength);
+      await mineToPhase(STS_PHASES.chunkReveal);
       await expect(r_node_2.reveal(depth_2, hash_2, ZERO_ROOT, reveal_nonce_2)).to.be.revertedWith(
         errors.reveal.depthMismatch
       );
@@ -951,7 +994,11 @@ describe('Redistribution', function () {
       ).to.emit(redistribution, 'Committed');
     });
 
-    it('freezes a no-show at truth depth, not their declared depth', async function () {
+    // Under SWIP-050 a stage one commit is unfinished until it is proof validated, so a
+    // revealer that never proved is frozen exactly like a no-show, and a round with no proof
+    // validated entry selects no truth at all: the freeze then falls back to the floor depth
+    // rather than to some participant's self-reported one.
+    it('freezes both the no-show and the revealer that never proved', async function () {
       const r_node_2 = await ethers.getContract('Redistribution', node_2);
       const r_node_0 = await ethers.getContract('Redistribution', node_0);
       const sr = await ethers.getContract('StakeRegistry');
@@ -969,7 +1016,7 @@ describe('Redistribution', function () {
       await r_node_2.commit(await commitHash(overlay_2, '0x01', hash_2, reveal_nonce_2), currentRound, '0x01');
       await r_node_0.commit(await commitHash(overlay_0, depth_0, hash_0, reveal_nonce_0), currentRound, depth_0);
 
-      await mineNBlocks(phaseLength);
+      await mineToPhase(STS_PHASES.chunkReveal);
       await r_node_0.reveal(depth_0, hash_0, ZERO_ROOT, reveal_nonce_0);
 
       await mineNBlocks(roundLength);
@@ -983,8 +1030,9 @@ describe('Redistribution', function () {
       }
 
       const nextRound = await redistribution.currentRound();
-      const truthDepth = parseInt(depth_0);
-      const expectedFreeze = BigNumber.from(2).mul(roundLength).mul(BigNumber.from(2).pow(truthDepth));
+      const floorDepth = await redistribution.MIN_NONREVEAL_FREEZE_DEPTH();
+      const expectedFreeze = BigNumber.from(2).mul(roundLength).mul(BigNumber.from(2).pow(floorDepth));
+
       await expect(r_node_0.commit(await commitHash(overlay_0, '0x01', hash_0, reveal_nonce_0), nextRound, '0x01'))
         .to.emit(redistribution, 'ParticipationFinalized')
         .withArgs(currentRound, 1)

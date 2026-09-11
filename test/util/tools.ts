@@ -193,16 +193,19 @@ const STS_PHASES = {
   claim: 133,
 };
 
-/** Mine until the next transaction lands in the given phase of the current round. */
+/**
+ * Mine until the current block sits exactly on the given phase boundary of this round.
+ * Views then read that phase, and a transaction sent next lands one block in, which is still
+ * inside it: the shortest SWIP-050 phase is 19 blocks.
+ */
 async function mineToPhase(offset: number): Promise<void> {
   const current = await getBlockNumber();
   const within = current % ROUND_LENGTH;
-  // The next transaction is included one block later, so aim one short of the target.
   const target = offset === 0 ? ROUND_LENGTH : offset;
-  if (within + 1 >= target && offset !== 0) {
+  if (within >= target && offset !== 0) {
     throw new Error(`phase offset ${offset} already passed in this round (at ${within})`);
   }
-  await mineNBlocks(target - within - 1);
+  await mineNBlocks(target - within);
 }
 
 //dev purposes only
