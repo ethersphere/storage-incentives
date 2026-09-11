@@ -158,12 +158,12 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      const lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount_0);
+
+      const lastUpdatedBlockNumber = (await getBlockNumber()) + 1;
 
       await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, zeroAmount))
         .to.emit(stakeRegistry, 'StakeUpdated')
@@ -172,14 +172,14 @@ describe('Staking', function () {
           updatedCommittedStakeAmount_0,
           updatedStakeAmount_0,
           overlay_0,
-          lastUpdatedBlockNumber + 1,
+          lastUpdatedBlockNumber,
           height_0
         );
 
       const staked = await stakeRegistry.stakes(staker_0);
       expect(staked.overlay).to.be.eq(overlay_0);
       expect(staked.potentialStake).to.be.eq(updatedStakeAmount_0);
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber + 1);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber);
       expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(updatedStakeAmount_0);
     });
   });
@@ -285,9 +285,9 @@ describe('Staking', function () {
         errors.freeze.currentlyFrozen
       );
 
-      mineNBlocks(3);
+      await mineNBlocks(3);
 
-      const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
+      const newUpdatedBlockNumber = (await getBlockNumber()) + 1;
       await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0))
         .to.emit(stakeRegistry, 'StakeUpdated')
         .withArgs(
