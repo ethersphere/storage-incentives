@@ -95,8 +95,24 @@ contract RedistributionClaimStub is Redistribution {
     constructor(
         address staking,
         address postageContract,
-        address oracleContract
-    ) Redistribution(staking, postageContract, oracleContract) {}
+        address oracleContract,
+        address tokenAddress
+    ) Redistribution(staking, postageContract, oracleContract, tokenAddress) {}
+
+    /// @notice Fuzz-only: mark a revealed overlay proof validated without running the witnesses.
+    /// @dev STS-1 proof submission needs real BMT witnesses and postage signatures, which a
+    /// structural fuzzer cannot produce. Everything downstream of proof validation - truth
+    /// selection, proportional payout, freezing, claim gating - is still exercised for real.
+    function markProofValidated(uint256 revealIndex) external {
+        Reveal storage r = currentReveals[revealIndex];
+        r.stampRevealed = true;
+        r.proofSubmitted = true;
+        r.effectiveStakeDensity = r.stakeDensity;
+    }
+
+    function revealsLength() external view returns (uint256) {
+        return currentReveals.length;
+    }
 
     /// @notice Fuzz-only claim: finalize participation + disagreement penalties + oracle, then withdraw pot.
     /// @dev Bypasses inclusion/SOC/stamp proof verification. Withdraw reverts the whole claim (no pay, no claim).
@@ -116,18 +132,25 @@ contract RedistributionClaimStub is Redistribution {
             revert AlreadyClaimed();
         }
 
-        _applyDisagreePenalties();
-
-        bool priceOk = OracleContract.adjustPrice(lastRedundancyCount);
-        if (!priceOk) {
-            emit PriceAdjustmentSkipped(lastRedundancyCount);
+        SelectedSchellingPoint memory truth = selectedTruth;
+        if (!truth.selected) {
+            revert NoClaimableTruth();
         }
 
-        Reveal memory winnerSelected = winner;
-        PostageContract.withdraw(winnerSelected.owner);
+        uint256 balanceBefore = bzzToken.balanceOf(address(this));
+        PostageContract.withdraw(address(this));
+        uint256 pot = bzzToken.balanceOf(address(this)) - balanceBefore;
 
+        uint16 redundancy = _applyPayoutsAndFreezes(cr, truth, pot);
+
+        bool priceOk = OracleContract.adjustPrice(redundancy);
+        if (!priceOk) {
+            emit PriceAdjustmentSkipped(redundancy);
+        }
+
+        lastRedundancyCount = redundancy;
+        lastClaimedDepth = truth.depth;
         currentClaimRound = cr;
-        emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
     }
 
@@ -150,7 +173,13 @@ contract EchidnaRedistributionClaimActor {
     }
 
     function callReveal(uint8 depth, bytes32 hash, bytes32 nonce) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.reveal.selector, depth, hash, nonce));
+        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.reveal.selector, depth, hash, bytes32(0), nonce));
+    }
+
+    function callWithdrawPayout() external returns (bool ok) {
+        (ok, ) = address(redist).call(
+            abi.encodeWithSelector(redist.withdrawRedistributionPayout.selector, address(this))
+        );
     }
 
     function callClaimStub() external returns (bool ok) {
@@ -197,7 +226,12 @@ contract EchidnaRedistributionClaimHarness {
         stakeMock = new EchidnaStakeRegistryMock();
         stampMock = new EchidnaPostageStampPotMock(token);
         oracleMock = new EchidnaPriceOracleMock();
-        redist = new RedistributionClaimStub(address(stakeMock), address(stampMock), address(oracleMock));
+        redist = new RedistributionClaimStub(
+            address(stakeMock),
+            address(stampMock),
+            address(oracleMock),
+            address(token)
+        );
 
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {
             actors[i] = new EchidnaRedistributionClaimActor(redist);
@@ -261,7 +295,7 @@ contract EchidnaRedistributionClaimHarness {
         // Ensure staking is old enough.
         stakeMock.setNode(address(a), overlay, height, 1e18, _backdateLastUpdated());
 
-        bytes32 obf = redist.wrapCommit(overlay, depth, hash, nonce);
+        bytes32 obf = redist.wrapCommit(redist.currentRound(), overlay, depth, hash, bytes32(0), nonce);
         bool ok = a.callCommit(obf, redist.currentRound(), depth);
         if (!ok) return;
         // commit() does not revert on CommitRejected (frozen closer after auto-finalize).
@@ -288,6 +322,21 @@ contract EchidnaRedistributionClaimHarness {
         bool ok = actors[idx].callReveal(trackedDepth[idx], trackedHash[idx], trackedNonce[idx]);
         if (!ok) return;
         trackedHasReveal[idx] = true;
+    }
+
+    /// @dev STS-1 requires a proof validated entry before a claim can select any truth. Real
+    /// witnesses are out of reach for a structural fuzzer, so this marks the entry directly; the
+    /// truth selection, payout split and freezing that follow are the real implementations.
+    function act_markProofValidated(uint8 revealIdx) external {
+        _clearClaimPending();
+        uint256 len = redist.revealsLength();
+        if (len == 0) return;
+        redist.markProofValidated(uint256(revealIdx) % len);
+    }
+
+    function act_withdrawPayout(uint8 actorId) external {
+        _clearClaimPending();
+        actors[uint256(actorId) % ACTOR_COUNT].callWithdrawPayout();
     }
 
     function act_claimStub(uint8 actorId) external {
@@ -320,33 +369,30 @@ contract EchidnaRedistributionClaimHarness {
         return !claimSucceededTwiceSameRound;
     }
 
-    function echidna_claim_withdraws_pot_to_winner_when_successful() external view returns (bool) {
+    /// @notice STS-1 pays several nodes, so the pot is withdrawn into the redistribution contract
+    /// and every token of it is accrued to beneficiaries. Nothing is created and nothing is lost.
+    function echidna_claim_accrues_whole_pot_to_beneficiaries() external view returns (bool) {
         if (!pendingClaim) return true;
         if (pendingWithdrawShouldFail) return true;
         if (redist.currentClaimRound() != pendingClaimRound) return true;
 
-        // Pot must be zeroed by our mock withdraw on success.
+        // Pot must be zeroed by our mock withdraw on success, and paid to the contract itself.
         if (stampMock.pot() != 0) return false;
-
-        // Beneficiary must match the winner selected by the round logic.
-        (, address winnerOwner, , , , ) = redist.winner();
-        if (stampMock.lastBeneficiary() != winnerOwner) return false;
-
-        // The amount transferred must match the pot snapshot (our mock mints on seedPot).
+        if (stampMock.lastBeneficiary() != address(redist)) return false;
         if (stampMock.lastAmount() != pendingPotBefore) return false;
 
-        // Exactly one actor's balance should increase by lastAmount, matching the beneficiary.
-        uint256 increased = 0;
+        // Every withdrawn token must be claimable by someone: accrued balances plus what actors
+        // have already drawn down must cover the contract's token balance exactly.
+        uint256 accrued;
+        uint256 drawn;
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {
-            uint256 afterBal = token.balanceOf(address(actors[i]));
-            if (afterBal != pendingActorBalBefore[i]) {
-                if (afterBal != pendingActorBalBefore[i] + stampMock.lastAmount()) return false;
-                if (address(actors[i]) != stampMock.lastBeneficiary()) return false;
-                increased += 1;
-            }
+            accrued += redist.pendingRedistributionPayouts(address(actors[i]));
+            drawn += token.balanceOf(address(actors[i]));
         }
-        if (pendingPotBefore == 0) return increased == 0;
-        return increased == 1;
+        if (accrued != token.balanceOf(address(redist))) return false;
+
+        // No actor may hold tokens it was never accrued.
+        return drawn <= pendingPotBefore + _sumPriorBalances();
     }
 
     /// @notice Failed withdraw must not mark the round claimed (no pay, no claim).
@@ -361,11 +407,12 @@ contract EchidnaRedistributionClaimHarness {
         return true;
     }
 
-    function echidna_nonrevealers_frozen_after_claim_selection() external view returns (bool) {
+    function echidna_unfinished_participants_frozen_after_claim() external view returns (bool) {
         if (!pendingClaim) return true;
         if (redist.currentClaimRound() != pendingClaimRound) return true;
 
-        // Any actor that committed but did not reveal in that round should have been frozen at least once.
+        // Under STS-1 a stage one commit is unfinished until it is proof validated, so any actor
+        // that committed and did not reveal in that round must have been frozen at least once.
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {
             if (!trackedHasCommit[i]) continue;
             if (trackedRound[i] != pendingClaimRound) continue;
@@ -373,6 +420,12 @@ contract EchidnaRedistributionClaimHarness {
             if (stakeMock.freezeCount(address(actors[i])) == 0) return false;
         }
         return true;
+    }
+
+    function _sumPriorBalances() internal view returns (uint256 total) {
+        for (uint256 i = 0; i < ACTOR_COUNT; i++) {
+            total += pendingActorBalBefore[i];
+        }
     }
 
     // -----------------------------

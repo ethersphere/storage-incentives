@@ -84,18 +84,12 @@ contract EchidnaRedistributionActor {
     }
 
     function callReveal(uint8 depth, bytes32 hash, bytes32 nonce) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.reveal.selector, depth, hash, nonce));
+        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.reveal.selector, depth, hash, bytes32(0), nonce));
     }
 
     function callClaim() external returns (bool ok) {
-        // Create minimal calldata that avoids immediate out-of-bounds panics.
-        Redistribution.ChunkInclusionProof memory p;
-        p.proofSegments = new bytes32[](1);
-        p.proofSegments2 = new bytes32[](0);
-        p.proofSegments3 = new bytes32[](0);
-        p.socProof = new Redistribution.SOCProof[](0);
-
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.claim.selector, p, p, p));
+        // STS-1 claim takes no proof calldata: the witnesses were verified during the proof phase.
+        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.claim.selector));
     }
 
     function callWinnerSelection() external returns (bool ok) {
@@ -166,7 +160,7 @@ contract EchidnaRedistributionHarness {
         stampMock = new EchidnaPostageStampMock();
         oracleMock = new EchidnaPriceOracleMock();
 
-        redist = new RedistributionExposed(address(stakeMock), address(stampMock), address(oracleMock));
+        redist = new RedistributionExposed(address(stakeMock), address(stampMock), address(oracleMock), address(0));
 
         for (uint256 i = 0; i < ACTOR_COUNT; i++) {
             actors[i] = new EchidnaRedistributionActor(redist);
@@ -248,9 +242,9 @@ contract EchidnaRedistributionHarness {
         redist.unPause();
     }
 
-    function act_admin_setSampleMaxValue(uint256 v) external {
+    function act_admin_setStampSampleMaxValue(uint256 v) external {
         _clearWinnerSelectionPending();
-        redist.setSampleMaxValue(v);
+        redist.setStampSampleMaxValue(v);
     }
 
     function act_admin_setFreezingParams(uint8 a, uint8 b, uint8 c) external {
@@ -295,7 +289,7 @@ contract EchidnaRedistributionHarness {
         // Avoid reverting on AlreadyCommitted for identical overlay.
         if (_commitOverlayExists(overlay)) return;
 
-        bytes32 obfuscated = redist.wrapCommit(overlay, d, reserveHash, nonce);
+        bytes32 obfuscated = _wrapFor(overlay, d, reserveHash, nonce);
         bool ok = a.callCommit(obfuscated, redist.currentRound(), d);
         if (!ok) return;
         // commit() does not revert on CommitRejected (frozen closer after auto-finalize).
@@ -646,6 +640,10 @@ contract EchidnaRedistributionHarness {
             if (ov == overlay) return true;
         }
         return false;
+    }
+
+    function _wrapFor(bytes32 overlay, uint8 d, bytes32 reserveHash, bytes32 nonce) internal view returns (bytes32) {
+        return redist.wrapCommit(redist.currentRound(), overlay, d, reserveHash, bytes32(0), nonce);
     }
 
     function _backdateLastUpdated() internal view returns (uint256) {

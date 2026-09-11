@@ -74,7 +74,7 @@ contract EchidnaSystemActor {
     }
 
     function callReveal(uint8 depth, bytes32 hash, bytes32 nonce) external returns (bool ok) {
-        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.reveal.selector, depth, hash, nonce));
+        (ok, ) = address(redist).call(abi.encodeWithSelector(redist.reveal.selector, depth, hash, bytes32(0), nonce));
     }
 
     function callAdjustPrice(uint16 redundancy) external returns (bool ok) {
@@ -123,7 +123,7 @@ contract EchidnaSystemHarness {
 
         // Deploy redistribution (uses stake/stamp/oracle). Exposed wrapper adds length helpers for harness scans.
         redist = RedistMod.Redistribution(
-            address(new RedistributionExposed(address(stake), address(stamp), address(oracle)))
+            address(new RedistributionExposed(address(stake), address(stamp), address(oracle), address(token)))
         );
 
         // Wire roles: redistribution must be able to freeze stake and withdraw the stamp pot.
@@ -240,7 +240,7 @@ contract EchidnaSystemHarness {
         uint8 depth = height + 1;
 
         bytes32 overlay = stake.overlayOfAddress(address(a));
-        bytes32 obfuscated = redist.wrapCommit(overlay, depth, hash, revealNonce);
+        bytes32 obfuscated = redist.wrapCommit(redist.currentRound(), overlay, depth, hash, bytes32(0), revealNonce);
 
         bool ok = a.callCommit(obfuscated, redist.currentRound(), depth);
         if (!ok) return;

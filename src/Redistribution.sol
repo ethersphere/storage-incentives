@@ -2,10 +2,14 @@
 pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/utils/math/Math.sol";
 import "./Util/TransformedChunkProof.sol";
 import "./Util/ChunkProof.sol";
 import "./Util/Signatures.sol";
+import "./Util/StsTypes.sol";
+import "./Util/StsWitness.sol";
 import "./interface/IPostageStamp.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 interface IPriceOracle {
     function adjustPrice(uint16 redundancy) external returns (bool);
@@ -32,30 +36,38 @@ interface IStakeRegistry {
 /**
  * @title Redistribution contract
  * @author The Swarm Authors
- * @dev Implements a Schelling Co-ordination game to form consensus around the Reserve Commitment hash. This takes
- * place in three phases: _commit_, _reveal_ and _claim_.
+ * @dev Implements the Sequential Transformation Scheme 1 (SWIP-050) Schelling game. A round is
+ * 152 blocks and runs in six phases:
  *
- * A node, upon establishing that it _isParticipatingInUpcomingRound_, i.e. it's overlay falls within proximity order
- * of its reported depth with the _currentRoundAnchor_, prepares a "reserve commitment hash" using the chunks
- * it currently stores in its reserve and calculates the "storage depth" (see Bee for details). These values, if calculated
- * honestly, and with the right chunks stored, should be the same for every node in a neighbourhood. This is the Schelling point.
- * Each eligible node can then use these values, together with a random, single use, secret  _revealNonce_ and their
- * _overlay_ as the pre-image values for the obsfucated _commit_, using the _wrapCommit_ method.
+ *   blocks   0..37    chunk sample hash commit
+ *   blocks  38..56    chunk sample hash reveal
+ *   blocks  57..94    stamp sample hash commit
+ *   blocks  95..113   stamp sample hash reveal
+ *   blocks 114..132   proof submission
+ *   blocks 133..151   claim
  *
- * Once the _commit_ round has elapsed, participating nodes must provide the values used to calculate their obsfucated
- * _commit_ hash, which, once verified for correctness and proximity to the anchor are retained in the _currentReveals_.
- * Nodes that have committed but do not reveal the correct values used to create the pre-image will have their stake
- * "frozen" for a period of rounds proportional to their reported depth.
+ * Three randomness roles are introduced in strict order, each only after the commitment that
+ * must not know it. The round anchor already exists when the round opens: it selects the
+ * neighbourhood and transforms chunk addresses. The first valid chunk sample hash reveal creates
+ * the stamp anchor, which orders transformed stamp values for this round. The first valid stamp
+ * sample hash reveal creates the proof seed, which selects the sample positions that must be
+ * opened, and the selection seed used by the weighted truth draw.
  *
- * During the _reveal_ round, randomness is updated after every successful reveal. Once the reveal round is concluded,
- * the _currentRoundAnchor_ is updated and users can determine if they will be eligible their overlay will be eligible
- * for the next commit phase using _isParticipatingInUpcomingRound_.
+ * A participant commits to (chunkSampleHash, chunkTransformRoot, depth) in stage one, then to a
+ * stamp sample hash in stage two, then opens three of its sixteen stamp sample positions. Each
+ * opened witness proves that the transformed stamp value sits at that position and is ordered
+ * against its neighbours; that the batch and index were inside this round's SWIP-049 scope and
+ * the batch owner signed for the stamped chunk address; and that the first anchor transformed
+ * address of that same chunk was already a leaf of the chunk transform root fixed in stage one.
+ * Since the stamp anchor and proof seed are unknown when that root is fixed, a participant
+ * cannot wait to learn which chunks will be useful.
  *
- * When the _reveal_ phase has been concluded, the claim phase can begin. At this point, the truth teller and winner
- * are already determined. By calling _isWinner_, an applicant node can run the relevant logic to determine if they have
- * been selected as the beneficiary of this round. When calling _claim_, the current pot from the PostageStamp contract
- * is withdrawn and transferred to that beneficiaries address. Nodes that have revealed values that differ from the truth,
- * have their stakes "frozen" for a period of rounds proportional to their reported depth.
+ * Only a proof validated entry carries selection weight, which is its stake density multiplied
+ * by two cube root coefficients rewarding a denser stamp sample and lower within-bucket index
+ * use. The weighted draw picks one entry; its (chunkSampleHash, stampSampleHash, depth) becomes
+ * the Schelling point, and the round pot is divided among every proof validated entry that
+ * reported it, in proportion to the same weight. Entries that reported something else are
+ * frozen; stage one commits that never became proof validated are frozen like non-revealers.
  */
 
 contract Redistribution is AccessControl, Pausable {
@@ -72,6 +84,9 @@ contract Redistribution is AccessControl, Pausable {
         uint256 priority; // lower is better
         bytes32 obfuscatedHash;
         uint256 revealIndex;
+        // SWIP-050 stage two: the obfuscated stamp sample hash commitment, accepted only after
+        // this overlay has a valid stage one reveal in the same round.
+        bytes32 stampObfuscatedHash;
     }
     // ...then provide the actual values that are the constituents of the pre-image of the _obfuscatedHash_
     // during the reveal phase.
@@ -81,42 +96,30 @@ contract Redistribution is AccessControl, Pausable {
         uint8 depth;
         uint256 stake;
         uint256 stakeDensity;
+        // The chunk side Schelling value. STS-1 does not open chunk sample witnesses.
         bytes32 hash;
+        // Participant specific root over the claimed complete list of first anchor transformed
+        // chunk addresses. Fixed in stage one, while the stamp anchor and proof seed are still
+        // unknown, which is what stops a node picking chunks to suit the stamps it will be asked
+        // to prove. Not part of the Schelling point, so every paid node must prove its own.
+        bytes32 chunkTransformRoot;
+        // The stamp side Schelling value, set at stage two reveal.
+        bytes32 stampHash;
+        // Base stake density multiplied by the two STS-1 coefficients. Zero until the witnesses
+        // and bindings have passed, and only a non zero value carries selection weight.
+        uint256 effectiveStakeDensity;
+        bool stampRevealed;
+        bool proofSubmitted;
     }
 
-    struct ChunkInclusionProof {
-        bytes32[] proofSegments;
-        bytes32 proveSegment;
-        // _RCspan is known for RC 32*32
-
-        // Inclusion proof of transformed address
-        bytes32[] proofSegments2;
-        bytes32 proveSegment2;
-        // proveSegmentIndex2 known from deterministic random selection;
-        uint64 chunkSpan;
-        bytes32[] proofSegments3;
-        //  _proveSegment3 known, is equal _proveSegment2
-        // proveSegmentIndex3 know, is equal _proveSegmentIndex2;
-        // chunkSpan2 is equal to chunkSpan (as the data is the same)
-        //
-        PostageProof postageProof;
-        SOCProof[] socProof;
-    }
-
-    struct SOCProof {
-        address signer; // signer Ethereum address to check against
-        bytes signature;
-        bytes32 identifier; //
-        bytes32 chunkAddr; // wrapped chunk address
-    }
-
-    struct PostageProof {
-        bytes signature;
-        bytes32 postageId;
-        uint64 index;
-        uint64 timeStamp;
-        // address signer; it is provided by the postage stamp contract
-        // bytes32 chunkAddr; it equals to the proveSegment argument
+    /**
+     * @dev The value selected as truth for a round.
+     */
+    struct SelectedSchellingPoint {
+        bytes32 hash;
+        bytes32 stampHash;
+        uint8 depth;
+        bool selected;
     }
 
     // The address of the linked PostageStamp contract.
@@ -148,14 +151,20 @@ contract Redistribution is AccessControl, Pausable {
     uint8 private penaltyMultiplierNonRevealed = 2;
     uint8 private penaltyRandomFactor = 100; // Use 100 as value to ignore random factor in freezing penalty
 
-    // alpha=0.097612 beta=0.0716570 k=16
-    uint256 private sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
-
-    // The reveal of the winner of the last round.
-    Reveal public winner;
-
     // The length of a round in blocks.
     uint256 private constant ROUND_LENGTH = 152;
+
+    // ----------------------------- SWIP-050 round schedule ------------------------------
+
+    // Six phases, inclusive start offsets within the round. Each randomness role is introduced
+    // only after the commitment that must not know it: the round anchor is already fixed when
+    // the round opens, the stamp anchor is created by the first chunk sample hash reveal, and
+    // the proof and selection seeds by the first stamp sample hash reveal.
+    uint256 private constant CHUNK_REVEAL_START = 38; // 38 blocks of chunk sample hash commit
+    uint256 private constant STAMP_COMMIT_START = 57; // 19 blocks of chunk sample hash reveal
+    uint256 private constant STAMP_REVEAL_START = 95; // 38 blocks of stamp sample hash commit
+    uint256 private constant PROOF_START = 114; // 19 blocks of stamp sample hash reveal
+    uint256 private constant CLAIM_START = 133; // 19 blocks of proof submission, then 19 of claim
 
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
@@ -172,21 +181,47 @@ contract Redistribution is AccessControl, Pausable {
     mapping(uint64 => bool) public participationFinalized;
     // Redundancy count (matching reveals) of the finalized round, consumed by the oracle in claim.
     uint16 public lastRedundancyCount;
+    // ----------------------------- SWIP-050 STS-1 ------------------------------
+
+    // Fixed stamp sample size, and the positions opened during proof submission: two drawn from
+    // 0..14 without replacement, plus position 15 which is always opened as the density witness.
+    uint32 public constant STAMP_SAMPLE_SIZE = 16;
+    uint32 public constant STS_WITNESS_COUNT = 3;
+    uint32 public constant STAMP_DENSITY_WITNESS = 15;
+
+    // The ERC20 the pot is denominated in. STS-1 pays several nodes per round, so the pot is
+    // withdrawn into this contract and drawn down by each beneficiary.
+    IERC20 public immutable bzzToken;
+
+    // Anchor that orders transformed stamp values for the active reveal round. Created by the
+    // first valid chunk sample hash reveal, so it is unknown while stage one is committed.
+    bytes32 public currentRevealRoundStampAnchor;
+    bool public currentRevealRoundStampAnchorSet;
+
+    // Randomness created by the first valid stamp sample hash reveal, after the stamp sample is
+    // already committed. currentProofSeed selects which sample positions must be opened;
+    // currentSelectionSeed drives the weighted truth draw.
+    uint64 public currentStampSampleHashRevealRound;
+    bytes32 private currentProofSeed;
+    bytes32 private currentSelectionSeed;
+    bool public currentProofSeedSet;
+
+    // The Schelling point selected as truth for the finalized round.
+    SelectedSchellingPoint public selectedTruth;
+
+    // Earned but not yet withdrawn redistribution payouts.
+    mapping(address => uint256) public pendingRedistributionPayouts;
+
+    // Ceiling the density witness must fall under. Depth independent on purpose: a depth scaled
+    // ceiling would grow in step with the largest proven value and leave depth overreporting a
+    // free gain on base stake density. See docs/SWIP-49-50-SCRUTINY.md 2.1.
+    uint256 public stampSampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
+
     // Depth of the last successfully claimed winner. Used so an unproven / skipped-claim
     // truth cannot shrink non-reveal freeze duration below a proven network depth.
     uint8 public lastClaimedDepth;
 
     // ----------------------------- Events ------------------------------
-
-    /**
-     * @dev Emitted when the winner of a round is selected in the claim phase
-     */
-    event WinnerSelected(Reveal winner);
-
-    /**
-     * @dev Emitted when the truth oracle of a round is selected in the claim phase.
-     */
-    event TruthSelected(bytes32 hash, uint8 depth);
 
     // Next two events to be removed after testing phase pending some other usefulness being found.
     /**
@@ -251,9 +286,34 @@ contract Redistribution is AccessControl, Pausable {
     );
 
     /**
-     * @dev Logs for inclusion proof
+     * @dev Emitted when the stamp anchor for a round is opened by the first stage one reveal.
      */
-    event transformedChunkAddressFromInclusionProof(uint256 indexInRC, bytes32 chunkAddress);
+    event StampAnchorOpened(uint64 roundNumber, bytes32 stampAnchor);
+
+    /**
+     * @dev Emitted when an overlay reveals its stamp sample hash.
+     */
+    event StampSampleRevealed(uint64 roundNumber, bytes32 overlay, bytes32 stampHash);
+
+    /**
+     * @dev Emitted when an overlay's STS-1 witnesses and bindings have passed.
+     */
+    event StsProofAccepted(uint64 roundNumber, bytes32 overlay, uint256 effectiveStakeDensity);
+
+    /**
+     * @dev Emitted once per claim with the Schelling point selected as truth.
+     */
+    event StsTruthSelected(uint64 roundNumber, bytes32 hash, bytes32 stampHash, uint8 depth);
+
+    /**
+     * @dev Emitted for each beneficiary of a claim.
+     */
+    event PayoutAccrued(uint64 roundNumber, bytes32 overlay, address owner, uint256 amount);
+
+    /**
+     * @dev Emitted when a beneficiary draws down an accrued payout.
+     */
+    event PayoutWithdrawn(address owner, address receiver, uint256 amount);
 
     // ----------------------------- Errors ------------------------------
 
@@ -271,7 +331,7 @@ contract Redistribution is AccessControl, Pausable {
     error AlreadyCommitted(); // Node already committed in this round
     error NotRevealPhase(); // Game is not in reveal phase
     error OutOfDepthReveal(bytes32); // Anchor is out of reported depth in Reveal phase, anchor data available as argument
-    error OutOfDepthClaim(uint8); // Anchor is out of reported depth in Claim phase, entryProof index is argument
+    error OutOfDepthClaim(uint32); // Stamped chunk is out of the reported depth of the round anchor
     error AlreadyRevealed(); // Node already revealed
     error NoMatchingCommit(); // No matching commit and hash
     error NotClaimPhase(); // Game is not in the claim phase
@@ -287,15 +347,26 @@ contract Redistribution is AccessControl, Pausable {
     error BatchDoesNotExist(bytes32); // Deprecated by SWIP-049: absent/expired batches now revert BatchNotUsableForRedistribution from PostageStamp
     error BucketDiffers(bytes32); // Stamp aligned: postage bucket differs from address bucket
     error InclusionProofFailed(uint8, bytes32);
-    // 1 = RC inclusion proof failed for element
-    // 2 = First sister segment in data must match,
-    // 3 = Inclusion proof failed for original address of element
-    // 4 = Inclusion proof failed for transformed address of element
-    error RandomElementCheckFailed(); // Random element order check failed
-    error LastElementCheckFailed(); // Last element order check failed
-    error ReserveCheckFailed(bytes32 trALast); // Reserve size estimation check failed
+    // 2 = First sister segment in the opened data must match between the two proofs
+    // 3 = Inclusion proof failed for the original address of the stamped chunk
+    error TransferFailed(); // Payout token transfer failed
     error BatchNotUsableForTargetRound(bytes32); // Stamp usable: batch balance below the round's fixed threshold
     error InvalidTargetRound(); // Round zero has no preceding sampling phase
+    error NotStampCommitPhase(); // Game is not in the stamp sample hash commit phase
+    error NotStampRevealPhase(); // Game is not in the stamp sample hash reveal phase
+    error NotProofPhase(); // Game is not in the proof submission phase
+    error NoChunkSampleHashReveal(); // Caller has no valid stage one reveal in this round
+    error NoStampSampleHashReveal(); // Caller has no valid stamp sample hash reveal in this round
+    error MissingAnchor(); // The stamp anchor or proof seed for this round has not been opened
+    error ProofAlreadySubmitted(); // STS proof already submitted for this round
+    error StampWitnessPositionMismatch(); // Opened position is not the one the proof seed selected
+    error StampInclusionProofFailed(uint32); // Stamp sample inclusion proof failed at this position
+    error StampLocalOrderCheckFailed(uint32); // Opened value is not ordered against its neighbour
+    error StampReserveCheckFailed(bytes32); // Density witness is not below the stamp sample ceiling
+    error ChunkTransformMembershipFailed(); // Transformed chunk address is not in chunkTransformRoot
+    error ChunkAddressMismatch(); // Opened chunk data does not hash to the stamped chunk address
+    error NoClaimableTruth(); // No proof validated entry, so no Schelling point was selected
+    error NoPayout(); // Nothing accrued for this caller
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -304,10 +375,14 @@ contract Redistribution is AccessControl, Pausable {
      * @param postageContract the address of the linked PostageStamp contract.
      * @param oracleContract the address of the linked PriceOracle contract.
      */
-    constructor(address staking, address postageContract, address oracleContract) {
+    constructor(address staking, address postageContract, address oracleContract, address token) {
         Stakes = IStakeRegistry(staking);
         PostageContract = IPostageStamp(postageContract);
         OracleContract = IPriceOracle(oracleContract);
+        // STS-1 splits the pot across every proof validated entry on the selected Schelling
+        // point, so this contract withdraws the pot and holds it until each beneficiary draws
+        // its share. See docs/SWIP-49-50-SCRUTINY.md 2.5.
+        bzzToken = IERC20(token);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
     }
 
@@ -406,7 +481,8 @@ contract Redistribution is AccessControl, Pausable {
             stake: _stake,
             priority: admissionPriority(cr, currentSeed(), _overlay, _stake),
             obfuscatedHash: _obfuscatedHash,
-            revealIndex: 0
+            revealIndex: 0,
+            stampObfuscatedHash: bytes32(0)
         });
 
         if (_admitCommit(newCommit, _roundNumber)) {
@@ -512,50 +588,25 @@ contract Redistribution is AccessControl, Pausable {
         if (hasReveals) {
             revealCount = currentReveals.length;
 
-            (bytes32 truthRevealedHash, uint8 truthRevealedDepth) = getCurrentTruth();
-            freezeDepth = truthRevealedDepth > lastClaimedDepth ? truthRevealedDepth : lastClaimedDepth;
-            emit TruthSelected(truthRevealedHash, truthRevealedDepth);
-
-            uint256 currentWinnerSelectionSum = 0;
-            uint256 redundancyCount = 0;
-            bytes32 randomNumber;
-            uint256 randomNumberTrunc;
-            string memory winnerSelectionAnchor = _winnerSelectionAnchor();
-
-            for (uint256 i = 0; i < commitsArrayLength; ) {
-                Commit memory currentCommit = currentCommits[i];
-                Reveal memory currentReveal = currentReveals[currentCommit.revealIndex];
-
-                if (
-                    currentCommit.revealed &&
-                    truthRevealedHash == currentReveal.hash &&
-                    truthRevealedDepth == currentReveal.depth
-                ) {
-                    currentWinnerSelectionSum += currentReveal.stakeDensity;
-                    randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-                    randomNumberTrunc = uint256(randomNumber & MAX_H);
-
-                    if (
-                        randomNumberTrunc * currentWinnerSelectionSum <
-                        currentReveal.stakeDensity * (uint256(MAX_H) + 1)
-                    ) {
-                        winner = currentReveal;
-                    }
-
-                    redundancyCount++;
-                }
-                unchecked {
-                    ++i;
-                }
+            SelectedSchellingPoint memory truth = _selectStsTruth();
+            if (truth.selected) {
+                selectedTruth = truth;
+                freezeDepth = truth.depth > lastClaimedDepth ? truth.depth : lastClaimedDepth;
+                emit StsTruthSelected(round, truth.hash, truth.stampHash, truth.depth);
             }
-
-            lastRedundancyCount = uint16(redundancyCount);
         }
 
+        // Under STS-1 a stage one commit is unfinished until it becomes proof validated, so the
+        // existing non-reveal freeze covers both no-shows and participants that revealed but
+        // never proved. SWIP-050 carries unfinished entries across rounds in a separate list;
+        // that list is unbounded and its freeze loop can brick claim, so the same invariant is
+        // kept here on the commit array, which MAX_COMMITS already bounds. See
+        // docs/SWIP-49-50-SCRUTINY.md 2.4.
         uint256 freezeDuration = _nonRevealFreezeDuration(freezeDepth);
         for (uint256 i = 0; i < commitsArrayLength; ) {
             Commit memory currentCommit = currentCommits[i];
-            if (!currentCommit.revealed) {
+            bool proven = currentCommit.revealed && currentReveals[currentCommit.revealIndex].proofSubmitted;
+            if (!proven) {
                 Stakes.freezeDeposit(currentCommit.owner, freezeDuration);
             }
             unchecked {
@@ -583,7 +634,12 @@ contract Redistribution is AccessControl, Pausable {
      * @param _hash The reserve commitment hash.
      * @param _revealNonce The nonce used to generate the commit that is being revealed.
      */
-    function reveal(uint8 _depth, bytes32 _hash, bytes32 _revealNonce) external whenNotPaused {
+    function reveal(
+        uint8 _depth,
+        bytes32 _hash,
+        bytes32 _chunkTransformRoot,
+        bytes32 _revealNonce
+    ) external whenNotPaused {
         uint64 cr = currentRound();
         bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
 
@@ -603,6 +659,7 @@ contract Redistribution is AccessControl, Pausable {
             currentRevealRound = cr;
             emit CurrentRevealAnchor(cr, currentRevealRoundAnchor);
             updateRandomness();
+            _resetStsStateForNewRevealRound();
         }
 
         // Locate the sender's commit by overlay first so DepthMismatch is reachable
@@ -615,7 +672,7 @@ contract Redistribution is AccessControl, Pausable {
             revert DepthMismatch();
         }
 
-        bytes32 obfuscatedHash = wrapCommit(_overlay, _depth, _hash, _revealNonce);
+        bytes32 obfuscatedHash = wrapCommit(cr, _overlay, _depth, _hash, _chunkTransformRoot, _revealNonce);
         if (obfuscatedHash != revealedCommit.obfuscatedHash) {
             revert NoMatchingCommit();
         }
@@ -641,9 +698,19 @@ contract Redistribution is AccessControl, Pausable {
                 depth: _depth,
                 stake: revealedCommit.stake,
                 stakeDensity: revealedCommit.stake * uint256(2 ** depthResponsibility),
-                hash: _hash
+                hash: _hash,
+                chunkTransformRoot: _chunkTransformRoot,
+                stampHash: bytes32(0),
+                effectiveStakeDensity: 0,
+                stampRevealed: false,
+                proofSubmitted: false
             })
         );
+
+        // The first accepted stage one reveal opens the stamp anchor. Stage one commitments are
+        // already fixed at this point, so no participant could have known which stamp indexes
+        // would be useful when it chose its chunk transform root.
+        _openStampAnchor(cr);
 
         emit Revealed(
             cr,
@@ -656,17 +723,412 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Helper function to get this round truth
-     * @dev
+     * @notice Clear the previous round's STS randomness when a new reveal round opens.
      */
-    function claim(
-        ChunkInclusionProof calldata entryProof1,
-        ChunkInclusionProof calldata entryProof2,
-        ChunkInclusionProof calldata entryProofLast
+    function _resetStsStateForNewRevealRound() internal {
+        currentRevealRoundStampAnchor = bytes32(0);
+        currentRevealRoundStampAnchorSet = false;
+        currentStampSampleHashRevealRound = 0;
+        currentProofSeed = bytes32(0);
+        currentSelectionSeed = bytes32(0);
+        currentProofSeedSet = false;
+        delete selectedTruth;
+    }
+
+    /**
+     * @notice Derive the anchor that orders transformed stamp values for this round.
+     */
+    function _openStampAnchor(uint64 roundNumber) internal {
+        if (currentRevealRoundStampAnchorSet) {
+            return;
+        }
+
+        currentRevealRoundStampAnchor = keccak256(abi.encodePacked(seed, roundNumber, "STS1_STAMP_ANCHOR"));
+        currentRevealRoundStampAnchorSet = true;
+        emit StampAnchorOpened(roundNumber, currentRevealRoundStampAnchor);
+    }
+
+    /**
+     * @notice Commit to a stamp sample hash for the round this caller already revealed in.
+     * @dev Stage two is linked to stage one by requiring a valid stage one reveal for the same
+     * round; the depth, chunk sample hash and chunk transform root are read from that reveal
+     * rather than recommitted here.
+     */
+    function commitStampSampleHash(bytes32 _obfuscatedHash, uint64 _roundNumber) external whenNotPaused {
+        if (!currentPhaseStampCommit()) {
+            revert NotStampCommitPhase();
+        }
+
+        uint64 cr = currentRound();
+        if (_roundNumber != cr || cr != currentRevealRound) {
+            revert NoChunkSampleHashReveal();
+        }
+
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
+        uint256 commitIndex = findCommitByOverlay(_overlay);
+        Commit storage stageOne = currentCommits[commitIndex];
+
+        if (!stageOne.revealed) {
+            revert NoChunkSampleHashReveal();
+        }
+        if (currentReveals[stageOne.revealIndex].stampRevealed) {
+            revert AlreadyRevealed();
+        }
+        if (stageOne.stampObfuscatedHash != bytes32(0)) {
+            revert AlreadyCommitted();
+        }
+
+        stageOne.stampObfuscatedHash = _obfuscatedHash;
+    }
+
+    /**
+     * @notice Open the committed stamp sample hash.
+     * @dev The first accepted stamp sample hash reveal opens the proof and selection seeds. It
+     * must not advance the round seed: that already moved during the chunk sample hash reveal.
+     */
+    function revealStampSampleHash(
+        uint64 _roundNumber,
+        bytes32 _stampSampleHash,
+        bytes32 _revealNonce
     ) external whenNotPaused {
+        if (!currentPhaseStampReveal()) {
+            revert NotStampRevealPhase();
+        }
+
+        uint64 cr = currentRound();
+        if (_roundNumber != cr || cr != currentRevealRound) {
+            revert NoChunkSampleHashReveal();
+        }
+
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
+        Commit storage stageOne = currentCommits[findCommitByOverlay(_overlay)];
+
+        if (!stageOne.revealed || stageOne.stampObfuscatedHash == bytes32(0)) {
+            revert NoStampSampleHashReveal();
+        }
+
+        Reveal storage revealRecord = currentReveals[stageOne.revealIndex];
+        if (revealRecord.stampRevealed) {
+            revert AlreadyRevealed();
+        }
+
+        if (wrapStampCommit(cr, _overlay, _stampSampleHash, _revealNonce) != stageOne.stampObfuscatedHash) {
+            revert NoStampSampleHashReveal();
+        }
+
+        revealRecord.stampHash = _stampSampleHash;
+        revealRecord.stampRevealed = true;
+
+        _openProofSeed(cr);
+
+        emit StampSampleRevealed(cr, _overlay, _stampSampleHash);
+    }
+
+    /**
+     * @notice Derive the proof and selection seeds, once the stamp samples are already committed.
+     * @dev The first stamp sample hash revealer of the round picks the block this lands in and
+     * can therefore re-roll the draw by delaying within the reveal window. SWIP-050 specifies
+     * this derivation; see docs/SWIP-49-50-SCRUTINY.md 2.7 for the grinding exposure and the
+     * accumulate-across-reveals alternative.
+     */
+    function _openProofSeed(uint64 roundNumber) internal {
+        if (currentProofSeedSet && currentStampSampleHashRevealRound == roundNumber) {
+            return;
+        }
+        if (!currentRevealRoundStampAnchorSet) {
+            revert MissingAnchor();
+        }
+
+        currentStampSampleHashRevealRound = roundNumber;
+        currentProofSeed = keccak256(
+            abi.encodePacked(currentRevealRoundStampAnchor, block.prevrandao, roundNumber, "STS1_PROOF_SEED")
+        );
+        currentSelectionSeed = keccak256(
+            abi.encodePacked(currentRevealRoundStampAnchor, block.prevrandao, roundNumber, "STS1_SELECTION_SEED")
+        );
+        currentProofSeedSet = true;
+    }
+
+    // ----------------------------- SWIP-050 proof submission ------------------------------
+
+    /**
+     * @notice The three stamp sample positions this round must open.
+     * @dev Two drawn from 0..14 without replacement and returned in ascending order, plus the
+     * density witness at position 15. Because the seed only exists after the stamp samples are
+     * committed, a sample padded with a few repeated provable values risks being asked for a
+     * position it cannot support.
+     */
+    function selectedStampPositions(uint64 roundNumber) public view returns (uint32[3] memory positions) {
+        if (currentStampSampleHashRevealRound != roundNumber || !currentProofSeedSet) {
+            revert MissingAnchor();
+        }
+
+        uint32 a = uint32(uint256(keccak256(abi.encodePacked(currentProofSeed, uint256(0)))) % STAMP_DENSITY_WITNESS);
+        uint32 b = uint32(
+            uint256(keccak256(abi.encodePacked(currentProofSeed, uint256(1)))) % (STAMP_DENSITY_WITNESS - 1)
+        );
+
+        if (b >= a) b += 1;
+        if (b < a) (a, b) = (b, a);
+
+        positions[0] = a;
+        positions[1] = b;
+        positions[2] = STAMP_DENSITY_WITNESS;
+    }
+
+    /**
+     * @notice Open the selected stamp witnesses and claim proof-validated status for this round.
+     * @dev Each witness proves four things: that the transformed stamp value sits at the
+     * selected position of the committed sample and is ordered against its neighbours; that the
+     * batch and index were inside this round's SWIP-049 scope and the batch owner signed for
+     * this chunk address; that the first-anchor transformed chunk address comes from the same
+     * opened data as that chunk address; and that this transformed address was already a leaf of
+     * the chunk transform root fixed in stage one.
+     *
+     * The last two are the participant-specific binding. Two nodes can reveal the same Schelling
+     * point, but only one of them may hold the selected stamped chunks in its own root, which is
+     * why every paid node proves for itself.
+     */
+    function submitStsProof(uint64 roundNumber, StampProof[3] calldata proofs) external whenNotPaused {
+        if (!currentPhaseProof()) {
+            revert NotProofPhase();
+        }
+
+        uint64 cr = currentRound();
+        if (roundNumber != cr || cr != currentRevealRound) {
+            revert NoChunkSampleHashReveal();
+        }
+
+        bytes32 _overlay = Stakes.overlayOfAddress(msg.sender);
+        Commit storage stageOne = currentCommits[findCommitByOverlay(_overlay)];
+        if (!stageOne.revealed) {
+            revert NoChunkSampleHashReveal();
+        }
+
+        Reveal storage revealRecord = currentReveals[stageOne.revealIndex];
+        if (!revealRecord.stampRevealed) {
+            revert NoStampSampleHashReveal();
+        }
+        if (revealRecord.proofSubmitted) {
+            revert ProofAlreadySubmitted();
+        }
+
+        uint32[3] memory positions = selectedStampPositions(cr);
+        uint256 samplingStart = samplingStartBlock(cr);
+        uint256 requiredNormalisedBalance = PostageContract.redistributionMinimumNormalisedBalance(samplingStart);
+
+        uint256 sumIndexRatioQ64;
+        bytes32 densityValue;
+
+        for (uint256 i = 0; i < STS_WITNESS_COUNT; ) {
+            if (proofs[i].sampleIndex != positions[i]) {
+                revert StampWitnessPositionMismatch();
+            }
+
+            (bytes32 transformedStamp, uint256 indexRatioQ64) = _verifyOneStampWitness(
+                revealRecord,
+                proofs[i],
+                samplingStart,
+                requiredNormalisedBalance
+            );
+
+            sumIndexRatioQ64 += indexRatioQ64;
+            if (proofs[i].sampleIndex == STAMP_DENSITY_WITNESS) {
+                densityValue = transformedStamp;
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        uint256 weight = StsWitness.weightFor(
+            revealRecord.stakeDensity,
+            uint256(densityValue),
+            stampSampleMaxValue,
+            sumIndexRatioQ64,
+            STS_WITNESS_COUNT
+        );
+        if (weight == 0) {
+            revert StampReserveCheckFailed(densityValue);
+        }
+
+        revealRecord.effectiveStakeDensity = weight;
+        revealRecord.proofSubmitted = true;
+
+        emit StsProofAccepted(cr, _overlay, weight);
+    }
+
+    /**
+     * @notice Run one witness through StsWitness and translate its failure code into a revert.
+     * @dev The library is deployed separately because this contract does not fit under EIP-170
+     * with the verification inlined. It reports failures rather than reverting so that every
+     * custom error stays in this contract's ABI and remains decodable by clients.
+     */
+    function _verifyOneStampWitness(
+        Reveal storage revealRecord,
+        StampProof calldata proof,
+        uint256 samplingStart,
+        uint256 requiredNormalisedBalance
+    ) internal view returns (bytes32 transformedStamp, uint256 indexRatioQ64) {
+        StsWitness.Result memory result = StsWitness.verifyWitness(
+            proof,
+            StsWitness.Context({
+                stampAnchor: currentRevealRoundStampAnchor,
+                roundAnchor: currentRevealRoundAnchor,
+                proofSeed: currentProofSeed,
+                stampHash: revealRecord.stampHash,
+                chunkTransformRoot: revealRecord.chunkTransformRoot,
+                claimedDepth: revealRecord.depth,
+                samplingStart: samplingStart,
+                requiredNormalisedBalance: requiredNormalisedBalance,
+                postageContract: PostageContract
+            })
+        );
+
+        _requireWitnessAccepted(result, proof.sampleIndex);
+
+        return (result.transformedStamp, result.indexRatioQ64);
+    }
+
+    function _requireWitnessAccepted(StsWitness.Result memory result, uint32 sampleIndex) private pure {
+        uint8 failure = result.failure;
+        if (failure == StsWitness.FAIL_NONE) return;
+
+        if (failure == StsWitness.FAIL_POSITION) revert StampWitnessPositionMismatch();
+        if (failure == StsWitness.FAIL_INCLUSION) revert StampInclusionProofFailed(sampleIndex);
+        if (failure == StsWitness.FAIL_ORDER) revert StampLocalOrderCheckFailed(sampleIndex);
+        if (failure == StsWitness.FAIL_BALANCE) revert BatchNotUsableForTargetRound(result.subject);
+        if (failure == StsWitness.FAIL_INDEX) revert IndexOutsideSet(result.subject);
+        if (failure == StsWitness.FAIL_BUCKET) revert BucketDiffers(result.subject);
+        if (failure == StsWitness.FAIL_SIGNATURE) revert SigRecoveryFailed(result.subject);
+        if (failure == StsWitness.FAIL_PROXIMITY) revert OutOfDepthClaim(sampleIndex);
+        if (failure == StsWitness.FAIL_SISTER_SEGMENT) revert InclusionProofFailed(2, result.subject);
+        if (failure == StsWitness.FAIL_ORIGINAL_ADDRESS) revert InclusionProofFailed(3, result.subject);
+        if (failure == StsWitness.FAIL_CHUNK_MISMATCH) revert ChunkAddressMismatch();
+        if (failure == StsWitness.FAIL_SOC_SIGNATURE) revert SocVerificationFailed(result.subject);
+        if (failure == StsWitness.FAIL_SOC_ADDRESS) revert SocCalcNotMatching(result.subject);
+        revert ChunkTransformMembershipFailed();
+    }
+
+    // ----------------------------- SWIP-050 truth selection and claim ------------------------------
+
+    /**
+     * @notice Running weighted draw over proof validated entries.
+     * @dev Only an entry whose witnesses and bindings have passed carries weight, so an
+     * unproven sample hash can neither become the truth nor influence who does. The drawn
+     * entry's (chunkSampleHash, stampSampleHash, depth) becomes the Schelling point.
+     */
+    function _selectStsTruth() internal view returns (SelectedSchellingPoint memory truth) {
+        bytes32 anchor = keccak256(abi.encodePacked(currentSelectionSeed, uint256(0)));
+        uint256 totalWeight;
+        uint256 revealsLength = currentReveals.length;
+
+        for (uint256 i = 0; i < revealsLength; ) {
+            Reveal storage revealRecord = currentReveals[i];
+
+            if (revealRecord.proofSubmitted && revealRecord.effectiveStakeDensity > 0) {
+                totalWeight += revealRecord.effectiveStakeDensity;
+                uint256 draw = uint256(keccak256(abi.encodePacked(anchor, i)) & MAX_H);
+
+                if (draw * totalWeight < revealRecord.effectiveStakeDensity * (uint256(MAX_H) + 1)) {
+                    truth = SelectedSchellingPoint({
+                        hash: revealRecord.hash,
+                        stampHash: revealRecord.stampHash,
+                        depth: revealRecord.depth,
+                        selected: true
+                    });
+                }
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+    }
+
+    function _matchesTruth(
+        Reveal storage revealRecord,
+        SelectedSchellingPoint memory truth
+    ) internal view returns (bool) {
+        return
+            revealRecord.proofSubmitted &&
+            revealRecord.hash == truth.hash &&
+            revealRecord.stampHash == truth.stampHash &&
+            revealRecord.depth == truth.depth;
+    }
+
+    /**
+     * @notice Divide the round pot among every proof validated entry on the selected Schelling
+     * point, and freeze the proof validated entries that disagree with it.
+     * @dev Shares are proportional to effective stake density. SWIP-050 hands the rounding
+     * remainder to whichever matching entry happens to be last in the reveal array, which is
+     * both arbitrary and a reason to reorder one's reveal; it goes to the highest weight entry
+     * here instead. See docs/SWIP-49-50-SCRUTINY.md 2.5.
+     */
+    function _applyPayoutsAndFreezes(
+        uint64 round,
+        SelectedSchellingPoint memory truth,
+        uint256 pot
+    ) internal returns (uint16 redundancy) {
+        uint256 revealsLength = currentReveals.length;
+        uint256 totalTruthyWeight;
+        uint256 bestWeight;
+        uint256 bestIndex;
+
+        for (uint256 i = 0; i < revealsLength; ) {
+            Reveal storage revealRecord = currentReveals[i];
+            if (_matchesTruth(revealRecord, truth)) {
+                totalTruthyWeight += revealRecord.effectiveStakeDensity;
+                if (revealRecord.effectiveStakeDensity > bestWeight) {
+                    bestWeight = revealRecord.effectiveStakeDensity;
+                    bestIndex = i;
+                }
+            }
+            unchecked {
+                ++i;
+            }
+        }
+
+        if (totalTruthyWeight == 0) {
+            revert NoClaimableTruth();
+        }
+
+        uint256 paid;
+        uint256 disagreementFreeze = penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truth.depth);
+
+        for (uint256 i = 0; i < revealsLength; ) {
+            Reveal storage revealRecord = currentReveals[i];
+
+            if (_matchesTruth(revealRecord, truth)) {
+                uint256 share = Math.mulDiv(pot, revealRecord.effectiveStakeDensity, totalTruthyWeight);
+                pendingRedistributionPayouts[revealRecord.owner] += share;
+                paid += share;
+                redundancy += 1;
+                emit PayoutAccrued(round, revealRecord.overlay, revealRecord.owner, share);
+            } else if (revealRecord.proofSubmitted && block.prevrandao % 100 < penaltyRandomFactor) {
+                Stakes.freezeDeposit(revealRecord.owner, disagreementFreeze);
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        if (pot > paid) {
+            pendingRedistributionPayouts[currentReveals[bestIndex].owner] += pot - paid;
+        }
+    }
+
+    /**
+     * @notice Close the round: pay every proof validated entry on the selected Schelling point.
+     * @dev The price is adjusted only here, after every witness of this round has already been
+     * verified in the proof phase. That ordering is what lets PostageStamp reconstruct a single
+     * unambiguous price for this round's sampling start.
+     */
+    function claim() external whenNotPaused {
         uint64 cr = currentRound();
 
-        // 1. Must be claim phase; finalize participation (winner selection + non-reveal freezes) if needed.
         if (!currentPhaseClaim()) {
             revert NotClaimPhase();
         }
@@ -675,7 +1137,6 @@ contract Redistribution is AccessControl, Pausable {
             _finalizeParticipation(cr);
         }
 
-        // 2. Guards: participation finalized, reveals belong to this round, and it is not already claimed.
         if (cr != currentRevealRound || currentReveals.length == 0) {
             revert NoReveals();
         }
@@ -684,167 +1145,47 @@ contract Redistribution is AccessControl, Pausable {
             revert AlreadyClaimed();
         }
 
-        Reveal memory winnerSelected = winner;
-
-        // 3. Resolve the round's fixed postage scope once. SWIP-049: every stamp in this claim is
-        // judged against the batch state and price that were in force when sampling for this
-        // round began, so a later batch operation cannot change what this claim may use.
-        uint256 samplingStart = samplingStartBlock(cr);
-        uint256 requiredNormalisedBalance = PostageContract.redistributionMinimumNormalisedBalance(samplingStart);
-
-        // 4. Proofs, verified against the tentative winner stored during finalize.
-        uint256 indexInRC1;
-        uint256 indexInRC2;
-        bytes32 _currentRevealRoundAnchor = currentRevealRoundAnchor;
-        bytes32 _seed = seed;
-
-        // rand(14)
-        indexInRC1 = uint256(_seed) % 15;
-        // rand(13)
-        indexInRC2 = uint256(_seed) % 14;
-        if (indexInRC2 >= indexInRC1) {
-            indexInRC2++;
+        SelectedSchellingPoint memory truth = selectedTruth;
+        if (!truth.selected) {
+            revert NoClaimableTruth();
         }
 
-        if (!inProximity(entryProofLast.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
-            revert OutOfDepthClaim(3);
-        }
+        // The pot is withdrawn into this contract and drawn down per beneficiary. Measuring the
+        // delta keeps payouts already accrued in earlier rounds out of this round's split.
+        uint256 balanceBefore = bzzToken.balanceOf(address(this));
+        PostageContract.withdraw(address(this));
+        uint256 pot = bzzToken.balanceOf(address(this)) - balanceBefore;
 
-        inclusionFunction(entryProofLast, 30);
-        stampFunction(entryProofLast, samplingStart, requiredNormalisedBalance);
-        socFunction(entryProofLast);
+        uint16 redundancy = _applyPayoutsAndFreezes(cr, truth, pot);
 
-        if (!inProximity(entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
-            revert OutOfDepthClaim(2);
-        }
-
-        inclusionFunction(entryProof1, indexInRC1 * 2);
-        stampFunction(entryProof1, samplingStart, requiredNormalisedBalance);
-        socFunction(entryProof1);
-
-        if (!inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
-            revert OutOfDepthClaim(1);
-        }
-
-        inclusionFunction(entryProof2, indexInRC2 * 2);
-        stampFunction(entryProof2, samplingStart, requiredNormalisedBalance);
-        socFunction(entryProof2);
-
-        checkOrder(
-            indexInRC1,
-            indexInRC2,
-            entryProof1.proofSegments[0],
-            entryProof2.proofSegments[0],
-            entryProofLast.proofSegments[0]
-        );
-
-        estimateSize(entryProofLast.proofSegments[0]);
-
-        // 5. Apply disagreement penalties after proofs have passed.
-        _applyDisagreePenalties();
-
-        // 6. Adjust the oracle price, only now that every proof has passed. Doing it here keeps
-        // the price update out of the window the proofs were verified against, which is what lets
-        // PostageStamp reconstruct a single unambiguous price for this round's sampling start.
-        bool success = OracleContract.adjustPrice(lastRedundancyCount);
+        bool success = OracleContract.adjustPrice(redundancy);
         if (!success) {
-            emit PriceAdjustmentSkipped(lastRedundancyCount);
+            emit PriceAdjustmentSkipped(redundancy);
         }
 
-        // 7. Pay the pot. If this reverts, the whole claim rolls back (no pay, no claim).
-        PostageContract.withdraw(winnerSelected.owner);
-
-        lastClaimedDepth = winnerSelected.depth;
+        lastRedundancyCount = redundancy;
+        lastClaimedDepth = truth.depth;
         currentClaimRound = cr;
-        emit WinnerSelected(winnerSelected);
         emit ChunkCount(PostageContract.validChunkCount());
     }
 
     /**
-     * @notice Applies disagreement freezes to revealers whose values differ from the round truth.
-     * @dev Recomputes the truth deterministically from the stored seed; bounded by MAX_COMMITS.
+     * @notice Draw down an accrued redistribution payout.
+     * @dev Deliberately callable while paused: a pause must not strand funds that were already
+     * earned. See docs/SWIP-49-50-SCRUTINY.md 2.5.
      */
-    function _applyDisagreePenalties() internal {
-        (bytes32 truthRevealedHash, uint8 truthRevealedDepth) = getCurrentTruth();
-        uint256 commitsArrayLength = currentCommits.length;
-
-        for (uint256 i = 0; i < commitsArrayLength; ) {
-            Commit memory currentCommit = currentCommits[i];
-            if (currentCommit.revealed) {
-                Reveal memory currentReveal = currentReveals[currentCommit.revealIndex];
-                if (
-                    (truthRevealedHash != currentReveal.hash || truthRevealedDepth != currentReveal.depth) &&
-                    (block.prevrandao % 100 < penaltyRandomFactor)
-                ) {
-                    Stakes.freezeDeposit(
-                        currentReveal.owner,
-                        penaltyMultiplierDisagreement * ROUND_LENGTH * uint256(2 ** truthRevealedDepth)
-                    );
-                }
-            }
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
-    function inclusionFunction(ChunkInclusionProof calldata entryProof, uint256 indexInRC) internal {
-        uint256 randomChunkSegmentIndex = uint256(seed) % 128;
-        bytes32 calculatedTransformedAddr = TransformedBMTChunk.transformedChunkAddressFromInclusionProof(
-            entryProof.proofSegments3,
-            entryProof.proveSegment2,
-            randomChunkSegmentIndex,
-            entryProof.chunkSpan,
-            currentRevealRoundAnchor
-        );
-
-        emit transformedChunkAddressFromInclusionProof(indexInRC, calculatedTransformedAddr);
-
-        if (
-            winner.hash !=
-            BMTChunk.chunkAddressFromInclusionProof(
-                entryProof.proofSegments,
-                entryProof.proveSegment,
-                indexInRC,
-                32 * 32
-            )
-        ) {
-            revert InclusionProofFailed(1, calculatedTransformedAddr);
+    function withdrawRedistributionPayout(address receiver) external {
+        uint256 amount = pendingRedistributionPayouts[msg.sender];
+        if (amount == 0) {
+            revert NoPayout();
         }
 
-        if (entryProof.proofSegments2[0] != entryProof.proofSegments3[0]) {
-            revert InclusionProofFailed(2, calculatedTransformedAddr);
+        pendingRedistributionPayouts[msg.sender] = 0;
+        if (!bzzToken.transfer(receiver, amount)) {
+            revert TransferFailed();
         }
 
-        bytes32 originalAddress = entryProof.socProof.length > 0
-            ? entryProof.socProof[0].chunkAddr // soc attestation in socFunction
-            : entryProof.proveSegment;
-
-        if (
-            originalAddress !=
-            BMTChunk.chunkAddressFromInclusionProof(
-                entryProof.proofSegments2,
-                entryProof.proveSegment2,
-                randomChunkSegmentIndex,
-                entryProof.chunkSpan
-            )
-        ) {
-            revert InclusionProofFailed(3, calculatedTransformedAddr);
-        }
-
-        // In case of SOC, the transformed address is hashed together with its address in the sample
-        if (entryProof.socProof.length > 0) {
-            calculatedTransformedAddr = keccak256(
-                abi.encode(
-                    entryProof.proveSegment, // SOC address
-                    calculatedTransformedAddr
-                )
-            );
-        }
-
-        if (entryProof.proofSegments[0] != calculatedTransformedAddr) {
-            revert InclusionProofFailed(4, calculatedTransformedAddr);
-        }
+        emit PayoutWithdrawn(msg.sender, receiver, amount);
     }
 
     /**
@@ -865,14 +1206,15 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice changes the max sample value used for reserve estimation
+     * @notice Changes the ceiling the stamp sample density witness must fall under.
+     * @dev Depth independent by design. See docs/SWIP-49-50-SCRUTINY.md 2.1.
      */
-    function setSampleMaxValue(uint256 _sampleMaxValue) external {
+    function setStampSampleMaxValue(uint256 _stampSampleMaxValue) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert NotAdmin();
         }
 
-        sampleMaxValue = _sampleMaxValue;
+        stampSampleMaxValue = _stampSampleMaxValue;
     }
 
     /**
@@ -945,42 +1287,26 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice The random value used to choose the selected truth teller.
-     * @dev Guardless: derived purely from the current seed so it can be used during finalize regardless
-     * of phase. The seed is only advanced by reveals, so this is stable between reveal end and next reveal.
-     */
-    function _truthSelectionAnchor() private view returns (string memory) {
-        return string(abi.encodePacked(seed, "0"));
-    }
-
-    /**
-     * @notice The random value used to choose the selected beneficiary.
-     * @dev Guardless counterpart of {_truthSelectionAnchor}; see its note.
-     */
-    function _winnerSelectionAnchor() private view returns (string memory) {
-        return string(abi.encodePacked(seed, "1"));
-    }
-
-    /**
      * @notice The anchor used to determine eligibility for the current round.
      * @dev A node must be within proximity order of less than or equal to the storage depth they intend to report.
      */
     function currentRoundAnchor() public view returns (bytes32 returnVal) {
-        // This will be called in reveal phase and set as currentRevealRoundAnchor or in
-        // commit phase when checking eligibility for next round by isParticipatingInUpcomingRound
-        if (currentPhaseCommit() || (currentRound() > currentRevealRound && !currentPhaseClaim())) {
-            return currentSeed();
-        }
-
-        // This will be called by isParticipatingInUpcomingRound check in claim phase
-        if (currentPhaseClaim()) {
+        // Once the chunk sample hash reveal phase is over, this round's anchor has been consumed
+        // and the only useful answer is the next round's. Under the SWIP-050 schedule that
+        // covers the stamp commit, stamp reveal, proof and claim phases, which together are most
+        // of the round; before SWIP-050 it was the claim phase alone.
+        if (block.number % ROUND_LENGTH >= STAMP_COMMIT_START) {
             return nextSeed();
         }
 
-        // Without this, this function will output 0x0 after first reveal which is value and we prefere it reverts
-        if (currentPhaseReveal() && currentRound() == currentRevealRound) {
-            revert FirstRevealDone();
+        // Commit phase eligibility, and the reveal phase of a round whose anchor is not yet fixed.
+        if (currentPhaseCommit() || currentRound() > currentRevealRound) {
+            return currentSeed();
         }
+
+        // In the reveal phase of the active round the anchor is already fixed and consumed. We
+        // prefer a revert here to returning 0x0, which is a value callers would act on.
+        revert FirstRevealDone();
     }
 
     /**
@@ -1022,13 +1348,34 @@ contract Redistribution is AccessControl, Pausable {
     }
 
     /**
-     * @notice Returns true if current block is during commit phase.
+     * @notice Returns true if current block is during the chunk sample hash commit phase.
      */
     function currentPhaseCommit() public view returns (bool) {
-        if (block.number % ROUND_LENGTH < ROUND_LENGTH / 4) {
-            return true;
-        }
-        return false;
+        return block.number % ROUND_LENGTH < CHUNK_REVEAL_START;
+    }
+
+    /**
+     * @notice Returns true if current block is during the stamp sample hash commit phase.
+     */
+    function currentPhaseStampCommit() public view returns (bool) {
+        uint256 p = block.number % ROUND_LENGTH;
+        return p >= STAMP_COMMIT_START && p < STAMP_REVEAL_START;
+    }
+
+    /**
+     * @notice Returns true if current block is during the stamp sample hash reveal phase.
+     */
+    function currentPhaseStampReveal() public view returns (bool) {
+        uint256 p = block.number % ROUND_LENGTH;
+        return p >= STAMP_REVEAL_START && p < PROOF_START;
+    }
+
+    /**
+     * @notice Returns true if current block is during the proof submission phase.
+     */
+    function currentPhaseProof() public view returns (bool) {
+        uint256 p = block.number % ROUND_LENGTH;
+        return p >= PROOF_START && p < CLAIM_START;
     }
 
     /**
@@ -1116,12 +1463,29 @@ contract Redistribution is AccessControl, Pausable {
      * @param revealNonce A random, single use, secret nonce.
      */
     function wrapCommit(
+        uint64 _commitRound,
         bytes32 _overlay,
         uint8 _depth,
         bytes32 _hash,
+        bytes32 _chunkTransformRoot,
         bytes32 revealNonce
     ) public pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_overlay, _depth, _hash, revealNonce));
+        return keccak256(abi.encodePacked(_commitRound, _overlay, _depth, _hash, _chunkTransformRoot, revealNonce));
+    }
+
+    /**
+     * @notice Hash the pre-image values of the stage two stamp sample hash commitment.
+     * @dev Bound to the same round and overlay as the stage one commitment. It does not recommit
+     * the chunk sample hash, the chunk transform root or the depth; those were already fixed by
+     * stage one and are read from the stored reveal.
+     */
+    function wrapStampCommit(
+        uint64 _commitRound,
+        bytes32 _overlay,
+        bytes32 _stampSampleHash,
+        bytes32 revealNonce
+    ) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_commitRound, _overlay, _stampSampleHash, revealNonce));
     }
 
     /**
@@ -1129,10 +1493,7 @@ contract Redistribution is AccessControl, Pausable {
      */
     function currentPhaseReveal() public view returns (bool) {
         uint256 number = block.number % ROUND_LENGTH;
-        if (number >= ROUND_LENGTH / 4 && number < ROUND_LENGTH / 2) {
-            return true;
-        }
-        return false;
+        return number >= CHUNK_REVEAL_START && number < STAMP_COMMIT_START;
     }
 
     /**
@@ -1156,55 +1517,15 @@ contract Redistribution is AccessControl, Pausable {
      * @notice Returns true if current block is during claim phase.
      */
     function currentPhaseClaim() public view returns (bool) {
-        if (block.number % ROUND_LENGTH >= ROUND_LENGTH / 2) {
-            return true;
-        }
-        return false;
-    }
-
-    function getCurrentTruth() internal view returns (bytes32 Hash, uint8 Depth) {
-        uint256 currentSum;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
-
-        bytes32 truthRevealedHash;
-        uint8 truthRevealedDepth;
-        uint256 revIndex;
-        string memory truthSelectionAnchor = _truthSelectionAnchor();
-        uint256 commitsArrayLength = currentCommits.length;
-
-        for (uint256 i = 0; i < commitsArrayLength; ) {
-            if (currentCommits[i].revealed) {
-                revIndex = currentCommits[i].revealIndex;
-                currentSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(truthSelectionAnchor, i));
-                randomNumberTrunc = uint256(randomNumber & MAX_H);
-
-                // question is whether randomNumber / MAX_H < probability
-                // where probability is stakeDensity / currentSum
-                // to avoid resorting to floating points all divisions should be
-                // simplified with multiplying both sides (as long as divisor > 0)
-                // randomNumber / (MAX_H + 1) < stakeDensity / currentSum
-                // ( randomNumber / (MAX_H + 1) ) * currentSum < stakeDensity
-                // randomNumber * currentSum < stakeDensity * (MAX_H + 1)
-                if (randomNumberTrunc * currentSum < currentReveals[revIndex].stakeDensity * (uint256(MAX_H) + 1)) {
-                    truthRevealedHash = currentReveals[revIndex].hash;
-                    truthRevealedDepth = currentReveals[revIndex].depth;
-                }
-            }
-            unchecked {
-                ++i;
-            }
-        }
-
-        return (truthRevealedHash, truthRevealedDepth);
+        return block.number % ROUND_LENGTH >= CLAIM_START;
     }
 
     /**
-     * @notice Determine if a the owner of a given overlay will be the beneficiary of the claim phase.
-     * @param _overlay The overlay address of the applicant.
+     * @notice Whether an overlay is proof validated and on the Schelling point selected as truth.
+     * @dev STS-1 pays every such entry in proportion to its effective stake density, so this
+     * replaces the single-beneficiary isWinner of the chunk-only game.
      */
-    function isWinner(bytes32 _overlay) public view returns (bool) {
+    function matchesSelectedTruth(bytes32 _overlay) public view returns (bool) {
         if (!currentPhaseClaim()) {
             revert NotClaimPhase();
         }
@@ -1214,148 +1535,22 @@ contract Redistribution is AccessControl, Pausable {
             revert NoReveals();
         }
 
-        if (cr <= currentClaimRound) {
-            revert AlreadyClaimed();
+        SelectedSchellingPoint memory truth = selectedTruth;
+        if (!truth.selected) {
+            return false;
         }
 
-        // Once finalized, the tentative winner is fixed and can be compared directly.
-        if (participationFinalized[cr]) {
-            return (winner.overlay == _overlay);
-        }
-
-        uint256 currentWinnerSelectionSum;
-        bytes32 winnerIs;
-        bytes32 randomNumber;
-        uint256 randomNumberTrunc;
-        bytes32 truthRevealedHash;
-        uint8 truthRevealedDepth;
-        uint256 revIndex;
-        string memory winnerSelectionAnchor = _winnerSelectionAnchor();
-        uint256 redundancyCount = 0;
-
-        // Get current truth
-        (truthRevealedHash, truthRevealedDepth) = getCurrentTruth();
-        uint256 commitsArrayLength = currentCommits.length;
-
-        for (uint256 i = 0; i < commitsArrayLength; ) {
-            revIndex = currentCommits[i].revealIndex;
-
-            // Deterministically read winner
-            if (
-                currentCommits[i].revealed &&
-                truthRevealedHash == currentReveals[revIndex].hash &&
-                truthRevealedDepth == currentReveals[revIndex].depth
-            ) {
-                currentWinnerSelectionSum += currentReveals[revIndex].stakeDensity;
-                randomNumber = keccak256(abi.encodePacked(winnerSelectionAnchor, redundancyCount));
-                randomNumberTrunc = uint256(randomNumber & MAX_H);
-
-                if (
-                    randomNumberTrunc * currentWinnerSelectionSum <
-                    currentReveals[revIndex].stakeDensity * (uint256(MAX_H) + 1)
-                ) {
-                    winnerIs = currentReveals[revIndex].overlay;
-                }
-
-                redundancyCount++;
+        uint256 revealsLength = currentReveals.length;
+        for (uint256 i = 0; i < revealsLength; ) {
+            if (currentReveals[i].overlay == _overlay) {
+                return _matchesTruth(currentReveals[i], truth);
             }
             unchecked {
                 ++i;
             }
         }
 
-        return (winnerIs == _overlay);
-    }
-
-    // ----------------------------- Claim verifications  ------------------------------
-
-    function socFunction(ChunkInclusionProof calldata entryProof) internal pure {
-        if (entryProof.socProof.length == 0) return;
-
-        if (
-            !Signatures.socVerify(
-                entryProof.socProof[0].signer, // signer Ethereum address to check against
-                entryProof.socProof[0].signature,
-                entryProof.socProof[0].identifier,
-                entryProof.socProof[0].chunkAddr
-            )
-        ) {
-            revert SocVerificationFailed(entryProof.socProof[0].chunkAddr);
-        }
-
-        if (
-            calculateSocAddress(entryProof.socProof[0].identifier, entryProof.socProof[0].signer) !=
-            entryProof.proveSegment
-        ) {
-            revert SocCalcNotMatching(entryProof.socProof[0].chunkAddr);
-        }
-    }
-
-    /**
-     * @notice Verify one attached stamp against the scope the target round fixed at sampling start.
-     * @dev SWIP-049. Every check is made against the state as of `samplingStartBlock`, not the
-     * live state:
-     *
-     *  - the batch must have existed and still be live (enforced by redistributionBatchAt);
-     *  - its balance must clear the threshold this round fixed when sampling began, so a
-     *    top-up cannot rescue a batch into an open round;
-     *  - the proved index must have fitted inside the batch depth that existed before sampling
-     *    began, so a dilution cannot create indexes for an open round. An index can be valid
-     *    under the batch's larger live depth and still be rejected here.
-     *
-     * `requiredNormalisedBalance` is resolved once per claim and reused for every proof, so
-     * every stamp in one claim is judged against exactly one threshold.
-     */
-    function _verifyPostageForTargetRound(
-        bytes32 chunkAddress,
-        PostageProof calldata postageProof,
-        uint256 samplingStart,
-        uint256 requiredNormalisedBalance
-    ) internal view {
-        (address batchOwner, uint8 depthAtSamplingStart, uint8 bucketDepth, uint256 normalisedBalance) = PostageContract
-            .redistributionBatchAt(postageProof.postageId, samplingStart);
-
-        // usable: enough balance at the price that was in force when sampling began
-        if (normalisedBalance < requiredNormalisedBalance) {
-            revert BatchNotUsableForTargetRound(postageProof.postageId);
-        }
-
-        // available: the index already existed in the batch's index range at sampling start
-        if (getPostageIndex(postageProof.index) >= postageStampIndexCount(depthAtSamplingStart, bucketDepth)) {
-            revert IndexOutsideSet(postageProof.postageId);
-        }
-
-        // aligned
-        if (getPostageBucket(postageProof.index) != addressToBucket(chunkAddress, bucketDepth)) {
-            revert BucketDiffers(postageProof.postageId);
-        }
-
-        // authorized
-        if (
-            !Signatures.postageVerify(
-                batchOwner,
-                postageProof.signature,
-                chunkAddress,
-                postageProof.postageId,
-                postageProof.index,
-                postageProof.timeStamp
-            )
-        ) {
-            revert SigRecoveryFailed(postageProof.postageId);
-        }
-    }
-
-    function stampFunction(
-        ChunkInclusionProof calldata entryProof,
-        uint256 samplingStart,
-        uint256 requiredNormalisedBalance
-    ) internal view {
-        _verifyPostageForTargetRound(
-            entryProof.proveSegment,
-            entryProof.postageProof,
-            samplingStart,
-            requiredNormalisedBalance
-        );
+        return false;
     }
 
     function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {
@@ -1377,29 +1572,5 @@ contract Redistribution is AccessControl, Pausable {
 
     function calculateSocAddress(bytes32 identifier, address signer) internal pure returns (bytes32) {
         return keccak256(abi.encodePacked(identifier, signer));
-    }
-
-    function checkOrder(uint256 a, uint256 b, bytes32 trA1, bytes32 trA2, bytes32 trALast) internal pure {
-        if (a < b) {
-            if (uint256(trA1) >= uint256(trA2)) {
-                revert RandomElementCheckFailed();
-            }
-            if (uint256(trA2) >= uint256(trALast)) {
-                revert LastElementCheckFailed();
-            }
-        } else {
-            if (uint256(trA2) >= uint256(trA1)) {
-                revert RandomElementCheckFailed();
-            }
-            if (uint256(trA1) >= uint256(trALast)) {
-                revert LastElementCheckFailed();
-            }
-        }
-    }
-
-    function estimateSize(bytes32 trALast) internal view {
-        if (uint256(trALast) >= sampleMaxValue) {
-            revert ReserveCheckFailed(trALast);
-        }
     }
 }
