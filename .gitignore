@@ -45,4 +45,8 @@ tenderly.log
 
 # Echidna fuzzing
 echidna/corpus/
+echidna/logs/
 crytic-export/
+
+# Cursor
+.cursor/rules/audit-code.mdc
