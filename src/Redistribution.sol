@@ -284,7 +284,7 @@ contract Redistribution is AccessControl, Pausable {
     error SocCalcNotMatching(bytes32); // Soc address calculation does not match with the witness
     error IndexOutsideSet(bytes32); // Stamp available: index resides outside of the valid index set
     error SigRecoveryFailed(bytes32); // Stamp authorized: signature recovery failed for element
-    error BatchDoesNotExist(bytes32); // Stamp alive: batch remaining balance validation failed for attached stamp
+    error BatchDoesNotExist(bytes32); // Deprecated by SWIP-049: absent/expired batches now revert BatchNotUsableForRedistribution from PostageStamp
     error BucketDiffers(bytes32); // Stamp aligned: postage bucket differs from address bucket
     error InclusionProofFailed(uint8, bytes32);
     // 1 = RC inclusion proof failed for element
@@ -294,6 +294,8 @@ contract Redistribution is AccessControl, Pausable {
     error RandomElementCheckFailed(); // Random element order check failed
     error LastElementCheckFailed(); // Last element order check failed
     error ReserveCheckFailed(bytes32 trALast); // Reserve size estimation check failed
+    error BatchNotUsableForTargetRound(bytes32); // Stamp usable: batch balance below the round's fixed threshold
+    error InvalidTargetRound(); // Round zero has no preceding sampling phase
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -684,7 +686,13 @@ contract Redistribution is AccessControl, Pausable {
 
         Reveal memory winnerSelected = winner;
 
-        // 3. Proofs first, verified against the tentative winner stored during finalize.
+        // 3. Resolve the round's fixed postage scope once. SWIP-049: every stamp in this claim is
+        // judged against the batch state and price that were in force when sampling for this
+        // round began, so a later batch operation cannot change what this claim may use.
+        uint256 samplingStart = samplingStartBlock(cr);
+        uint256 requiredNormalisedBalance = PostageContract.redistributionMinimumNormalisedBalance(samplingStart);
+
+        // 4. Proofs, verified against the tentative winner stored during finalize.
         uint256 indexInRC1;
         uint256 indexInRC2;
         bytes32 _currentRevealRoundAnchor = currentRevealRoundAnchor;
@@ -703,7 +711,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         inclusionFunction(entryProofLast, 30);
-        stampFunction(entryProofLast);
+        stampFunction(entryProofLast, samplingStart, requiredNormalisedBalance);
         socFunction(entryProofLast);
 
         if (!inProximity(entryProof1.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
@@ -711,7 +719,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         inclusionFunction(entryProof1, indexInRC1 * 2);
-        stampFunction(entryProof1);
+        stampFunction(entryProof1, samplingStart, requiredNormalisedBalance);
         socFunction(entryProof1);
 
         if (!inProximity(entryProof2.proveSegment, _currentRevealRoundAnchor, winnerSelected.depth)) {
@@ -719,7 +727,7 @@ contract Redistribution is AccessControl, Pausable {
         }
 
         inclusionFunction(entryProof2, indexInRC2 * 2);
-        stampFunction(entryProof2);
+        stampFunction(entryProof2, samplingStart, requiredNormalisedBalance);
         socFunction(entryProof2);
 
         checkOrder(
@@ -732,16 +740,18 @@ contract Redistribution is AccessControl, Pausable {
 
         estimateSize(entryProofLast.proofSegments[0]);
 
-        // 4. Apply disagreement penalties after proofs have passed.
+        // 5. Apply disagreement penalties after proofs have passed.
         _applyDisagreePenalties();
 
-        // 5. Adjust the oracle price using the redundancy computed at finalize time.
+        // 6. Adjust the oracle price, only now that every proof has passed. Doing it here keeps
+        // the price update out of the window the proofs were verified against, which is what lets
+        // PostageStamp reconstruct a single unambiguous price for this round's sampling start.
         bool success = OracleContract.adjustPrice(lastRedundancyCount);
         if (!success) {
             emit PriceAdjustmentSkipped(lastRedundancyCount);
         }
 
-        // 6. Pay the pot. If this reverts, the whole claim rolls back (no pay, no claim).
+        // 7. Pay the pot. If this reverts, the whole claim rolls back (no pay, no claim).
         PostageContract.withdraw(winnerSelected.owner);
 
         lastClaimedDepth = winnerSelected.depth;
@@ -971,6 +981,21 @@ contract Redistribution is AccessControl, Pausable {
         if (currentPhaseReveal() && currentRound() == currentRevealRound) {
             revert FirstRevealDone();
         }
+    }
+
+    /**
+     * @notice The block at which sampling for `targetRound` began.
+     * @dev Sampling for round `r` starts at the first reveal block of round `r - 1`, which is the
+     * first scheduled block in which a successful reveal can fix the anchor that round `r`
+     * consumes. SWIP-049 freezes the usable batch and stamp-index set at this block: Bee builds
+     * its sample against the state at the end of the preceding block, and the claim must be
+     * verified against exactly the same state.
+     */
+    function samplingStartBlock(uint64 targetRound) public pure returns (uint256) {
+        if (targetRound == 0) {
+            revert InvalidTargetRound();
+        }
+        return uint256(targetRound - 1) * ROUND_LENGTH + ROUND_LENGTH / 4;
     }
 
     /**
@@ -1266,44 +1291,71 @@ contract Redistribution is AccessControl, Pausable {
         }
     }
 
-    function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
-        // authentic
-        (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , , ) = PostageContract.batches(
-            entryProof.postageProof.postageId
-        );
+    /**
+     * @notice Verify one attached stamp against the scope the target round fixed at sampling start.
+     * @dev SWIP-049. Every check is made against the state as of `samplingStartBlock`, not the
+     * live state:
+     *
+     *  - the batch must have existed and still be live (enforced by redistributionBatchAt);
+     *  - its balance must clear the threshold this round fixed when sampling began, so a
+     *    top-up cannot rescue a batch into an open round;
+     *  - the proved index must have fitted inside the batch depth that existed before sampling
+     *    began, so a dilution cannot create indexes for an open round. An index can be valid
+     *    under the batch's larger live depth and still be rejected here.
+     *
+     * `requiredNormalisedBalance` is resolved once per claim and reused for every proof, so
+     * every stamp in one claim is judged against exactly one threshold.
+     */
+    function _verifyPostageForTargetRound(
+        bytes32 chunkAddress,
+        PostageProof calldata postageProof,
+        uint256 samplingStart,
+        uint256 requiredNormalisedBalance
+    ) internal view {
+        (address batchOwner, uint8 depthAtSamplingStart, uint8 bucketDepth, uint256 normalisedBalance) = PostageContract
+            .redistributionBatchAt(postageProof.postageId, samplingStart);
 
-        // alive
-        if (batchOwner == address(0)) {
-            revert BatchDoesNotExist(entryProof.postageProof.postageId); // Batch does not exist or expired
+        // usable: enough balance at the price that was in force when sampling began
+        if (normalisedBalance < requiredNormalisedBalance) {
+            revert BatchNotUsableForTargetRound(postageProof.postageId);
         }
 
-        uint32 postageIndex = getPostageIndex(entryProof.postageProof.index);
-        uint256 maxPostageIndex = postageStampIndexCount(batchDepth, bucketDepth);
-        // available
-        if (postageIndex >= maxPostageIndex) {
-            revert IndexOutsideSet(entryProof.postageProof.postageId);
+        // available: the index already existed in the batch's index range at sampling start
+        if (getPostageIndex(postageProof.index) >= postageStampIndexCount(depthAtSamplingStart, bucketDepth)) {
+            revert IndexOutsideSet(postageProof.postageId);
         }
 
         // aligned
-        uint64 postageBucket = getPostageBucket(entryProof.postageProof.index);
-        uint64 addressBucket = addressToBucket(entryProof.proveSegment, bucketDepth);
-        if (postageBucket != addressBucket) {
-            revert BucketDiffers(entryProof.postageProof.postageId);
+        if (getPostageBucket(postageProof.index) != addressToBucket(chunkAddress, bucketDepth)) {
+            revert BucketDiffers(postageProof.postageId);
         }
 
         // authorized
         if (
             !Signatures.postageVerify(
                 batchOwner,
-                entryProof.postageProof.signature,
-                entryProof.proveSegment,
-                entryProof.postageProof.postageId,
-                entryProof.postageProof.index,
-                entryProof.postageProof.timeStamp
+                postageProof.signature,
+                chunkAddress,
+                postageProof.postageId,
+                postageProof.index,
+                postageProof.timeStamp
             )
         ) {
-            revert SigRecoveryFailed(entryProof.postageProof.postageId);
+            revert SigRecoveryFailed(postageProof.postageId);
         }
+    }
+
+    function stampFunction(
+        ChunkInclusionProof calldata entryProof,
+        uint256 samplingStart,
+        uint256 requiredNormalisedBalance
+    ) internal view {
+        _verifyPostageForTargetRound(
+            entryProof.proveSegment,
+            entryProof.postageProof,
+            samplingStart,
+            requiredNormalisedBalance
+        );
     }
 
     function addressToBucket(bytes32 swarmAddress, uint8 bucketDepth) internal pure returns (uint32) {

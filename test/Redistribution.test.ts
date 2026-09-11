@@ -191,7 +191,8 @@ const errors = {
     outOfDepth: 'OutOfDepthClaim',
     reserveCheckFailed: 'ReserveCheckFailed()',
     indexOutsideSet: 'IndexOutsideSet()',
-    batchDoesNotExist: 'BatchDoesNotExist()',
+    batchNotUsable: 'BatchNotUsableForRedistribution',
+    batchBelowThreshold: 'BatchNotUsableForTargetRound',
     bucketDiffers: 'BucketDiffers()',
     sigRecoveryFailed: 'SigRecoveryFailed()',
     inclusionProofFailed1: 'InclusionProofFailed',
@@ -1207,19 +1208,54 @@ describe('Redistribution', function () {
             ).to.be.revertedWith(errors.claim.indexOutsideSet);
           });
 
-          it('stamp is not valid anymore', async function () {
+          // SWIP-049: the index range is frozen at sampling start too. A dilution mid-round
+          // creates real, uploadable indexes immediately, but a claim for a round that is
+          // already open must still be verified against the smaller range that existed when
+          // that round fixed its scope.
+          it('dilution mid-round cannot widen the index range this claim may use', async function () {
+            const { proofParams } = await generatedSampling();
+
+            const postage = await ethers.getContract('PostageStamp', deployer);
+            const batchId = copyBatch.batchId;
+            const bucketDepth = await postage.batchBucketDepth(batchId);
+            const depthBefore = await postage.batchDepth(batchId);
+
+            // Fund the batch owner so it can send the dilution itself.
+            const owner = copyBatch.batchOwner.connect(ethers.provider);
+            const funder = await ethers.getSigner(deployer);
+            await funder.sendTransaction({ to: owner.address, value: ethers.utils.parseEther('1') });
+            await (await postage.connect(owner).increaseDepth(batchId, depthBefore + 1)).wait();
+
+            expect(await postage.batchDepth(batchId)).to.equal(depthBefore + 1);
+
+            const currentRound = await r_node_5.currentRound();
+            const samplingStart = await r_node_5.samplingStartBlock(currentRound);
+            const asOfSampling = await postage.redistributionBatchAt(batchId, samplingStart);
+            expect(asOfSampling.depthAtSamplingStart).to.equal(depthBefore);
+
+            // An index that only the post-dilution depth makes room for.
+            const indexCountBefore = 2 ** (depthBefore - bucketDepth);
+            const index = Buffer.from(proofParams.proof1.postageProof.index);
+            index.writeUInt32BE(indexCountBefore + 1, 4);
+            proofParams.proof1.postageProof.index = index;
+
+            await expect(
+              r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
+            ).to.be.revertedWith(errors.claim.indexOutsideSet);
+          });
+
+          // SWIP-049: the usable batch set is frozen at the first reveal block of the preceding
+          // round. A batch bought after a node has already seen the anchor is valid for uploads
+          // immediately, but it cannot be used by a round that is already open.
+          it('batch bought after sampling started cannot be used by this round', async function () {
             const { proofParams } = await generatedSampling();
 
             const wallet = getWalletOfFdpPlayQueen();
             const postage = await ethers.getContract('PostageStamp', deployer);
 
-            // SWIP-049 forbids creating a batch below six redistribution rounds of balance, so
-            // the batch cannot be born nearly expired any more. Create it at exactly the
-            // minimum, then spike the price for two blocks so its outpayment overtakes it. The
-            // batch backing the claim proofs holds far more and survives the spike.
-            const initialPaymentPerChunk = (await postage.minimumInitialBalancePerChunk()).toNumber();
+            const initialPaymentPerChunk = (await postage.minimumInitialBalancePerChunk()).mul(2);
             const batchSize = 2 ** batch.depth;
-            const transferAmount = initialPaymentPerChunk * batchSize;
+            const transferAmount = initialPaymentPerChunk.mul(batchSize);
             await mintAndApprove(deployer, deployer, postage.address, transferAmount.toString());
             const batchTx = await postage.createBatch(
               wallet.address,
@@ -1229,15 +1265,6 @@ describe('Redistribution', function () {
               '0x00000000000000000000000000000000000000000000000000000000b0bafe77',
               batch.immutable
             );
-
-            // Driven through PostageStamp directly: PriceOracle.setPrice shifts a uint32 left by
-            // ten before widening, so it truncates well below the price needed here.
-            const priceOracleRole = await postage.PRICE_ORACLE_ROLE();
-            await postage.grantRole(priceOracleRole, deployer);
-            const spikePrice = initialPaymentPerChunk + price1; // one spike block outruns the batch
-            await postage.setPrice(spikePrice); // snapshots outpayment, arms the spike
-            await postage.expireLimited(maxInt256); // one spike block has now accrued
-            await postage.setPrice(price1);
 
             const batchReceipt = await batchTx.wait();
             const batchCreatedEvent = batchReceipt.events.filter((e: { event: string }) => e.event === 'BatchCreated');
@@ -1250,9 +1277,12 @@ describe('Redistribution', function () {
             proofParams.proof1.postageProof.index = index;
             proofParams.proof1.postageProof.timeStamp = timeStamp;
 
+            // The batch is live, fully funded and its stamp is perfectly valid. It is rejected
+            // only because it did not exist when this round fixed its scope.
+            expect(await postage.batchOwner(batchId)).to.equal(wallet.address);
             await expect(
               r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast)
-            ).to.be.revertedWith(errors.claim.batchDoesNotExist);
+            ).to.be.revertedWith(errors.claim.batchNotUsable);
           });
 
           it('postage bucket and address bucket do not match', async function () {

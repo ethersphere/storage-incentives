@@ -213,6 +213,31 @@ describe('PostageStamp SWIP-049', function () {
       const future = (await getBlockNumber()) + 100;
       await expect(admin.redistributionBatchAt(batchId, future)).to.be.revertedWith('FutureSamplingStartBlock()');
     });
+
+    // The threshold is denominated in the price that was in force at sampling start, so a batch
+    // funded under a low price can be outside a round's scope even though it is comfortably
+    // alive. Redistribution compares exactly these two numbers.
+    it('puts a thinly funded batch below the threshold the round fixed', async function () {
+      const batchId = await createBatch(nonceA, MIN_VALIDITY_BLOCKS);
+      const createdAt = await getBlockNumber();
+
+      await mineNBlocks(2);
+
+      const samplingStart = createdAt + 1;
+      expect((await admin.redistributionBatchAt(batchId, samplingStart)).normalisedBalance).to.be.gte(
+        await admin.redistributionMinimumNormalisedBalance(samplingStart)
+      );
+
+      // A price rise before the next round's sampling start raises that round's threshold while
+      // the batch's normalised balance stands still.
+      await oracleStamp.setPrice(price * 5);
+      await mineNBlocks(2);
+      const laterSamplingStart = await getBlockNumber();
+
+      const batchNow = await admin.redistributionBatchAt(batchId, laterSamplingStart);
+      const thresholdNow = await admin.redistributionMinimumNormalisedBalance(laterSamplingStart);
+      expect(batchNow.normalisedBalance).to.be.lt(thresholdNow);
+    });
   });
 
   describe('depth history', function () {
