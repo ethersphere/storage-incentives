@@ -89,7 +89,7 @@ for c in "${CONTRACTS_TO_RUN[@]}"; do
     "$IMAGE" \
     -c "rm -rf crytic-export && echidna-test . --contract ${c} --config ${CONFIG} \
       --corpus-dir ${CORPUS_DIR} --coverage-dir ${CORPUS_DIR}/coverage${ECHIDNA_EXTRA_CLI} \
-      --crytic-args '--hardhat-ignore-compile'" \
+      --crytic-args '--hardhat-ignore-compile --compile-libraries=(StsWitness,0x00a329c0648769a73afac7f9381e08fb43dbea70)'" \
     2>&1 | tee "${LOG_FILE}"
   ec=${PIPESTATUS[0]}
   set -e

@@ -30,5 +30,10 @@ workers: 4
 # over. They are never deployed on a real chain, so lift the limit for the campaign only.
 codeSize: 0xffff
 
+# Redistribution delegatecalls the deployed StsWitness library, so its bytecode carries a link
+# placeholder. Deploy the library at a fixed address for the campaign; scripts/echidna.sh passes
+# the matching --compile-libraries so crytic-compile fills the placeholder in.
+deployContracts: [['0x00a329c0648769a73afac7f9381e08fb43dbea70', 'StsWitness']]
+
 # Keep output readable in CI.
 format: text

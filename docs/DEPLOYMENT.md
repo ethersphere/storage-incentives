@@ -142,8 +142,15 @@ npx hardhat deploy --network mainnet --tags staking
 **Constructor**:
 
 ```typescript
-[stakeRegistry.address, postageStamp.address, priceOracle.address];
+[stakeRegistry.address, postageStamp.address, priceOracle.address, bzzToken.address];
 ```
+
+The fourth argument is new in SWIP-050: STS-1 pays several nodes per round, so the pot is
+withdrawn into the Redistribution contract and drawn down per beneficiary.
+
+**Library**: Redistribution links the deployed `StsWitness` library, which must be deployed
+first. It does not fit under the EIP-170 24 KiB limit with the stamp witness verification
+inlined. `deploy/*/004_deploy_redistribution.ts` handles both.
 
 **Deployment**:
 
