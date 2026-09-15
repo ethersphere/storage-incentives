@@ -139,26 +139,49 @@ whichever number is live.
 
 Worth stating in the SWIP which of the two numbers deployments are expected to run.
 
-### 1.4 BLOCKER — permanent batch-ID consumption is a breaking change, understated
+### 1.4 BLOCKER — the import minimum can silently drop live batches during migration
 
-`batchIdUsed` makes every batch ID permanently unusable, including after expiry. `batchId` is
-`keccak256(abi.encode(msg.sender, _nonce))`, so today an owner can re-derive and re-create a
-batch with the same nonce after the old one expired. After this SWIP that reverts forever.
+Appendix A item 2 adds two things to `copyBatch`: permanent id consumption, and the creation
+minimum:
 
-The stated reason is sound (an old signature would otherwise be replayable against a new
-incarnation). Two things the SWIP does not address:
+```solidity
+if (_initialBalancePerChunk < minimumInitialBalancePerChunk()) revert InsufficientBalance();
+```
 
-- **Migration.** `copyBatchBulk` / `copyBatch` import batches from a previous contract
-  version. If a deployment ever imports the same ID twice — retry after a partial bulk
-  import, or a re-run against a fresh contract — the second import now reverts and is
-  swallowed by `copyBatchBulk`'s `catch`, emitting `CopyBatchFailed` with no distinguishing
-  reason. Import tooling must be idempotency-aware.
-- **Unbounded state growth.** One 32-byte slot per batch ever created, never reclaimable.
+Before this SWIP `copyBatch` had no balance minimum at all — it imported whatever balance it was
+given. Now an imported batch must clear `minimumValidityBlocks * lastPrice`, which is ~24 hours of
+runway (see 1.3).
+
+`copyBatchBulk` wraps each `copyBatch` in a bare `catch { }` and emits `CopyBatchFailed(i, batchId)`.
+So any batch in the source contract that is alive but under a day of runway now reverts, is
+swallowed, and is **dropped from the migration**. Those are precisely the batches a migration is
+most likely to be carrying, since an old contract accumulates near-expiry batches. The operator
+sees a successful transaction with some `CopyBatchFailed` events and nothing to distinguish a
+policy rejection from malformed input.
+
+**Questions for the PR:** is dropping under-funded batches on import the intended migration
+semantics? If so it should be stated, because it silently changes what a migration preserves. If
+not, either exempt `copyBatch` from the minimum or gate it at `ROUND_USABILITY_BLOCKS` rather than
+the full 24-hour minimum.
+
+### 1.4b NOTE — permanent batch-id consumption, two smaller consequences
+
+The reason for `batchIdUsed` is sound: recreating an expired id would make old signatures valid
+against a new incarnation. Two things the SWIP does not address.
+
+- **Expired ids can no longer be re-imported.** Today `copyBatch` only rejects an id whose batch is
+  currently live, so an expired id is free. After this SWIP it is consumed forever. That is
+  probably the intent, but it means a re-run of an import against the same contract behaves
+  differently from the first run. Worth stating.
+- **Unbounded state growth.** One permanent, never-reclaimable slot per batch ever created.
   Acceptable, but it should be an explicit decision rather than a side effect.
 
-_This branch:_ implements `batchIdUsed` as specified, and makes `copyBatch` revert
-`BatchIdAlreadyUsed` (distinct from `BatchExists`) so the bulk path's failure reason is
-identifiable off-chain from the emitted index.
+Note that a _retry of failed entries_ is unaffected: a reverting inner `copyBatch` rolls back
+`batchIdUsed[batchId] = true` along with everything else.
+
+_This branch:_ implements both as specified, and makes `copyBatch` revert a distinct
+`BatchIdAlreadyUsed` rather than `BatchExists`. That only helps a direct call or an off-chain
+simulation — `copyBatchBulk`'s bare `catch` captures no reason either way.
 
 ### 1.5 GAP — `redistributionBatchAt` does not reject future sampling blocks
 
@@ -589,7 +612,7 @@ rather than from the post-update `seed` would remove it at no cost.
 | #   | Deviation                                                                          | Reason                                               |
 | --- | ---------------------------------------------------------------------------------- | ---------------------------------------------------- |
 | 1.1 | added `previousPriceUpdatedBlock` + rollback validity check                        | reconstruction otherwise unverifiable                |
-| 1.4 | `copyBatch` reverts distinct `BatchIdAlreadyUsed`                                  | bulk-import failures need a reason                   |
+| 1.4 | `copyBatch` reverts distinct `BatchIdAlreadyUsed`                                  | identifiable from a direct call or simulation        |
 | 1.5 | `redistributionBatchAt` rejects future sampling blocks                             | parity with the balance view                         |
 | 2.1 | stamp sample limit is depth-**independent**                                        | depth-scaled limit makes overreporting free          |
 | 2.2 | both coefficients capped at `2×`                                                   | unbounded as written; rewards wasting batch capacity |
