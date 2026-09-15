@@ -108,7 +108,7 @@ Commits to an obfuscated hash for the current round.
 - Node must not have already committed
 - Not in last block of commit phase (prevents front-running)
 
-At most `MAX_COMMITS` (128) commits are kept. Extra eligible commits may evict a worse slot (`CommitSelected` / `CommitEvicted`) or be dropped without revert (`CommitRejected`). The first commit of a new round finalizes the previous round if it is still open (freezes non-revealers). If that closer was a non-revealer, they are `CommitRejected` after finalize and are not admitted.
+At most `MAX_COMMITS` (32) commits are kept. Extra eligible commits may evict a worse slot (`CommitSelected` / `CommitEvicted`) or be dropped without revert (`CommitRejected`). The first commit of a new round finalizes the previous round if it is still open (freezes non-revealers). If that closer was a non-revealer, they are `CommitRejected` after finalize and are not admitted.
 
 **Logic**:
 
@@ -650,7 +650,7 @@ bool eligible = Redistribution(redis).isParticipatingInUpcomingRound(
 4. **Proof Verification**: Comprehensive validation prevents fake claims
 5. **Random Selection**: Weighted fairly by stake density
 6. **Truth Selection**: Stake-weighted lottery over exact `(hash, depth)` tuples, not majority vote or correctness check
-7. **Sybil / claim gas griefing**: `MAX_COMMITS = 128` bounds loops; catalog in [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md)
+7. **Sybil / claim gas griefing**: `MAX_COMMITS = 32` bounds loops; catalog in [SWIP-51](https://github.com/ethersphere/swip-51/blob/main/swip-51.md)
 8. **Zero-reveal rounds**: `claim()` reverts `NoReveals()`; the next round’s first `commit` freezes non-revealers at `lastClaimedDepth` (floor `MIN_NONREVEAL_FREEZE_DEPTH` if unset). A no-show closer is `CommitRejected` after finalize so they cannot take the next round’s slot.
 9. **Open caller on `claim()`**: Anyone can submit; economic incentive is on `winner.owner` to provide proofs
 

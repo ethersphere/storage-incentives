@@ -172,7 +172,8 @@ contract Redistribution is AccessControl, Pausable {
     // ----------------------------- SWIP-51 Option B ------------------------------
 
     // Maximum number of commits admitted per round. Bounds every loop over commits/reveals.
-    uint8 public constant MAX_COMMITS = 128;
+    // 32 covers current Swarm neighborhoods (typically well under 32 stakers per round).
+    uint8 public constant MAX_COMMITS = 32;
 
     // Floor so a zero-reveal finalize before any winner exists cannot freeze at 2^0.
     uint8 public constant MIN_NONREVEAL_FREEZE_DEPTH = 8;

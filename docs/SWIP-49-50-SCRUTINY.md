@@ -307,7 +307,7 @@ quiet stretch on a small network does it.
 It is also reachable _with_ an attacker, cheaply: commit from many overlays, never proceed.
 
 **Fix:** the bound already exists one layer down. SWIP-51 Option B caps a round at
-`MAX_COMMITS = 128` and `_finalizeParticipation` already freezes non-finishers of the previous
+`MAX_COMMITS = 32` and `_finalizeParticipation` already freezes non-finishers of the previous
 round, triggered by the next round's first commit — so an unfinished participant is always
 resolved within one round, from an array that is bounded by construction. A separate
 cross-round carry-over list is not needed to preserve the invariant SWIP-050 wants.
@@ -487,7 +487,7 @@ a size-driven split changes the deployment scripts.
 
 SWIP-050 was written against a Redistribution without Option B. Option B already has:
 
-- `MAX_COMMITS = 128` bounded admission with stake-weighted eviction;
+- `MAX_COMMITS = 32` bounded admission with stake-weighted eviction;
 - `_finalizeParticipation` doing truth selection + tentative winner + non-reveal freezes,
   triggered either by `claim` or by the next round's first `commit`;
 - `participationFinalized[round]`, `lastRedundancyCount`, `lastClaimedDepth`,
