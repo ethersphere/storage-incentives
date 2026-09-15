@@ -118,13 +118,24 @@ _This branch:_ implements the SWIP as written (gate on `minimumInitialBalancePer
 because that is what is specified, and adds an explicit test naming the cliff, so the
 behaviour is visible in review rather than discovered in production.
 
-### 1.3 NOTE — `MIN_OPERATION_VALIDITY_BLOCKS = 912` is inert today
+### 1.3 NOTE — 912 gates the setter; 17280 gates every batch operation
 
-The six-rounds-of-balance rule is expressed as a floor on the admin setter
-(`setMinimumValidityBlocks` must not accept < 912). With `minimumValidityBlocks = 17280` the
-floor never binds, and every balance rule in the SWIP is in practice enforced at 17280
-blocks, ~19× the value the SWIP reasons about. The Rationale's "six-round operation minimum"
-argument is therefore correct but describes a constraint that is not the operative one.
+Worth stating plainly because it changes how 1.2 reads. The two constants do different jobs:
+
+- `MIN_OPERATION_VALIDITY_BLOCKS` (912) appears in exactly one place, the guard in
+  `setMinimumValidityBlocks`. It bounds what an admin may _configure_.
+- `minimumValidityBlocks` (17280 by default) is what `createBatch`, `copyBatch`, `topUp` and
+  `increaseDepth` are all held to, via `minimumInitialBalancePerChunk() = minimumValidityBlocks * lastPrice`.
+
+The SWIP writes all three balance rules as "at least `912 * lastPrice` per chunk". In the code
+every one of them is enforced at `17280 * lastPrice`, roughly 19x higher. The 912 never enters
+those comparisons.
+
+This is not a contradiction — the SWIP says "a deployment may require a larger minimum, but it
+must not permit less than 912 blocks", and 17280 satisfies that, so the sufficiency argument in
+the Rationale holds. The issue is that a reader reasons about six rounds of runway while the
+operative constraint is a day of runway, and the severity of the top-up cliff in 1.2 scales with
+whichever number is live.
 
 Worth stating in the SWIP which of the two numbers deployments are expected to run.
 
