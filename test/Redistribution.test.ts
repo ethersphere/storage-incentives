@@ -45,9 +45,9 @@ const signalAttenuation = { Unchanged: 0, Fast: 1, Medium: 2, Slow: 3, Pause: 4 
 // Expected transformed signal for raw redundancy 0..9 at each level
 const transformedSignal = {
   Unchanged: [0, 1, 2, 3, 4, 5, 6, 7, 8, 8],
-  Fast: [2, 2, 2, 3, 4, 5, 6, 7, 7, 7],
-  Medium: [3, 3, 3, 3, 4, 5, 6, 6, 6, 6],
-  Slow: [4, 4, 4, 3, 4, 5, 5, 5, 5, 5],
+  Fast: [1, 1, 2, 3, 4, 5, 6, 7, 7, 7],
+  Medium: [2, 2, 2, 3, 4, 5, 6, 6, 6, 6],
+  Slow: [3, 3, 3, 3, 4, 5, 5, 5, 5, 5],
   Pause: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
 };
 
@@ -1417,7 +1417,7 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
-            // Raw signal is emitted before the Medium transform lifts it to 3
+            // Raw signal is emitted before the Medium transform, which lifts anything below 2 to 2
             expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
             expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
               transformedSignal.Medium[nodesInNeighbourhood]
@@ -1510,7 +1510,7 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Raw signal is emitted before the Medium transform lifts it to 3
+            // Raw signal is emitted before the Medium transform, which lifts anything below 2 to 2
             expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
             expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
               transformedSignal.Medium[nodesInNeighbourhood]

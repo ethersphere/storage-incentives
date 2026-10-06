@@ -160,9 +160,9 @@ contract Redistribution is AccessControl, Pausable {
 
     // Attenuation levels for the redundancy signal passed to the PriceOracle.
     // Unchanged: as is.
-    // Fast:      8 -> 7; 0, 1 -> 2
-    // Medium:    8, 7 -> 6; 0, 1, 2 -> 3
-    // Slow:      8, 7, 6 -> 5; 0, 1, 2 -> 4
+    // Fast:      8 -> 7; 0 -> 1
+    // Medium:    8, 7 -> 6; 0, 1 -> 2
+    // Slow:      8, 7, 6 -> 5; 0, 1, 2 -> 3
     // Pause:     * -> 4
     // Counts above 8 are treated as 8, as the PriceOracle does.
     enum SignalAttenuation {
@@ -729,7 +729,7 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Transforms the redundancy signal of a round according to an attenuation level.
-     * @dev Narrows the signal towards the neutral redundancy of 4 symmetrically on both sides.
+     * @dev Clamps the signal symmetrically around the neutral redundancy of 4.
      * @param _redundancy The raw number of revealers that agreed with the truth.
      * @param _level The attenuation level to apply.
      */
@@ -737,13 +737,13 @@ contract Redistribution is AccessControl, Pausable {
         uint16 redundancy = _redundancy > 8 ? 8 : uint16(_redundancy);
 
         if (_level == SignalAttenuation.Fast) {
-            if (redundancy < 2) return 2;
+            if (redundancy < 1) return 1;
             if (redundancy > 7) return 7;
         } else if (_level == SignalAttenuation.Medium) {
-            if (redundancy < 3) return 3;
+            if (redundancy < 2) return 2;
             if (redundancy > 6) return 6;
         } else if (_level == SignalAttenuation.Slow) {
-            if (redundancy < 3) return 4;
+            if (redundancy < 3) return 3;
             if (redundancy > 5) return 5;
         } else if (_level == SignalAttenuation.Pause) {
             return 4;
