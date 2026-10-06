@@ -40,6 +40,17 @@ const roundLength = 152;
 
 const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
+// Redundancy signal transform levels, in the order of the SignalAttenuation enum
+const signalAttenuation = { Unchanged: 0, Fast: 1, Medium: 2, Slow: 3, Pause: 4 };
+// Expected transformed signal for raw redundancy 0..9 at each level
+const transformedSignal = {
+  Unchanged: [0, 1, 2, 3, 4, 5, 6, 7, 8, 8],
+  Fast: [2, 2, 2, 3, 4, 5, 6, 7, 7, 7],
+  Medium: [3, 3, 3, 3, 4, 5, 6, 6, 6, 6],
+  Slow: [4, 4, 4, 3, 4, 5, 5, 5, 5, 5],
+  Pause: [4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+};
+
 // round anchor after startRoundFixture()
 const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
 // start round number after mintToNode(red, 0) -> without claim
@@ -221,6 +232,21 @@ describe('Redistribution', function () {
       const redistribution = await ethers.getContract('Redistribution');
       expect(redistribution.address).to.be.properAddress;
     });
+
+    it('should use the Medium signal attenuation level', async function () {
+      const redistribution = await ethers.getContract('Redistribution');
+      expect(await redistribution.SIGNAL_ATTENUATION()).to.be.eq(signalAttenuation.Medium);
+    });
+
+    for (const [level, expected] of Object.entries(transformedSignal)) {
+      it(`should transform the redundancy signal at the ${level} level`, async function () {
+        const redistribution = await ethers.getContract('Redistribution');
+        const levelIndex = signalAttenuation[level as keyof typeof signalAttenuation];
+        for (let k = 0; k < expected.length; k++) {
+          expect(await redistribution.transformRedundancySignal(k, levelIndex)).to.be.eq(expected[k]);
+        }
+      });
+    }
   });
 
   describe('with deployed contract and unstaked node in next round', async function () {
@@ -1360,8 +1386,11 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, RedundancySignalEvent;
             for (const e of receipt2.events) {
+              if (e.event == 'RedundancySignal') {
+                RedundancySignalEvent = e;
+              }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
               }
@@ -1388,6 +1417,12 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
+            // Raw signal is emitted before the Medium transform lifts it to 3
+            expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
+            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
+              transformedSignal.Medium[nodesInNeighbourhood]
+            );
+
             expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
             expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
             expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
@@ -1403,8 +1438,9 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            // Check if the Medium-transformed increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled =
+              (increaseRate[transformedSignal.Medium[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
@@ -1438,8 +1474,11 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, RedundancySignalEvent;
             for (const e of receipt2.events) {
+              if (e.event == 'RedundancySignal') {
+                RedundancySignalEvent = e;
+              }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
               }
@@ -1471,8 +1510,15 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            // Raw signal is emitted before the Medium transform lifts it to 3
+            expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
+            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
+              transformedSignal.Medium[nodesInNeighbourhood]
+            );
+
+            // Check if the Medium-transformed increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled =
+              (increaseRate[transformedSignal.Medium[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])

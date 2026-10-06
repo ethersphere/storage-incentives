@@ -158,6 +158,24 @@ contract Redistribution is AccessControl, Pausable {
     // Maximum value of the keccack256 hash.
     bytes32 private constant MAX_H = 0x00000000000000000000000000000000ffffffffffffffffffffffffffffffff;
 
+    // Attenuation levels for the redundancy signal passed to the PriceOracle.
+    // Unchanged: as is.
+    // Fast:      8 -> 7; 0, 1 -> 2
+    // Medium:    8, 7 -> 6; 0, 1, 2 -> 3
+    // Slow:      8, 7, 6 -> 5; 0, 1, 2 -> 4
+    // Pause:     * -> 4
+    // Counts above 8 are treated as 8, as the PriceOracle does.
+    enum SignalAttenuation {
+        Unchanged,
+        Fast,
+        Medium,
+        Slow,
+        Pause
+    }
+
+    // The attenuation level applied by this deployment. Relaxing it requires a new deployment.
+    SignalAttenuation public constant SIGNAL_ATTENUATION = SignalAttenuation.Medium;
+
     // ----------------------------- Events ------------------------------
 
     /**
@@ -199,6 +217,11 @@ contract Redistribution is AccessControl, Pausable {
      * @dev Output external call status
      */
     event PriceAdjustmentSkipped(uint16 redundancyCount);
+
+    /**
+     * @dev Emits the raw redundancy signal of the claim and the transformed signal passed to the PriceOracle
+     */
+    event RedundancySignal(uint16 rawRedundancy, uint16 transformedRedundancy);
 
     /**
      * @dev Withdraw not successful in claim
@@ -573,9 +596,12 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        bool success = OracleContract.adjustPrice(uint16(redundancyCount));
+        uint16 transformedRedundancy = transformRedundancySignal(redundancyCount, SIGNAL_ATTENUATION);
+        emit RedundancySignal(uint16(redundancyCount), transformedRedundancy);
+
+        bool success = OracleContract.adjustPrice(transformedRedundancy);
         if (!success) {
-            emit PriceAdjustmentSkipped(uint16(redundancyCount));
+            emit PriceAdjustmentSkipped(transformedRedundancy);
         }
         currentClaimRound = cr;
     }
@@ -700,6 +726,31 @@ contract Redistribution is AccessControl, Pausable {
     ////////////////////////////////////////
     //            STATE READING           //
     ////////////////////////////////////////
+
+    /**
+     * @notice Transforms the redundancy signal of a round according to an attenuation level.
+     * @dev Narrows the signal towards the neutral redundancy of 4 symmetrically on both sides.
+     * @param _redundancy The raw number of revealers that agreed with the truth.
+     * @param _level The attenuation level to apply.
+     */
+    function transformRedundancySignal(uint256 _redundancy, SignalAttenuation _level) public pure returns (uint16) {
+        uint16 redundancy = _redundancy > 8 ? 8 : uint16(_redundancy);
+
+        if (_level == SignalAttenuation.Fast) {
+            if (redundancy < 2) return 2;
+            if (redundancy > 7) return 7;
+        } else if (_level == SignalAttenuation.Medium) {
+            if (redundancy < 3) return 3;
+            if (redundancy > 6) return 6;
+        } else if (_level == SignalAttenuation.Slow) {
+            if (redundancy < 3) return 4;
+            if (redundancy > 5) return 5;
+        } else if (_level == SignalAttenuation.Pause) {
+            return 4;
+        }
+
+        return redundancy;
+    }
 
     // ----------------------------- Anchor calculations ------------------------------
 
