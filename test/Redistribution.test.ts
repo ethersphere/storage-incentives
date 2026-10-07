@@ -41,7 +41,7 @@ const roundLength = 152;
 const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
 // Slow clamp shipped by this deployment, for raw redundancy 0..9.
-// Counts below 3 become 3, counts above 5 become 5, and counts above 8 are treated as 8.
+// Counts below 3 become 3 and counts above 5 become 5.
 const slowSignal = [3, 3, 3, 3, 4, 5, 5, 5, 5, 5];
 
 // round anchor after startRoundFixture()
@@ -231,6 +231,8 @@ describe('Redistribution', function () {
       for (let k = 0; k < slowSignal.length; k++) {
         expect(await redistribution.transformRedundancySignal(k)).to.be.eq(slowSignal[k]);
       }
+      expect(await redistribution.transformRedundancySignal(100)).to.be.eq(5);
+      expect(await redistribution.transformRedundancySignal(65536)).to.be.eq(5);
     });
   });
 
