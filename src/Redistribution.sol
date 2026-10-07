@@ -201,6 +201,11 @@ contract Redistribution is AccessControl, Pausable {
     event PriceAdjustmentSkipped(uint16 redundancyCount);
 
     /**
+     * @dev Emits the raw redundancy signal of the claim and the transformed signal passed to the PriceOracle
+     */
+    event RedundancySignal(uint16 rawRedundancy, uint16 transformedRedundancy);
+
+    /**
      * @dev Withdraw not successful in claim
      */
     event WithdrawFailed(address owner);
@@ -573,9 +578,12 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        bool success = OracleContract.adjustPrice(uint16(redundancyCount));
+        uint16 transformedRedundancy = transformRedundancySignal(redundancyCount);
+        emit RedundancySignal(uint16(redundancyCount), transformedRedundancy);
+
+        bool success = OracleContract.adjustPrice(transformedRedundancy);
         if (!success) {
-            emit PriceAdjustmentSkipped(uint16(redundancyCount));
+            emit PriceAdjustmentSkipped(transformedRedundancy);
         }
         currentClaimRound = cr;
     }
@@ -700,6 +708,21 @@ contract Redistribution is AccessControl, Pausable {
     ////////////////////////////////////////
     //            STATE READING           //
     ////////////////////////////////////////
+
+    /**
+     * @notice Clamp the redundancy signal passed to the PriceOracle.
+     * @dev This deployment reports the Slow clamp: a count below 3 becomes 3, and a count above 5
+     * becomes 5. Counts above 8 are treated as 8, as the PriceOracle does. A sustained undersupply
+     * therefore doubles the price in about 30 days, and a sustained oversupply halves it in the
+     * same time. A looser or tighter clamp is a different deployment.
+     * @param _redundancy The raw number of revealers that agreed with the truth.
+     */
+    function transformRedundancySignal(uint256 _redundancy) public pure returns (uint16) {
+        uint16 redundancy = _redundancy > 8 ? 8 : uint16(_redundancy);
+        if (redundancy < 3) return 3;
+        if (redundancy > 5) return 5;
+        return redundancy;
+    }
 
     // ----------------------------- Anchor calculations ------------------------------
 

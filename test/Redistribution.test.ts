@@ -40,6 +40,10 @@ const roundLength = 152;
 
 const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
+// Slow clamp shipped by this deployment, for raw redundancy 0..9.
+// Counts below 3 become 3, counts above 5 become 5, and counts above 8 are treated as 8.
+const slowSignal = [3, 3, 3, 3, 4, 5, 5, 5, 5, 5];
+
 // round anchor after startRoundFixture()
 const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
 // start round number after mintToNode(red, 0) -> without claim
@@ -220,6 +224,13 @@ describe('Redistribution', function () {
     it('should deploy Redistribution', async function () {
       const redistribution = await ethers.getContract('Redistribution');
       expect(redistribution.address).to.be.properAddress;
+    });
+
+    it('should clamp the redundancy signal', async function () {
+      const redistribution = await ethers.getContract('Redistribution');
+      for (let k = 0; k < slowSignal.length; k++) {
+        expect(await redistribution.transformRedundancySignal(k)).to.be.eq(slowSignal[k]);
+      }
     });
   });
 
@@ -1360,8 +1371,11 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, RedundancySignalEvent;
             for (const e of receipt2.events) {
+              if (e.event == 'RedundancySignal') {
+                RedundancySignalEvent = e;
+              }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
               }
@@ -1388,6 +1402,12 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
+            // Raw signal is emitted before the Slow transform, which lifts anything below 3 to 3
+            expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
+            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
+              slowSignal[nodesInNeighbourhood]
+            );
+
             expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
             expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
             expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
@@ -1403,8 +1423,9 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            // Check if the Slow-transformed increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled =
+              (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
@@ -1438,8 +1459,11 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, RedundancySignalEvent;
             for (const e of receipt2.events) {
+              if (e.event == 'RedundancySignal') {
+                RedundancySignalEvent = e;
+              }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
               }
@@ -1471,8 +1495,15 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            // Raw signal is emitted before the Slow transform, which lifts anything below 3 to 3
+            expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
+            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
+              slowSignal[nodesInNeighbourhood]
+            );
+
+            // Check if the Slow-transformed increase is properly applied, we have 3 skipped round here
+            currentPriceUpScaled =
+              (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
