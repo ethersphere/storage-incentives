@@ -1404,9 +1404,7 @@ describe('Redistribution', function () {
 
             // Raw signal is emitted before the Slow transform, which lifts anything below 3 to 3
             expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
-            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
-              slowSignal[nodesInNeighbourhood]
-            );
+            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(slowSignal[nodesInNeighbourhood]);
 
             expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
             expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
@@ -1424,8 +1422,7 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             // Check if the Slow-transformed increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled =
-              (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
+            currentPriceUpScaled = (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
@@ -1497,13 +1494,10 @@ describe('Redistribution', function () {
 
             // Raw signal is emitted before the Slow transform, which lifts anything below 3 to 3
             expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
-            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(
-              slowSignal[nodesInNeighbourhood]
-            );
+            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(slowSignal[nodesInNeighbourhood]);
 
             // Check if the Slow-transformed increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled =
-              (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
+            currentPriceUpScaled = (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
