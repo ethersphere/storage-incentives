@@ -201,7 +201,9 @@ contract Redistribution is AccessControl, Pausable {
     event PriceAdjustmentSkipped(uint16 redundancyCount);
 
     /**
-     * @dev Emits the raw redundancy signal of the claim and the transformed signal passed to the PriceOracle
+     * @dev Emits the actual matching-reveal count before the Slow transform, then the count passed to the PriceOracle.
+     * rawRedundancy is the number of reveals that agreed with the selected truth. transformedRedundancy is that
+     * count after 0, 1, and 2 are reported as 3.
      */
     event RedundancySignal(uint16 rawRedundancy, uint16 transformedRedundancy);
 
@@ -578,8 +580,11 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
+        // Record the matching-reveal count before the Slow transform is applied to the oracle.
+        // Saturate at uint16 max so a huge count cannot wrap to 0 in the event.
+        uint16 matchingReveals = redundancyCount > type(uint16).max ? type(uint16).max : uint16(redundancyCount);
         uint16 transformedRedundancy = transformRedundancySignal(redundancyCount);
-        emit RedundancySignal(uint16(redundancyCount), transformedRedundancy);
+        emit RedundancySignal(matchingReveals, transformedRedundancy);
 
         bool success = OracleContract.adjustPrice(transformedRedundancy);
         if (!success) {
@@ -710,17 +715,16 @@ contract Redistribution is AccessControl, Pausable {
     ////////////////////////////////////////
 
     /**
-     * @notice Clamp the redundancy signal passed to the PriceOracle.
-     * @dev This deployment reports the Slow clamp: a count below 3 becomes 3, and a count above 5
-     * becomes 5. The comparison is on the full count, so a value above the uint16 range still
-     * clamps to 5 rather than wrapping. A sustained undersupply therefore doubles the price in
-     * about 30 days, and a sustained oversupply halves it in the same time. A looser or tighter
-     * clamp is a different deployment.
-     * @param _redundancy The raw number of revealers that agreed with the truth.
+     * @notice Apply the Slow transform to the matching-reveal count passed to the PriceOracle.
+     * @dev Counts of 0, 1, and 2 are reported as 3. Counts of 3, 4, 5, 6, 7, and 8 are passed
+     * through unchanged, as is any larger count that fits in uint16. A count above the uint16
+     * range is reported as uint16 max so it cannot wrap into a low signal. The PriceOracle still
+     * applies its own cap above 8.
+     * @param _redundancy The number of revealers that agreed with the truth.
      */
     function transformRedundancySignal(uint256 _redundancy) public pure returns (uint16) {
         if (_redundancy < 3) return 3;
-        if (_redundancy > 5) return 5;
+        if (_redundancy > type(uint16).max) return type(uint16).max;
         return uint16(_redundancy);
     }
 
