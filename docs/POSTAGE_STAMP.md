@@ -33,7 +33,6 @@ struct Batch {
     address owner;                    // Owner of the batch
     uint8 depth;                      // Total depth (2^depth = max chunks)
     uint8 bucketDepth;               // Bucket depth for addressing
-    bool immutableFlag;              // Whether batch can be modified
     uint256 normalisedBalance;       // Normalized balance per chunk
     uint256 lastUpdatedBlockNumber;   // Last update timestamp
 }
@@ -59,7 +58,6 @@ Creates a new postage stamp batch.
 - `_depth`: Total batch depth (capacity = 2^depth)
 - `_bucketDepth`: Bucket depth for chunk addressing
 - `_nonce`: Random nonce for batch ID generation
-- `_immutable`: Whether batch can be topped up later
 
 **Requirements**:
 - `_initialBalancePerChunk >= minimumInitialBalancePerChunk()` (24h minimum validity)
@@ -207,8 +205,7 @@ event BatchCreated(
     uint256 normalisedBalance,
     address owner,
     uint8 depth,
-    uint8 bucketDepth,
-    bool immutableFlag
+    uint8 bucketDepth
 );
 
 event BatchTopUp(

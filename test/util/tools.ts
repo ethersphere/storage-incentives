@@ -241,8 +241,7 @@ export async function copyBatchForClaim(
     initialBalance, // initial balance per chunk
     postageDepth, // depth
     16, // bucketdepth
-    batchId,
-    true // immutable
+    batchId
   );
   await tx.wait();
 

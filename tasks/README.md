@@ -191,7 +191,6 @@ npx hardhat copy \
   --depth 20 \
   --bucketdepth 16 \
   --batchid 0xabcd... \
-  --immutable false \
   --contract 0x5678...
 ```
 
@@ -202,7 +201,6 @@ npx hardhat copy \
 - `--depth`: Batch depth
 - `--bucketdepth`: Bucket depth
 - `--batchid`: Batch ID
-- `--immutable`: Whether batch is immutable (true/false)
 - `--contract`: PostageStamp contract address
 
 #### What it does

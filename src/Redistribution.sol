@@ -1062,7 +1062,7 @@ contract Redistribution is AccessControl, Pausable {
 
     function stampFunction(ChunkInclusionProof calldata entryProof) internal view {
         // authentic
-        (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , , ) = PostageContract.batches(
+        (address batchOwner, uint8 batchDepth, uint8 bucketDepth, , ) = PostageContract.batches(
             entryProof.postageProof.postageId
         );
 

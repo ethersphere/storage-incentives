@@ -39,19 +39,10 @@ contract EchidnaSystemActor {
         uint256 initialBalancePerChunk,
         uint8 depth,
         uint8 bucketDepth,
-        bytes32 nonce,
-        bool immutableFlag
+        bytes32 nonce
     ) external returns (bool ok) {
         (ok, ) = address(stamp).call(
-            abi.encodeWithSelector(
-                stamp.createBatch.selector,
-                owner,
-                initialBalancePerChunk,
-                depth,
-                bucketDepth,
-                nonce,
-                immutableFlag
-            )
+            abi.encodeWithSelector(stamp.createBatch.selector, owner, initialBalancePerChunk, depth, bucketDepth, nonce)
         );
     }
 
@@ -167,8 +158,7 @@ contract EchidnaSystemHarness {
         uint256 initialBalancePerChunk,
         uint8 depth,
         uint8 bucketDepth,
-        bytes32 nonce,
-        bool imm
+        bytes32 nonce
     ) external {
         EchidnaSystemActor a = actors[uint256(actorId) % ACTOR_COUNT];
         uint8 minBucket = stamp.minimumBucketDepth();
@@ -182,7 +172,7 @@ contract EchidnaSystemHarness {
         if (init < min) init = min;
         if (init == 0) init = 1;
 
-        a.callCreateBatch(address(a), init, d, b, nonce, imm);
+        a.callCreateBatch(address(a), init, d, b, nonce);
     }
 
     function act_actor_topUp(uint8 actorId, bytes32 batchId, uint256 topupAmountPerChunk) external {
