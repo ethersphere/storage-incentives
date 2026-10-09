@@ -404,10 +404,8 @@ contract EchidnaRedistributionHarness {
             address ow = pendingWSOwners[i];
             if (ow == address(0)) continue;
             if (stakeMock.freezeCount(ow) <= pendingWSFreezeCountBefore[i]) return false;
-            // freezeDeposit sets lastUpdated to block.number + duration. Duration is 0 when the
-            // non-reveal multiplier is 0, so the timestamp may sit on the current block. A missed
-            // freeze leaves the backdated timestamp, which is still in the past.
-            if (stakeMock.lastUpdatedBlockNumberOfAddress(ow) < block.number) return false;
+            // Freeze should move lastUpdated into the future in the mock.
+            if (stakeMock.lastUpdatedBlockNumberOfAddress(ow) <= block.number) return false;
         }
         return true;
     }
