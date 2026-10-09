@@ -202,10 +202,10 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @dev Emits the actual matching-reveal count before the Slow transform, then the count passed to the PriceOracle.
-     * rawRedundancy is the number of reveals that agreed with the selected truth. transformedRedundancy is that
+     * redundancy is the number of reveals that agreed with the selected truth. priceSignal is that
      * count after 0, 1, and 2 are reported as 3.
      */
-    event RedundancySignal(uint16 rawRedundancy, uint16 transformedRedundancy);
+    event PriceSignal(uint16 redundancy, uint16 priceSignal);
 
     /**
      * @dev Withdraw not successful in claim
@@ -580,12 +580,12 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        uint16 transformedRedundancy = transformRedundancySignal(redundancyCount);
-        emit RedundancySignal(uint16(redundancyCount), transformedRedundancy);
+        uint16 priceSignal = transformRedundancySignal(redundancyCount);
+        emit PriceSignal(uint16(redundancyCount), priceSignal);
 
-        bool success = OracleContract.adjustPrice(transformedRedundancy);
+        bool success = OracleContract.adjustPrice(priceSignal);
         if (!success) {
-            emit PriceAdjustmentSkipped(transformedRedundancy);
+            emit PriceAdjustmentSkipped(priceSignal);
         }
         currentClaimRound = cr;
     }

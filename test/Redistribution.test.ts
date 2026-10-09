@@ -1372,10 +1372,10 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, RedundancySignalEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, PriceSignalEvent;
             for (const e of receipt2.events) {
-              if (e.event == 'RedundancySignal') {
-                RedundancySignalEvent = e;
+              if (e.event == 'PriceSignal') {
+                PriceSignalEvent = e;
               }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
@@ -1404,8 +1404,8 @@ describe('Redistribution', function () {
             expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
             // Matching-reveal count is emitted before the Slow transform, which lifts 0, 1, and 2 to 3
-            expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
-            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(slowSignal[nodesInNeighbourhood]);
+            expect(PriceSignalEvent.args.redundancy).to.be.eq(nodesInNeighbourhood);
+            expect(PriceSignalEvent.args.priceSignal).to.be.eq(slowSignal[nodesInNeighbourhood]);
 
             expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
             expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
@@ -1457,10 +1457,10 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, RedundancySignalEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, PriceSignalEvent;
             for (const e of receipt2.events) {
-              if (e.event == 'RedundancySignal') {
-                RedundancySignalEvent = e;
+              if (e.event == 'PriceSignal') {
+                PriceSignalEvent = e;
               }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
@@ -1494,8 +1494,8 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
             // Matching-reveal count is emitted before the Slow transform, which lifts 0, 1, and 2 to 3
-            expect(RedundancySignalEvent.args.rawRedundancy).to.be.eq(nodesInNeighbourhood);
-            expect(RedundancySignalEvent.args.transformedRedundancy).to.be.eq(slowSignal[nodesInNeighbourhood]);
+            expect(PriceSignalEvent.args.redundancy).to.be.eq(nodesInNeighbourhood);
+            expect(PriceSignalEvent.args.priceSignal).to.be.eq(slowSignal[nodesInNeighbourhood]);
 
             // Check if the Slow-transformed increase is properly applied, we have 3 skipped rounds here
             currentPriceUpScaled = (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
