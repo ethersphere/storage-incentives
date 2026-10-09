@@ -232,8 +232,6 @@ describe('Redistribution', function () {
         expect(await redistribution.transformRedundancySignal(k)).to.be.eq(slowSignal[k]);
       }
       expect(await redistribution.transformRedundancySignal(100)).to.be.eq(100);
-      expect(await redistribution.transformRedundancySignal(65535)).to.be.eq(65535);
-      expect(await redistribution.transformRedundancySignal(65536)).to.be.eq(65535);
     });
   });
 

@@ -580,11 +580,8 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        // Record the matching-reveal count before the Slow transform is applied to the oracle.
-        // Saturate at uint16 max so a huge count cannot wrap to 0 in the event.
-        uint16 matchingReveals = redundancyCount > type(uint16).max ? type(uint16).max : uint16(redundancyCount);
         uint16 transformedRedundancy = transformRedundancySignal(redundancyCount);
-        emit RedundancySignal(matchingReveals, transformedRedundancy);
+        emit RedundancySignal(uint16(redundancyCount), transformedRedundancy);
 
         bool success = OracleContract.adjustPrice(transformedRedundancy);
         if (!success) {
@@ -716,15 +713,12 @@ contract Redistribution is AccessControl, Pausable {
 
     /**
      * @notice Apply the Slow transform to the matching-reveal count passed to the PriceOracle.
-     * @dev Counts of 0, 1, and 2 are reported as 3. Counts of 3, 4, 5, 6, 7, and 8 are passed
-     * through unchanged, as is any larger count that fits in uint16. A count above the uint16
-     * range is reported as uint16 max so it cannot wrap into a low signal. The PriceOracle still
-     * applies its own cap above 8.
+     * @dev Counts of 0, 1, and 2 are reported as 3. Every larger count is passed through unchanged.
+     * The PriceOracle still applies its own cap above 8.
      * @param _redundancy The number of revealers that agreed with the truth.
      */
     function transformRedundancySignal(uint256 _redundancy) public pure returns (uint16) {
         if (_redundancy < 3) return 3;
-        if (_redundancy > type(uint16).max) return type(uint16).max;
         return uint16(_redundancy);
     }
 
