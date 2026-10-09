@@ -201,6 +201,13 @@ contract Redistribution is AccessControl, Pausable {
     event PriceAdjustmentSkipped(uint16 redundancyCount);
 
     /**
+     * @dev Emits the actual matching-reveal count before the Slow transform, then the count passed to the PriceOracle.
+     * redundancy is the number of reveals that agreed with the selected truth. priceSignal is that
+     * count after 0, 1, and 2 are reported as 3.
+     */
+    event PriceSignal(uint16 redundancy, uint16 priceSignal);
+
+    /**
      * @dev Withdraw not successful in claim
      */
     event WithdrawFailed(address owner);
@@ -573,9 +580,12 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        bool success = OracleContract.adjustPrice(uint16(redundancyCount));
+        uint16 priceSignal = transformRedundancySignal(redundancyCount);
+        emit PriceSignal(uint16(redundancyCount), priceSignal);
+
+        bool success = OracleContract.adjustPrice(priceSignal);
         if (!success) {
-            emit PriceAdjustmentSkipped(uint16(redundancyCount));
+            emit PriceAdjustmentSkipped(priceSignal);
         }
         currentClaimRound = cr;
     }
@@ -700,6 +710,17 @@ contract Redistribution is AccessControl, Pausable {
     ////////////////////////////////////////
     //            STATE READING           //
     ////////////////////////////////////////
+
+    /**
+     * @notice Apply the Slow transform to the matching-reveal count passed to the PriceOracle.
+     * @dev Counts of 0, 1, and 2 are reported as 3. Every larger count is passed through unchanged.
+     * The PriceOracle still applies its own cap above 8.
+     * @param _redundancy The number of revealers that agreed with the truth.
+     */
+    function transformRedundancySignal(uint256 _redundancy) public pure returns (uint16) {
+        if (_redundancy < 3) return 3;
+        return uint16(_redundancy);
+    }
 
     // ----------------------------- Anchor calculations ------------------------------
 

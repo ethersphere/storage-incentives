@@ -40,6 +40,10 @@ const roundLength = 152;
 
 const increaseRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
 
+// Slow transform shipped by this deployment, for raw redundancy 0..9.
+// Counts of 0, 1, and 2 become 3. Counts of 3 through 8, and 9, stay as reported.
+const slowSignal = [3, 3, 3, 3, 4, 5, 6, 7, 8, 9];
+
 // round anchor after startRoundFixture()
 const round2Anchor = '0xac33ff75c19e70fe83507db0d683fd3465c996598dc972688b7ace676c89077b';
 // start round number after mintToNode(red, 0) -> without claim
@@ -220,6 +224,14 @@ describe('Redistribution', function () {
     it('should deploy Redistribution', async function () {
       const redistribution = await ethers.getContract('Redistribution');
       expect(redistribution.address).to.be.properAddress;
+    });
+
+    it('should apply the Slow transform to the redundancy signal', async function () {
+      const redistribution = await ethers.getContract('Redistribution');
+      for (let k = 0; k < slowSignal.length; k++) {
+        expect(await redistribution.transformRedundancySignal(k)).to.be.eq(slowSignal[k]);
+      }
+      expect(await redistribution.transformRedundancySignal(100)).to.be.eq(100);
     });
   });
 
@@ -1360,8 +1372,11 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, PriceSignalEvent;
             for (const e of receipt2.events) {
+              if (e.event == 'PriceSignal') {
+                PriceSignalEvent = e;
+              }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
               }
@@ -1388,6 +1403,10 @@ describe('Redistribution', function () {
             expect(CountCommitsEvent.args[0]).to.be.eq(2);
             expect(CountRevealsEvent.args[0]).to.be.eq(1);
 
+            // Matching-reveal count is emitted before the Slow transform, which lifts 0, 1, and 2 to 3
+            expect(PriceSignalEvent.args.redundancy).to.be.eq(nodesInNeighbourhood);
+            expect(PriceSignalEvent.args.priceSignal).to.be.eq(slowSignal[nodesInNeighbourhood]);
+
             expect(WinnerSelectedEvent.args[0].owner).to.be.eq(node_5);
             expect(WinnerSelectedEvent.args[0].overlay).to.be.eq(overlay_5);
             expect(WinnerSelectedEvent.args[0].stake).to.be.eq(effectiveStakeAmount_5);
@@ -1403,8 +1422,8 @@ describe('Redistribution', function () {
 
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            // Check if the Slow-transformed increase is properly applied, we have 3 skipped rounds here
+            currentPriceUpScaled = (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
@@ -1438,8 +1457,11 @@ describe('Redistribution', function () {
             const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
             const receipt2 = await tx2.wait();
 
-            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent;
+            let WinnerSelectedEvent, TruthSelectedEvent, CountCommitsEvent, CountRevealsEvent, PriceSignalEvent;
             for (const e of receipt2.events) {
+              if (e.event == 'PriceSignal') {
+                PriceSignalEvent = e;
+              }
               if (e.event == 'WinnerSelected') {
                 WinnerSelectedEvent = e;
               }
@@ -1471,8 +1493,12 @@ describe('Redistribution', function () {
             expect(WinnerSelectedEvent.args[0].hash).to.be.eq(hash_5);
             expect(WinnerSelectedEvent.args[0].depth).to.be.eq(parseInt(depth_5));
 
-            // Check if the increase is properly applied, we have 3 skipped round here
-            currentPriceUpScaled = (increaseRate[nodesInNeighbourhood] * currentPriceUpScaled) / basePrice;
+            // Matching-reveal count is emitted before the Slow transform, which lifts 0, 1, and 2 to 3
+            expect(PriceSignalEvent.args.redundancy).to.be.eq(nodesInNeighbourhood);
+            expect(PriceSignalEvent.args.priceSignal).to.be.eq(slowSignal[nodesInNeighbourhood]);
+
+            // Check if the Slow-transformed increase is properly applied, we have 3 skipped rounds here
+            currentPriceUpScaled = (increaseRate[slowSignal[nodesInNeighbourhood]] * currentPriceUpScaled) / basePrice;
             skippedRounds = 3;
             expect(await postage.lastPrice()).to.be.eq(
               await skippedRoundsIncrease(skippedRounds, currentPriceUpScaled, basePrice, increaseRate[0])
