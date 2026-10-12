@@ -573,7 +573,11 @@ contract Redistribution is AccessControl, Pausable {
             }
         }
 
-        bool success = OracleContract.adjustPrice(uint16(redundancyCount));
+        // Use a low-level call so claim finalization is not blocked when price adjustment
+        // cannot proceed (e.g. oracle paused). Oracle still reverts on direct calls.
+        (bool success, ) = address(OracleContract).call(
+            abi.encodeWithSelector(IPriceOracle.adjustPrice.selector, uint16(redundancyCount))
+        );
         if (!success) {
             emit PriceAdjustmentSkipped(uint16(redundancyCount));
         }

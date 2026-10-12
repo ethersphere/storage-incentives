@@ -47,13 +47,13 @@ contract PriceOracle is AccessControl {
      *@dev Emitted on every price update.
      */
     event PriceUpdate(uint256 price);
-    event StampPriceUpdateFailed(uint256 attemptedPrice);
 
     // ----------------------------- Custom Errors ------------------------------
     error CallerNotAdmin(); // Caller is not the admin
     error CallerNotPriceUpdater(); // Caller is not a price updater
     error PriceAlreadyAdjusted(); // Price already adjusted in this round
     error UnexpectedZero(); // Redundancy needs to be higher then 0
+    error OraclePaused(); // Oracle is paused and cannot adjust price
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -71,97 +71,57 @@ contract PriceOracle is AccessControl {
 
     /**
      * @notice Manually set the price.
-     * @dev Can only be called by the admin role.
+     * @dev Can only be called by the admin role. Reverts if PostageStamp rejects the update.
      * @param _price The new price.
-     */ function setPrice(uint32 _price) external returns (bool) {
+     */
+    function setPrice(uint32 _price) external returns (bool) {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert CallerNotAdmin();
         }
 
-        uint64 _currentPriceUpScaled = _price << 10;
-        uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
-
-        // Enforce minimum price
-        if (_currentPriceUpScaled < _minimumPriceUpscaled) {
-            _currentPriceUpScaled = _minimumPriceUpscaled;
+        uint64 newPriceUpScaled = uint64(_price) << 10;
+        if (newPriceUpScaled < minimumPriceUpscaled) {
+            newPriceUpScaled = minimumPriceUpscaled;
         }
-        currentPriceUpScaled = _currentPriceUpScaled;
 
-        // Check if the setting of price in postagestamp succeded
-        (bool success, ) = address(postageStamp).call(
-            abi.encodeWithSignature("setPrice(uint256)", uint256(currentPrice()))
-        );
-        if (!success) {
-            emit StampPriceUpdateFailed(currentPrice());
-            return false;
-        }
-        emit PriceUpdate(currentPrice());
+        _commitPrice(newPriceUpScaled);
         return true;
     }
 
+    /**
+     * @notice Adjust the price based on observed redundancy.
+     * @dev Reverts when paused, already adjusted this round, or PostageStamp rejects the update.
+     */
     function adjustPrice(uint16 redundancy) external returns (bool) {
-        if (isPaused == false) {
-            if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
-                revert CallerNotPriceUpdater();
-            }
-
-            uint16 usedRedundancy = redundancy;
-            uint64 currentRoundNumber = currentRound();
-
-            // Price can only be adjusted once per round
-            if (currentRoundNumber <= lastAdjustedRound) {
-                revert PriceAlreadyAdjusted();
-            }
-            // Redundancy may not be zero
-            if (redundancy == 0) {
-                revert UnexpectedZero();
-            }
-
-            // Enforce maximum considered extra redundancy
-            uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
-            if (redundancy > maxConsideredRedundancy) {
-                usedRedundancy = maxConsideredRedundancy;
-            }
-
-            uint64 _currentPriceUpScaled = currentPriceUpScaled;
-            uint64 _minimumPriceUpscaled = minimumPriceUpscaled;
-            uint32 _priceBase = priceBase;
-
-            // Set the number of rounds that were skipped, we substract 1 as lastAdjustedRound is set below and default result is 1
-            uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
-
-            // We first apply the increase/decrease rate for the current round
-            uint32 _changeRate = changeRate[usedRedundancy];
-            _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
-
-            // If previous rounds were skipped, use MAX price increase for the previous rounds
-            if (skippedRounds > 0) {
-                _changeRate = changeRate[0];
-                for (uint64 i = 0; i < skippedRounds; i++) {
-                    _currentPriceUpScaled = (_changeRate * _currentPriceUpScaled) / _priceBase;
-                }
-            }
-
-            // Enforce minimum price
-            if (_currentPriceUpScaled < _minimumPriceUpscaled) {
-                _currentPriceUpScaled = _minimumPriceUpscaled;
-            }
-
-            currentPriceUpScaled = _currentPriceUpScaled;
-            lastAdjustedRound = currentRoundNumber;
-
-            // Check if the price set in postagestamp succeded
-            (bool success, ) = address(postageStamp).call(
-                abi.encodeWithSignature("setPrice(uint256)", uint256(currentPrice()))
-            );
-            if (!success) {
-                emit StampPriceUpdateFailed(currentPrice());
-                return false;
-            }
-            emit PriceUpdate(currentPrice());
-            return true;
+        if (isPaused) {
+            revert OraclePaused();
         }
-        return false;
+        if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
+            revert CallerNotPriceUpdater();
+        }
+
+        uint64 currentRoundNumber = currentRound();
+
+        // Price can only be adjusted once per round
+        if (currentRoundNumber <= lastAdjustedRound) {
+            revert PriceAlreadyAdjusted();
+        }
+        // Redundancy may not be zero
+        if (redundancy == 0) {
+            revert UnexpectedZero();
+        }
+
+        uint16 usedRedundancy = redundancy;
+        uint16 maxConsideredRedundancy = targetRedundancy + maxConsideredExtraRedundancy;
+        if (redundancy > maxConsideredRedundancy) {
+            usedRedundancy = maxConsideredRedundancy;
+        }
+
+        uint64 newPriceUpScaled = _computeAdjustedPriceUpScaled(usedRedundancy, currentRoundNumber);
+
+        _commitPrice(newPriceUpScaled);
+        lastAdjustedRound = currentRoundNumber;
+        return true;
     }
 
     function pause() external {
@@ -206,5 +166,44 @@ contract PriceOracle is AccessControl {
     function minimumPrice() public view returns (uint32) {
         // We downcasted to uint32 and bitshift it by 2^10
         return uint32((minimumPriceUpscaled) >> 10);
+    }
+
+    /**
+     * @dev Push the price to PostageStamp first; only update local state after success.
+     */
+    function _commitPrice(uint64 newPriceUpScaled) internal {
+        uint32 newPrice = uint32(newPriceUpScaled >> 10);
+        postageStamp.setPrice(uint256(newPrice));
+        currentPriceUpScaled = newPriceUpScaled;
+        emit PriceUpdate(newPrice);
+    }
+
+    function _computeAdjustedPriceUpScaled(
+        uint16 usedRedundancy,
+        uint64 currentRoundNumber
+    ) internal view returns (uint64) {
+        uint64 newPriceUpScaled = currentPriceUpScaled;
+        uint32 _priceBase = priceBase;
+
+        // Set the number of rounds that were skipped, we substract 1 as lastAdjustedRound is set below and default result is 1
+        uint64 skippedRounds = currentRoundNumber - lastAdjustedRound - 1;
+
+        // We first apply the increase/decrease rate for the current round
+        uint32 _changeRate = changeRate[usedRedundancy];
+        newPriceUpScaled = (_changeRate * newPriceUpScaled) / _priceBase;
+
+        // If previous rounds were skipped, use MAX price increase for the previous rounds
+        if (skippedRounds > 0) {
+            _changeRate = changeRate[0];
+            for (uint64 i = 0; i < skippedRounds; i++) {
+                newPriceUpScaled = (_changeRate * newPriceUpScaled) / _priceBase;
+            }
+        }
+
+        if (newPriceUpScaled < minimumPriceUpscaled) {
+            newPriceUpScaled = minimumPriceUpscaled;
+        }
+
+        return newPriceUpScaled;
     }
 }
