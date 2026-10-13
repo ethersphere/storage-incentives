@@ -66,7 +66,7 @@ contract PriceOracle is AccessControl {
     }
 
     ////////////////////////////////////////
-    //            STATE SETTING           //
+    //           STATE SETTING           //
     ////////////////////////////////////////
 
     /**
@@ -179,7 +179,7 @@ contract PriceOracle is AccessControl {
     }
 
     ////////////////////////////////////////
-    //            STATE READING           //
+    //           STATE READING           //
     ////////////////////////////////////////
 
     /**

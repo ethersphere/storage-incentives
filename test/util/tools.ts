@@ -132,6 +132,20 @@ async function mintAndApprove(
   const minterTokenInstance = await ethers.getContract('TestToken', deployer);
   await minterTokenInstance.mint(payee, transferAmount);
   const payeeTokenInstance = await ethers.getContract('TestToken', payee);
+
+  // In decoupled architecture, approve PostageStampStorage contract instead of logic contract
+  // If beneficiary is PostageStamp logic contract, get the storage contract address
+  try {
+    const postageStamp = await ethers.getContract('PostageStamp');
+    if (beneficiary.toLowerCase() === postageStamp.address.toLowerCase()) {
+      const storageContract = await postageStamp.storageContract();
+      await payeeTokenInstance.approve(storageContract, transferAmount);
+      return;
+    }
+  } catch (e) {
+    // PostageStamp not deployed yet or beneficiary is not PostageStamp, continue with original behavior
+  }
+
   await payeeTokenInstance.approve(beneficiary, transferAmount);
   return;
 }
