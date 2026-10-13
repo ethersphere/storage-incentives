@@ -1,7 +1,14 @@
 {
-  "extends": "solhint:default",
+  "extends": "solhint:recommended",
   "plugins": ["prettier"],
   "rules": {
-    "prettier/prettier": "error"
+    "prettier/prettier": "error",
+    "compiler-version": ["off"],
+    "func-visibility": ["warn", { "ignoreConstructors": true }],
+    "no-empty-blocks": "warn",
+    "max-line-length": ["warn", 120],
+    "no-inline-assembly": "off",
+    "reason-string": ["warn", { "maxLength": 64 }],
+    "not-rely-on-time": "off"
   }
 }

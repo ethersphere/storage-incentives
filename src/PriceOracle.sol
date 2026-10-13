@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: BSD-3-Clause
 pragma solidity ^0.8.19;
+import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "./interface/IPostageStamp.sol";
 
@@ -9,34 +10,34 @@ import "./interface/IPostageStamp.sol";
  * @dev The price oracle contract emits a price feed using events.
  */
 
-contract PriceOracle is AccessControl {
+contract PriceOracle is Initializable, AccessControl {
     // ----------------------------- State variables ------------------------------
 
     // The address of the linked PostageStamp contract
     IPostageStamp public postageStamp;
 
-    uint16 targetRedundancy = 4;
-    uint16 maxConsideredExtraRedundancy = 4;
+    uint16 targetRedundancy;
+    uint16 maxConsideredExtraRedundancy;
 
     // When the contract is paused, price changes are not effective
-    bool public isPaused = false;
+    bool public isPaused;
 
     // The number of the last round price adjusting happend
     uint64 public lastAdjustedRound;
 
     // The minimum price allowed
-    uint32 public minimumPriceUpscaled = 24000 << 10; // we upscale it by 2^10
+    uint32 public minimumPriceUpscaled;
 
     // The priceBase to modulate the price
-    uint32 public priceBase = 1048576;
+    uint32 public priceBase;
 
-    uint64 public currentPriceUpScaled = minimumPriceUpscaled;
+    uint64 public currentPriceUpScaled;
 
     // Constants used to modulate the price, see below usage
-    uint32[9] public changeRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
+    uint32[9] public changeRate;
 
     // Role allowed to update price
-    bytes32 public immutable PRICE_UPDATER_ROLE;
+    bytes32 public constant PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER_ROLE");
 
     // The length of a round in blocks.
     uint8 private constant ROUND_LENGTH = 152;
@@ -57,11 +58,22 @@ contract PriceOracle is AccessControl {
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
-    constructor(address _postageStamp) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _postageStamp) external initializer {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         postageStamp = IPostageStamp(_postageStamp);
+        targetRedundancy = 4;
+        maxConsideredExtraRedundancy = 4;
+        isPaused = false;
+        minimumPriceUpscaled = 24000 << 10;
+        priceBase = 1048576;
+        currentPriceUpScaled = minimumPriceUpscaled;
+        changeRate = [1049417, 1049206, 1048996, 1048786, 1048576, 1048366, 1048156, 1047946, 1047736];
         lastAdjustedRound = currentRound();
-        PRICE_UPDATER_ROLE = keccak256("PRICE_UPDATER_ROLE");
         emit PriceUpdate(currentPrice());
     }
 

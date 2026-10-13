@@ -9,6 +9,7 @@ import {
   PHASE_LENGTH,
   copyBatchForClaim,
   mineToRevealPhase,
+  mineToCommitPhase,
 } from './util/tools';
 import { BigNumber } from 'ethers';
 import { arrayify, hexlify } from 'ethers/lib/utils';
@@ -141,6 +142,9 @@ before(async function () {
 
 async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: string[], trials: number) {
   const price1 = 100;
+  const depth = '0x00';
+  const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
+  const reveal_nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
 
   const postageStampOracle = await ethers.getContract('PostageStamp', oracle);
   await postageStampOracle.setPrice(price1);
@@ -159,10 +163,6 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
   const postage = await ethers.getContract('PostageStamp', stamper);
   await mintAndApprove(deployer, stamper, postage.address, transferAmount.toString());
 
-  const depth = '0x00';
-  const nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-  const reveal_nonce = '0xb5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33b5555b33';
-
   for (let i = 0; i < nodes.length; i++) {
     const sr_node = await ethers.getContract('StakeRegistry', nodes[i]);
     await mintAndApprove(deployer, nodes[i], sr_node.address, stakes[i]);
@@ -176,12 +176,16 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
 
   let r_node = await ethers.getContract('Redistribution', nodes[0]);
 
-  await mineNBlocks(ROUND_LENGTH * 2); // anyway reverted with panic code 0x11 (Arithmetic operation underflowed or overflowed outside of an unchecked block
+  // Mine to the start of a commit phase at least 3 full rounds ahead.
+  // This guarantees MustStake2Rounds is satisfied and there is plenty of
+  // room inside the commit phase for all players to submit.
+  await mineToCommitPhase(3);
 
   for (let i = 0; i < trials; i++) {
+    await mineToCommitPhase();
+
     const anchor1 = arrayify(await r_node.currentSeed());
 
-    // mine new witness chunks because of new anchor and reserve estimation
     const numbering = String(i).padStart(3, '0');
     const witnessChunks = await setWitnesses(`stats-${numbering}`, anchor1, Number(depth));
     const sampleChunk = makeSample(witnessChunks);
@@ -204,7 +208,7 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
       await r_node.reveal(depth, sampleHashString, reveal_nonce);
     }
 
-    const anchor2 = await r_node.currentSeed(); // for creating proofs
+    const anchor2 = await r_node.currentSeed();
 
     await mineNBlocks(PHASE_LENGTH - nodes.length + 1);
 
@@ -224,8 +228,6 @@ async function nPlayerGames(nodes: string[], stakes: string[], effectiveStakes: 
 
     const sr = await ethers.getContract('StakeRegistry');
 
-    //stakes are preserved
-
     for (let i = 0; i < nodes.length; i++) {
       expect(await sr.nodeEffectiveStake(nodes[i])).to.be.eq(effectiveStakes[i]);
     }
@@ -240,6 +242,9 @@ describe('Stats', async function () {
   beforeEach(async function () {
     await ethers.provider.send('hardhat_reset', []);
     await deployments.fixture();
+    // Disable interval mining set by 010_deploy_cluster.ts (5s per block)
+    // so that witness mining doesn't cause phantom blocks
+    await ethers.provider.send('evm_setIntervalMining', [0]);
     const priceOracleRole = await read('PostageStamp', 'PRICE_ORACLE_ROLE');
     await execute('PostageStamp', { from: deployer }, 'grantRole', priceOracleRole, oracle);
 
@@ -254,7 +259,7 @@ describe('Stats', async function () {
     const trials = 100;
 
     it('is fair with 1:3 stake', async function () {
-      this.timeout(120000);
+      this.timeout(0); // witness mining may take a long time on first run
       const allowed_variance = 0.035;
       const stakes = ['100000000000000000', '300000000000000000'];
       const effectiveStakes = ['99999999999984000', '300000000000000000'];

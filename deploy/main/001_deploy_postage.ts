@@ -6,11 +6,19 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer } = await getNamedAccounts();
 
   const token = await get('Token');
-  const argsStamp = [token.address, 16];
 
   await deploy('PostageStamp', {
     from: deployer,
-    args: argsStamp,
+    proxy: {
+      proxyContract: 'TransparentUpgradeableProxy',
+      viaAdminContract: 'DefaultProxyAdmin',
+      execute: {
+        init: {
+          methodName: 'initialize',
+          args: [token.address, 16],
+        },
+      },
+    },
     log: true,
     waitConfirmations: networkConfig[network.name]?.blockConfirmations || 6,
   });

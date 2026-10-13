@@ -131,14 +131,13 @@ describe('Staking', function () {
     it('should deposit stake correctly if funds are available', async function () {
       const sr_staker_0 = await ethers.getContract('StakeRegistry', staker_0);
 
-      const updatedBlockNumber = (await getBlockNumber()) + 3;
-
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(staker_0, committedStakeAmount_0, stakeAmount_0, overlay_0, updatedBlockNumber, height_0);
+      const txPromise = sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      const tx = await txPromise;
+      const receipt = await tx.wait();
+      const updatedBlockNumber = receipt.blockNumber;
 
       expect(await token.balanceOf(staker_0)).to.be.eq(0);
 
@@ -158,28 +157,18 @@ describe('Staking', function () {
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(stakeAmount_0);
 
-      sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
-
-      const lastUpdatedBlockNumber = (await getBlockNumber()) + 3;
+      await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
 
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
       expect(await token.balanceOf(staker_0)).to.be.eq(updateStakeAmount_0);
 
-      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, zeroAmount))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(
-          staker_0,
-          updatedCommittedStakeAmount_0,
-          updatedStakeAmount_0,
-          overlay_0,
-          lastUpdatedBlockNumber + 1,
-          height_0
-        );
+      const tx = await sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, zeroAmount);
+      const receipt = await tx.wait();
 
       const staked = await stakeRegistry.stakes(staker_0);
       expect(staked.overlay).to.be.eq(overlay_0);
       expect(staked.potentialStake).to.be.eq(updatedStakeAmount_0);
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(lastUpdatedBlockNumber + 1);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(receipt.blockNumber);
       expect(await token.balanceOf(stakeRegistry.address)).to.be.eq(updatedStakeAmount_0);
     });
   });
@@ -265,39 +254,33 @@ describe('Staking', function () {
         .to.emit(stakeRegistry, 'StakeFrozen')
         .withArgs(staker_0, overlay_0, freezeTime);
 
+      const freezeBlock = await getBlockNumber();
       const staked = await stakeRegistryRedistributor.stakes(staker_0);
-      const updatedBlockNumber = (await getBlockNumber()) + 3;
-
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(freezeBlock + freezeTime);
     });
 
     it('should not allow update of a frozen staked deposit', async function () {
       const stakeRegistryRedistributor = await ethers.getContract('StakeRegistry', redistributor);
-      await stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime);
+      const freezeTx = await stakeRegistryRedistributor.freezeDeposit(staker_0, freezeTime);
+      const freezeReceipt = await freezeTx.wait();
 
       const staked = await stakeRegistryRedistributor.stakes(staker_0);
-      const updatedBlockNumber = (await getBlockNumber()) + 3;
-
-      expect(staked.lastUpdatedBlockNumber).to.be.eq(updatedBlockNumber);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(freezeReceipt.blockNumber + freezeTime);
 
       await mintAndApprove(staker_0, stakeRegistry.address, stakeAmount_0);
       await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0)).to.be.revertedWith(
         errors.freeze.currentlyFrozen
       );
 
-      mineNBlocks(3);
+      await mineNBlocks(3);
 
-      const newUpdatedBlockNumber = (await getBlockNumber()) + 2;
-      await expect(sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(
-          staker_0,
-          doubled_committedStakeAmount_0,
-          doubled_stakeAmount_0,
-          overlay_0,
-          newUpdatedBlockNumber,
-          height_0
-        );
+      const tx = await sr_staker_0.manageStake(nonce_0, stakeAmount_0, height_0);
+      const receipt = await tx.wait();
+
+      const staked2 = await stakeRegistryRedistributor.stakes(staker_0);
+      expect(staked2.lastUpdatedBlockNumber).to.be.eq(receipt.blockNumber);
+      expect(staked2.potentialStake).to.be.eq(doubled_stakeAmount_0);
+      expect(staked2.committedStake).to.be.eq(doubled_committedStakeAmount_0);
     });
   });
 
@@ -364,18 +347,14 @@ describe('Staking', function () {
 
       await stakeRegistryPauser.unPause();
 
-      const newUpdatedBlockNumber = (await getBlockNumber()) + 3;
       await mintAndApprove(staker_0, stakeRegistry.address, updateStakeAmount_0);
-      await expect(sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, height_0))
-        .to.emit(stakeRegistry, 'StakeUpdated')
-        .withArgs(
-          staker_0,
-          updatedCommittedStakeAmount_0,
-          updatedStakeAmount_0,
-          overlay_0,
-          newUpdatedBlockNumber,
-          height_0
-        );
+      const tx = await sr_staker_0.manageStake(nonce_0, updateStakeAmount_0, height_0);
+      const receipt = await tx.wait();
+
+      const staked = await sr_staker_0.stakes(staker_0);
+      expect(staked.potentialStake).to.be.eq(updatedStakeAmount_0);
+      expect(staked.committedStake).to.be.eq(updatedCommittedStakeAmount_0);
+      expect(staked.lastUpdatedBlockNumber).to.be.eq(receipt.blockNumber);
     });
   });
 

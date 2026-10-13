@@ -1,19 +1,20 @@
 import { DeployFunction } from 'hardhat-deploy/types';
+import { ethers } from 'hardhat';
 
 const func: DeployFunction = async function ({ deployments, getNamedAccounts }) {
-  const { get, read, execute, log } = deployments;
+  const { get, execute, log, read } = deployments;
   const { deployer } = await getNamedAccounts();
 
   log('Setting Staking roles');
-  const adminRole = await read('StakeRegistry', 'DEFAULT_ADMIN_ROLE');
+
+  const adminRole = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
   if (await read('StakeRegistry', 'hasRole', adminRole, deployer)) {
-    const redisRole = await read('StakeRegistry', 'REDISTRIBUTOR_ROLE');
+    const redisRole = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('REDISTRIBUTOR_ROLE'));
     const redisAddress = (await get('Redistribution')).address;
-
     await execute('StakeRegistry', { from: deployer }, 'grantRole', redisRole, redisAddress);
   } else {
-    log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN THE REDISTRIBUTION ROLE, PLEASE ASSIGN IT OR GRANT ROLE MANUALLY');
+    log('DEPLOYER NEEDS TO HAVE ADMIN ROLE TO ASSIGN ROLES, PLEASE GRANT ROLE MANUALLY');
   }
 
   log('----------------------------------------------------');
