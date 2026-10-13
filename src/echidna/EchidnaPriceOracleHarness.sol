@@ -220,7 +220,7 @@ contract EchidnaPriceOracleHarness {
     }
 
     function echidna_price_never_below_minimum() external view returns (bool) {
-        return oracle.currentPriceUpScaled() >= oracle.minimumPriceUpscaled();
+        return oracle.currentPriceUpScaled() >= oracle.MINIMUM_PRICE_UPSCALED();
     }
 
     function echidna_lastAdjustedRound_not_in_future() external view returns (bool) {
@@ -298,7 +298,7 @@ contract EchidnaPriceOracleHarness {
             }
         }
 
-        uint256 minUp = uint256(oracle.minimumPriceUpscaled());
+        uint256 minUp = uint256(oracle.MINIMUM_PRICE_UPSCALED());
         if (price < minUp) price = minUp;
         if (price > type(uint64).max) return (false, 0);
         return (true, uint64(price));
