@@ -23,11 +23,6 @@ async function main() {
   const contractAddress = '0xcdfdC3752caaA826fE62531E0000C40546eC56A6';
   const contract = await ethers.getContractAt('PostageStamp', contractAddress);
 
-  // Add Admin Role to the contract address itself as it is calling itself with this.copyBatch function
-  const adminRole = await contract.DEFAULT_ADMIN_ROLE();
-  const tx0 = await contract.grantRole(adminRole, contractAddress);
-  console.log('Added Admin Role to contract itself : ', tx0.hash);
-
   // A numerator to keep track of the batch group number
   let groupNumber = 0;
   const batchGroups: Batch[][] = chunkArray(batches, chunkSize);
