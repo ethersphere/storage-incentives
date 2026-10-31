@@ -1,0 +1,15 @@
+[workspace]
+members = ["crates/vm", "program", "service"]
+resolver = "2"
+
+[workspace.dependencies]
+alloy-primitives = { version = "1.7", features = ["serde", "k256"] }
+alloy-sol-types = "1.7"
+serde = { version = "1", features = ["derive"] }
+swarm-vm = { path = "crates/vm" }
+
+# SP1 precompiles for keccak256 and secp256k1 (ecrecover). Off the zkVM these behave like the upstream
+# crates. Cuts the program's cycle count by an order of magnitude (docs/ZK-SETTLEMENT.md, section 4).
+[patch.crates-io]
+tiny-keccak = { git = "https://github.com/sp1-patches/tiny-keccak", tag = "patch-2.0.2-sp1-6.2.0" }
+k256 = { git = "https://github.com/sp1-patches/elliptic-curves", tag = "patch-k256-13.4-sp1-6.2.0" }

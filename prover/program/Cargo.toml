@@ -1,0 +1,9 @@
+[package]
+name = "swarm-settlement-program"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sp1-zkvm = "6.0.1"
+alloy-sol-types = { workspace = true }
+swarm-vm = { workspace = true }

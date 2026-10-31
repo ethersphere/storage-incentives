@@ -175,6 +175,19 @@ const config: HardhatUserConfig = {
       chainId: 11155111,
       deploy: ['deploy/test/'],
     },
+    // ZK settlement (docs/ZK-SETTLEMENT.md). zklocal is anvil with its default mnemonic.
+    zklocal: {
+      url: process.env.ZK_LOCAL_RPC || 'http://127.0.0.1:8545',
+      accounts: { mnemonic: 'test test test test test test test test test test test junk' },
+      chainId: 31337,
+      deploy: ['deploy/zk/'],
+    },
+    sepoliazk: {
+      url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://1rpc.io/sepolia',
+      accounts,
+      chainId: 11155111,
+      deploy: ['deploy/zk/'],
+    },
     tenderly: {
       url: 'https://rpc.tenderly.co/fork/7ccb24d3-e1fa-43fd-8b71-02da55c9170e',
       accounts,
