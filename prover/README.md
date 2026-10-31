@@ -11,6 +11,9 @@ proof. The design is in [docs/ZK-SETTLEMENT.md](../docs/ZK-SETTLEMENT.md); the c
 | `service` (`swarm-prover`) | The prover node: HTTP collector for commits and reveals, anchors each round on chain, builds the round input from chain state, proves, calls `settleRound`. |
 | `service` (`node-sim`) | Simulated Bee nodes: commit, reveal, optionally lie, stay silent, or use the on-chain escape hatch. |
 
+The zkVM is SP1. A comparison with RISC Zero and ZisK, and a port plan for each, is in
+[zkvms/README.md](zkvms/README.md).
+
 ## Toolchain
 
 ```bash
