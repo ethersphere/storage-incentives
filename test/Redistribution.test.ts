@@ -33,6 +33,7 @@ import { arrayify, hexlify } from 'ethers/lib/utils';
 import { makeChunk } from '@fairdatasociety/bmt-js';
 import { randomBytes } from 'crypto';
 import { constructPostageStamp } from './util/postage';
+import { dumpClaimVector } from './util/claimVectors';
 
 const { read, execute } = deployments;
 const phaseLength = 38;
@@ -791,6 +792,8 @@ describe('Redistribution', function () {
       let skippedRounds: number;
       describe('single player', async function () {
         let copyBatch: Awaited<ReturnType<typeof copyBatchForClaim>>, currentSeed: string, r_node_5: Contract;
+        // Seed at commit time: the reveal round anchor. Kept for the claim vectors.
+        let claimAnchor: string;
         const depth = 1;
         const generatedSampling = async (socAttachment = false) => {
           const anchor1 = arrayify(currentSeed);
@@ -832,7 +835,7 @@ describe('Redistribution', function () {
 
           await mineNBlocks(phaseLength);
 
-          return { proofParams, sampleHashString };
+          return { proofParams, sampleHashString, anchor2 };
         };
         const claimEventChecks = async (
           claimTx: ContractTransaction,
@@ -907,6 +910,7 @@ describe('Redistribution', function () {
           // anchor fixture
           await mineToNode(redistribution, 5);
           currentSeed = await redistribution.currentSeed();
+          claimAnchor = currentSeed;
           expect(await redistribution.currentPhaseCommit()).to.be.true;
           r_node_5 = await ethers.getContract('Redistribution', node_5);
         });
@@ -937,6 +941,11 @@ describe('Redistribution', function () {
 
           const tx2 = await r_node_5.claim(proof1, proof2, proofLast);
           await claimEventChecks(tx2, sanityHash, sanityDepth);
+          await dumpClaimVector('bee-cac', claimAnchor, currentSeed, sanityHash, sanityDepth, {
+            proof1,
+            proof2,
+            proofLast,
+          });
         });
 
         it('should claim pot by bee SOC sampling', async function () {
@@ -975,26 +984,33 @@ describe('Redistribution', function () {
             additionalReward:
               (receipt2.blockNumber - copyBatch2.tx.blockNumber) * price1 * 2 ** copyBatch2.postageDepth,
           });
+          await dumpClaimVector('bee-soc', claimAnchor, currentSeed, sanityHash, sanityDepth, {
+            proof1,
+            proof2,
+            proofLast,
+          });
         });
 
         it('should claim pot by generated CAC sampling', async function () {
-          const { sampleHashString, proofParams } = await generatedSampling();
+          const { sampleHashString, proofParams, anchor2 } = await generatedSampling();
 
           expect(proofParams.proof1.socProof).to.have.length(0);
           expect(proofParams.proof2.socProof).to.have.length(0);
           expect(proofParams.proofLast.socProof).to.have.length(0);
           const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
           await claimEventChecks(tx2, sampleHashString, hexlify(depth));
+          await dumpClaimVector('generated-cac', claimAnchor, anchor2, sampleHashString, depth, proofParams);
         });
 
         it('should claim pot by generated SOC sampling', async function () {
-          const { sampleHashString, proofParams } = await generatedSampling(true);
+          const { sampleHashString, proofParams, anchor2 } = await generatedSampling(true);
 
           expect(proofParams.proof1.socProof).to.have.length(1);
           expect(proofParams.proof2.socProof).to.have.length(1);
           expect(proofParams.proofLast.socProof).to.have.length(1);
           const tx2 = await r_node_5.claim(proofParams.proof1, proofParams.proof2, proofParams.proofLast);
           await claimEventChecks(tx2, sampleHashString, hexlify(depth));
+          await dumpClaimVector('generated-soc', claimAnchor, anchor2, sampleHashString, depth, proofParams);
         });
 
         it('should not claim pot because of wrong witness order', async () => {

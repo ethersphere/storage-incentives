@@ -13,7 +13,7 @@ use alloy_sol_types::SolType;
 use anyhow::{anyhow, Context, Result};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use swarm_prover::{
-    offset_of, round_of, seed_block, PriceOracle, Settlement, StakeRegistry, ANCHOR_END,
+    offset_of, round_of, seed_block, PostageStamp, PriceOracle, Settlement, StakeRegistry, CLAIM_START, ANCHOR_END,
     COMMIT_END, HISTORY_SERVE_WINDOW, REVEAL_END, ROUND_LENGTH,
 };
 use swarm_vm::{
@@ -188,13 +188,19 @@ async fn settle_tick(ctx: &Ctx) -> Result<()> {
                 Some("settled by another prover".into());
             continue;
         }
-        let input = match build_input(ctx, round, block).await {
+        let input = match build_input(ctx, round, block, None).await {
             Ok(i) => i,
             Err(e) => {
                 mark_failed(ctx, round, &format!("{e:#}")).await?;
                 continue;
             }
         };
+        // A truth without a valid witness can only settle once the claim window is closed: the winner
+        // (or any truth-teller) can still send it, or call forceClaim.
+        let native = swarm_vm::run(&input).map_err(|e| anyhow!("vm: {e:?}"))?;
+        if native.outcome.unclaimed && block < (round + 1) * ROUND_LENGTH {
+            break;
+        }
         settle(ctx, round, input).await?;
         // One round per tick: state (lastClaimRound, lastWinnerDepth) changes with each settlement.
         break;
@@ -209,18 +215,28 @@ async fn mark_failed(ctx: &Ctx, round: u64, why: &str) -> Result<()> {
     store.save(round)
 }
 
-/// Everything the VM needs, from the local message store and the chain.
-async fn build_input(ctx: &Ctx, round: u64, _block: u64) -> Result<RoundInput> {
+/// Everything the VM needs, from the local message store and the chain. `claim` replaces the stored
+/// claim witness (used to check a witness before accepting it).
+pub async fn build_input(
+    ctx: &Ctx,
+    round: u64,
+    block: u64,
+    claim: Option<Bytes>,
+) -> Result<RoundInput> {
     let s = Settlement::new(ctx.settlement, &ctx.provider);
     let ri = s.rounds(round).call().await?;
 
-    let (commits, reveals) = {
+    let (commits, reveals, stored_claim) = {
         let store = ctx.store.lock().await;
         let m = store
             .rounds
             .get(&round)
             .ok_or_else(|| anyhow!("no local data"))?;
-        (m.anchored.clone().unwrap_or_default(), m.reveals.clone())
+        (
+            m.anchored.clone().unwrap_or_default(),
+            m.reveals.clone(),
+            m.claim.clone(),
+        )
     };
     if commits_hash(commits.iter().map(|c| (&c.owner, &c.obfuscated_hash))) != ri.commitsHash
         || commits.len() as u32 != ri.commitCount
@@ -233,6 +249,10 @@ async fn build_input(ctx: &Ctx, round: u64, _block: u64) -> Result<RoundInput> {
         || swarm_vm::forced_reveals_hash(&forced_reveals) != ri.forcedRevealsHash
     {
         anyhow::bail!("forced events do not match the on-chain hash chains (RPC log gap?)");
+    }
+    let forced_claims = forced_claims(ctx, round, block).await?;
+    if swarm_vm::claim::forced_claims_hash(&forced_claims) != ri.forcedClaimsHash {
+        anyhow::bail!("ClaimForced events do not match the on-chain hash chain (RPC log gap?)");
     }
 
     let mut input = RoundInput {
@@ -255,7 +275,23 @@ async fn build_input(ctx: &Ctx, round: u64, _block: u64) -> Result<RoundInput> {
         penalty_multiplier_disagreement: s.penaltyMultiplierDisagreement().call().await?,
         penalty_multiplier_non_revealed: s.penaltyMultiplierNonRevealed().call().await?,
         penalty_random_factor: s.penaltyRandomFactor().call().await?,
+        claim: claim.or(stored_claim),
+        forced_claims,
+        batches: vec![],
+        sample_max_value: s.sampleMaxValue().call().await?,
     };
+
+    // Postage batches of every candidate witness, exactly as Settlement.batchDigest will read them.
+    let postage = PostageStamp::new(s.PostageContract().call().await?, &ctx.provider);
+    for id in swarm_vm::claim_batch_ids(&input) {
+        let b = postage.batches(id).call().await?;
+        input.batches.push(swarm_vm::claim::BatchRecord {
+            batch_id: id,
+            owner: b.owner,
+            depth: b.depth,
+            bucket_depth: b.bucketDepth,
+        });
+    }
 
     // Raw stake records exactly as Settlement.stakeDigest will read them.
     let staking = StakeRegistry::new(s.Stakes().call().await?, &ctx.provider);
@@ -271,6 +307,26 @@ async fn build_input(ctx: &Ctx, round: u64, _block: u64) -> Result<RoundInput> {
         });
     }
     Ok(input)
+}
+
+/// ClaimForced events of a round, in chain order. forceClaim is open from CLAIM_START to the round end.
+async fn forced_claims(ctx: &Ctx, round: u64, block: u64) -> Result<Vec<Bytes>> {
+    let start = round * ROUND_LENGTH;
+    let to = (start + ROUND_LENGTH - 1).min(block);
+    if to < start + CLAIM_START {
+        return Ok(vec![]);
+    }
+    let filter = Filter::new()
+        .address(ctx.settlement)
+        .from_block(start + CLAIM_START)
+        .to_block(to)
+        .topic1(B256::from(U256::from(round)))
+        .event_signature(Settlement::ClaimForced::SIGNATURE_HASH);
+    let mut out = vec![];
+    for log in ctx.provider.get_logs(&filter).await? {
+        out.push(log.log_decode::<Settlement::ClaimForced>()?.inner.data.witness);
+    }
+    Ok(out)
 }
 
 /// CommitForced and RevealForced events of a round, in chain order.

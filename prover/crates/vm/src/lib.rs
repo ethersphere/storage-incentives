@@ -8,9 +8,13 @@
 //! transactions, so no `msg.sender` and no transaction order) the replacement rule is documented on the
 //! function and in docs/ZK-SETTLEMENT.md, section "Rule differences".
 //!
-//! Not ported yet: the `claim` storage witness checks (chunk inclusion proofs, postage stamp and SOC
-//! signatures, reserve size estimate). See docs/ZK-SETTLEMENT.md, "Phase 4".
+//! `claim`'s storage evidence (chunk inclusion proofs, postage stamps, SOC signatures, reserve size
+//! estimate) is checked in `claim.rs`. A round with a truth but no valid witness is "unclaimed": like a
+//! reverted `claim`, it pays nothing, freezes nobody and leaves the price alone.
 
+pub mod bmt;
+pub mod claim;
+pub mod sample;
 mod types;
 
 pub use types::*;
@@ -30,6 +34,8 @@ pub enum VmError {
     StakesMismatch,
     /// Arithmetic overflow where Solidity would have reverted.
     Overflow,
+    /// `batches` does not list exactly the batches the claim witnesses reference, in order.
+    BatchesMismatch,
 }
 
 /// keccak256("SwarmSettlementCommit(uint256 chainId,address settlement,uint64 round,bytes32 obfuscatedHash)")
@@ -284,7 +290,14 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         participants: commits.iter().map(|(o, _)| *o).collect(),
         stakeDigest: stake_digest(&input.stakes),
         stakePrice: input.stake_price,
+        forcedClaimsHash: claim::forced_claims_hash(&input.forced_claims),
+        batchIds: input.batches.iter().map(|b| b.batch_id).collect(),
+        batchDigest: claim::batch_digest(&input.batches),
+        sampleMaxValue: input.sample_max_value,
     };
+    if inputs.batchIds != claim_batch_ids(input) {
+        return Err(VmError::BatchesMismatch);
+    }
     let mut out = Outcome {
         hasTruth: false,
         truthHash: B256::ZERO,
@@ -295,6 +308,7 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         redundancy: 0,
         freezeOwners: vec![],
         freezeDurations: vec![],
+        unclaimed: false,
     };
 
     // Redistribution.sol cannot be claimed without reveals; nothing happens.
@@ -361,14 +375,56 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         }
     }
 
-    out.hasTruth = true;
     out.truthHash = truth_hash;
     out.truthDepth = truth_depth;
     out.redundancy = redundancy as u16; // uint16(redundancyCount), truncating like Solidity
+
+    // claim: the storage evidence for the truth's sample. Like a reverted claim, a round without a valid
+    // witness changes nothing on chain.
+    let ctx = claim::ClaimContext {
+        anchor: input.round_anchor,
+        seed,
+        sample_hash: truth_hash,
+        depth: truth_depth,
+        batches: &input.batches,
+        sample_max_value: input.sample_max_value,
+    };
+    if claim_candidates(input).any(|w| claim::verify_claim(&w, &ctx).is_ok()) {
+        out.hasTruth = true;
+    } else {
+        out.unclaimed = true;
+        out.freezeOwners.clear();
+        out.freezeDurations.clear();
+    }
     Ok(PublicValues {
         inputs,
         outcome: out,
     })
+}
+
+/// Claim witnesses in the order they are tried: the off-chain one, then forced ones in chain order.
+/// Bytes that do not decode are skipped. The payout always goes to the selected winner, so any node
+/// that holds the truth's sample can supply the witness.
+pub fn claim_candidates(input: &RoundInput) -> impl Iterator<Item = claim::ClaimWitness> + '_ {
+    input
+        .claim
+        .iter()
+        .chain(&input.forced_claims)
+        .filter_map(|b| claim::ClaimWitness::decode(b))
+}
+
+/// Every batch id the candidate witnesses reference, first occurrence first. Settlement reads exactly
+/// these batches, so the prover cannot hide a batch to make a forced witness fail.
+pub fn claim_batch_ids(input: &RoundInput) -> Vec<B256> {
+    let mut ids: Vec<B256> = Vec::new();
+    for w in claim_candidates(input) {
+        for id in w.batch_ids() {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+    }
+    ids
 }
 
 /// Checks of `Redistribution.reveal`. Returns (depth, hash, stakeDensity) when the reveal opens the

@@ -30,6 +30,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dotenv = "0.15"
 rand = "0.8"
 hex = "0.4"
+rayon = "1"
 
 [build-dependencies]
 sp1-build = "6.0.1"

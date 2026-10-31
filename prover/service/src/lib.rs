@@ -11,6 +11,8 @@ pub const COMMIT_END: u64 = 38;
 pub const ANCHOR_END: u64 = 57;
 pub const REVEAL_END: u64 = 114;
 pub const SEED_OFFSET: u64 = 114;
+/// Claim witnesses are accepted from here to the end of the round.
+pub const CLAIM_START: u64 = 115;
 /// EIP-2935 serves this many past block hashes; after that a round's seed is gone for good.
 pub const HISTORY_SERVE_WINDOW: u64 = 8191;
 
@@ -32,6 +34,7 @@ alloy::sol! {
         function anchorRound(uint64 _round, bytes32 _commitsHash, uint32 _commitCount, bytes32 _dataRef) external;
         function forceCommit(uint64 _round, bytes32 _obfuscatedHash) external;
         function forceReveal(uint64 _round, bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _nonce) external;
+        function forceClaim(uint64 _round, bytes calldata _witness) external;
         function settleRound(bytes calldata _publicValues, bytes calldata _proofBytes) external;
 
         function rounds(uint64) external view returns (
@@ -43,7 +46,9 @@ alloy::sol! {
             bytes32 forcedCommitsHash,
             uint32 forcedCommitCount,
             bytes32 forcedRevealsHash,
-            uint32 forcedRevealCount
+            uint32 forcedRevealCount,
+            bytes32 forcedClaimsHash,
+            uint32 forcedClaimCount
         );
         function roundAnchor(uint64 _round) external view returns (bytes32);
         function selectionSeed(uint64 _round) external view returns (bytes32);
@@ -57,10 +62,13 @@ alloy::sol! {
         function programVKey() external view returns (bytes32);
         function Stakes() external view returns (address);
         function OracleContract() external view returns (address);
+        function PostageContract() external view returns (address);
+        function sampleMaxValue() external view returns (uint256);
 
         event RoundAnchored(uint64 indexed round, bytes32 roundAnchor, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
         event CommitForced(uint64 indexed round, address indexed owner, bytes32 obfuscatedHash);
         event RevealForced(uint64 indexed round, bytes32 indexed overlay, uint8 depth, bytes32 hash, bytes32 nonce);
+        event ClaimForced(uint64 indexed round, address indexed sender, bytes witness);
         event RoundSettled(
             uint64 indexed round,
             bool hasTruth,
@@ -71,6 +79,18 @@ alloy::sol! {
             uint256 payout,
             address prover,
             uint256 proverFee
+        );
+    }
+
+    #[sol(rpc)]
+    contract PostageStamp {
+        function batches(bytes32 _batchId) external view returns (
+            address owner,
+            uint8 depth,
+            uint8 bucketDepth,
+            bool immutableFlag,
+            uint256 normalisedBalance,
+            uint256 lastUpdatedBlockNumber
         );
     }
 
@@ -114,4 +134,28 @@ pub struct RevealMsg {
     pub depth: u8,
     pub hash: B256,
     pub nonce: B256,
+}
+
+/// POST /v1/claim
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimMsg {
+    pub round: u64,
+    /// ABI-encoded `swarm_vm::claim::ClaimWitness`.
+    pub witness: Bytes,
+}
+
+/// GET /v1/rounds/{round}/outcome, available after the seed block.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OutcomeMsg {
+    pub round: u64,
+    pub has_truth: bool,
+    pub truth_hash: B256,
+    pub truth_depth: u8,
+    pub winner: Address,
+    pub round_anchor: B256,
+    pub selection_seed: B256,
+    /// A valid claim witness is already known for this round.
+    pub claimed: bool,
 }

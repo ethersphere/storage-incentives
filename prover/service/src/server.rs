@@ -12,7 +12,10 @@ use axum::{
 };
 use serde_json::{json, Value};
 use std::sync::Arc;
-use swarm_prover::{offset_of, round_of, CommitMsg, RevealMsg, ANCHOR_END, COMMIT_END, REVEAL_END};
+use swarm_prover::{
+    offset_of, round_of, seed_block, ClaimMsg, CommitMsg, OutcomeMsg, RevealMsg, ANCHOR_END, COMMIT_END,
+    REVEAL_END,
+};
 use swarm_vm::{commits_hash, recover_commit_signer, Reveal, RoundInput, SignedCommit};
 use tracing::info;
 
@@ -28,6 +31,8 @@ pub async fn run(ctx: Arc<Ctx>, listen: &str) -> Result<()> {
         .route("/v1/commit", post(commit))
         .route("/v1/reveal", post(reveal))
         .route("/v1/rounds/{round}", get(round))
+        .route("/v1/rounds/{round}/outcome", get(outcome))
+        .route("/v1/claim", post(claim))
         .with_state(ctx);
     let listener = tokio::net::TcpListener::bind(listen).await?;
     info!("listening on {listen}");
@@ -87,6 +92,10 @@ async fn commit(
         penalty_multiplier_disagreement: 0,
         penalty_multiplier_non_revealed: 0,
         penalty_random_factor: 0,
+        claim: None,
+        forced_claims: vec![],
+        batches: vec![],
+        sample_max_value: Default::default(),
     };
     if recover_commit_signer(&probe, &c) != Some(c.owner) {
         return Err(err(
@@ -162,4 +171,71 @@ async fn round(State(ctx): State<Arc<Ctx>>, Path(round): Path<u64>) -> Result<Js
         "settleTx": m.settle_tx,
         "failed": m.failed,
     })))
+}
+
+/// Truth and winner of a round, computed from the messages and the chain once the seed exists. A node
+/// that holds the truth's sample uses it to know that it must send the claim witness.
+async fn outcome(
+    State(ctx): State<Arc<Ctx>>,
+    Path(round): Path<u64>,
+) -> Result<Json<OutcomeMsg>, Reply> {
+    let b = block(&ctx).await?;
+    if b <= seed_block(round) {
+        return Err(err(StatusCode::CONFLICT, "seed not available yet"));
+    }
+    let input = crate::settler::build_input(&ctx, round, b, None)
+        .await
+        .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
+    let pv = swarm_vm::run(&input).map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:?}")))?;
+    Ok(Json(OutcomeMsg {
+        round,
+        has_truth: pv.outcome.hasTruth || pv.outcome.unclaimed,
+        truth_hash: pv.outcome.truthHash,
+        truth_depth: pv.outcome.truthDepth,
+        winner: pv.outcome.winner,
+        round_anchor: input.round_anchor,
+        selection_seed: input.selection_seed,
+        claimed: pv.outcome.hasTruth,
+    }))
+}
+
+/// Accept a claim witness only if it makes the round claimed: the VM runs with it before it is stored.
+async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<Json<Value>, Reply> {
+    let b = block(&ctx).await?;
+    if b <= seed_block(m.round) {
+        return Err(err(StatusCode::CONFLICT, "seed not available yet"));
+    }
+    if ctx.store.lock().await.rounds.get(&m.round).is_some_and(|r| r.settle_tx.is_some()) {
+        return Err(err(StatusCode::CONFLICT, "round already settled"));
+    }
+    let input = crate::settler::build_input(&ctx, m.round, b, Some(m.witness.clone()))
+        .await
+        .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
+    let pv = swarm_vm::run(&input).map_err(|e| err(StatusCode::BAD_REQUEST, format!("{e:?}")))?;
+    if !pv.outcome.hasTruth {
+        let why = swarm_vm::claim::ClaimWitness::decode(&m.witness)
+            .map(|w| {
+                let ctx2 = swarm_vm::claim::ClaimContext {
+                    anchor: input.round_anchor,
+                    seed: input.selection_seed,
+                    sample_hash: pv.outcome.truthHash,
+                    depth: pv.outcome.truthDepth,
+                    batches: &input.batches,
+                    sample_max_value: input.sample_max_value,
+                };
+                format!("{:?}", swarm_vm::claim::verify_claim(&w, &ctx2))
+            })
+            .unwrap_or_else(|| "witness does not decode".into());
+        return Err(err(StatusCode::BAD_REQUEST, format!("witness rejected: {why}")));
+    }
+    let mut store = ctx.store.lock().await;
+    let r = store.get_mut(m.round);
+    if r.claim.is_none() {
+        r.claim = Some(m.witness);
+    }
+    store
+        .save(m.round)
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    info!(round = m.round, "claim witness accepted");
+    Ok(Json(json!({ "ok": true })))
 }

@@ -1,4 +1,6 @@
 use super::*;
+use crate::claim::{address_to_bucket, verify_claim, BatchRecord, ClaimContext, ClaimError, PostageProof};
+use crate::sample::{Sample, SampleEntry, SAMPLE_SIZE};
 use alloy_primitives::{address, b256, Bytes};
 use alloy_signer::SignerSync;
 use alloy_signer_local::PrivateKeySigner;
@@ -43,7 +45,70 @@ fn base_input() -> RoundInput {
         penalty_multiplier_disagreement: 1,
         penalty_multiplier_non_revealed: 2,
         penalty_random_factor: 100,
+        claim: None,
+        forced_claims: vec![],
+        batches: vec![],
+        sample_max_value: U256::MAX,
     }
+}
+
+fn batch_owner() -> PrivateKeySigner {
+    PrivateKeySigner::from_bytes(&keccak256(b"batch owner")).unwrap()
+}
+
+fn batch() -> BatchRecord {
+    BatchRecord {
+        batch_id: keccak256(b"batch"),
+        owner: batch_owner().address(),
+        depth: 20,
+        bucket_depth: 16,
+    }
+}
+
+/// A postage stamp for `addr` in `batch()`, signed by its owner, as Bee would attach it.
+fn stamp_with(key: &PrivateKeySigner, addr: B256) -> PostageProof {
+    let b = batch();
+    let index = (address_to_bucket(addr, b.bucket_depth) as u64) << 32;
+    let mut msg = Vec::new();
+    msg.extend_from_slice(addr.as_slice());
+    msg.extend_from_slice(b.batch_id.as_slice());
+    msg.extend_from_slice(&index.to_be_bytes());
+    msg.extend_from_slice(&1u64.to_be_bytes());
+    let sig = key.sign_message_sync(keccak256(msg).as_slice()).unwrap();
+    PostageProof {
+        signature: Bytes::from(sig.as_bytes().to_vec()),
+        postageId: b.batch_id,
+        index,
+        timeStamp: 1,
+    }
+}
+
+fn stamp(addr: B256) -> PostageProof {
+    stamp_with(&batch_owner(), addr)
+}
+
+/// 32-byte payload like the tests' numberToArray(n).
+fn payload(n: u32) -> Vec<u8> {
+    let mut p = vec![0u8; 32];
+    p[..4].copy_from_slice(&n.to_be_bytes());
+    p
+}
+
+/// 16 chunks whose original addresses are in proximity of `anchor` at `depth`.
+fn sample(anchor: B256, depth: u8) -> Sample {
+    let entries: Vec<SampleEntry> = (0u32..)
+        .map(|i| SampleEntry::new(payload(i), &anchor))
+        .filter(|e| in_proximity(e.original, anchor, depth))
+        .take(SAMPLE_SIZE)
+        .collect();
+    Sample::new(entries)
+}
+
+/// Attach the off-chain claim witness for `s` and the batch it uses.
+fn with_claim(input: &mut RoundInput, s: &Sample) {
+    let w = s.witness(&input.round_anchor, input.selection_seed, stamp);
+    input.claim = Some(Bytes::from(w.encode()));
+    input.batches = vec![batch()];
 }
 
 fn stake_of(n: &Node) -> StakeRecord {
@@ -114,10 +179,13 @@ fn minimum_depth_matches_solidity() {
 #[test]
 fn honest_round_pays_one_and_freezes_nobody() {
     let ns = nodes(4);
-    let h = keccak256(b"reserve");
-    let input = play(&ns, 0, &[h; 4], &[true; 4]);
+    let s = sample(B256::ZERO, 0);
+    let h = s.hash();
+    let mut input = play(&ns, 0, &[h; 4], &[true; 4]);
+    with_claim(&mut input, &s);
     let pv = run(&input).unwrap();
     assert!(pv.outcome.hasTruth);
+    assert!(!pv.outcome.unclaimed);
     assert_eq!(pv.outcome.truthHash, h);
     assert_eq!(pv.outcome.redundancy, 4);
     assert!(ns.iter().any(|n| n.key.address() == pv.outcome.winner));
@@ -129,14 +197,23 @@ fn honest_round_pays_one_and_freezes_nobody() {
 #[test]
 fn liar_and_silent_nodes_are_frozen() {
     let ns = nodes(5);
-    let h = keccak256(b"reserve");
+    let s = sample(B256::ZERO, 0);
+    let h = s.hash();
     let lie = keccak256(b"lie");
     // Node 4 lies, node 3 never reveals. With 3 honest stakes against one liar the truth can still
     // land on the lie, so pick the outcome from the VM and check consistency.
-    let input = play(&ns, 0, &[h, h, h, h, lie], &[true, true, true, false, true]);
+    let mut input = play(&ns, 0, &[h, h, h, h, lie], &[true, true, true, false, true]);
+    with_claim(&mut input, &s);
     let pv = run(&input).unwrap();
     let silent = ns[3].key.address();
     let liar = ns[4].key.address();
+    if pv.outcome.truthHash != h {
+        // The lie won the draw. Nobody holds a sample for it, so the round is unclaimed: no effects.
+        assert!(pv.outcome.unclaimed && !pv.outcome.hasTruth);
+        assert!(pv.outcome.freezeOwners.is_empty());
+        assert_eq!(pv.outcome.winner, liar);
+        return;
+    }
     assert!(pv.outcome.freezeOwners.contains(&silent));
     let silent_idx = pv
         .outcome
@@ -148,22 +225,19 @@ fn liar_and_silent_nodes_are_frozen() {
         pv.outcome.freezeDurations[silent_idx],
         U256::from(2 * ROUND_LENGTH)
     );
-    if pv.outcome.truthHash == h {
-        assert!(pv.outcome.freezeOwners.contains(&liar));
-        assert_eq!(pv.outcome.redundancy, 3);
-    } else {
-        assert_eq!(pv.outcome.redundancy, 1);
-        assert_eq!(pv.outcome.winner, liar);
-    }
+    assert!(pv.outcome.freezeOwners.contains(&liar));
+    assert_eq!(pv.outcome.redundancy, 3);
 }
 
 #[test]
 fn bad_signature_is_dropped_not_fatal() {
     let ns = nodes(3);
-    let h = keccak256(b"reserve");
+    let smp = sample(B256::ZERO, 0);
+    let h = smp.hash();
     let mut input = play(&ns, 0, &[h; 3], &[true; 3]);
     input.commits[1].signature = Bytes::from(vec![0u8; 65]);
     input.stakes.remove(1);
+    with_claim(&mut input, &smp);
     let pv = run(&input).unwrap();
     assert_eq!(pv.inputs.participants.len(), 2);
     assert_eq!(pv.outcome.redundancy, 2);
@@ -174,7 +248,8 @@ fn bad_signature_is_dropped_not_fatal() {
 #[test]
 fn forced_commit_and_reveal_count() {
     let ns = nodes(3);
-    let h = keccak256(b"reserve");
+    let smp = sample(B256::ZERO, 0);
+    let h = smp.hash();
     let mut input = play(&ns, 0, &[h; 3], &[true; 3]);
     // Move node 2 to the forced path: drop its off-chain commit and reveal.
     let c = input.commits.remove(2);
@@ -186,6 +261,7 @@ fn forced_commit_and_reveal_count() {
     });
     input.forced_reveals.push(r);
     input.stakes.push(s);
+    with_claim(&mut input, &smp);
     let pv = run(&input).unwrap();
     assert_eq!(pv.outcome.redundancy, 3);
     assert_eq!(pv.inputs.participants[2], c.owner);
@@ -199,8 +275,10 @@ fn out_of_proximity_reveal_counts_as_not_revealed() {
     // depth 1 with height 0: overlay must share the first bit with the zero anchor.
     ns[0].overlay = b256!("0100000000000000000000000000000000000000000000000000000000000000");
     ns[1].overlay = b256!("8100000000000000000000000000000000000000000000000000000000000000");
-    let h = keccak256(b"reserve");
-    let input = play(&ns, 1, &[h; 2], &[true; 2]);
+    let smp = sample(B256::ZERO, 1);
+    let h = smp.hash();
+    let mut input = play(&ns, 1, &[h; 2], &[true; 2]);
+    with_claim(&mut input, &smp);
     let pv = run(&input).unwrap();
     assert_eq!(pv.outcome.redundancy, 1);
     assert_eq!(pv.outcome.winner, ns[0].key.address());
@@ -212,9 +290,11 @@ fn out_of_proximity_reveal_counts_as_not_revealed() {
 #[test]
 fn recently_staked_node_is_ignored() {
     let ns = nodes(2);
-    let h = keccak256(b"reserve");
+    let smp = sample(B256::ZERO, 0);
+    let h = smp.hash();
     let mut input = play(&ns, 0, &[h; 2], &[true; 2]);
     input.stakes[1].last_updated = U256::from(ROUND * ROUND_LENGTH - 10);
+    with_claim(&mut input, &smp);
     let pv = run(&input).unwrap();
     assert_eq!(pv.outcome.redundancy, 1);
     assert_eq!(pv.inputs.participants.len(), 2);
@@ -257,8 +337,167 @@ fn unsorted_commits_are_rejected() {
 fn public_values_roundtrip_abi() {
     use alloy_sol_types::SolType;
     let ns = nodes(3);
-    let h = keccak256(b"reserve");
-    let pv = run(&play(&ns, 0, &[h; 3], &[true, true, false])).unwrap();
+    let smp = sample(B256::ZERO, 0);
+    let mut input = play(&ns, 0, &[smp.hash(); 3], &[true, true, false]);
+    with_claim(&mut input, &smp);
+    let pv = run(&input).unwrap();
     let bytes = PublicValues::abi_encode(&pv);
     assert_eq!(PublicValues::abi_decode(&bytes).unwrap(), pv);
+}
+
+// ------------------------------------------------------------------------------------------------
+// claim (storage evidence)
+// ------------------------------------------------------------------------------------------------
+
+#[test]
+fn bmt_builder_matches_proof_verification() {
+    let anchor = keccak256(b"anchor");
+    let p = payload(7);
+    let plain = bmt::Tree::new(&p, None);
+    let keyed = bmt::Tree::new(&p, Some(anchor));
+    for i in [0usize, 1, 5, 127] {
+        assert_eq!(bmt::chunk_address_from_proof(&plain.proof(i), plain.segment(i), i as u64, 32), plain.address());
+        assert_eq!(
+            bmt::transformed_address_from_proof(&keyed.proof(i), keyed.segment(i), i as u64, 32, &anchor),
+            keyed.address()
+        );
+    }
+    let fast = sample::FastHasher::new(anchor);
+    let seg = B256::from_slice(&p);
+    assert_eq!(fast.original(seg), plain.address());
+    assert_eq!(fast.transformed(seg), keyed.address());
+}
+
+fn claim_ctx<'a>(s: &Sample, anchor: B256, seed: B256, batches: &'a [BatchRecord]) -> ClaimContext<'a> {
+    ClaimContext { anchor, seed, sample_hash: s.hash(), depth: 0, batches, sample_max_value: U256::MAX }
+}
+
+#[test]
+fn valid_witness_verifies_for_many_seeds() {
+    let anchor = keccak256(b"anchor");
+    let s = sample(anchor, 0);
+    let batches = [batch()];
+    for i in 0u8..20 {
+        let seed = keccak256([i]);
+        let w = s.witness(&anchor, seed, stamp);
+        assert_eq!(verify_claim(&w, &claim_ctx(&s, anchor, seed, &batches)), Ok(()), "seed {i}");
+    }
+}
+
+#[test]
+fn tampered_witnesses_are_rejected() {
+    let anchor = keccak256(b"anchor");
+    let seed = keccak256(b"seed");
+    let s = sample(anchor, 0);
+    let good = s.witness(&anchor, seed, stamp);
+    let batches = [batch()];
+    let ctx = claim_ctx(&s, anchor, seed, &batches);
+    let check = |f: &dyn Fn(&mut claim::ClaimWitness)| {
+        let mut w = good.clone();
+        f(&mut w);
+        verify_claim(&w, &ctx)
+    };
+
+    assert_eq!(check(&|w| w.proofLast.proofSegments[1] = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(1)));
+    assert_eq!(check(&|w| w.proofLast.proofSegments2[0] = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(2)));
+    assert_eq!(check(&|w| w.proofLast.proveSegment2 = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(3)));
+    assert_eq!(check(&|w| w.proofLast.proofSegments3[3] = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(4)));
+    assert_eq!(check(&|w| w.proofLast.chunkSpan = 33), Err(ClaimError::InclusionProofFailed(3)));
+    assert_eq!(
+        check(&|w| w.proofLast.postageProof = stamp_with(&PrivateKeySigner::random(), w.proofLast.proveSegment)),
+        Err(ClaimError::SigRecoveryFailed)
+    );
+    assert_eq!(check(&|w| w.proofLast.postageProof.index += 1 << 32), Err(ClaimError::BucketDiffers));
+    assert_eq!(check(&|w| w.proofLast.postageProof.index |= 16), Err(ClaimError::IndexOutsideSet));
+    assert_eq!(check(&|w| w.proofLast.postageProof.postageId = B256::ZERO), Err(ClaimError::BatchDoesNotExist));
+    assert_eq!(check(&|w| w.proofLast.postageProof.signature = Bytes::from(vec![1u8; 64])), Err(ClaimError::SigRecoveryFailed));
+    assert_eq!(check(&|w| w.proofLast.proofSegments.clear()), Err(ClaimError::InclusionProofFailed(1)));
+    // Witness 1 and 2 swapped: the inclusion index no longer matches.
+    assert_eq!(
+        check(&|w| std::mem::swap(&mut w.proof1, &mut w.proof2)),
+        Err(ClaimError::InclusionProofFailed(1))
+    );
+
+    let mut tight = claim_ctx(&s, anchor, seed, &batches);
+    tight.sample_max_value = U256::from_be_bytes(s.entries[SAMPLE_SIZE - 1].transformed.0);
+    assert_eq!(verify_claim(&good, &tight), Err(ClaimError::ReserveCheckFailed));
+
+    let mut deep = claim_ctx(&s, anchor, seed, &batches);
+    deep.depth = 12;
+    assert!(matches!(verify_claim(&good, &deep), Err(ClaimError::OutOfDepthClaim(_))));
+
+    let dead = [BatchRecord { owner: Address::ZERO, ..batch() }];
+    assert_eq!(verify_claim(&good, &claim_ctx(&s, anchor, seed, &dead)), Err(ClaimError::BatchDoesNotExist));
+}
+
+#[test]
+fn wrong_order_in_sample_is_rejected() {
+    // Build a "sample" whose entries are not sorted by transformed address.
+    let anchor = keccak256(b"anchor");
+    let seed = keccak256(b"seed");
+    let s = sample(anchor, 0);
+    let mut entries = s.entries.clone();
+    entries.reverse();
+    let mut payload_bytes = Vec::new();
+    for e in &entries {
+        payload_bytes.extend_from_slice(e.original.as_slice());
+        payload_bytes.extend_from_slice(e.transformed.as_slice());
+    }
+    let tree = bmt::Tree::new(&payload_bytes, None);
+    // Re-point the witness at the unsorted tree: proofs are valid, order is not.
+    let (i1, i2) = claim::witness_indices(seed);
+    let mut w = s.witness(&anchor, seed, stamp);
+    for (p, k) in [(&mut w.proof1, i1 as usize), (&mut w.proof2, i2 as usize), (&mut w.proofLast, 15)] {
+        let e = &entries[k];
+        p.proofSegments = tree.proof(k * 2);
+        p.proveSegment = tree.segment(k * 2);
+        let og = bmt::Tree::new(&e.payload, None);
+        let tr = bmt::Tree::new(&e.payload, Some(anchor));
+        let seg = claim::chunk_segment_index(seed) as usize;
+        p.proofSegments2 = og.proof(seg);
+        p.proveSegment2 = og.segment(seg);
+        p.proofSegments3 = tr.proof(seg);
+        p.postageProof = stamp(e.original);
+    }
+    let batches = [batch()];
+    let ctx = ClaimContext { sample_hash: tree.address(), ..claim_ctx(&s, anchor, seed, &batches) };
+    assert!(matches!(
+        verify_claim(&w, &ctx),
+        Err(ClaimError::RandomElementCheckFailed) | Err(ClaimError::LastElementCheckFailed)
+    ));
+}
+
+#[test]
+fn truth_without_witness_is_unclaimed() {
+    let ns = nodes(3);
+    let s = sample(B256::ZERO, 0);
+    let input = play(&ns, 0, &[s.hash(); 3], &[true, true, false]);
+    let pv = run(&input).unwrap();
+    assert!(!pv.outcome.hasTruth);
+    assert!(pv.outcome.unclaimed);
+    assert!(pv.outcome.freezeOwners.is_empty());
+    assert!(pv.inputs.batchIds.is_empty());
+}
+
+#[test]
+fn forced_claim_counts_when_the_prover_has_none() {
+    let ns = nodes(3);
+    let s = sample(B256::ZERO, 0);
+    let mut input = play(&ns, 0, &[s.hash(); 3], &[true; 3]);
+    let w = s.witness(&input.round_anchor, input.selection_seed, stamp);
+    input.forced_claims = vec![Bytes::from(vec![1, 2, 3]), Bytes::from(w.encode())];
+    input.batches = vec![batch()];
+    let pv = run(&input).unwrap();
+    assert!(pv.outcome.hasTruth);
+    assert_eq!(pv.inputs.forcedClaimsHash, claim::forced_claims_hash(&input.forced_claims));
+}
+
+#[test]
+fn prover_cannot_hide_a_batch() {
+    let ns = nodes(2);
+    let s = sample(B256::ZERO, 0);
+    let mut input = play(&ns, 0, &[s.hash(); 2], &[true; 2]);
+    with_claim(&mut input, &s);
+    input.batches.clear();
+    assert_eq!(run(&input), Err(VmError::BatchesMismatch));
 }

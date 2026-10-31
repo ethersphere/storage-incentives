@@ -90,6 +90,10 @@ pub fn execute_report(
     println!("winner:       {}", pv.outcome.winner);
     println!("redundancy:   {}", pv.outcome.redundancy);
     println!("freezes:      {}", pv.outcome.freezeOwners.len());
+    println!(
+        "claim:        {}",
+        if pv.outcome.hasTruth { "valid witness" } else if pv.outcome.unclaimed { "unclaimed" } else { "no truth" }
+    );
     println!("cycles:       {}", report.total_instruction_count());
     println!("execute time: {:?}", started.elapsed());
     if also_prove {

@@ -25,6 +25,10 @@ sol! {
         address[] participants;
         bytes32 stakeDigest;
         uint32 stakePrice;
+        bytes32 forcedClaimsHash;
+        bytes32[] batchIds;
+        bytes32 batchDigest;
+        uint256 sampleMaxValue;
     }
 
     /// Outputs: executed by Settlement.
@@ -39,6 +43,7 @@ sol! {
         uint16 redundancy;
         address[] freezeOwners;
         uint256[] freezeDurations;
+        bool unclaimed;
     }
 
     /// What the proof commits to. Must match `Settlement.PublicValues`.
@@ -111,4 +116,12 @@ pub struct RoundInput {
     pub penalty_multiplier_disagreement: u8,
     pub penalty_multiplier_non_revealed: u8,
     pub penalty_random_factor: u8,
+    /// The claim witness the prover received off chain: an ABI-encoded `ClaimWitness`.
+    pub claim: Option<Bytes>,
+    /// `ClaimForced` events of the round, in chain order.
+    pub forced_claims: Vec<Bytes>,
+    /// PostageStamp records for every batch the claim witnesses reference (see `claim_batch_ids`).
+    pub batches: Vec<crate::claim::BatchRecord>,
+    /// Settlement.sampleMaxValue (Redistribution's reserve size estimate bound).
+    pub sample_max_value: U256,
 }

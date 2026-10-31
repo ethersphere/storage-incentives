@@ -17,6 +17,9 @@ pub struct RoundMessages {
     pub reveals: Vec<Reveal>,
     /// The list exactly as anchored on chain. Set once, in the anchor phase.
     pub anchored: Option<Vec<SignedCommit>>,
+    /// The first valid claim witness received off chain.
+    #[serde(default)]
+    pub claim: Option<alloy::primitives::Bytes>,
     pub settle_tx: Option<String>,
     pub failed: Option<String>,
 }

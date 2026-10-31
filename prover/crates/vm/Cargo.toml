@@ -12,3 +12,4 @@ serde = { workspace = true }
 [dev-dependencies]
 alloy-signer = "2"
 alloy-signer-local = "2"
+serde_json = "1"

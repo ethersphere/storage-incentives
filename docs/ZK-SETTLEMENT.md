@@ -4,10 +4,16 @@ Branch `feat/zk-settlement`. This is the working implementation of the proposal 
 [ZK-REDISTRIBUTION.md](./ZK-REDISTRIBUTION.md) ("the game off chain, settlement on chain"), option 4 of
 the Homecoming deck. It is built so it can be run end to end on Sepolia with simulated nodes.
 
-**Status:** a prototype. The game logic (commit, reveal, eligibility, truth and winner selection,
-freezes, redundancy for the price oracle) runs off chain and is proven with SP1. The storage evidence
-that `claim` checks today (chunk inclusion proofs, stamp and SOC signatures, reserve size estimate) is
-**not in the proof yet**. That is Phase 4 below. Do not read this as "storage is proven".
+**Status:** a prototype. All of `Redistribution.sol` runs off chain and is proven with SP1:
+
+- the game: commit, reveal, eligibility, truth and winner selection, freezes, redundancy for the price
+  oracle;
+- the storage evidence of `claim`: chunk inclusion proofs in the reserve sample, transformed chunk
+  addresses, postage stamp signatures, single-owner chunk (SOC) signatures, the order of the witnesses,
+  and the reserve size estimate.
+
+The Rust port of the claim checks accepts the claims that the real `Redistribution.claim` accepts in
+master's tests, including the Bee-generated CAC and SOC proofs (section 2, "Claim").
 
 ---
 
@@ -19,7 +25,7 @@ that `claim` checks today (chunk inclusion proofs, stamp and SOC signatures, res
 | `Staking.sol` (`StakeRegistry`) | **none** | Settlement calls `freezeDeposit` with `REDISTRIBUTOR_ROLE` and reads stake records with existing views |
 | `PriceOracle.sol` | **none** | Settlement calls `adjustPrice(redundancy)` with `PRICE_UPDATER_ROLE`. The redundancy number comes out of the proof |
 | `Redistribution.sol` | **not deployed** | Left in the tree untouched so master's tests still run. Settlement takes its three roles |
-| `settlement/Settlement.sol` | **new**, ~400 lines | Anchors each round, keeps the censorship escape hatches, checks proof inputs against the chain, executes the outcome |
+| `settlement/Settlement.sol` | **new**, ~500 lines | Anchors each round, keeps the censorship escape hatches (commit, reveal, claim), checks proof inputs against the chain, executes the outcome |
 | `settlement/ISP1Verifier.sol` | new | Interface of the SP1 verifier |
 | `settlement/SP1MockVerifier.sol` | new | Accepts empty proofs. Local and smoke testing only |
 
@@ -33,6 +39,7 @@ src/settlement/Settlement.sol          the one new contract
 src/settlement/ISP1Verifier.sol
 src/settlement/SP1MockVerifier.sol
 test/Settlement.test.ts                contract tests (mock verifier)
+test/util/claimVectors.ts              dumps accepted Redistribution claims as Rust test vectors (DUMP_CLAIM_VECTORS=1)
 deploy/zk/000_deploy_core.ts           token, postage, oracle, staking: master code, unchanged
 deploy/zk/001_deploy_settlement.ts     verifier (mock or SP1 gateway) + Settlement
 deploy/zk/002_roles_and_pot.ts         roles Redistribution had -> Settlement; price; one batch so the pot grows
@@ -40,7 +47,12 @@ scripts/zk/setup-nodes.ts              fund and stake simulated nodes
 hardhat.config.ts                      networks zklocal (anvil) and sepoliazk, both use deploy/zk/
 helper-hardhat-config.ts               sp1VerifierGateway for sepoliazk
 prover/                                Rust workspace, see prover/README.md
-  crates/vm/                           the Redistribution VM (game rules as a pure function) + tests
+  crates/vm/src/lib.rs                 the Redistribution VM (game rules as a pure function)
+  crates/vm/src/claim.rs               claim's storage checks (inclusion, stamp, SOC, order, size)
+  crates/vm/src/bmt.rs                 BMT and transformed BMT hashing and proofs
+  crates/vm/src/sample.rs              reserve sample and claim witness builders (node side)
+  crates/vm/tests/claim_vectors.rs     differential test against claims Redistribution accepted
+  crates/vm/tests/vectors/             bee-cac, bee-soc, generated-cac, generated-soc
   program/                             the SP1 program (runs the VM, commits public values)
   service/src/main.rs                  swarm-prover: serve | vkey | execute
   service/src/settler.rs               anchor loop, settle loop, round input from chain state
@@ -62,11 +74,12 @@ docs/ZK-REDISTRIBUTION.md              the proposal (copied from docs/zk-redistr
   sign commit ──POST /v1/commit──►┐                         PostageStamp   StakeRegistry   PriceOracle
   reveal      ──POST /v1/reveal──►│                              ▲  withdraw     ▲ freeze       ▲ adjustPrice
                                   │                              └───────┬───────┴──────────────┘
-  (censored?) forceCommit / forceReveal ───────────────────────►  Settlement
+  claim proofs ─POST /v1/claim───►│  (after the seed; the winner)
+  (censored?) forceCommit / forceReveal / forceClaim ──────────►  Settlement
                                   │                                ▲ anchorRound(commitsHash)   (1 tx/round)
                          swarm-prover (service)                    │ settleRound(pv, proof)     (1 tx/round)
                          ├─ store messages ───────────────────────┘
-                         ├─ read chain: anchor, seed, forced events, stake records, game state
+                         ├─ read chain: anchor, seed, forced events, stake records, batches, game state
                          ├─ swarm-vm::run(input)       native, sanity check
                          └─ SP1: program(input) ─► Groth16 proof ─► settleRound
 ```
@@ -83,7 +96,8 @@ Two transactions per round for the whole network, instead of about three per par
 | 38-56 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once. `forceCommit` is still open, so a node that is missing from the anchored list can still get in |
 | 57-113 | reveal | Nodes send reveals to the prover, or call `forceReveal` |
 | 114 | seed block | Its block hash becomes the selection seed. Nobody chooses it |
-| 115 onward | settle | Anyone with a valid proof calls `settleRound`. Rounds settle in increasing order |
+| 115-151 | claim | Truth and winner are known. The winner (or any node that holds the truth's sample) sends the three claim proofs to the prover, or calls `forceClaim` |
+| 115 onward | settle | Anyone with a valid proof calls `settleRound`. Rounds settle in increasing order. A round whose truth has no valid claim ("unclaimed") settles only from block 152 |
 
 ### Randomness
 
@@ -117,6 +131,9 @@ one block hash.
 | penalty parameters | Settlement state | 7 |
 | `participants`, `stakeDigest` | `StakeRegistry.stakes(owner)` read now, for every participant: overlay, committed and potential stake, height, last update | 8 |
 | `stakePrice` | `PriceOracle.currentPrice()` (the VM computes effective stake from it) | 9 |
+| `forcedClaimsHash` | hash chain built by `forceClaim` | 10 |
+| `batchIds`, `batchDigest` | `PostageStamp.batches(id)` read now, for every batch the claim witnesses use: owner, depth, bucket depth | 11 |
+| `sampleMaxValue` | Settlement state (default: Redistribution's value) | 12 |
 
 Then `verifier.verifyProof(programVKey, publicValues, proof)`. Then it executes the outcome: freezes,
 `adjustPrice(redundancy)`, withdraws the pot, pays `proverFeeBps` (default 1%) to the caller and the
@@ -138,6 +155,47 @@ The rules are ported one to one from `Redistribution.sol` on master:
   revealed disagreement (behind the random factor);
 - redundancy = the number of truth-tellers, which goes to the oracle.
 
+### Claim (prover/crates/vm/src/claim.rs)
+
+`claim` checks three chunk witnesses from the truth's reserve sample: two at random positions
+(`seed % 15`, `seed % 14`) and the last one. The port keeps each check of `Redistribution.sol`:
+
+| Check | Redistribution.sol | Rust |
+| --- | --- | --- |
+| The witness is in the neighbourhood: `inProximity(proveSegment, anchor, depth)` | `claim` | `verify_claim` |
+| The witness is in the sample at its position (BMT proof against the truth hash) | `inclusionFunction` (1) | `inclusion` |
+| The plain and transformed chunk proofs share the first sister segment | `inclusionFunction` (2) | `inclusion` |
+| The opened segment (`seed % 128`) gives the original chunk address | `inclusionFunction` (3) | `inclusion` |
+| The transformed address (keyed with the round anchor) is in the sample; for a SOC, `keccak(socAddress, transformed)` | `inclusionFunction` (4) | `inclusion` |
+| The batch exists; the stamp index is inside the batch; the stamp bucket matches the address | `stampFunction` | `stamp` |
+| The batch owner signed the stamp (EIP-191, strict `ecrecover`: v must be 27 or 28) | `Signatures.postageVerify` | `stamp`, `ecrecover` |
+| The SOC owner signed the chunk, and `keccak(identifier, owner)` is the SOC address | `socFunction` | `soc` |
+| The witnesses are in ascending order | `checkOrder` | `check_order` |
+| The last witness is below `sampleMaxValue` | `estimateSize` | `verify_claim` |
+
+**Differential test.** `test/util/claimVectors.ts` writes the inputs of four claims that the real
+`Redistribution.claim` accepts in `test/Redistribution.test.ts` (Bee-generated CAC, Bee-generated SOC,
+generated CAC, generated SOC). `crates/vm/tests/claim_vectors.rs` checks that the Rust port accepts all
+four, and rejects them after a change to a stamp signature, a SOC signature, the seed, the anchor or the
+truth hash. To make the vectors again:
+
+```bash
+DUMP_CLAIM_VECTORS=1 npx hardhat test test/Redistribution.test.ts --grep "should claim pot by"
+```
+
+**Who sends the claim.** The payout always goes to the selected winner. Thus any node that holds the
+truth's sample can send the witness. node-sim lets the winner send it. The prover runs the VM with a
+witness before it accepts it at `POST /v1/claim`.
+
+**Unclaimed round.** On master, a `claim` without valid proofs reverts. Then the round has no effect: no
+payout, no freezes, no price change. The VM gives the same result, with `unclaimed = true`. Settlement
+accepts an unclaimed outcome only after the claim window (block 152), so a prover cannot close the round
+before the winner had time to send the witness.
+
+**Batches cannot be hidden.** The VM collects the batch ids of every candidate witness (the off-chain one
+and each `forceClaim`). The prover must supply a record for each of these batches, and Settlement reads
+each batch from PostageStamp. Thus a prover cannot omit a batch to make a valid forced witness fail.
+
 ### Rule differences from Redistribution.sol (forced by the venue)
 
 | Today | Here | Why |
@@ -149,6 +207,8 @@ The rules are ported one to one from `Redistribution.sol` on master:
 | Disagreement freeze uses `block.prevrandao % 100` | `keccak(seed, "2") % 100` | Same reason |
 | Invalid reveal reverts, so the node stays "not revealed" | Invalid reveal is ignored, so the node stays "not revealed" | Same effect |
 | Anchored commit with a bad signature | Dropped from the round | A prover that anchored garbage must not make the round unprovable |
+| `claim` reads the batch at claim time | The batch is read at `settleRound` | The same check, at the settlement transaction |
+| Anyone can call `claim` during the claim phase | Anyone can send the witness to a prover, or call `forceClaim` (blocks 115-151) | The same, off chain |
 
 ---
 
@@ -172,8 +232,8 @@ later revealer knows the seed and has the same option. Other branches fix the ga
 branch does not fix the issue. A possible fix here is an `anchorReveals(revealsHash)` transaction before
 the seed block.
 
-**Storage possession.** Not proven yet (Phase 4). The winner is paid without the three chunk witnesses
-that `claim` checks today.
+**Storage possession.** Proven, with the same evidence as `claim` today (section 2, "Claim"). A prover can
+withhold the winner's witness; `forceClaim` is the escape hatch, the same as for commits and reveals.
 
 **Prover liveness.** `settleRound` is permissionless. `anchorRound` is limited to `ANCHOR_ROLE` (the
 Foundation's prover first, as the proposal says). If nobody settles, the pot stays in PostageStamp and
@@ -211,7 +271,24 @@ including the 21k transaction base), and the same proof with one byte of public 
 rejected. So a real settlement for this round is about 0.5M gas for the whole network. Today's game
 costs about three transactions per participating node.
 
-**zkVM cycles** (`swarm-prover synth` + `execute`; 80% honest, 10% liars, 10% silent):
+**End-to-end local run with storage proofs** (2026-10-31; anvil, 1 s blocks, mock proofs). node-sim
+keeps a shared reserve of 3,000,000 chunks stamped by the deployed batch. It computes the real sample
+each round (about 0.5 s) and passes Redistribution's default `sampleMaxValue`. Rounds 4 to 13 settled with
+no manual steps:
+
+| Round | What happened | `settleRound` gas |
+| --- | --- | --- |
+| 4, 5 | The liar (largest stake) won the truth draw with a fake hash. Nobody can prove storage for it, so the round settled unclaimed after block 152: no payout, no freezes | 147,177 / 147,165 |
+| 6 | Honest truth. The winner (node 2) posted the three claim proofs with `forceClaim`. Paid; the silent node and the liar were frozen | 308,262 |
+| 7, 8 | Same, through `forceClaim` | 256,126 |
+| 9, 10, 14 | No commits | 76,671 |
+| 11, 12, 13 | Honest truth. The winner (node 3) sent the claim proofs to `POST /v1/claim`; the prover checked them and settled | 260,236 / 242,233 / 242,245 |
+
+zkVM cycles of real rounds: 960,596 for round 4 (unclaimed) and 2,927,494 for round 6 (claim with three
+witnesses). The claim checks add about 2M cycles to a round.
+
+**zkVM cycles** (`swarm-prover synth` + `execute`; 80% honest, 10% liars, 10% silent; rounds before the
+claim checks were added):
 
 | Participants | Cycles | Native execute |
 | --- | --- | --- |
@@ -294,17 +371,16 @@ Phases are from [ZK-REDISTRIBUTION.md §11](./ZK-REDISTRIBUTION.md).
 | 1 | Deterministic VM, no EVM dependency | **Done** for master's rules (`crates/vm`) |
 | 2 | Shadow mode: VM against live Gnosis rounds | Not started. Needs a replay tool that turns `Committed`/`Revealed` events into a `RoundInput` |
 | 3 | Prove the game logic | **Done** (SP1 program, Settlement, Sepolia setup) |
-| 4 | Prove the storage witnesses | **Next.** Port `claim`'s checks (`BMTChunk`, `TransformedBMTChunk`, `Signatures.postageVerify` / `socVerify`, `estimateSize`) into the VM. Postage batch data needs the same treatment as stakes: read on chain at settle time, or Ethereum storage proofs inside the zkVM |
+| 4 | Prove the storage witnesses | **Done** (`claim.rs`, `forceClaim`, batch binding, differential vectors) |
 | 5 | Canonical settlement, retire on-chain phases | This branch's deployment shape |
 | 6 | Recursive aggregation | Not started |
 
 ### Open items (in priority order)
 
-1. Phase 4: storage witnesses in the proof.
-2. Timelock or exit window on `setVerifier`.
-3. Swarm as the data layer: upload the anchored list and pass the reference as `dataRef`.
-4. Forced-inclusion scoping across several rounds (§7.1c of the proposal).
-5. Bee integration: the commit and reveal messages, the HTTP API (or Swarm feeds), and when to fall back
-   to `forceCommit`/`forceReveal`.
-6. Nodes don't know the minimum depth for round N+1 until round N is settled. Settling within the round
+1. Timelock or exit window on `setVerifier`.
+2. Swarm as the data layer: upload the anchored list and pass the reference as `dataRef`.
+3. Forced-inclusion scoping across several rounds (§7.1c of the proposal).
+4. Bee integration: the commit, reveal and claim messages, the HTTP API (or Swarm feeds), and when to
+   fall back to `forceCommit`/`forceReveal`/`forceClaim`.
+5. Nodes don't know the minimum depth for round N+1 until round N is settled. Settling within the round
    (blocks 115-151) avoids that, but needs fast proving.

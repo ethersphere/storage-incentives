@@ -19,9 +19,9 @@ const PV_TYPE =
   'bytes32 commitsHash,uint32 commitCount,bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
   'uint64 lastClaimRound,uint8 lastWinnerDepth,uint8 penaltyMultiplierDisagreement,' +
   'uint8 penaltyMultiplierNonRevealed,uint8 penaltyRandomFactor,address[] participants,bytes32 stakeDigest,' +
-  'uint32 stakePrice) inputs,' +
+  'uint32 stakePrice,bytes32 forcedClaimsHash,bytes32[] batchIds,bytes32 batchDigest,uint256 sampleMaxValue) inputs,' +
   'tuple(bool hasTruth,bytes32 truthHash,uint8 truthDepth,address winner,bytes32 winnerOverlay,' +
-  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations) outcome)';
+  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations,bool unclaimed) outcome)';
 
 const ZERO = ethers.constants.HashZero;
 
@@ -115,6 +115,10 @@ describe('Settlement', function () {
         participants,
         stakeDigest: await stakeDigest(participants),
         stakePrice: await oracle.currentPrice(),
+        forcedClaimsHash: ri.forcedClaimsHash,
+        batchIds: [],
+        batchDigest: ZERO,
+        sampleMaxValue: await settlement.sampleMaxValue(),
       },
       outcome: {
         hasTruth: false,
@@ -126,6 +130,7 @@ describe('Settlement', function () {
         redundancy: 0,
         freezeOwners: [],
         freezeDurations: [],
+        unclaimed: false,
         ...outcome,
       },
     };
@@ -302,12 +307,74 @@ describe('Settlement', function () {
         [8, (pv) => (pv.inputs.stakeDigest = keccak256('0x01'))],
         [8, (pv) => (pv.inputs.participants = owners.slice(1))],
         [9, (pv) => (pv.inputs.stakePrice = 1)],
+        [10, (pv) => (pv.inputs.forcedClaimsHash = keccak256('0x01'))],
+        [11, (pv) => (pv.inputs.batchIds = [keccak256('0x01')])],
+        [12, (pv) => (pv.inputs.sampleMaxValue = 1)],
       ];
       for (const [code, mutate] of cases) {
         const pv = JSON.parse(JSON.stringify(good));
         mutate(pv);
         await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith(`InputMismatch\\(${code}\\)`);
       }
+    });
+
+    it('binds the postage batches of the claim witnesses', async function () {
+      const round = await anchoredRound();
+      await mineTo(round * ROUND_LENGTH + SEED_OFFSET + 1);
+      const deployerAddr = await deployer.getAddress();
+      const batchId = keccak256(coder.encode(['address', 'bytes32'], [deployerAddr, ZERO]));
+      const b = await postage.batches(batchId);
+      expect(b.owner).to.eq(deployerAddr);
+      const digest = keccak256(
+        solidityPack(
+          ['bytes32', 'bytes32', 'address', 'uint8', 'uint8'],
+          [ZERO, batchId, b.owner, b.depth, b.bucketDepth]
+        )
+      );
+      expect(await settlement.batchDigest([batchId])).to.eq(digest);
+      const pv = await publicValues(round, [], {});
+      pv.inputs.batchIds = [batchId];
+      pv.inputs.batchDigest = digest;
+      await settlement.settleRound(encode(pv), '0x');
+      expect(await settlement.lastSettledRound()).to.eq(round);
+    });
+
+    it('keeps forced claims as a hash chain, only in the claim window', async function () {
+      const round = await anchoredRound();
+      const witness = '0x' + 'ab'.repeat(100);
+      await expect(settlement.forceClaim(round, witness)).to.be.revertedWith('NotClaimPhase');
+      await mineTo(round * ROUND_LENGTH + 115 - 1);
+      await settlement.connect(nodes[1]).forceClaim(round, witness);
+      expect((await settlement.rounds(round)).forcedClaimsHash).to.eq(
+        keccak256(solidityPack(['bytes32', 'bytes32'], [ZERO, keccak256(witness)]))
+      );
+      await expect(settlement.forceClaim(round, '0x' + '00'.repeat(16385))).to.be.revertedWith('WitnessTooLarge');
+    });
+
+    it('settles an unclaimed round only after the claim window', async function () {
+      const owners = await Promise.all(nodes.map((n) => n.getAddress()));
+      const round = await anchoredRound();
+      await mineTo(round * ROUND_LENGTH + SEED_OFFSET + 1);
+      const unclaimed = {
+        unclaimed: true,
+        truthHash: keccak256('0xbb'),
+        winner: owners[0],
+        redundancy: 3,
+      };
+      let pv = await publicValues(round, owners, unclaimed);
+      await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('ClaimWindowOpen');
+
+      await mineTo((round + 1) * ROUND_LENGTH);
+      pv = await publicValues(round, owners, unclaimed);
+      const before = await token.balanceOf(owners[0]);
+      const tx = await settlement.settleRound(encode(pv), '0x');
+      const rc = await tx.wait();
+      expect(rc.logs.map((l: { topics: string[] }) => l.topics[0])).to.include(
+        settlement.interface.getEventTopic('RoundUnclaimed')
+      );
+      expect(await token.balanceOf(owners[0])).to.eq(before);
+      expect(await settlement.lastClaimRound()).to.eq(0);
+      expect(await settlement.lastSettledRound()).to.eq(round);
     });
 
     it('rejects a non-empty proof with the mock verifier', async function () {
