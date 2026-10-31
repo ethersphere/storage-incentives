@@ -375,6 +375,10 @@ Phases are from [ZK-REDISTRIBUTION.md §11](./ZK-REDISTRIBUTION.md).
 | 5 | Canonical settlement, retire on-chain phases | This branch's deployment shape |
 | 6 | Recursive aggregation | Not started |
 
+The plan to decrease mainnet gas further (storage proofs for stakes and batches, epochs, oracle change,
+payouts that winners collect, a smaller anchor) is in
+[ZK-SETTLEMENT-OPTIMIZATION.md](./ZK-SETTLEMENT-OPTIMIZATION.md).
+
 ### Open items (in priority order)
 
 1. Timelock or exit window on `setVerifier`.
