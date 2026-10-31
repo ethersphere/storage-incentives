@@ -164,6 +164,14 @@ its commit if it's missing. node-sim's `--forced` flag runs this path. Still ope
 **Ordering.** The commit set is fixed on chain (`anchorRound`) before any reveal is accepted and before
 the seed block exists.
 
+**Reveal after the seed is known (known issue, from master).** Only the prover enforces the deadline for
+off-chain reveals (block 114). Thus a node that colludes with the prover can see the seed first and then
+select to reveal or not. A reveal cannot change the committed values, and a node that does not reveal
+gets a freeze. This issue is not new. In `Redistribution.sol`, the first reveal sets the seed, so each
+later revealer knows the seed and has the same option. Other branches fix the game in general, so this
+branch does not fix the issue. A possible fix here is an `anchorReveals(revealsHash)` transaction before
+the seed block.
+
 **Storage possession.** Not proven yet (Phase 4). The winner is paid without the three chunk witnesses
 that `claim` checks today.
 
