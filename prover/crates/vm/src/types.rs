@@ -26,9 +26,27 @@ sol! {
         bytes32 stakeDigest;
         uint32 stakePrice;
         bytes32 forcedClaimsHash;
-        bytes32[] batchIds;
-        bytes32 batchDigest;
         uint256 sampleMaxValue;
+        PostageInputs postage;
+    }
+
+    /// Postage part of the public inputs: where the replayed event log starts and ends.
+    #[derive(Debug, PartialEq, Eq)]
+    struct PostageInputs {
+        bytes32 prevStateHash;
+        uint64 prevEventIndex;
+        bytes32 prevEventHash;
+        uint64 eventIndex;
+        bytes32 eventHash;
+        uint64 cutBlock;
+    }
+
+    /// Postage part of the outcome.
+    #[derive(Debug, PartialEq, Eq)]
+    struct PostageOutcome {
+        bytes32 newStateHash;
+        uint256 potAmount;
+        uint256 validChunkCount;
     }
 
     /// Outputs: executed by Settlement.
@@ -44,6 +62,7 @@ sol! {
         address[] freezeOwners;
         uint256[] freezeDurations;
         bool unclaimed;
+        PostageOutcome postage;
     }
 
     /// What the proof commits to. Must match `Settlement.PublicValues`.
@@ -120,8 +139,8 @@ pub struct RoundInput {
     pub claim: Option<Bytes>,
     /// `ClaimForced` events of the round, in chain order.
     pub forced_claims: Vec<Bytes>,
-    /// PostageStamp records for every batch the claim witnesses reference (see `claim_batch_ids`).
-    pub batches: Vec<crate::claim::BatchRecord>,
     /// Settlement.sampleMaxValue (Redistribution's reserve size estimate bound).
     pub sample_max_value: U256,
+    /// Postage accounting since the previous settlement (see `postage.rs`).
+    pub postage: crate::postage::PostageInput,
 }

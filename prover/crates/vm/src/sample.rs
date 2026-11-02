@@ -3,7 +3,9 @@
 //! covered by the Bee-generated test vectors.
 
 use crate::bmt::{self, Tree};
-use crate::claim::{chunk_segment_index, witness_indices, ChunkInclusionProof, ClaimWitness, PostageProof};
+use crate::claim::{
+    chunk_segment_index, witness_indices, ChunkInclusionProof, ClaimWitness, PostageProof,
+};
 use alloy_primitives::B256;
 
 /// Witnesses in a reserve sample (`WITNESS_COUNT` in the tests).
@@ -21,7 +23,11 @@ impl SampleEntry {
     pub fn new(payload: Vec<u8>, anchor: &B256) -> Self {
         let original = Tree::new(&payload, None).address();
         let transformed = Tree::new(&payload, Some(*anchor)).address();
-        SampleEntry { payload, original, transformed }
+        SampleEntry {
+            payload,
+            original,
+            transformed,
+        }
     }
 }
 
@@ -41,7 +47,10 @@ impl Sample {
             payload.extend_from_slice(e.original.as_slice());
             payload.extend_from_slice(e.transformed.as_slice());
         }
-        Sample { tree: Tree::new(&payload, None), entries }
+        Sample {
+            tree: Tree::new(&payload, None),
+            entries,
+        }
     }
 
     /// The reserve commitment hash a node commits to and reveals.
@@ -51,7 +60,12 @@ impl Sample {
 
     /// The three claim proofs for a selection seed. `stamp` returns the postage proof for a chunk
     /// address (the batch owner signs it).
-    pub fn witness(&self, anchor: &B256, seed: B256, mut stamp: impl FnMut(B256) -> PostageProof) -> ClaimWitness {
+    pub fn witness(
+        &self,
+        anchor: &B256,
+        seed: B256,
+        mut stamp: impl FnMut(B256) -> PostageProof,
+    ) -> ClaimWitness {
         let (i1, i2) = witness_indices(seed);
         let segment = chunk_segment_index(seed) as usize;
         let mut proof = |k: usize| {
@@ -86,7 +100,11 @@ pub struct FastHasher {
 
 impl FastHasher {
     pub fn new(anchor: B256) -> Self {
-        FastHasher { anchor, zero_plain: bmt::zero_subtrees(None), zero_keyed: bmt::zero_subtrees(Some(&anchor)) }
+        FastHasher {
+            anchor,
+            zero_plain: bmt::zero_subtrees(None),
+            zero_keyed: bmt::zero_subtrees(Some(&anchor)),
+        }
     }
 
     pub fn original(&self, segment: B256) -> B256 {

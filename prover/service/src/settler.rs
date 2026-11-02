@@ -13,8 +13,9 @@ use alloy_sol_types::SolType;
 use anyhow::{anyhow, Context, Result};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use swarm_prover::{
-    offset_of, round_of, seed_block, PostageStamp, PriceOracle, Settlement, StakeRegistry, CLAIM_START, ANCHOR_END,
-    COMMIT_END, HISTORY_SERVE_WINDOW, REVEAL_END, ROUND_LENGTH,
+    offset_of, round_of, seed_block, PostageStamp, PriceOracle, Settlement, StakeRegistry,
+    ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, REVEAL_END, ROUND_LENGTH,
+    SEED_OFFSET,
 };
 use swarm_vm::{
     canonical_commits, commits_hash, ForcedCommit, PublicValues, Reveal, RoundInput, StakeRecord,
@@ -37,6 +38,10 @@ pub struct Config {
     pub data_dir: PathBuf,
     #[arg(long, env = "POLL_SECS", default_value_t = 3)]
     pub poll_secs: u64,
+    /// First block to search for PostageLog entries before the first settlement (the deployment block
+    /// of PostageStampZK). Later settlements search from their last cut block.
+    #[arg(long, env = "POSTAGE_FROM_BLOCK", default_value_t = 0)]
+    pub postage_from_block: u64,
 }
 
 const TX_TIMEOUT: Duration = Duration::from_secs(180);
@@ -47,6 +52,7 @@ pub struct Ctx {
     pub chain_id: U256,
     /// The prover key's address, for explicit nonces.
     pub from: Address,
+    pub postage_from_block: u64,
     pub store: Mutex<Store>,
     /// Serialises transactions from the one prover key.
     pub tx_lock: Mutex<()>,
@@ -77,6 +83,7 @@ pub async fn serve(cfg: Config) -> Result<()> {
         settlement: cfg.settlement,
         chain_id,
         from,
+        postage_from_block: cfg.postage_from_block,
         store: Mutex::new(Store::open(cfg.data_dir.clone())?),
         tx_lock: Mutex::new(()),
     });
@@ -277,21 +284,9 @@ pub async fn build_input(
         penalty_random_factor: s.penaltyRandomFactor().call().await?,
         claim: claim.or(stored_claim),
         forced_claims,
-        batches: vec![],
         sample_max_value: s.sampleMaxValue().call().await?,
+        postage: postage_input(ctx, block).await?,
     };
-
-    // Postage batches of every candidate witness, exactly as Settlement.batchDigest will read them.
-    let postage = PostageStamp::new(s.PostageContract().call().await?, &ctx.provider);
-    for id in swarm_vm::claim_batch_ids(&input) {
-        let b = postage.batches(id).call().await?;
-        input.batches.push(swarm_vm::claim::BatchRecord {
-            batch_id: id,
-            owner: b.owner,
-            depth: b.depth,
-            bucket_depth: b.bucketDepth,
-        });
-    }
 
     // Raw stake records exactly as Settlement.stakeDigest will read them.
     let staking = StakeRegistry::new(s.Stakes().call().await?, &ctx.provider);
@@ -309,6 +304,62 @@ pub async fn build_input(
     Ok(input)
 }
 
+/// The postage part of a round input: the state of the last settlement, and the PostageLog entries after
+/// it up to `cut` (the current block).
+async fn postage_input(ctx: &Ctx, cut: u64) -> Result<swarm_vm::postage::PostageInput> {
+    let s = Settlement::new(ctx.settlement, &ctx.provider);
+    let prev_hash = s.postageStateHash().call().await?;
+    let prev_event_index = s.postageEventIndex().call().await?;
+    let prev_event_hash = s.postageEventHash().call().await?;
+    let state = ctx.store.lock().await.load_postage(prev_hash)?;
+
+    let postage = PostageStamp::new(s.PostageContract().call().await?, &ctx.provider);
+    let from = if state.last_cut_block == 0 {
+        ctx.postage_from_block
+    } else {
+        state.last_cut_block
+    };
+    let filter = Filter::new()
+        .address(*postage.address())
+        .from_block(from)
+        .to_block(cut)
+        .event_signature(PostageStamp::PostageLog::SIGNATURE_HASH);
+    let mut events: Vec<swarm_vm::postage::PostageEvent> = vec![];
+    for log in ctx.provider.get_logs(&filter).await? {
+        let e = log.log_decode::<PostageStamp::PostageLog>()?.inner.data;
+        if e.index <= prev_event_index {
+            continue;
+        }
+        events.push(swarm_vm::postage::PostageEvent {
+            index: e.index,
+            kind: e.kind,
+            batch_id: e.batchId,
+            owner: e.owner,
+            depth: e.depth,
+            bucket_depth: e.bucketDepth,
+            value: e.value,
+            outpayment: e.outpayment,
+            block: e.blockNumber,
+        });
+    }
+    events.sort_by_key(|e| e.index);
+    for (i, e) in events.iter().enumerate() {
+        if e.index != prev_event_index + 1 + i as u64 {
+            anyhow::bail!(
+                "PostageLog gap at index {} (RPC log range?)",
+                prev_event_index + 1 + i as u64
+            );
+        }
+    }
+    Ok(swarm_vm::postage::PostageInput {
+        state,
+        prev_event_index,
+        prev_event_hash,
+        events,
+        cut_block: cut,
+    })
+}
+
 /// ClaimForced events of a round, in chain order. forceClaim is open from CLAIM_START to the round end.
 async fn forced_claims(ctx: &Ctx, round: u64, block: u64) -> Result<Vec<Bytes>> {
     let start = round * ROUND_LENGTH;
@@ -324,7 +375,12 @@ async fn forced_claims(ctx: &Ctx, round: u64, block: u64) -> Result<Vec<Bytes>> 
         .event_signature(Settlement::ClaimForced::SIGNATURE_HASH);
     let mut out = vec![];
     for log in ctx.provider.get_logs(&filter).await? {
-        out.push(log.log_decode::<Settlement::ClaimForced>()?.inner.data.witness);
+        out.push(
+            log.log_decode::<Settlement::ClaimForced>()?
+                .inner
+                .data
+                .witness,
+        );
     }
     Ok(out)
 }
@@ -373,7 +429,11 @@ async fn forced_inputs(ctx: &Ctx, round: u64) -> Result<(Vec<ForcedCommit>, Vec<
 
 async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
     {
+        // Keep the postage state this settlement produces: the next one starts from it.
+        let pg = swarm_vm::postage::apply(&input.postage, round * ROUND_LENGTH + SEED_OFFSET)
+            .map_err(|e| anyhow!("postage: {e:?}"))?;
         let store = ctx.store.lock().await;
+        store.save_postage(&pg.new_state)?;
         store.write_file(round, "input.json", &serde_json::to_vec_pretty(&input)?)?;
     }
     let native = swarm_vm::run(&input).map_err(|e| anyhow!("vm: {e:?}"))?;

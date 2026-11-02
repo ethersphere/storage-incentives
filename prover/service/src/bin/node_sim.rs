@@ -29,9 +29,9 @@ use alloy::{
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use rand::RngCore;
-use std::{collections::HashMap, time::Duration};
 use rayon::prelude::*;
 use std::sync::Arc;
+use std::{collections::HashMap, time::Duration};
 use swarm_prover::{
     offset_of, round_of, ClaimMsg, CommitMsg, OutcomeMsg, PostageStamp, RevealMsg, Settlement,
     StakeRegistry, ANCHOR_END, CLAIM_START, COMMIT_END, REVEAL_END,
@@ -113,7 +113,12 @@ fn payload(i: u64) -> B256 {
 impl Reserve {
     fn new(n: u64) -> Self {
         let fast = FastHasher::new(B256::ZERO);
-        Reserve { originals: (0..n).into_par_iter().map(|i| fast.original(payload(i))).collect() }
+        Reserve {
+            originals: (0..n)
+                .into_par_iter()
+                .map(|i| fast.original(payload(i)))
+                .collect(),
+        }
     }
 
     /// The round's reserve sample: the 16 chunks in the neighbourhood with the smallest transformed
@@ -156,7 +161,10 @@ impl Batch {
         msg.extend_from_slice(self.id.as_slice());
         msg.extend_from_slice(&index.to_be_bytes());
         msg.extend_from_slice(&ts.to_be_bytes());
-        let sig = self.owner.sign_message_sync(keccak256(msg).as_slice()).expect("sign");
+        let sig = self
+            .owner
+            .sign_message_sync(keccak256(msg).as_slice())
+            .expect("sign");
         PostageProof {
             signature: Bytes::from(sig.as_bytes().to_vec()),
             postageId: self.id,
@@ -214,7 +222,11 @@ async fn main() -> Result<()> {
     }
 
     // Postage batch that stamps the reserve.
-    let owner: PrivateKeySigner = args.batch_owner_key.trim().parse().context("--batch-owner-key")?;
+    let owner: PrivateKeySigner = args
+        .batch_owner_key
+        .trim()
+        .parse()
+        .context("--batch-owner-key")?;
     let batch_id = args.batch_id.unwrap_or_else(|| {
         let nonce = keccak256(b"zk-settlement-pot");
         let mut buf = [0u8; 64];
@@ -225,17 +237,26 @@ async fn main() -> Result<()> {
     let postage = PostageStamp::new(settlement.PostageContract().call().await?, &read);
     let b = postage.batches(batch_id).call().await?;
     if b.owner != owner.address() {
-        bail!("batch {batch_id} is owned by {}, not by the --batch-owner-key", b.owner);
+        bail!(
+            "batch {batch_id} is owned by {}, not by the --batch-owner-key",
+            b.owner
+        );
     }
-    let batch = Arc::new(Batch { id: batch_id, bucket_depth: b.bucketDepth, owner });
+    let batch = Arc::new(Batch {
+        id: batch_id,
+        bucket_depth: b.bucketDepth,
+        owner,
+    });
     let sample_max = settlement.sampleMaxValue().call().await?;
 
     let started = std::time::Instant::now();
-    let reserve = Arc::new(tokio::task::spawn_blocking({
-        let n = args.reserve;
-        move || Reserve::new(n)
-    })
-    .await?);
+    let reserve = Arc::new(
+        tokio::task::spawn_blocking({
+            let n = args.reserve;
+            move || Reserve::new(n)
+        })
+        .await?,
+    );
     info!(chunks = args.reserve, batch = %batch_id, elapsed = ?started.elapsed(), "reserve ready");
 
     let http = reqwest::Client::new();
@@ -262,7 +283,10 @@ async fn main() -> Result<()> {
                 let s = tokio::task::spawn_blocking(move || r.sample(anchor, depth)).await?;
                 let last = U256::from_be_bytes(s.entries[SAMPLE_SIZE - 1].transformed.0);
                 if last >= sample_max {
-                    warn!(round, "reserve too small: the sample fails the size estimate; raise --reserve");
+                    warn!(
+                        round,
+                        "reserve too small: the sample fails the size estimate; raise --reserve"
+                    );
                 }
                 info!(round, hash = %s.hash(), elapsed = ?started.elapsed(), "reserve sample");
                 samples.insert(round, Arc::new(s));
@@ -402,10 +426,16 @@ async fn claim_phase(
     samples: &HashMap<u64, Arc<Sample>>,
     batch: &Batch,
 ) {
-    let Some(sample) = samples.get(&round) else { return };
+    let Some(sample) = samples.get(&round) else {
+        return;
+    };
     let pending: Vec<usize> = nodes
         .iter()
-        .filter(|n| played.get(&(round, n.idx)).is_some_and(|p| p.revealed && !p.claimed && p.hash == sample.hash()))
+        .filter(|n| {
+            played
+                .get(&(round, n.idx))
+                .is_some_and(|p| p.revealed && !p.claimed && p.hash == sample.hash())
+        })
         .map(|n| n.idx)
         .collect();
     if pending.is_empty() {
@@ -434,12 +464,18 @@ async fn claim_phase(
         }
         p.claimed = true;
         if args.no_claim.contains(&idx) {
-            info!(round, node = idx, "winner, withholding the claim witness (--no-claim)");
+            info!(
+                round,
+                node = idx,
+                "winner, withholding the claim witness (--no-claim)"
+            );
             continue;
         }
         let witness = Bytes::from(
             sample
-                .witness(&outcome.round_anchor, outcome.selection_seed, |a| batch.stamp(a))
+                .witness(&outcome.round_anchor, outcome.selection_seed, |a| {
+                    batch.stamp(a)
+                })
                 .encode(),
         );
         let res = if args.forced.contains(&idx) {

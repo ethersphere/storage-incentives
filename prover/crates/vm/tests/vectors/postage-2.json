@@ -1,0 +1,368 @@
+{
+  "source": "test/PostageStampZK.test.ts",
+  "seed": 2,
+  "events": [
+    {
+      "index": 1,
+      "kind": 4,
+      "batchId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "owner": "0x0000000000000000000000000000000000000000",
+      "depth": 0,
+      "bucketDepth": 0,
+      "value": "27",
+      "outpayment": "0",
+      "blockNumber": 1168
+    },
+    {
+      "index": 2,
+      "kind": 1,
+      "batchId": "0xdb9bc1b99bf39ec76deb0b4f64b2ca268c08e852e70f28871da81b7543515e25",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 19,
+      "bucketDepth": 16,
+      "value": "3159",
+      "outpayment": "27",
+      "blockNumber": 1169
+    },
+    {
+      "index": 3,
+      "kind": 1,
+      "batchId": "0x2e8f45c611982aa61b21799683b3f5cbf73805ed5eadd4373a9f28f0d9416150",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "9423",
+      "outpayment": "4887",
+      "blockNumber": 1349
+    },
+    {
+      "index": 4,
+      "kind": 1,
+      "batchId": "0x2f0cc537a06345e27e73d34628d3063edfc4f85b4c41c6bac03308fb3f719bde",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "18522",
+      "outpayment": "18306",
+      "blockNumber": 1846
+    },
+    {
+      "index": 5,
+      "kind": 1,
+      "batchId": "0x60aa470f4391c840b9290ad2b4441cd635360d04fad2cf389b6add981125bd12",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "20250",
+      "outpayment": "18333",
+      "blockNumber": 1847
+    },
+    {
+      "index": 6,
+      "kind": 1,
+      "batchId": "0xe125c5a265fa3d85e39b1290a4ffb00d80eaa9557a8858ce14581706a032e86e",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "23301",
+      "outpayment": "18360",
+      "blockNumber": 1848
+    },
+    {
+      "index": 7,
+      "kind": 2,
+      "batchId": "0x60aa470f4391c840b9290ad2b4441cd635360d04fad2cf389b6add981125bd12",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "22248",
+      "outpayment": "18387",
+      "blockNumber": 1849
+    },
+    {
+      "index": 8,
+      "kind": 2,
+      "batchId": "0xe125c5a265fa3d85e39b1290a4ffb00d80eaa9557a8858ce14581706a032e86e",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "25326",
+      "outpayment": "21600",
+      "blockNumber": 1968
+    },
+    {
+      "index": 9,
+      "kind": 1,
+      "batchId": "0xdd6c45e41817ceb06d765981ea844fefb0f0b5699272e09e67f646b17862b15e",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "29133",
+      "outpayment": "24246",
+      "blockNumber": 2066
+    },
+    {
+      "index": 10,
+      "kind": 1,
+      "batchId": "0x9c5f3e5eb4c6fff5e5cad3ea9d8b06debc4657d7e1154c5cca1fc8714312cb98",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "27540",
+      "outpayment": "27405",
+      "blockNumber": 2183
+    },
+    {
+      "index": 11,
+      "kind": 1,
+      "batchId": "0x3b88677b609b05d302fdc46b1c05b79f4e453fcb074200dd9b6f43affd4512d3",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "31644",
+      "outpayment": "27432",
+      "blockNumber": 2184
+    },
+    {
+      "index": 12,
+      "kind": 1,
+      "batchId": "0xd99ef3cd6f7238ac95073e815bc1b42aa4863c659b03e3b27633f936aae62be8",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "32751",
+      "outpayment": "27459",
+      "blockNumber": 2185
+    },
+    {
+      "index": 13,
+      "kind": 4,
+      "batchId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "owner": "0x0000000000000000000000000000000000000000",
+      "depth": 0,
+      "bucketDepth": 0,
+      "value": "40",
+      "outpayment": "29106",
+      "blockNumber": 2246
+    },
+    {
+      "index": 14,
+      "kind": 4,
+      "batchId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "owner": "0x0000000000000000000000000000000000000000",
+      "depth": 0,
+      "bucketDepth": 0,
+      "value": "43",
+      "outpayment": "29146",
+      "blockNumber": 2247
+    },
+    {
+      "index": 15,
+      "kind": 4,
+      "batchId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "owner": "0x0000000000000000000000000000000000000000",
+      "depth": 0,
+      "bucketDepth": 0,
+      "value": "55",
+      "outpayment": "29189",
+      "blockNumber": 2248
+    },
+    {
+      "index": 16,
+      "kind": 4,
+      "batchId": "0x0000000000000000000000000000000000000000000000000000000000000000",
+      "owner": "0x0000000000000000000000000000000000000000",
+      "depth": 0,
+      "bucketDepth": 0,
+      "value": "13",
+      "outpayment": "29299",
+      "blockNumber": 2250
+    },
+    {
+      "index": 17,
+      "kind": 1,
+      "batchId": "0x3e0ef3d441e7b4479a23c2096ef7341cb2c7b46cc94e4f39322a40a2af9a36e7",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 19,
+      "bucketDepth": 16,
+      "value": "30157",
+      "outpayment": "29312",
+      "blockNumber": 2251
+    },
+    {
+      "index": 18,
+      "kind": 1,
+      "batchId": "0x7a890775b7c47dffc1f935879632b9570ce7dd74af2c49dcad3f755288edb77d",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 19,
+      "bucketDepth": 16,
+      "value": "32497",
+      "outpayment": "30209",
+      "blockNumber": 2320
+    },
+    {
+      "index": 19,
+      "kind": 1,
+      "batchId": "0x435ccfdc40147b330d44a8f7d1dab1e05f8c8967afd46117760be4342e4f00fe",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "31067",
+      "outpayment": "30222",
+      "blockNumber": 2321
+    },
+    {
+      "index": 20,
+      "kind": 1,
+      "batchId": "0xd849df2f8bb2fce53372437f0d3c6f1d68534ae293d5e66df1213866072a64d1",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 19,
+      "bucketDepth": 16,
+      "value": "30963",
+      "outpayment": "30235",
+      "blockNumber": 2322
+    },
+    {
+      "index": 21,
+      "kind": 1,
+      "batchId": "0x44deda4b289ecdadd57bfe0fa23675f9c362233bda9f35d6ea1241f5ebe7c1dc",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "32497",
+      "outpayment": "30248",
+      "blockNumber": 2323
+    },
+    {
+      "index": 22,
+      "kind": 1,
+      "batchId": "0x86b7cf17aa86598c275d33a10c9119d2ae2152c16a6e2c64c9bd1c30c435ad5b",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "30690",
+      "outpayment": "30274",
+      "blockNumber": 2325
+    },
+    {
+      "index": 23,
+      "kind": 1,
+      "batchId": "0x5d84ba6862a0f3d7595f02bae3adfaf90f782ba840ecbb75615a6f5c5931d2e9",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 19,
+      "bucketDepth": 16,
+      "value": "32627",
+      "outpayment": "32081",
+      "blockNumber": 2464
+    },
+    {
+      "index": 24,
+      "kind": 2,
+      "batchId": "0x7a890775b7c47dffc1f935879632b9570ce7dd74af2c49dcad3f755288edb77d",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 19,
+      "bucketDepth": 16,
+      "value": "33849",
+      "outpayment": "32094",
+      "blockNumber": 2465
+    },
+    {
+      "index": 25,
+      "kind": 1,
+      "batchId": "0xa364b10673e5c8b2880fc71fd0500b8f9583eb19594b918b71853c5f7c982df7",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "32848",
+      "outpayment": "32107",
+      "blockNumber": 2466
+    },
+    {
+      "index": 26,
+      "kind": 1,
+      "batchId": "0xa024da95a8c065cfc820a2e482e028b40cde8bfb7deb8d16a6262366434e368d",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 18,
+      "bucketDepth": 16,
+      "value": "34486",
+      "outpayment": "32120",
+      "blockNumber": 2467
+    },
+    {
+      "index": 27,
+      "kind": 3,
+      "batchId": "0x7a890775b7c47dffc1f935879632b9570ce7dd74af2c49dcad3f755288edb77d",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 20,
+      "bucketDepth": 16,
+      "value": "32997",
+      "outpayment": "32146",
+      "blockNumber": 2469
+    },
+    {
+      "index": 28,
+      "kind": 1,
+      "batchId": "0xcd95ceb7eaa7ed46a9f2539bbe3304404371bf929e054104911f65d6295457e8",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "34057",
+      "outpayment": "33862",
+      "blockNumber": 2601
+    },
+    {
+      "index": 29,
+      "kind": 1,
+      "batchId": "0x7297c21c1775cd79a203230a0962381349a42784102279b8638c657c2ffbec41",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "34187",
+      "outpayment": "33875",
+      "blockNumber": 2602
+    },
+    {
+      "index": 30,
+      "kind": 1,
+      "batchId": "0x629f1429cd0d2d6d032e5d300992e055fa848a0dae0a6767bb75f930a8ebccf2",
+      "owner": "0x62CAb2B3b55F341F10348720ca18063CdB779aD5",
+      "depth": 17,
+      "bucketDepth": 16,
+      "value": "34252",
+      "outpayment": "33888",
+      "blockNumber": 2603
+    }
+  ],
+  "checkpoints": [
+    {
+      "block": 1845,
+      "pot": "2236612608",
+      "validChunkCount": "0"
+    },
+    {
+      "block": 2182,
+      "pot": "5425201152",
+      "validChunkCount": "262144"
+    },
+    {
+      "block": 2249,
+      "pot": "6608388096",
+      "validChunkCount": "393216"
+    },
+    {
+      "block": 2324,
+      "pot": "7505838080",
+      "validChunkCount": "1966080"
+    },
+    {
+      "block": 2468,
+      "pot": "10375921664",
+      "validChunkCount": "2097152"
+    },
+    {
+      "block": 2604,
+      "pot": "12452626432",
+      "validChunkCount": "655360"
+    }
+  ]
+}

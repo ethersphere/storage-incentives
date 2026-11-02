@@ -10,10 +10,19 @@ the Homecoming deck. It is built so it can be run end to end on Sepolia with sim
   oracle;
 - the storage evidence of `claim`: chunk inclusion proofs in the reserve sample, transformed chunk
   addresses, postage stamp signatures, single-owner chunk (SOC) signatures, the order of the witnesses,
-  and the reserve size estimate.
+  and the reserve size estimate;
+- the postage accounting that `PostageStamp.expireLimited` did on chain: batch expiry and the pot
+  (section 2, "Postage accounting in the proof").
 
-The Rust port of the claim checks accepts the claims that the real `Redistribution.claim` accepts in
-master's tests, including the Bee-generated CAC and SOC proofs (section 2, "Claim").
+Two cross-checks with the real contracts:
+
+- The Rust claim checks accept the claims that the real `Redistribution.claim` accepts in master's tests,
+  including the Bee-generated CAC and SOC proofs.
+- The Rust postage accounting gives the same pot and `validChunkCount` as master's `PostageStamp` at every
+  checkpoint of three random batch histories.
+
+Not yet done on this version: an end-to-end run with node-sim, and a real (non-mock) proof. Section 5 has
+the measurements of the earlier versions.
 
 ---
 
@@ -21,26 +30,29 @@ master's tests, including the Bee-generated CAC and SOC proofs (section 2, "Clai
 
 | Contract | Change | Why |
 | --- | --- | --- |
-| `PostageStamp.sol` | **none** | Settlement calls `withdraw(address(this))` with `REDISTRIBUTOR_ROLE` and splits the pot itself |
+| `PostageStamp.sol` | **replaced by `settlement/PostageStampZK.sol`** | The same batch functions, events and views, without the batch tree and without on-chain expiry. It logs every change that affects the pot, and pays out the amount the proof gives. Section 2, "Postage accounting in the proof" |
 | `Staking.sol` (`StakeRegistry`) | **none** | Settlement calls `freezeDeposit` with `REDISTRIBUTOR_ROLE` and reads stake records with existing views |
 | `PriceOracle.sol` | **none** | Settlement calls `adjustPrice(redundancy)` with `PRICE_UPDATER_ROLE`. The redundancy number comes out of the proof |
 | `Redistribution.sol` | **not deployed** | Left in the tree untouched so master's tests still run. Settlement takes its three roles |
-| `settlement/Settlement.sol` | **new**, ~500 lines | Anchors each round, keeps the censorship escape hatches (commit, reveal, claim), checks proof inputs against the chain, executes the outcome |
+| `settlement/Settlement.sol` | **new**, ~550 lines | Anchors each round, keeps the censorship escape hatches (commit, reveal, claim), checks proof inputs against the chain (including PostageStampZK's event log), executes the outcome |
 | `settlement/ISP1Verifier.sol` | new | Interface of the SP1 verifier |
 | `settlement/SP1MockVerifier.sol` | new | Accepts empty proofs. Local and smoke testing only |
 
-So "removing Redistribution and putting the game off chain" really is all it takes on the contract side.
-The three contracts that hold value (pot, stake, price) are master's code, deployed as they are.
+StakeRegistry and PriceOracle are master's code, deployed as they are. PostageStamp changes, because the
+expiry tree is the main gas cost for stamp buyers. The homecoming to Ethereum needs new deployments and a
+batch migration in all cases, so this change adds no extra migration.
 
 ### New files
 
 ```
-src/settlement/Settlement.sol          the one new contract
+src/settlement/Settlement.sol          replaces Redistribution
+src/settlement/PostageStampZK.sol      replaces PostageStamp: no tree, event log for the proof
 src/settlement/ISP1Verifier.sol
 src/settlement/SP1MockVerifier.sol
 test/Settlement.test.ts                contract tests (mock verifier)
+test/PostageStampZK.test.ts            PostageStampZK tests; random histories against master PostageStamp (DUMP_POSTAGE_VECTORS=1)
 test/util/claimVectors.ts              dumps accepted Redistribution claims as Rust test vectors (DUMP_CLAIM_VECTORS=1)
-deploy/zk/000_deploy_core.ts           token, postage, oracle, staking: master code, unchanged
+deploy/zk/000_deploy_core.ts           token, oracle, staking (master code) and PostageStampZK
 deploy/zk/001_deploy_settlement.ts     verifier (mock or SP1 gateway) + Settlement
 deploy/zk/002_roles_and_pot.ts         roles Redistribution had -> Settlement; price; one batch so the pot grows
 scripts/zk/setup-nodes.ts              fund and stake simulated nodes
@@ -51,16 +63,20 @@ prover/                                Rust workspace, see prover/README.md
   crates/vm/src/claim.rs               claim's storage checks (inclusion, stamp, SOC, order, size)
   crates/vm/src/bmt.rs                 BMT and transformed BMT hashing and proofs
   crates/vm/src/sample.rs              reserve sample and claim witness builders (node side)
+  crates/vm/src/postage.rs             postage accounting: event replay, expiry, pot
+  crates/vm/src/postage_tests.rs       postage unit tests
   crates/vm/tests/claim_vectors.rs     differential test against claims Redistribution accepted
-  crates/vm/tests/vectors/             bee-cac, bee-soc, generated-cac, generated-soc
+  crates/vm/tests/postage_vectors.rs   differential test against master PostageStamp's pot
+  crates/vm/tests/vectors/             bee-cac, bee-soc, generated-cac, generated-soc, postage-1..3
   program/                             the SP1 program (runs the VM, commits public values)
-  service/src/main.rs                  swarm-prover: serve | vkey | execute
+  service/src/main.rs                  swarm-prover: serve | vkey | execute | synth
   service/src/settler.rs               anchor loop, settle loop, round input from chain state
   service/src/server.rs                HTTP API for nodes
   service/src/prover.rs                SP1 execute / prove
-  service/src/store.rs                 per-round message store (stand-in for Swarm as DA)
+  service/src/store.rs                 per-round message store and postage state (stand-in for Swarm as DA)
   service/src/bin/node_sim.rs          simulated Bee nodes
 docs/ZK-SETTLEMENT.md                  this file
+docs/ZK-SETTLEMENT-OPTIMIZATION.md     plan to decrease mainnet gas further
 docs/ZK-REDISTRIBUTION.md              the proposal (copied from docs/zk-redistribution-proposal)
 ```
 
@@ -71,20 +87,22 @@ docs/ZK-REDISTRIBUTION.md              the proposal (copied from docs/zk-redistr
 ```
   Bee nodes (node-sim)                                     Ethereum / Sepolia
   ─────────────────────                                    ───────────────────────────────────────────
-  sign commit ──POST /v1/commit──►┐                         PostageStamp   StakeRegistry   PriceOracle
-  reveal      ──POST /v1/reveal──►│                              ▲  withdraw     ▲ freeze       ▲ adjustPrice
+  sign commit ──POST /v1/commit──►┐                       PostageStampZK  StakeRegistry   PriceOracle
+  reveal      ──POST /v1/reveal──►│                         ▲ withdraw(amt) ▲ freeze       ▲ adjustPrice
                                   │                              └───────┬───────┴──────────────┘
   claim proofs ─POST /v1/claim───►│  (after the seed; the winner)
   (censored?) forceCommit / forceReveal / forceClaim ──────────►  Settlement
                                   │                                ▲ anchorRound(commitsHash)   (1 tx/round)
                          swarm-prover (service)                    │ settleRound(pv, proof)     (1 tx/round)
                          ├─ store messages ───────────────────────┘
-                         ├─ read chain: anchor, seed, forced events, stake records, batches, game state
+                         ├─ read chain: anchor, seed, forced events, stake records, PostageLog, game state
                          ├─ swarm-vm::run(input)       native, sanity check
                          └─ SP1: program(input) ─► Groth16 proof ─► settleRound
 ```
 
 Two transactions per round for the whole network, instead of about three per participating node today.
+Uploaders who buy or top up stamps send their own transactions to PostageStampZK, as today, but they do
+not pay for the expiry of other batches.
 
 ### Round timing
 
@@ -132,12 +150,15 @@ one block hash.
 | `participants`, `stakeDigest` | `StakeRegistry.stakes(owner)` read now, for every participant: overlay, committed and potential stake, height, last update | 8 |
 | `stakePrice` | `PriceOracle.currentPrice()` (the VM computes effective stake from it) | 9 |
 | `forcedClaimsHash` | hash chain built by `forceClaim` | 10 |
-| `batchIds`, `batchDigest` | `PostageStamp.batches(id)` read now, for every batch the claim witnesses use: owner, depth, bucket depth | 11 |
+| `postage`: previous state hash, previous and new log position, log hash, cut block | Settlement's stored postage state hash and log position; `PostageStampZK.eventHashAt(index)`; the next log entry, if any, must be after the cut block; the cut block must not be in the future | 11 |
 | `sampleMaxValue` | Settlement state (default: Redistribution's value) | 12 |
 
-Then `verifier.verifyProof(programVKey, publicValues, proof)`. Then it executes the outcome: freezes,
-`adjustPrice(redundancy)`, withdraws the pot, pays `proverFeeBps` (default 1%) to the caller and the
-rest to the winner.
+Then `verifier.verifyProof(programVKey, publicValues, proof)`. Then it executes the outcome:
+
+1. For every round: store the new postage state hash and log position, and add the proven
+   `potAmount` to `accruedPot`.
+2. For a round with a valid claim: freezes, `adjustPrice(redundancy)`, then withdraw `accruedPot` from
+   PostageStampZK. Pay `proverFeeBps` (default 1%) to the caller and the rest to the winner.
 
 ### What the VM proves (prover/crates/vm/src/lib.rs)
 
@@ -192,9 +213,72 @@ payout, no freezes, no price change. The VM gives the same result, with `unclaim
 accepts an unclaimed outcome only after the claim window (block 152), so a prover cannot close the round
 before the winner had time to send the witness.
 
-**Batches cannot be hidden.** The VM collects the batch ids of every candidate witness (the off-chain one
-and each `forceClaim`). The prover must supply a record for each of these batches, and Settlement reads
-each batch from PostageStamp. Thus a prover cannot omit a batch to make a valid forced witness fail.
+**Batches come from the proven postage state.** The claim checks read each witness batch (owner, depth,
+bucket depth, balance) from the postage state of the proof, after this settlement's log entries. A batch
+is alive when its `normalisedBalance` is above the outpayment at the round's seed block. The state is
+bound by its hash and the event log, so a prover cannot hide a batch or change its owner.
+
+### Postage accounting in the proof (prover/crates/vm/src/postage.rs)
+
+**Why.** On master, a stamp buyer pays for a sorted tree of all batches (`HitchensOrderStatisticsTree`)
+and for the expiry of other batches. `createBatch`, `topUp` and `increaseDepth` call
+`expireLimited(max)`, which removes expired batches in order and credits the pot. Bee also sends
+`expireLimited(25)` transactions before it buys a batch and before a claim. The tree exists only for the
+pot: the pot increases by `validChunkCount × Δoutpayment`, so the contract must know when each batch stops
+to count.
+
+**What changes.**
+
+| | Master (`PostageStamp`) | This branch (`PostageStampZK` + proof) |
+| --- | --- | --- |
+| Batch record | `batches(id)` | The same |
+| Batch is expired | Removed by `expireLimited` | `normalisedBalance <= currentTotalOutPayment()`. Nothing is removed; the id stays taken |
+| Who expires batches | Stamp buyers, Bee before buys and claims | Nobody on chain. The prover, in the proof, at each settlement |
+| Pot | `pot`, increased by `expireLimited` | Computed in the proof; Settlement keeps `accruedPot` |
+| Payout | `withdraw(beneficiary)`: all of `pot` | `withdraw(beneficiary, amount)`: the proven amount |
+| `validChunkCount` | Live value | Written by Settlement after each settlement (for readers only) |
+| `expiredBatchesExist()`, `expireLimited()` | Real | No-ops (false, nothing), so current Bee versions keep working |
+| Events | `BatchCreated`, `BatchTopUp`, `BatchDepthIncrease`, `PriceUpdate` | The same, plus `PostageLog` |
+
+**The event log.** Each change that affects the pot (batch created or copied, topped up, deepened, price
+changed) appends one entry: `hash_i = keccak256(hash_{i-1}, kind, batchId, owner, depth, bucketDepth,
+value, outpayment, block)`. The contract keeps the hash and block of the last 256 entries
+(`eventHashAt`, `eventBlockAt`) and emits `PostageLog` with the same fields. This costs about 15k gas for
+each change.
+
+**One settlement, step by step.**
+
+1. The prover reads Settlement's `postageStateHash`, `postageEventIndex` and `postageEventHash`, loads the
+   postage state with that hash (`$DATA_DIR/postage/<hash>.json`), and reads the `PostageLog` entries
+   after `postageEventIndex` up to the cut block (the current block).
+2. The program replays the entries in order. Before an entry changes a batch, it credits that batch up
+   to the entry's outpayment. It checks each entry's outpayment against the last price change.
+3. The program runs the game and the claim. The claim reads the batches from the state after step 2.
+4. The program credits every batch up to the outpayment at the cut block, and removes the batches whose
+   balance ended. A batch never pays more than its balance.
+5. The outputs are the new state hash, the pot amount and `validChunkCount`.
+6. Settlement checks the log position and hash against PostageStampZK, and that the next entry (if any)
+   is after the cut block. Thus no entry up to the cut is missing. Then it adds the pot amount to
+   `accruedPot`.
+
+**Who expires batches?** Nobody has to send a transaction. A batch is expired as soon as its balance ends,
+and every reader can calculate this. Bee already calculates it from the events (`pkg/postage/batchstore`,
+`cleanup`). The ordered removal and the pot credit are in step 4, once per settlement. If a settlement is
+late, batches still expire on time; the next settlement replays more entries and credits the pot to the
+correct amount.
+
+**Bee.** Bee does not read `pot`, `totalPot` or `validChunkCount` (checked in `ethersphere/bee`). It
+follows the four batch events, which do not change. It calls `expiredBatchesExist()` and
+`expireLimited(25)` before it buys a batch (`pkg/postage/postagecontract`) and before a claim
+(`pkg/storageincentives/agent.go`). With the no-op stubs these calls cost almost nothing. A later Bee
+version can remove them.
+
+**Correctness check.** `test/PostageStampZK.test.ts` runs three random histories (batches created, topped
+up and deepened, price changes, blocks mined, batches that expire) on master's `PostageStamp` and on
+`PostageStampZK`, in the same blocks. At six checkpoints in each history, master's `pot` (after
+`expireLimited`) and `validChunkCount` are recorded. `crates/vm/tests/postage_vectors.rs` replays the
+PostageStampZK log with the same cut blocks and gets the same values at all 18 checkpoints. It also gets
+the same total with one settlement instead of six.
 
 ### Rule differences from Redistribution.sol (forced by the venue)
 
@@ -207,7 +291,8 @@ each batch from PostageStamp. Thus a prover cannot omit a batch to make a valid 
 | Disagreement freeze uses `block.prevrandao % 100` | `keccak(seed, "2") % 100` | Same reason |
 | Invalid reveal reverts, so the node stays "not revealed" | Invalid reveal is ignored, so the node stays "not revealed" | Same effect |
 | Anchored commit with a bad signature | Dropped from the round | A prover that anchored garbage must not make the round unprovable |
-| `claim` reads the batch at claim time | The batch is read at `settleRound` | The same check, at the settlement transaction |
+| `claim` reads the batch at claim time: "exists" means not yet removed by `expireLimited` | The batch comes from the proven postage state; "alive" means balance above the outpayment at the seed block | Batches are no longer removed on chain. The comparison is exact, and it does not depend on when somebody swept |
+| `expireLimited` removes expired batches and credits the pot, paid by whoever buys a stamp or claims | The proof replays PostageStampZK's log, expires batches and credits the pot at each settlement | Stamp buyers pay only for their own batch. The pot is the same (differential test) |
 | Anyone can call `claim` during the claim phase | Anyone can send the witness to a prover, or call `forceClaim` (blocks 115-151) | The same, off chain |
 
 ---
@@ -236,9 +321,9 @@ the seed block.
 withhold the winner's witness; `forceClaim` is the escape hatch, the same as for commits and reveals.
 
 **Prover liveness.** `settleRound` is permissionless. `anchorRound` is limited to `ANCHOR_ROLE` (the
-Foundation's prover first, as the proposal says). If nobody settles, the pot stays in PostageStamp and
-rolls over. A round can be skipped: rounds settle in increasing order, so settling round N+1 makes
-round N unsettleable.
+Foundation's prover first, as the proposal says). If nobody settles, the payments stay in PostageStampZK.
+The next settlement replays the log and credits them. A round can be skipped: rounds settle in increasing
+order, so settling round N+1 makes round N unsettleable. Section 4 tells who settles and who pays.
 
 **Upgrade authority.** `setVerifier(verifier, programVKey)` is admin-only and instant. On mainnet it
 must sit behind a timelock with an exit window. This is the residual risk L2BEAT flags in Lighter and
@@ -246,11 +331,56 @@ Derive.
 
 **Data availability.** The anchored list is held by the prover (`data/rounds/<n>/messages.json`, served
 at `/v1/rounds/{n}`). `anchorRound` already takes a `dataRef`. The next step is to upload the list to
-Swarm and pass the reference there.
+Swarm and pass the reference there. The postage state (`data/postage/<hash>.json`) has the same problem:
+another prover needs it to continue. It can also be rebuilt from the `PostageLog` history and the cut
+blocks of the earlier settlements (`PostageSettled` events), but the prover does not do this yet.
+
+**Size of the postage state.** The proof reads and hashes all live batches at each settlement: about 46k
+cycles for each live batch (section 5). That is 50M cycles for 1,000 batches and 460M for 10,000. The
+fix is a Merkle tree of the batches, so a settlement touches only the batches that changed or expired
+(ZK-SETTLEMENT-OPTIMIZATION.md, item 9).
 
 ---
 
-## 4. Measured so far
+## 4. Prover and settlement: who does what, and who pays
+
+| Action | Who | When | Gas paid by | Paid back |
+| --- | --- | --- | --- | --- |
+| `createBatch`, `topUp`, `increaseDepth` | Uploader | Any time | Uploader (only its own batch) | — |
+| Commit, reveal, claim witness | Node, off chain | Each round | Nobody (HTTP) | — |
+| `forceCommit`, `forceReveal`, `forceClaim` | Node | Only if the prover censors it | Node | No |
+| `anchorRound` | Prover with `ANCHOR_ROLE` (the Foundation at the start) | Blocks 38-56 of each round | Prover | No |
+| Proof | Prover (own GPU or a proving market) | After block 114 | Prover (off chain) | Through the fee |
+| `settleRound` | Anyone with a valid proof; in practice the prover service | From block 115 (unclaimed: from block 152) | Caller | `proverFeeBps` (1%) of the payout, only in rounds with a payout |
+
+**Who calls `settleRound`.** It has no role check: the proof is the permission. The prover service
+(`swarm-prover serve`, `settler.rs`) calls it when the round is ready. Another prover, or the winner,
+can call it with its own proof. The first valid call wins; a second one reverts with `AlreadySettled`.
+
+**At the start.** The Foundation runs the prover. It pays the gas of `anchorRound` (about 75k) and
+`settleRound` (about 0.5M with a real proof), and the cost of the proofs. It gets back 1% of the pot in
+rounds with a payout. `anchorRound` and rounds without a payout give nothing back.
+
+**Later.** When the round data (commit lists, postage state) is public on Swarm, anyone can prove and
+settle. The fee is the reward.
+
+**Open points.**
+
+1. **Fee shape.** The cost of a settlement (gas + proof) is almost constant. 1% of the pot changes with
+   the storage demand. Consider gas reimbursement plus a fixed margin, capped by the pot, or a minimum
+   fee. Decide with measurements from Sepolia and mainnet.
+2. **Races.** If many provers race for the same round, all but one waste their proof. Possible fixes:
+   give each round to one prover (in turn, or by the lowest offer) with a takeover after a deadline, or
+   let one party buy proofs on a market (Succinct Prover Network, Boundless).
+3. **Transactions without a fee.** `anchorRound`, and settlements without a payout. A small fee from
+   `accruedPot` can pay for them, or epochs can decrease their number.
+4. **Expiry sweeps before settlement.** With PostageStamp (master), a prover must send `expireLimited`
+   transactions before `settleRound` when many batches expired, as Bee does before a claim. With
+   PostageStampZK this is not necessary: the proof does the expiry.
+
+---
+
+## 5. Measured so far
 
 All numbers are from this machine (Apple Silicon laptop), 2026-10-19. They are small-scale and indicative.
 
@@ -326,9 +456,31 @@ These options give more margin and do not need a 10 GB laptop.
 (about 13k gas when cold). It also calls `freezeDeposit` one time for each freeze. A round has about 10
 participants, so this adds about 130k gas. The stake read does not cause a scale problem.
 
+**PostageStampZK** (2026-11-02, Hardhat):
+
+| Measurement | Result |
+| --- | --- |
+| `createBatch` with 50 batches already present: PostageStamp (master) | 443,169 gas |
+| The same with PostageStampZK | 176,950 gas (60% less) |
+| Pot and `validChunkCount` of the replay against master, 3 random histories, 18 checkpoints | Equal at every checkpoint |
+
+On master the cost of `createBatch` also increases with the size of the tree and with the number of
+batches that expired since the last sweep. On PostageStampZK it does not.
+
+**zkVM cycles with postage accounting** (`synth --nodes 10 --batches N`, `execute`, no proof):
+
+| Live batches in the postage state | Cycles |
+| --- | --- |
+| 1 | 3.71M |
+| 1,000 | 49.6M |
+| 10,000 | 463M |
+
+About 46k cycles for each live batch and settlement. This is the main cost at mainnet size. See
+"Size of the postage state" in section 3.
+
 ---
 
-## 5. Sepolia runbook
+## 6. Sepolia runbook
 
 Prerequisites: Sepolia ETH on a deployer key, a Sepolia RPC, the toolchain from prover/README.md, and
 for real proofs either a Succinct Prover Network key (`NETWORK_PRIVATE_KEY`) or a machine that can
@@ -347,14 +499,16 @@ PROGRAM_VKEY=0x00... PROVER_ADDRESS=<prover key address> npx hardhat deploy --ne
 NODE_KEYS=0x..,0x..,0x.. npx hardhat run scripts/zk/setup-nodes.ts --network sepoliazk
 #    Nodes can play once their stake is older than two rounds (~1 hour on Sepolia).
 
-# 4. Prover
+# 4. Prover. POSTAGE_FROM_BLOCK = deployment block of PostageStampZK (deployments/sepoliazk/PostageStamp.json)
 cd prover
 export RPC_URL=<sepolia rpc> SETTLEMENT_ADDRESS=$(jq -r .address ../deployments/sepoliazk/Settlement.json)
 SP1_PROVER=network NETWORK_PRIVATE_KEY=0x.. PROVER_PRIVATE_KEY=0x.. DATA_DIR=data/sepolia \
+  POSTAGE_FROM_BLOCK=$(jq -r .receipt.blockNumber ../deployments/sepoliazk/PostageStamp.json) \
   ./target/release/swarm-prover serve
+#    Or prove on a rented GPU with SP1_PROVER=cuda: prover/README.md, "Run the prover on a rented GPU".
 
-# 5. Nodes
-NODE_KEYS=0x..,0x.. ./target/release/node-sim --depth 1 --silent 3 --liar 4 --forced 2
+# 5. Nodes. BATCH_OWNER_KEY = the deployer key (it owns the batch that stamps the simulated reserve)
+NODE_KEYS=0x..,0x.. BATCH_OWNER_KEY=0x.. ./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2
 ```
 
 On Sepolia the selection seed is available for 8191 blocks (about 27 hours) through EIP-2935, so a slow
@@ -362,7 +516,7 @@ prover still settles.
 
 ---
 
-## 6. Migration phases, and where this branch is
+## 7. Migration phases, and where this branch is
 
 Phases are from [ZK-REDISTRIBUTION.md §11](./ZK-REDISTRIBUTION.md).
 
@@ -371,20 +525,28 @@ Phases are from [ZK-REDISTRIBUTION.md §11](./ZK-REDISTRIBUTION.md).
 | 1 | Deterministic VM, no EVM dependency | **Done** for master's rules (`crates/vm`) |
 | 2 | Shadow mode: VM against live Gnosis rounds | Not started. Needs a replay tool that turns `Committed`/`Revealed` events into a `RoundInput` |
 | 3 | Prove the game logic | **Done** (SP1 program, Settlement, Sepolia setup) |
-| 4 | Prove the storage witnesses | **Done** (`claim.rs`, `forceClaim`, batch binding, differential vectors) |
+| 4 | Prove the storage witnesses | **Done** (`claim.rs`, `forceClaim`, differential vectors) |
+| 4b | Postage accounting in the proof | **Done** (`PostageStampZK`, `postage.rs`, differential vectors). Not yet run end to end |
 | 5 | Canonical settlement, retire on-chain phases | This branch's deployment shape |
 | 6 | Recursive aggregation | Not started |
 
-The plan to decrease mainnet gas further (storage proofs for stakes and batches, epochs, oracle change,
-payouts that winners collect, a smaller anchor) is in
+The plan to decrease mainnet gas further (storage proofs for stakes, epochs, oracle change, payouts that
+winners collect, a smaller anchor, a Merkle postage state) is in
 [ZK-SETTLEMENT-OPTIMIZATION.md](./ZK-SETTLEMENT-OPTIMIZATION.md).
 
 ### Open items (in priority order)
 
-1. Timelock or exit window on `setVerifier`.
-2. Swarm as the data layer: upload the anchored list and pass the reference as `dataRef`.
-3. Forced-inclusion scoping across several rounds (§7.1c of the proposal).
-4. Bee integration: the commit, reveal and claim messages, the HTTP API (or Swarm feeds), and when to
+1. Run the current version end to end (node-sim, local and Sepolia) and make one real proof on a GPU.
+2. Timelock or exit window on `setVerifier`.
+3. Swarm as the data layer: upload the anchored list and the postage state; pass the reference as
+   `dataRef`.
+4. A Merkle postage state, so the proof cost does not grow with all live batches (optimization plan,
+   item 9).
+5. Fee model for provers (section 4).
+6. Batch migration from Gnosis PostageStamp to PostageStampZK (`copyBatchBulk`), and a check with the Bee
+   team that no Bee version reads `pot` or `validChunkCount`.
+7. Forced-inclusion scoping across several rounds (§7.1c of the proposal).
+8. Bee integration: the commit, reveal and claim messages, the HTTP API (or Swarm feeds), and when to
    fall back to `forceCommit`/`forceReveal`/`forceClaim`.
-5. Nodes don't know the minimum depth for round N+1 until round N is settled. Settling within the round
+9. Nodes don't know the minimum depth for round N+1 until round N is settled. Settling within the round
    (blocks 115-151) avoids that, but needs fast proving.

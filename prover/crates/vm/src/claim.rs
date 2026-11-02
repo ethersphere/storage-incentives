@@ -67,26 +67,13 @@ impl ClaimWitness {
     }
 }
 
-/// A PostageStamp batch as Settlement reads it at settlement time (`batches(id)`).
+/// A postage batch as the claim checks see it (from the replayed postage state; owner zero when expired).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BatchRecord {
     pub batch_id: B256,
     pub owner: Address,
     pub depth: u8,
     pub bucket_depth: u8,
-}
-
-/// The hash chain `Settlement.batchDigest` computes: abi.encodePacked(prev, id, owner, depth, bucketDepth).
-pub fn batch_digest(batches: &[BatchRecord]) -> B256 {
-    batches.iter().fold(B256::ZERO, |acc, b| {
-        let mut buf = [0u8; 32 + 32 + 20 + 1 + 1];
-        buf[..32].copy_from_slice(acc.as_slice());
-        buf[32..64].copy_from_slice(b.batch_id.as_slice());
-        buf[64..84].copy_from_slice(b.owner.as_slice());
-        buf[84] = b.depth;
-        buf[85] = b.bucket_depth;
-        keccak256(buf)
-    })
 }
 
 /// The hash chain `Settlement.forceClaim` keeps: keccak256(abi.encodePacked(prev, keccak256(witness))).
@@ -176,7 +163,11 @@ pub fn verify_claim(w: &ClaimWitness, ctx: &ClaimContext) -> Result<(), ClaimErr
     Ok(())
 }
 
-fn check_entry(p: &ChunkInclusionProof, index_in_rc: u64, ctx: &ClaimContext) -> Result<(), ClaimError> {
+fn check_entry(
+    p: &ChunkInclusionProof,
+    index_in_rc: u64,
+    ctx: &ClaimContext,
+) -> Result<(), ClaimError> {
     inclusion(p, index_in_rc, ctx)?;
     stamp(p, ctx)?;
     soc(p)
@@ -187,7 +178,11 @@ fn first(v: &[B256]) -> Result<B256, ClaimError> {
 }
 
 /// `inclusionFunction`.
-fn inclusion(p: &ChunkInclusionProof, index_in_rc: u64, ctx: &ClaimContext) -> Result<(), ClaimError> {
+fn inclusion(
+    p: &ChunkInclusionProof,
+    index_in_rc: u64,
+    ctx: &ClaimContext,
+) -> Result<(), ClaimError> {
     let segment_index = chunk_segment_index(ctx.seed);
     let mut transformed = bmt::transformed_address_from_proof(
         &p.proofSegments3,
@@ -198,7 +193,9 @@ fn inclusion(p: &ChunkInclusionProof, index_in_rc: u64, ctx: &ClaimContext) -> R
     );
 
     // The sample (reserve commitment) is a 32*32-byte chunk of (original, transformed) address pairs.
-    if ctx.sample_hash != bmt::chunk_address_from_proof(&p.proofSegments, p.proveSegment, index_in_rc, 32 * 32) {
+    if ctx.sample_hash
+        != bmt::chunk_address_from_proof(&p.proofSegments, p.proveSegment, index_in_rc, 32 * 32)
+    {
         return Err(ClaimError::InclusionProofFailed(1));
     }
 
@@ -210,7 +207,14 @@ fn inclusion(p: &ChunkInclusionProof, index_in_rc: u64, ctx: &ClaimContext) -> R
         Some(s) => s.chunkAddr,
         None => p.proveSegment,
     };
-    if original != bmt::chunk_address_from_proof(&p.proofSegments2, p.proveSegment2, segment_index, p.chunkSpan) {
+    if original
+        != bmt::chunk_address_from_proof(
+            &p.proofSegments2,
+            p.proveSegment2,
+            segment_index,
+            p.chunkSpan,
+        )
+    {
         return Err(ClaimError::InclusionProofFailed(3));
     }
 
@@ -267,7 +271,9 @@ fn stamp(p: &ChunkInclusionProof, ctx: &ClaimContext) -> Result<(), ClaimError> 
 
 /// `socFunction`.
 fn soc(p: &ChunkInclusionProof) -> Result<(), ClaimError> {
-    let Some(s) = p.socProof.first() else { return Ok(()) };
+    let Some(s) = p.socProof.first() else {
+        return Ok(());
+    };
 
     let mut msg = [0u8; 64];
     msg[..32].copy_from_slice(s.identifier.as_slice());
@@ -293,7 +299,9 @@ pub fn soc_address(identifier: B256, owner: Address) -> B256 {
 /// `addressToBucket`: the first `bucketDepth` bits of the address. A uint32 shift by 32 is 0 in Solidity.
 pub fn address_to_bucket(address: B256, bucket_depth: u8) -> u32 {
     let prefix = u32::from_be_bytes(address[..4].try_into().unwrap());
-    prefix.checked_shr(32 - bucket_depth.min(32) as u32).unwrap_or(0)
+    prefix
+        .checked_shr(32 - bucket_depth.min(32) as u32)
+        .unwrap_or(0)
 }
 
 /// `checkOrder`.

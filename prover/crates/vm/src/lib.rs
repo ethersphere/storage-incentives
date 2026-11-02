@@ -14,6 +14,7 @@
 
 pub mod bmt;
 pub mod claim;
+pub mod postage;
 pub mod sample;
 mod types;
 
@@ -34,8 +35,8 @@ pub enum VmError {
     StakesMismatch,
     /// Arithmetic overflow where Solidity would have reverted.
     Overflow,
-    /// `batches` does not list exactly the batches the claim witnesses reference, in order.
-    BatchesMismatch,
+    /// Postage event replay failed.
+    Postage(postage::PostageError),
 }
 
 /// keccak256("SwarmSettlementCommit(uint256 chainId,address settlement,uint64 round,bytes32 obfuscatedHash)")
@@ -253,6 +254,10 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
 
     let min_depth = minimum_depth(input.round, input.last_claim_round, input.last_winner_depth);
 
+    // Postage accounting since the previous settlement: replay the event log, credit the pot, expire.
+    let seed_block = input.round * ROUND_LENGTH + 114;
+    let pg = postage::apply(&input.postage, seed_block).map_err(VmError::Postage)?;
+
     // Commit + reveal phases. Ineligible nodes are dropped like a reverted `commit`.
     let mut entries: Vec<Entry> = Vec::new();
     for ((owner, obf), stake) in commits.iter().zip(&input.stakes) {
@@ -291,13 +296,16 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         stakeDigest: stake_digest(&input.stakes),
         stakePrice: input.stake_price,
         forcedClaimsHash: claim::forced_claims_hash(&input.forced_claims),
-        batchIds: input.batches.iter().map(|b| b.batch_id).collect(),
-        batchDigest: claim::batch_digest(&input.batches),
         sampleMaxValue: input.sample_max_value,
+        postage: PostageInputs {
+            prevStateHash: input.postage.state.hash(),
+            prevEventIndex: input.postage.prev_event_index,
+            prevEventHash: input.postage.prev_event_hash,
+            eventIndex: pg.event_index,
+            eventHash: pg.event_hash,
+            cutBlock: input.postage.cut_block,
+        },
     };
-    if inputs.batchIds != claim_batch_ids(input) {
-        return Err(VmError::BatchesMismatch);
-    }
     let mut out = Outcome {
         hasTruth: false,
         truthHash: B256::ZERO,
@@ -309,6 +317,11 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         freezeOwners: vec![],
         freezeDurations: vec![],
         unclaimed: false,
+        postage: PostageOutcome {
+            newStateHash: pg.new_state.hash(),
+            potAmount: pg.pot,
+            validChunkCount: pg.valid_chunk_count,
+        },
     };
 
     // Redistribution.sol cannot be claimed without reveals; nothing happens.
@@ -380,13 +393,15 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
     out.redundancy = redundancy as u16; // uint16(redundancyCount), truncating like Solidity
 
     // claim: the storage evidence for the truth's sample. Like a reverted claim, a round without a valid
-    // witness changes nothing on chain.
+    // witness changes nothing on chain. Batches come from the replayed postage state: a batch is alive
+    // when its normalisedBalance is above the outpayment at the seed block.
+    let batches = claim_batches(input, &pg);
     let ctx = claim::ClaimContext {
         anchor: input.round_anchor,
         seed,
         sample_hash: truth_hash,
         depth: truth_depth,
-        batches: &input.batches,
+        batches: &batches,
         sample_max_value: input.sample_max_value,
     };
     if claim_candidates(input).any(|w| claim::verify_claim(&w, &ctx).is_ok()) {
@@ -413,18 +428,35 @@ pub fn claim_candidates(input: &RoundInput) -> impl Iterator<Item = claim::Claim
         .filter_map(|b| claim::ClaimWitness::decode(b))
 }
 
-/// Every batch id the candidate witnesses reference, first occurrence first. Settlement reads exactly
-/// these batches, so the prover cannot hide a batch to make a forced witness fail.
-pub fn claim_batch_ids(input: &RoundInput) -> Vec<B256> {
-    let mut ids: Vec<B256> = Vec::new();
+/// `claim_batches` for callers outside `run` (the prover explains why a witness was rejected).
+pub fn claim_batch_records(input: &RoundInput) -> Result<Vec<claim::BatchRecord>, VmError> {
+    let pg = postage::apply(&input.postage, input.round * ROUND_LENGTH + 114)
+        .map_err(VmError::Postage)?;
+    Ok(claim_batches(input, &pg))
+}
+
+/// The batches the candidate witnesses reference, as the claim checks see them: from the postage state
+/// after this settlement's events, with owner zero for an expired batch (Redistribution's "batch does
+/// not exist or expired"). The prover cannot hide a batch: the state is bound by its hash.
+fn claim_batches(input: &RoundInput, pg: &postage::PostageRun) -> Vec<claim::BatchRecord> {
+    let mut out: Vec<claim::BatchRecord> = Vec::new();
     for w in claim_candidates(input) {
         for id in w.batch_ids() {
-            if !ids.contains(&id) {
-                ids.push(id);
+            if out.iter().any(|b| b.batch_id == id) {
+                continue;
+            }
+            if let Some(b) = pg.before_cut.batch(&id) {
+                let alive = b.normalised_balance > pg.outpayment_at_probe;
+                out.push(claim::BatchRecord {
+                    batch_id: id,
+                    owner: if alive { b.owner } else { Address::ZERO },
+                    depth: b.depth,
+                    bucket_depth: b.bucket_depth,
+                });
             }
         }
     }
-    ids
+    out
 }
 
 /// Checks of `Redistribution.reveal`. Returns (depth, hash, stakeDensity) when the reveal opens the
@@ -462,3 +494,6 @@ fn freeze_random(seed: B256) -> U256 {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod postage_tests;

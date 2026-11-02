@@ -24,23 +24,15 @@ interface ISettlementStakes {
 }
 
 interface ISettlementPostage {
-    function withdraw(address beneficiary) external;
+    function withdraw(address beneficiary, uint256 amount) external;
 
     function bzzToken() external view returns (address);
 
-    function batches(
-        bytes32 _batchId
-    )
-        external
-        view
-        returns (
-            address owner,
-            uint8 depth,
-            uint8 bucketDepth,
-            bool immutableFlag,
-            uint256 normalisedBalance,
-            uint256 lastUpdatedBlockNumber
-        );
+    function eventCount() external view returns (uint64);
+
+    function eventHashAt(uint64 index) external view returns (bytes32);
+
+    function eventBlockAt(uint64 index) external view returns (uint64);
 }
 
 interface ISettlementOracle {
@@ -53,10 +45,12 @@ interface ISettlementOracle {
  * @title Settlement
  * @author The Swarm Authors
  * @notice Replaces Redistribution. The Schelling game (commit, reveal, truth and winner selection, freezes,
- * redundancy count for the price oracle) and the claim's storage evidence (chunk inclusion proofs, postage
- * stamps, SOC signatures, reserve size estimate) run off chain in the Redistribution VM (prover/crates/vm).
+ * redundancy count for the price oracle), the claim's storage evidence (chunk inclusion proofs, postage
+ * stamps, SOC signatures, reserve size estimate) and the postage accounting (batch expiry and the pot,
+ * which PostageStamp.expireLimited did on chain) run off chain in the Redistribution VM (prover/crates/vm).
  * A prover proves the VM run with SP1 and this contract checks the proof and applies the result: pays the
- * winner from the PostageStamp pot, freezes stakes and adjusts the price. See docs/ZK-SETTLEMENT.md.
+ * winner the proven pot from PostageStampZK, freezes stakes and adjusts the price. See
+ * docs/ZK-SETTLEMENT.md.
  *
  * Round layout, in blocks relative to the round start (ROUND_LENGTH = 152, the same as Redistribution):
  *
@@ -96,9 +90,25 @@ contract Settlement is AccessControl, Pausable {
         bytes32 stakeDigest;
         uint32 stakePrice;
         bytes32 forcedClaimsHash;
-        bytes32[] batchIds;
-        bytes32 batchDigest;
         uint256 sampleMaxValue;
+        PostageInputs postage;
+    }
+
+    /// Postage part of the public inputs: the replayed part of PostageStampZK's event log.
+    struct PostageInputs {
+        bytes32 prevStateHash;
+        uint64 prevEventIndex;
+        bytes32 prevEventHash;
+        uint64 eventIndex;
+        bytes32 eventHash;
+        uint64 cutBlock;
+    }
+
+    /// Postage part of the outcome.
+    struct PostageOutcome {
+        bytes32 newStateHash;
+        uint256 potAmount;
+        uint256 validChunkCount;
     }
 
     /// Outputs: executed in settleRound.
@@ -114,6 +124,7 @@ contract Settlement is AccessControl, Pausable {
         uint256[] freezeDurations;
         // A truth was selected but no valid claim witness was given: like a reverted claim, no effects.
         bool unclaimed;
+        PostageOutcome postage;
     }
 
     struct PublicValues {
@@ -179,6 +190,16 @@ contract Settlement is AccessControl, Pausable {
     // Redistribution's reserve size estimate bound (alpha=0.097612 beta=0.0716570 k=16).
     uint256 public sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
+    // Postage accounting carried between settlements: hash of the proof's postage state, the position in
+    // PostageStampZK's event log, and the pot earned but not yet paid out (rounds without a payout keep
+    // adding to it, as the pot did on master until the next successful claim).
+    bytes32 public postageStateHash;
+    uint64 public postageEventIndex;
+    bytes32 public postageEventHash;
+    uint256 public accruedPot;
+    // Chunks of live batches after the last settlement (PostageStamp.validChunkCount). For readers only.
+    uint256 public validChunkCount;
+
     // Share of the pot paid to whoever submits a valid settlement, in basis points.
     uint16 public proverFeeBps = 100;
 
@@ -195,6 +216,13 @@ contract Settlement is AccessControl, Pausable {
     event RevealForced(uint64 indexed round, bytes32 indexed overlay, uint8 depth, bytes32 hash, bytes32 nonce);
     event ClaimForced(uint64 indexed round, address indexed sender, bytes witness);
     event RoundUnclaimed(uint64 indexed round, address winner, bytes32 truthHash);
+    event PostageSettled(
+        uint64 indexed round,
+        uint64 eventIndex,
+        uint64 cutBlock,
+        uint256 potAmount,
+        uint256 accruedPot
+    );
     event RoundSettled(
         uint64 indexed round,
         bool hasTruth,
@@ -207,7 +235,6 @@ contract Settlement is AccessControl, Pausable {
         uint256 proverFee
     );
     event PriceAdjustmentSkipped(uint16 redundancyCount);
-    event WithdrawFailed(address owner);
     event VerifierChanged(address verifier, bytes32 programVKey);
 
     // ----------------------------- Errors ------------------------------
@@ -368,6 +395,14 @@ contract Settlement is AccessControl, Pausable {
         ri.settled = true;
         lastSettledRound = pin.round;
 
+        // Postage accounting applies to every round, with or without a payout.
+        postageStateHash = out.postage.newStateHash;
+        postageEventIndex = pin.postage.eventIndex;
+        postageEventHash = pin.postage.eventHash;
+        accruedPot += out.postage.potAmount;
+        validChunkCount = out.postage.validChunkCount;
+        emit PostageSettled(pin.round, pin.postage.eventIndex, pin.postage.cutBlock, out.postage.potAmount, accruedPot);
+
         if (out.unclaimed) {
             // The claim window must be closed, so nobody can settle "unclaimed" before the winner's
             // witness (off chain or forceClaim) had its chance.
@@ -491,20 +526,6 @@ contract Settlement is AccessControl, Pausable {
     }
 
     /**
-     * @notice Same rule the VM uses to bind the postage batches of the claim witnesses into the proof.
-     * Mirrors the batch lookup of Redistribution.stampFunction, read at settlement time.
-     */
-    function batchDigest(bytes32[] memory _batchIds) public view returns (bytes32 digest) {
-        for (uint256 i = 0; i < _batchIds.length; ) {
-            (address owner, uint8 depth, uint8 bucketDepth, , , ) = PostageContract.batches(_batchIds[i]);
-            digest = keccak256(abi.encodePacked(digest, _batchIds[i], owner, depth, bucketDepth));
-            unchecked {
-                ++i;
-            }
-        }
-    }
-
-    /**
      * @notice The digest a node signs (EIP-191 personal_sign) for an off-chain commit. Binds the commit to
      * this chain, this contract and this round, so it cannot be replayed elsewhere.
      */
@@ -562,21 +583,42 @@ contract Settlement is AccessControl, Pausable {
         if (pv.stakeDigest != stakeDigest(pv.participants)) revert InputMismatch(8);
         if (pv.stakePrice != OracleContract.currentPrice()) revert InputMismatch(9);
         if (pv.forcedClaimsHash != ri.forcedClaimsHash) revert InputMismatch(10);
-        if (pv.batchDigest != batchDigest(pv.batchIds)) revert InputMismatch(11);
         if (pv.sampleMaxValue != sampleMaxValue) revert InputMismatch(12);
+        _checkPostage(pv.postage);
     }
 
-    function _payout(address winner) internal returns (uint256 payout, uint256 fee) {
-        IERC20 token = IERC20(PostageContract.bzzToken());
-        uint256 before = token.balanceOf(address(this));
+    /**
+     * @dev The proof replayed PostageStampZK's event log from where the last settlement stopped
+     * (prevEventIndex) to eventIndex, and every log entry up to cutBlock is in it.
+     */
+    function _checkPostage(PostageInputs memory pg) internal view {
+        if (
+            pg.prevStateHash != postageStateHash ||
+            pg.prevEventIndex != postageEventIndex ||
+            pg.prevEventHash != postageEventHash
+        ) revert InputMismatch(11);
+        if (pg.cutBlock > block.number || pg.eventIndex < pg.prevEventIndex) revert InputMismatch(11);
 
-        (bool success, ) = address(PostageContract).call(abi.encodeWithSignature("withdraw(address)", address(this)));
-        if (!success) {
-            emit WithdrawFailed(winner);
-            return (0, 0);
+        uint64 count = PostageContract.eventCount();
+        if (pg.eventIndex > count) revert InputMismatch(11);
+        if (pg.eventIndex > pg.prevEventIndex && PostageContract.eventHashAt(pg.eventIndex) != pg.eventHash) {
+            revert InputMismatch(11);
         }
+        // The next entry, if any, must be after the cut: nothing up to the cut is left out.
+        if (pg.eventIndex < count && PostageContract.eventBlockAt(pg.eventIndex + 1) <= pg.cutBlock) {
+            revert InputMismatch(11);
+        }
+    }
 
-        uint256 amount = token.balanceOf(address(this)) - before;
+    /// Pays out everything accrued since the last payout: the proven pot of this and earlier settlements.
+    function _payout(address winner) internal returns (uint256 payout, uint256 fee) {
+        uint256 amount = accruedPot;
+        if (amount == 0) return (0, 0);
+        accruedPot = 0;
+
+        PostageContract.withdraw(address(this), amount);
+
+        IERC20 token = IERC20(PostageContract.bzzToken());
         fee = (amount * proverFeeBps) / 10000;
         payout = amount - fee;
 

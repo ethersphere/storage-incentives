@@ -1,5 +1,7 @@
 use super::*;
-use crate::claim::{address_to_bucket, verify_claim, BatchRecord, ClaimContext, ClaimError, PostageProof};
+use crate::claim::{
+    address_to_bucket, verify_claim, BatchRecord, ClaimContext, ClaimError, PostageProof,
+};
 use crate::sample::{Sample, SampleEntry, SAMPLE_SIZE};
 use alloy_primitives::{address, b256, Bytes};
 use alloy_signer::SignerSync;
@@ -47,8 +49,38 @@ fn base_input() -> RoundInput {
         penalty_random_factor: 100,
         claim: None,
         forced_claims: vec![],
-        batches: vec![],
         sample_max_value: U256::MAX,
+        postage: postage::PostageInput {
+            cut_block: SEED_BLOCK,
+            ..Default::default()
+        },
+    }
+}
+
+const SEED_BLOCK: u64 = ROUND * ROUND_LENGTH + 114;
+
+/// Postage state with `batch()` alive and funded far beyond the round.
+fn postage_with_batch() -> postage::PostageInput {
+    let b = batch();
+    postage::PostageInput {
+        state: postage::PostageState {
+            last_cut_block: SEED_BLOCK - 152,
+            price_block: 1,
+            price_outpayment: U256::ZERO,
+            price: U256::from(1u8),
+            batches: vec![postage::BatchState {
+                id: b.batch_id,
+                owner: b.owner,
+                depth: b.depth,
+                bucket_depth: b.bucket_depth,
+                normalised_balance: U256::from(10u64.pow(18)),
+                counted_to: U256::from(SEED_BLOCK - 152 - 1),
+            }],
+        },
+        prev_event_index: 0,
+        prev_event_hash: B256::ZERO,
+        events: vec![],
+        cut_block: SEED_BLOCK + 1,
     }
 }
 
@@ -108,7 +140,7 @@ fn sample(anchor: B256, depth: u8) -> Sample {
 fn with_claim(input: &mut RoundInput, s: &Sample) {
     let w = s.witness(&input.round_anchor, input.selection_seed, stamp);
     input.claim = Some(Bytes::from(w.encode()));
-    input.batches = vec![batch()];
+    input.postage = postage_with_batch();
 }
 
 fn stake_of(n: &Node) -> StakeRecord {
@@ -356,9 +388,18 @@ fn bmt_builder_matches_proof_verification() {
     let plain = bmt::Tree::new(&p, None);
     let keyed = bmt::Tree::new(&p, Some(anchor));
     for i in [0usize, 1, 5, 127] {
-        assert_eq!(bmt::chunk_address_from_proof(&plain.proof(i), plain.segment(i), i as u64, 32), plain.address());
         assert_eq!(
-            bmt::transformed_address_from_proof(&keyed.proof(i), keyed.segment(i), i as u64, 32, &anchor),
+            bmt::chunk_address_from_proof(&plain.proof(i), plain.segment(i), i as u64, 32),
+            plain.address()
+        );
+        assert_eq!(
+            bmt::transformed_address_from_proof(
+                &keyed.proof(i),
+                keyed.segment(i),
+                i as u64,
+                32,
+                &anchor
+            ),
             keyed.address()
         );
     }
@@ -368,8 +409,20 @@ fn bmt_builder_matches_proof_verification() {
     assert_eq!(fast.transformed(seg), keyed.address());
 }
 
-fn claim_ctx<'a>(s: &Sample, anchor: B256, seed: B256, batches: &'a [BatchRecord]) -> ClaimContext<'a> {
-    ClaimContext { anchor, seed, sample_hash: s.hash(), depth: 0, batches, sample_max_value: U256::MAX }
+fn claim_ctx<'a>(
+    s: &Sample,
+    anchor: B256,
+    seed: B256,
+    batches: &'a [BatchRecord],
+) -> ClaimContext<'a> {
+    ClaimContext {
+        anchor,
+        seed,
+        sample_hash: s.hash(),
+        depth: 0,
+        batches,
+        sample_max_value: U256::MAX,
+    }
 }
 
 #[test]
@@ -380,7 +433,11 @@ fn valid_witness_verifies_for_many_seeds() {
     for i in 0u8..20 {
         let seed = keccak256([i]);
         let w = s.witness(&anchor, seed, stamp);
-        assert_eq!(verify_claim(&w, &claim_ctx(&s, anchor, seed, &batches)), Ok(()), "seed {i}");
+        assert_eq!(
+            verify_claim(&w, &claim_ctx(&s, anchor, seed, &batches)),
+            Ok(()),
+            "seed {i}"
+        );
     }
 }
 
@@ -398,20 +455,51 @@ fn tampered_witnesses_are_rejected() {
         verify_claim(&w, &ctx)
     };
 
-    assert_eq!(check(&|w| w.proofLast.proofSegments[1] = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(1)));
-    assert_eq!(check(&|w| w.proofLast.proofSegments2[0] = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(2)));
-    assert_eq!(check(&|w| w.proofLast.proveSegment2 = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(3)));
-    assert_eq!(check(&|w| w.proofLast.proofSegments3[3] = keccak256(b"x")), Err(ClaimError::InclusionProofFailed(4)));
-    assert_eq!(check(&|w| w.proofLast.chunkSpan = 33), Err(ClaimError::InclusionProofFailed(3)));
     assert_eq!(
-        check(&|w| w.proofLast.postageProof = stamp_with(&PrivateKeySigner::random(), w.proofLast.proveSegment)),
+        check(&|w| w.proofLast.proofSegments[1] = keccak256(b"x")),
+        Err(ClaimError::InclusionProofFailed(1))
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.proofSegments2[0] = keccak256(b"x")),
+        Err(ClaimError::InclusionProofFailed(2))
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.proveSegment2 = keccak256(b"x")),
+        Err(ClaimError::InclusionProofFailed(3))
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.proofSegments3[3] = keccak256(b"x")),
+        Err(ClaimError::InclusionProofFailed(4))
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.chunkSpan = 33),
+        Err(ClaimError::InclusionProofFailed(3))
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.postageProof =
+            stamp_with(&PrivateKeySigner::random(), w.proofLast.proveSegment)),
         Err(ClaimError::SigRecoveryFailed)
     );
-    assert_eq!(check(&|w| w.proofLast.postageProof.index += 1 << 32), Err(ClaimError::BucketDiffers));
-    assert_eq!(check(&|w| w.proofLast.postageProof.index |= 16), Err(ClaimError::IndexOutsideSet));
-    assert_eq!(check(&|w| w.proofLast.postageProof.postageId = B256::ZERO), Err(ClaimError::BatchDoesNotExist));
-    assert_eq!(check(&|w| w.proofLast.postageProof.signature = Bytes::from(vec![1u8; 64])), Err(ClaimError::SigRecoveryFailed));
-    assert_eq!(check(&|w| w.proofLast.proofSegments.clear()), Err(ClaimError::InclusionProofFailed(1)));
+    assert_eq!(
+        check(&|w| w.proofLast.postageProof.index += 1 << 32),
+        Err(ClaimError::BucketDiffers)
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.postageProof.index |= 16),
+        Err(ClaimError::IndexOutsideSet)
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.postageProof.postageId = B256::ZERO),
+        Err(ClaimError::BatchDoesNotExist)
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.postageProof.signature = Bytes::from(vec![1u8; 64])),
+        Err(ClaimError::SigRecoveryFailed)
+    );
+    assert_eq!(
+        check(&|w| w.proofLast.proofSegments.clear()),
+        Err(ClaimError::InclusionProofFailed(1))
+    );
     // Witness 1 and 2 swapped: the inclusion index no longer matches.
     assert_eq!(
         check(&|w| std::mem::swap(&mut w.proof1, &mut w.proof2)),
@@ -420,14 +508,26 @@ fn tampered_witnesses_are_rejected() {
 
     let mut tight = claim_ctx(&s, anchor, seed, &batches);
     tight.sample_max_value = U256::from_be_bytes(s.entries[SAMPLE_SIZE - 1].transformed.0);
-    assert_eq!(verify_claim(&good, &tight), Err(ClaimError::ReserveCheckFailed));
+    assert_eq!(
+        verify_claim(&good, &tight),
+        Err(ClaimError::ReserveCheckFailed)
+    );
 
     let mut deep = claim_ctx(&s, anchor, seed, &batches);
     deep.depth = 12;
-    assert!(matches!(verify_claim(&good, &deep), Err(ClaimError::OutOfDepthClaim(_))));
+    assert!(matches!(
+        verify_claim(&good, &deep),
+        Err(ClaimError::OutOfDepthClaim(_))
+    ));
 
-    let dead = [BatchRecord { owner: Address::ZERO, ..batch() }];
-    assert_eq!(verify_claim(&good, &claim_ctx(&s, anchor, seed, &dead)), Err(ClaimError::BatchDoesNotExist));
+    let dead = [BatchRecord {
+        owner: Address::ZERO,
+        ..batch()
+    }];
+    assert_eq!(
+        verify_claim(&good, &claim_ctx(&s, anchor, seed, &dead)),
+        Err(ClaimError::BatchDoesNotExist)
+    );
 }
 
 #[test]
@@ -447,7 +547,11 @@ fn wrong_order_in_sample_is_rejected() {
     // Re-point the witness at the unsorted tree: proofs are valid, order is not.
     let (i1, i2) = claim::witness_indices(seed);
     let mut w = s.witness(&anchor, seed, stamp);
-    for (p, k) in [(&mut w.proof1, i1 as usize), (&mut w.proof2, i2 as usize), (&mut w.proofLast, 15)] {
+    for (p, k) in [
+        (&mut w.proof1, i1 as usize),
+        (&mut w.proof2, i2 as usize),
+        (&mut w.proofLast, 15),
+    ] {
         let e = &entries[k];
         p.proofSegments = tree.proof(k * 2);
         p.proveSegment = tree.segment(k * 2);
@@ -460,7 +564,10 @@ fn wrong_order_in_sample_is_rejected() {
         p.postageProof = stamp(e.original);
     }
     let batches = [batch()];
-    let ctx = ClaimContext { sample_hash: tree.address(), ..claim_ctx(&s, anchor, seed, &batches) };
+    let ctx = ClaimContext {
+        sample_hash: tree.address(),
+        ..claim_ctx(&s, anchor, seed, &batches)
+    };
     assert!(matches!(
         verify_claim(&w, &ctx),
         Err(ClaimError::RandomElementCheckFailed) | Err(ClaimError::LastElementCheckFailed)
@@ -476,7 +583,6 @@ fn truth_without_witness_is_unclaimed() {
     assert!(!pv.outcome.hasTruth);
     assert!(pv.outcome.unclaimed);
     assert!(pv.outcome.freezeOwners.is_empty());
-    assert!(pv.inputs.batchIds.is_empty());
 }
 
 #[test]
@@ -486,18 +592,51 @@ fn forced_claim_counts_when_the_prover_has_none() {
     let mut input = play(&ns, 0, &[s.hash(); 3], &[true; 3]);
     let w = s.witness(&input.round_anchor, input.selection_seed, stamp);
     input.forced_claims = vec![Bytes::from(vec![1, 2, 3]), Bytes::from(w.encode())];
-    input.batches = vec![batch()];
+    input.postage = postage_with_batch();
     let pv = run(&input).unwrap();
     assert!(pv.outcome.hasTruth);
-    assert_eq!(pv.inputs.forcedClaimsHash, claim::forced_claims_hash(&input.forced_claims));
+    assert_eq!(
+        pv.inputs.forcedClaimsHash,
+        claim::forced_claims_hash(&input.forced_claims)
+    );
 }
 
 #[test]
-fn prover_cannot_hide_a_batch() {
+fn claim_needs_the_batch_in_the_postage_state() {
     let ns = nodes(2);
     let s = sample(B256::ZERO, 0);
     let mut input = play(&ns, 0, &[s.hash(); 2], &[true; 2]);
     with_claim(&mut input, &s);
-    input.batches.clear();
-    assert_eq!(run(&input), Err(VmError::BatchesMismatch));
+    // The batch is unknown to the proven postage state: the claim fails, the round is unclaimed.
+    input.postage.state.batches.clear();
+    let pv = run(&input).unwrap();
+    assert!(pv.outcome.unclaimed && !pv.outcome.hasTruth);
+}
+
+#[test]
+fn claim_needs_a_batch_alive_at_the_seed_block() {
+    let ns = nodes(2);
+    let s = sample(B256::ZERO, 0);
+    let mut input = play(&ns, 0, &[s.hash(); 2], &[true; 2]);
+    with_claim(&mut input, &s);
+    // Outpayment at the seed block is SEED_BLOCK - 1 (price 1 since block 1): balance just at it.
+    input.postage.state.batches[0].normalised_balance = U256::from(SEED_BLOCK - 1);
+    assert!(run(&input).unwrap().outcome.unclaimed);
+    input.postage.state.batches[0].normalised_balance = U256::from(SEED_BLOCK);
+    assert!(run(&input).unwrap().outcome.hasTruth);
+}
+
+#[test]
+fn postage_outcome_is_part_of_every_round() {
+    // Even a round without reveals settles the postage accounting.
+    let ns = nodes(2);
+    let mut input = play(&ns, 0, &[keccak256(b"x"); 2], &[false; 2]);
+    input.postage = postage_with_batch();
+    let pv = run(&input).unwrap();
+    assert!(!pv.outcome.hasTruth);
+    // Counted to SEED_BLOCK - 153. Price 1 since block 1, so the outpayment at the cut (SEED_BLOCK + 1)
+    // is SEED_BLOCK: 153 blocks of 2^20 chunks.
+    assert_eq!(pv.outcome.postage.potAmount, U256::from(153u64 << 20));
+    assert_eq!(pv.outcome.postage.validChunkCount, U256::from(1u64 << 20));
+    assert_eq!(pv.inputs.postage.prevStateHash, input.postage.state.hash());
 }

@@ -4,7 +4,8 @@ This document gives the next changes for the ZK settlement on branch `feat/zk-se
 low gas on Ethereum mainnet: few transactions and little computation on chain. The current design is in
 [ZK-SETTLEMENT.md](./ZK-SETTLEMENT.md).
 
-**Status:** plan. Nothing in this document is implemented yet.
+**Status:** item 8 (postage accounting in the proof) is implemented, and it replaces item 2. The other
+items are plans.
 
 **Decision so far:** keep the ZK validity proof (option A) as the long-term design. The proof cost on
 chain stays the same when the rules become more complex, for example with SWIP-49/50 (STS-1).
@@ -16,29 +17,36 @@ chain stays the same when the rules become more complex, for example with SWIP-4
 | # | Change | Gas effect | Changes the game? | Depends on |
 | --- | --- | --- | --- | --- |
 | 1 | Read stakes and price from storage proofs in the zkVM | Removes about 13k gas for each participant from `settleRound` | Stakes and price come from the block before the round starts | — |
-| 2 | Read postage batches from storage proofs in the zkVM | Removes the batch reads from `settleRound` | Batches come from the seed block (114) | 1 |
+| 2 | ~~Read postage batches from storage proofs in the zkVM~~ | Done by item 8: the claim reads batches from the proven postage state | — | — |
 | 3 | Settle an epoch of K rounds with one proof | Divides the proof check (about 270k gas) by K | Payouts and on-chain freezes arrive at the epoch end | 1, 4 |
 | 4 | `PriceOracle.adjustPrice` for a list of rounds | Needed for 3 | No | — |
 | 5 | Payouts that winners collect | Removes token transfers from `settleRound` | Winners send one transaction to collect | 3 |
 | 6 | A smaller `anchorRound` | About 75k down to about 30k gas for each round | No | — |
 | 7 | Faster proof generation | No gas effect. Less time to finality | No | — |
+| 8 | **Done.** Postage accounting (expiry and pot) in the proof; `PostageStampZK` without the batch tree | `createBatch` 443k → 177k gas (measured, 50 batches); no expiry sweeps for anybody | Batches expire by comparison; nothing is removed on chain | — |
+| 9 | A Merkle postage state | No gas effect. Proof cost no longer grows with all live batches | No | 8 |
 
-Order of work: 1, 2, 4, 3, 5, 6. Item 7 can occur at any time.
+Order of work: 9, 1, 4, 3, 5, 6. Item 7 can occur at any time. Item 9 is first because the proof cost of
+item 8 grows with the number of live batches (about 46k cycles each).
 
 ---
 
 ## 2. Estimated gas
 
-These values are estimates. They use the local measurements in ZK-SETTLEMENT.md (section 4) and a round
+These values are estimates. They use the local measurements in ZK-SETTLEMENT.md (section 5) and a round
 of about 10 participants. Measure each step on Sepolia before you use the values in a decision.
 
 | Configuration | Transactions | Gas for each round |
 | --- | --- | --- |
 | Master today (Redistribution) | About 3 for each participant, 30 for each round | Highest |
 | Branch now: `anchorRound` + `settleRound` with a Groth16 proof | 2 for each round | About 0.6M |
-| After 1 and 2 | 2 for each round | About 0.45M |
+| After 1 (8 is done) | 2 for each round | About 0.45M |
 | After 3 (K = 8), 4 and 5 | 1 anchor for each round + 1 settle for each epoch | About 0.12M |
 | After 6 | Same | About 0.08M |
+
+Stamp buyers: `createBatch` costs 176,950 gas with PostageStampZK against 443,169 with PostageStamp, with 50
+batches present (measured). On PostageStamp the cost also increases with the tree size and with the
+expired batches that the buyer removes.
 
 ---
 
@@ -108,16 +116,11 @@ the settlement transaction (regression test in `test/Settlement.test.ts`).
 
 ---
 
-## 4. Postage batches from storage proofs (item 2)
+## 4. Postage batches (item 2): replaced by item 8
 
-The claim checks the batch of each witness: owner, depth, bucket depth. Now `settleRound` reads
-`PostageStamp.batches(id)` for each batch id.
-
-Use the same method as item 1, at the seed block (`roundStart + 114`). Settlement already checks the hash
-of this block for the selection seed. The batch state at block 114 is near to the claim time of master.
-
-The slots are `batches[id].owner`, `.depth` and `.bucketDepth`. They are packed in one storage slot
-(address + uint8 + uint8). Thus one storage proof is sufficient for each batch.
+The claim needs the batch of each witness: owner, depth, bucket depth, and whether it is alive. With item
+8 the proof carries the postage state, so the claim reads the batch from it. No storage proof and no
+`batches(id)` read in `settleRound` are necessary.
 
 ---
 
@@ -152,23 +155,14 @@ round results, not from StakeRegistry.
 
 ### Pot
 
-The pot does not depend on claims:
+With item 8 the proof computes the pot. In an epoch, the program can cut the postage accounting at the
+end of each round, not only at the epoch end. Thus each round gets its exact pot, with no division:
 
-- `PostageStamp.expireLimited` increases `pot` for each block, from the number of valid chunks and the
-  price. It also removes expired batches.
-- `createBatch`, `copyBatch`, `increaseDepth`, `totalPot()` and `withdraw()` call `expireLimited`. Anyone
-  can also call it. Thus expired batches go out of the tree also when nobody claims.
-- `withdraw` sends all of the pot to the caller and sets `pot = 0`.
-
-With epochs, one `withdraw` at the epoch end gets the pot of K rounds. Settlement divides it between the
-winners:
-
-1. Each claimed round gets the part of the pot for the blocks since the previous claimed round.
-2. An unclaimed round gives its part to the next claimed round, as on master.
-3. The program calculates the division from the block numbers. Settlement applies it.
-
-The pot increases almost linearly between price changes. Thus the division by blocks is very near to the
-payouts of a claim for each round.
+1. The program replays the log entries of round 1, credits the pot up to the cut of round 1, and plays
+   round 1.
+2. It does the same for round 2, and so on.
+3. A claimed round gets its own pot plus the pot of the unclaimed rounds before it, as on master.
+4. Settlement records the amount for each winner (item 5), or pays the winners at the epoch end.
 
 ### Epoch length
 
@@ -252,11 +246,68 @@ wrap stay almost the same.
 
 ---
 
-## 10. Prerequisites for mainnet (not optimizations)
+## 10. Postage accounting in the proof (item 8, implemented)
+
+This item is implemented. The design, the Bee compatibility and the tests are in
+[ZK-SETTLEMENT.md](./ZK-SETTLEMENT.md), section 2, "Postage accounting in the proof". Summary:
+
+- `PostageStampZK` has the batch functions, events and views of PostageStamp, without the batch tree and
+  without `expireLimited`. A batch is expired when its balance ended; nothing is removed.
+- Each change that affects the pot goes into an event log (hash chain + `PostageLog` event).
+- Each settlement replays the new log entries in the proof, credits the pot, removes expired batches from
+  the proof's state, and gives the pot amount. Settlement keeps `accruedPot` and pays it to the next
+  winner.
+- `expiredBatchesExist()` and `expireLimited()` stay as no-ops for current Bee versions.
+- The replay gives the same pot and `validChunkCount` as master's PostageStamp at all 18 checkpoints of
+  three random histories.
+
+---
+
+## 11. A Merkle postage state (item 9)
+
+### Problem
+
+The proof carries all live batches as one list. At each settlement it reads the list, hashes it two
+times (before and after) and credits each batch. The cost is about 46k cycles for each live batch: 50M
+cycles for 1,000 batches and 460M for 10,000. Most batches do not change in a round.
+
+### Design
+
+Use the method of `expireLimited`, inside the proof:
+
+1. Keep two Merkle trees in the state: batches by id, and batches sorted by `normalisedBalance` (the
+   order in which they expire). Settlement stores only the two roots and the global values.
+2. Keep `validChunkCount` and the outpayment of the last cut in the state.
+3. For a settlement from outpayment `O1` to `O2`:
+   - pot += `validChunkCount × (O2 − O1)`, as `expireLimited` does for live batches;
+   - for each batch that expired in the period (the start of the sorted tree, up to `O2`): correct the
+     pot for the part after its expiry, decrease `validChunkCount`, and remove it from both trees;
+   - for each log entry: update only that batch, with a Merkle proof.
+4. The prover gives Merkle proofs only for the batches that changed or expired.
+
+Cost: about `(changes + expiries) × log2(batches)` hashes for each settlement, instead of a cost for all
+batches.
+
+### Tests
+
+Use the same differential vectors as item 8 (`postage_vectors.rs`). The pot and `validChunkCount` must not
+change.
+
+---
+
+## 12. Prover economics
+
+Who calls `anchorRound` and `settleRound`, who pays the gas, and how the fee pays it back: see
+[ZK-SETTLEMENT.md](./ZK-SETTLEMENT.md), section 4. The open points there (fee shape, races between
+provers, transactions without a fee) are also inputs for the epoch design (item 3).
+
+---
+
+## 13. Prerequisites for mainnet (not optimizations)
 
 These items do not decrease gas. Do them before a mainnet deployment:
 
 1. Put `Settlement.setVerifier` behind a timelock with an exit window.
 2. Point Settlement at one verifier version, or examine the control of the SP1 verifier router. See
    [prover/zkvms/README.md](../prover/zkvms/README.md), section 5.
-3. Store the anchored commit lists on Swarm and give the reference as `dataRef`.
+3. Store the anchored commit lists and the postage state on Swarm and give the reference as `dataRef`.

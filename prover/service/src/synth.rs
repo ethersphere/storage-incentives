@@ -9,11 +9,12 @@ use anyhow::Result;
 use swarm_vm::{
     claim::{address_to_bucket, BatchRecord, PostageProof},
     commit_digest,
+    postage::{BatchState as PostageBatch, PostageInput, PostageState},
     sample::{Sample, SampleEntry, SAMPLE_SIZE},
     wrap_commit, Reveal, RoundInput, SignedCommit, StakeRecord,
 };
 
-pub fn round(n: usize) -> Result<RoundInput> {
+pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
     let chain_id = U256::from(11155111u64);
     let settlement = Address::repeat_byte(0xaa);
     let round = 1000u64;
@@ -51,8 +52,8 @@ pub fn round(n: usize) -> Result<RoundInput> {
         penalty_random_factor: 100,
         claim: None,
         forced_claims: vec![],
-        batches: vec![],
         sample_max_value: U256::MAX,
+        postage: Default::default(),
     };
     for (key, i) in nodes {
         let overlay = keccak256([b"overlay".as_slice(), &i.to_be_bytes()].concat());
@@ -90,10 +91,54 @@ pub fn round(n: usize) -> Result<RoundInput> {
     }
     // The storage evidence for the honest sample, stamped by a synthetic batch.
     let owner = PrivateKeySigner::from_bytes(&keccak256(b"synth batch owner"))?;
-    let batch = BatchRecord { batch_id: keccak256(b"synth batch"), owner: owner.address(), depth: 20, bucket_depth: 16 };
+    let batch = BatchRecord {
+        batch_id: keccak256(b"synth batch"),
+        owner: owner.address(),
+        depth: 20,
+        bucket_depth: 16,
+    };
     let witness = sample.witness(&anchor, seed, |addr| stamp(&owner, &batch, addr, 1));
     input.claim = Some(Bytes::from(witness.encode()));
-    input.batches = vec![batch];
+    // The batch is alive in the carried postage state, paid far beyond the round.
+    let seed_block = round * swarm_vm::ROUND_LENGTH + 114;
+    input.postage = PostageInput {
+        state: PostageState {
+            last_cut_block: seed_block - 152,
+            price_block: 1,
+            price_outpayment: U256::ZERO,
+            price: U256::from(24000u32),
+            batches: vec![PostageBatch {
+                id: batch.batch_id,
+                owner: batch.owner,
+                depth: batch.depth,
+                bucket_depth: batch.bucket_depth,
+                normalised_balance: U256::from(u64::MAX),
+                counted_to: U256::from(24000u64 * (seed_block - 153)),
+            }],
+        },
+        prev_event_index: 0,
+        prev_event_hash: B256::ZERO,
+        events: vec![],
+        cut_block: seed_block + 1,
+    };
+    for i in 0..extra_batches as u64 {
+        let id = keccak256([b"synth extra batch".as_slice(), &i.to_be_bytes()].concat());
+        let b = PostageBatch {
+            id,
+            owner: Address::repeat_byte(0x11),
+            depth: 20,
+            bucket_depth: 16,
+            normalised_balance: U256::from(u64::MAX - i),
+            counted_to: U256::from(24000u64 * (seed_block - 153)),
+        };
+        let at = input
+            .postage
+            .state
+            .batches
+            .binary_search_by(|x| x.id.cmp(&id))
+            .unwrap_err();
+        input.postage.state.batches.insert(at, b);
+    }
     let _ = B256::ZERO;
     Ok(input)
 }
@@ -111,13 +156,25 @@ fn sim_sample(anchor: B256) -> Sample {
 }
 
 /// A Bee postage stamp for `addr`: index = (bucket << 32 | 0), signed by the batch owner.
-pub fn stamp(owner: &PrivateKeySigner, batch: &BatchRecord, addr: B256, timestamp: u64) -> PostageProof {
+pub fn stamp(
+    owner: &PrivateKeySigner,
+    batch: &BatchRecord,
+    addr: B256,
+    timestamp: u64,
+) -> PostageProof {
     let index = (address_to_bucket(addr, batch.bucket_depth) as u64) << 32;
     let mut msg = Vec::with_capacity(80);
     msg.extend_from_slice(addr.as_slice());
     msg.extend_from_slice(batch.batch_id.as_slice());
     msg.extend_from_slice(&index.to_be_bytes());
     msg.extend_from_slice(&timestamp.to_be_bytes());
-    let sig = owner.sign_message_sync(keccak256(msg).as_slice()).expect("sign");
-    PostageProof { signature: Bytes::from(sig.as_bytes().to_vec()), postageId: batch.batch_id, index, timeStamp: timestamp }
+    let sig = owner
+        .sign_message_sync(keccak256(msg).as_slice())
+        .expect("sign");
+    PostageProof {
+        signature: Bytes::from(sig.as_bytes().to_vec()),
+        postageId: batch.batch_id,
+        index,
+        timeStamp: timestamp,
+    }
 }

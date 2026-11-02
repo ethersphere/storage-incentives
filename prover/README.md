@@ -6,10 +6,10 @@ proof. The design is in [docs/ZK-SETTLEMENT.md](../docs/ZK-SETTLEMENT.md); the c
 
 | Crate | What it is |
 | --- | --- |
-| `crates/vm` (`swarm-vm`) | The Redistribution VM: the game rules of `Redistribution.sol` as a pure function `run(RoundInput) -> PublicValues`. No chain, no zkVM dependency. Unit tested. |
+| `crates/vm` (`swarm-vm`) | The Redistribution VM as a pure function `run(RoundInput) -> PublicValues`: the game of `Redistribution.sol` (`lib.rs`), the storage evidence of `claim` (`claim.rs`, `bmt.rs`), and the postage accounting that `PostageStamp.expireLimited` did on chain (`postage.rs`). No chain, no zkVM dependency. Unit tested, and checked against the real contracts with test vectors. |
 | `program` | The SP1 program. Reads a `RoundInput`, runs the VM, commits the ABI-encoded `PublicValues`. About 10 lines. |
-| `service` (`swarm-prover`) | The prover node: HTTP collector for commits and reveals, anchors each round on chain, builds the round input from chain state, proves, calls `settleRound`. |
-| `service` (`node-sim`) | Simulated Bee nodes: commit, reveal, optionally lie, stay silent, or use the on-chain escape hatch. |
+| `service` (`swarm-prover`) | The prover node: HTTP collector for commits, reveals and claim witnesses; anchors each round on chain; builds the round input from chain state (including the PostageStampZK event log); proves; calls `settleRound`. |
+| `service` (`node-sim`) | Simulated Bee nodes: a shared simulated reserve, commit, reveal, claim proofs; optionally lie, stay silent, withhold the claim, or use the on-chain escape hatches. |
 
 The zkVM is SP1. A comparison with RISC Zero and ZisK, and a port plan for each, is in
 [zkvms/README.md](zkvms/README.md).
@@ -34,6 +34,21 @@ Run the tests:
 cargo test -p swarm-vm
 ```
 
+The tests include two cross-checks with the real contracts. The vectors are in
+`crates/vm/tests/vectors/`. To make them again (repository root):
+
+```bash
+DUMP_CLAIM_VECTORS=1 npx hardhat test test/Redistribution.test.ts --grep "should claim pot by"
+DUMP_POSTAGE_VECTORS=1 npx hardhat test test/PostageStampZK.test.ts
+```
+
+Measure the zkVM cycles of a synthetic round (no proof):
+
+```bash
+./target/release/swarm-prover synth --nodes 10 --batches 1000 --out /tmp/round.json
+SP1_PROVER=mock ./target/release/swarm-prover execute /tmp/round.json
+```
+
 Print the program verification key, which Settlement must be deployed with when it uses a real verifier:
 
 ```bash
@@ -49,7 +64,57 @@ Print the program verification key, which Settlement must be deployed with when 
 | `mock` | The zkVM still executes and the output is checked, but the proof is empty | `SP1MockVerifier` (`ZK_VERIFIER=mock`) |
 | `cpu` | Real Groth16 proof on this machine. Slow, needs a lot of RAM | SP1 verifier gateway |
 | `network` | Succinct Prover Network; needs `NETWORK_PRIVATE_KEY` with credits | SP1 verifier gateway |
-| `cuda` | Local GPU | SP1 verifier gateway |
+| `cuda` | Local NVIDIA GPU | SP1 verifier gateway |
+
+## Run the prover on a rented GPU
+
+A laptop CPU is too slow for real proofs (section 5 of docs/ZK-SETTLEMENT.md). Use a rented NVIDIA GPU
+machine, or the Succinct Prover Network. These steps prove a saved round input. They do not need a chain.
+
+1. Rent a Linux machine with an NVIDIA GPU with 24 GB memory or more (for example RTX 4090, L40S, A100 or
+   H100), at least 64 GB RAM and 100 GB disk. Use Ubuntu 22.04 or 24.04.
+2. Install the NVIDIA driver and the CUDA toolkit. Check the CUDA version that SP1 6.x needs in the SP1
+   documentation ("Hardware acceleration" / "CUDA"). Check with `nvidia-smi`.
+3. Install Docker and the NVIDIA container toolkit if the SP1 documentation for your SP1 version says
+   that the CUDA prover runs in a container.
+4. Install the toolchain:
+
+   ```bash
+   sudo apt-get install -y build-essential pkg-config libssl-dev protobuf-compiler git jq
+   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+   curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up
+   ```
+
+5. Get the code and build:
+
+   ```bash
+   git clone -b feat/zk-settlement https://github.com/ethersphere/storage-incentives.git
+   cd storage-incentives/prover && cargo build --release
+   ```
+
+6. Copy a round input to the machine, for example `data/zklocal/rounds/6/input.json` from a local run,
+   or make one with `synth`.
+7. Prove it:
+
+   ```bash
+   SP1_PROVER=cuda RUST_LOG=info ./target/release/swarm-prover execute --prove input.json
+   ```
+
+   The first Groth16 proof downloads the SP1 circuit files (about 3.5 GB compressed, 7.8 GB on disk) to
+   `~/.sp1/circuits`. Later proofs use them again.
+8. The result is `input.proof.json`: public values, proof bytes, cycles and proof time. Verify it against
+   the SP1 Groth16 verifier, for example on anvil:
+
+   ```bash
+   cast call <SP1VerifierGroth16> "verifyProof(bytes32,bytes,bytes)" \
+     $(jq -r .vkey input.proof.json) $(jq -r .publicValues input.proof.json) $(jq -r .proof input.proof.json)
+   ```
+
+To prove for a live Settlement, run `swarm-prover serve` on the GPU machine with `SP1_PROVER=cuda`, or
+run it anywhere with `SP1_PROVER=network` and `NETWORK_PRIVATE_KEY`.
+
+The GPU instructions are not yet tested on a real machine. Record the actual steps and times when you
+do the first run, and correct this section.
 
 ## Run it locally (anvil, mock proofs)
 
@@ -75,7 +140,7 @@ The full anvil keys are the standard `test test ... junk` mnemonic accounts.
 
 ## Run it on Sepolia
 
-See [docs/ZK-SETTLEMENT.md, "Sepolia runbook"](../docs/ZK-SETTLEMENT.md#sepolia-runbook).
+See [docs/ZK-SETTLEMENT.md, "Sepolia runbook"](../docs/ZK-SETTLEMENT.md#6-sepolia-runbook).
 
 ## What the prover writes
 
@@ -87,13 +152,20 @@ See [docs/ZK-SETTLEMENT.md, "Sepolia runbook"](../docs/ZK-SETTLEMENT.md#sepolia-
   `./target/release/swarm-prover execute data/.../input.json` to get cycle counts, or add `--prove`.
 - `proof.json`: public values, proof bytes, cycles, proving time.
 
+`$DATA_DIR/postage/<hash>.json`: the postage state after each settlement (live batches and the price
+history point). Settlement stores only its hash, and the next settlement starts from this file. Do not
+delete it. Set `POSTAGE_FROM_BLOCK` to the PostageStampZK deployment block, so the first settlement does
+not search the log from block 0.
+
 ## HTTP API
 
 | Method | Path | Body | Accepted |
 | --- | --- | --- | --- |
 | `POST` | `/v1/commit` | `{round, owner, obfuscatedHash, signature}` | blocks 0-37 of the round; the signature must recover to `owner` |
 | `POST` | `/v1/reveal` | `{round, overlay, depth, hash, nonce}` | blocks 57-113; must open an anchored commit |
+| `POST` | `/v1/claim` | `{round, witness}` | after the seed block, until the round settles; the prover runs the VM with the witness and accepts it only if the claim is valid |
 | `GET` | `/v1/rounds/{round}` | | The anchored list (so a node can check it is in it), reveal count, settle tx |
+| `GET` | `/v1/rounds/{round}/outcome` | | After the seed block: truth, winner, anchor, seed, and whether a valid claim is known |
 | `GET` | `/v1/status` | | Block, round, phase offset |
 
 `signature` is an EIP-191 `personal_sign` over `Settlement.commitDigest(round, obfuscatedHash)`, made

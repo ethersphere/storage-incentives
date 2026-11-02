@@ -66,6 +66,31 @@ impl Store {
         Ok(())
     }
 
+    /// The postage state the proof carries between settlements, kept by its hash. Settlement stores only
+    /// the hash, so a prover needs this file (or must rebuild it from the PostageLog history).
+    pub fn save_postage(&self, state: &swarm_vm::postage::PostageState) -> Result<()> {
+        let dir = self.dir.join("postage");
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(
+            dir.join(format!("{}.json", state.hash())),
+            serde_json::to_vec(state)?,
+        )?;
+        Ok(())
+    }
+
+    pub fn load_postage(
+        &self,
+        hash: alloy::primitives::B256,
+    ) -> Result<swarm_vm::postage::PostageState> {
+        if hash.is_zero() {
+            return Ok(Default::default());
+        }
+        let path = self.dir.join("postage").join(format!("{hash}.json"));
+        let bytes = std::fs::read(&path)
+            .map_err(|e| anyhow::anyhow!("postage state {hash} missing ({e})"))?;
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
     pub fn write_file(&self, round: u64, name: &str, bytes: &[u8]) -> Result<()> {
         let dir = self.round_dir(round);
         std::fs::create_dir_all(&dir)?;

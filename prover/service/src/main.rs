@@ -40,6 +40,9 @@ enum Cmd {
     Synth {
         #[arg(long)]
         nodes: usize,
+        /// Extra live batches in the carried postage state (mainnet has thousands).
+        #[arg(long, default_value_t = 0)]
+        batches: usize,
         #[arg(long)]
         out: PathBuf,
     },
@@ -61,9 +64,19 @@ async fn main() -> Result<()> {
             println!("{}", prover::vkey());
             Ok(())
         }
-        Cmd::Synth { nodes, out } => {
-            std::fs::write(&out, serde_json::to_vec_pretty(&synth::round(nodes)?)?)?;
-            println!("wrote {} ({nodes} nodes)", out.display());
+        Cmd::Synth {
+            nodes,
+            batches,
+            out,
+        } => {
+            std::fs::write(
+                &out,
+                serde_json::to_vec_pretty(&synth::round(nodes, batches)?)?,
+            )?;
+            println!(
+                "wrote {} ({nodes} nodes, {batches} extra batches)",
+                out.display()
+            );
             Ok(())
         }
         Cmd::Execute { input, prove } => {

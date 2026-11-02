@@ -38,7 +38,11 @@ pub fn root_from_proof(key: Option<&B256>, proof: &[B256], segment: B256, mut in
     let mut h = segment;
     for sister in proof {
         // mergeFromRight == (index is even): the running hash is the left child.
-        h = if index % 2 == 0 { hash_pair(key, &h, sister) } else { hash_pair(key, sister, &h) };
+        h = if index % 2 == 0 {
+            hash_pair(key, &h, sister)
+        } else {
+            hash_pair(key, sister, &h)
+        };
         index >>= 1;
     }
     h
@@ -61,8 +65,18 @@ pub fn chunk_address_from_proof(proof: &[B256], segment: B256, index: u64, span:
 }
 
 /// `TransformedBMTChunk.transformedChunkAddressFromInclusionProof`.
-pub fn transformed_address_from_proof(proof: &[B256], segment: B256, index: u64, span: u64, key: &B256) -> B256 {
-    address_from_root(Some(key), span, &root_from_proof(Some(key), proof, segment, index))
+pub fn transformed_address_from_proof(
+    proof: &[B256],
+    segment: B256,
+    index: u64,
+    span: u64,
+    key: &B256,
+) -> B256 {
+    address_from_root(
+        Some(key),
+        span,
+        &root_from_proof(Some(key), proof, segment, index),
+    )
 }
 
 // ----------------------------------------------------------------------------------------------
@@ -85,10 +99,17 @@ impl Tree {
         let mut level: Vec<B256> = data.chunks(SEGMENT_SIZE).map(B256::from_slice).collect();
         let mut levels = vec![level.clone()];
         while level.len() > 1 {
-            level = level.chunks(2).map(|p| hash_pair(key.as_ref(), &p[0], &p[1])).collect();
+            level = level
+                .chunks(2)
+                .map(|p| hash_pair(key.as_ref(), &p[0], &p[1]))
+                .collect();
             levels.push(level.clone());
         }
-        Tree { key, span: payload.len() as u64, levels }
+        Tree {
+            key,
+            span: payload.len() as u64,
+            levels,
+        }
     }
 
     pub fn address(&self) -> B256 {
@@ -113,7 +134,12 @@ impl Tree {
 /// Address of a chunk whose payload is one 32-byte segment, computed with 8 hashes instead of 128.
 /// The other 127 leaves are zero, so their subtrees are constant for a given key. `zero` must come
 /// from `zero_subtrees(key)`. node-sim uses this to sample a large simulated reserve every round.
-pub fn single_segment_address(key: Option<&B256>, zero: &[B256; DEPTH], segment: B256, span: u64) -> B256 {
+pub fn single_segment_address(
+    key: Option<&B256>,
+    zero: &[B256; DEPTH],
+    segment: B256,
+    span: u64,
+) -> B256 {
     let mut h = segment;
     for z in zero.iter() {
         h = hash_pair(key, &h, z);

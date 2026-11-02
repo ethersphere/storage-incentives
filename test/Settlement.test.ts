@@ -4,7 +4,8 @@ import { BigNumber, Contract, Signer } from 'ethers';
 
 // Settlement replaces Redistribution: the game runs off chain (prover/crates/vm), this contract checks
 // the public inputs of a proof against the chain and executes the outcome. These tests use
-// SP1MockVerifier, so they exercise everything except the proof itself.
+// SP1MockVerifier, so they exercise everything except the proof itself. Postage is PostageStampZK: the
+// proof replays its event log and gives the pot amount (outcome.postage.potAmount).
 
 const ROUND_LENGTH = 152;
 const COMMIT_END = 38;
@@ -19,9 +20,12 @@ const PV_TYPE =
   'bytes32 commitsHash,uint32 commitCount,bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
   'uint64 lastClaimRound,uint8 lastWinnerDepth,uint8 penaltyMultiplierDisagreement,' +
   'uint8 penaltyMultiplierNonRevealed,uint8 penaltyRandomFactor,address[] participants,bytes32 stakeDigest,' +
-  'uint32 stakePrice,bytes32 forcedClaimsHash,bytes32[] batchIds,bytes32 batchDigest,uint256 sampleMaxValue) inputs,' +
+  'uint32 stakePrice,bytes32 forcedClaimsHash,uint256 sampleMaxValue,' +
+  'tuple(bytes32 prevStateHash,uint64 prevEventIndex,bytes32 prevEventHash,uint64 eventIndex,bytes32 eventHash,' +
+  'uint64 cutBlock) postage) inputs,' +
   'tuple(bool hasTruth,bytes32 truthHash,uint8 truthDepth,address winner,bytes32 winnerOverlay,' +
-  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations,bool unclaimed) outcome)';
+  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations,bool unclaimed,' +
+  'tuple(bytes32 newStateHash,uint256 potAmount,uint256 validChunkCount) postage) outcome)';
 
 const ZERO = ethers.constants.HashZero;
 
@@ -50,7 +54,7 @@ describe('Settlement', function () {
     nodes = signers.slice(6, 10);
 
     token = await (await ethers.getContractFactory('TestToken')).deploy('sBZZ', 'sBZZ', '1' + '0'.repeat(30));
-    postage = await (await ethers.getContractFactory('PostageStamp')).deploy(token.address, 16);
+    postage = await (await ethers.getContractFactory('PostageStampZK')).deploy(token.address, 16);
     oracle = await (await ethers.getContractFactory('PriceOracle')).deploy(postage.address);
     staking = await (await ethers.getContractFactory('StakeRegistry')).deploy(token.address, 0, oracle.address);
     const verifier = await (await ethers.getContractFactory('SP1MockVerifier')).deploy();
@@ -93,6 +97,23 @@ describe('Settlement', function () {
     return d;
   }
 
+  // The postage inputs of a proof that replays the whole log up to now.
+  async function postageInputs() {
+    const prevEventIndex = (await settlement.postageEventIndex()).toNumber();
+    const prevEventHash = await settlement.postageEventHash();
+    const eventIndex = (await postage.eventCount()).toNumber();
+    return {
+      prevStateHash: await settlement.postageStateHash(),
+      prevEventIndex,
+      prevEventHash,
+      eventIndex,
+      eventHash: eventIndex > prevEventIndex ? await postage.eventHashAt(eventIndex) : prevEventHash,
+      cutBlock: await ethers.provider.getBlockNumber(),
+    };
+  }
+
+  const NEW_POSTAGE_STATE = keccak256(ethers.utils.toUtf8Bytes('postage state'));
+
   // Public values as the VM would produce them for `round`, with the outcome supplied by the test.
   async function publicValues(round: number, participants: string[], outcome: Record<string, unknown>) {
     const ri = await settlement.rounds(round);
@@ -116,9 +137,8 @@ describe('Settlement', function () {
         stakeDigest: await stakeDigest(participants),
         stakePrice: await oracle.currentPrice(),
         forcedClaimsHash: ri.forcedClaimsHash,
-        batchIds: [],
-        batchDigest: ZERO,
-        sampleMaxValue: await settlement.sampleMaxValue(),
+        sampleMaxValue: (await settlement.sampleMaxValue()).toString(),
+        postage: await postageInputs(),
       },
       outcome: {
         hasTruth: false,
@@ -131,6 +151,7 @@ describe('Settlement', function () {
         freezeOwners: [],
         freezeDurations: [],
         unclaimed: false,
+        postage: { newStateHash: NEW_POSTAGE_STATE, potAmount: 0, validChunkCount: 1 << 20 },
         ...outcome,
       },
     };
@@ -230,6 +251,7 @@ describe('Settlement', function () {
         redundancy: 3,
         freezeOwners: [frozen],
         freezeDurations: [2 * ROUND_LENGTH * 4],
+        postage: { newStateHash: NEW_POSTAGE_STATE, potAmount: 1_000_000, validChunkCount: 1 << 20 },
       });
 
       const prover = nodes[0];
@@ -240,8 +262,9 @@ describe('Settlement', function () {
 
       const won = (await token.balanceOf(winner)).sub(before);
       const fee = (await token.balanceOf(owners[0])).sub(proverBefore);
-      expect(won.gt(0)).to.be.true;
-      expect(fee).to.eq(won.add(fee).mul(100).div(10000));
+      expect(won.add(fee)).to.eq(1_000_000);
+      expect(fee).to.eq(10_000);
+      expect(await settlement.accruedPot()).to.eq(0);
       expect(await staking.lastUpdatedBlockNumberOfAddress(frozen)).to.eq(rc.blockNumber + 2 * ROUND_LENGTH * 4);
       expect(await settlement.lastClaimRound()).to.eq(round);
       expect(await settlement.lastWinnerDepth()).to.eq(2);
@@ -308,7 +331,7 @@ describe('Settlement', function () {
         [8, (pv) => (pv.inputs.participants = owners.slice(1))],
         [9, (pv) => (pv.inputs.stakePrice = 1)],
         [10, (pv) => (pv.inputs.forcedClaimsHash = keccak256('0x01'))],
-        [11, (pv) => (pv.inputs.batchIds = [keccak256('0x01')])],
+        [11, (pv) => (pv.inputs.postage.prevStateHash = keccak256('0x01'))],
         [12, (pv) => (pv.inputs.sampleMaxValue = 1)],
       ];
       for (const [code, mutate] of cases) {
@@ -318,25 +341,76 @@ describe('Settlement', function () {
       }
     });
 
-    it('binds the postage batches of the claim witnesses', async function () {
+    it('checks the replayed part of the postage event log', async function () {
       const round = await anchoredRound();
       await mineTo(round * ROUND_LENGTH + SEED_OFFSET + 1);
-      const deployerAddr = await deployer.getAddress();
-      const batchId = keccak256(coder.encode(['address', 'bytes32'], [deployerAddr, ZERO]));
-      const b = await postage.batches(batchId);
-      expect(b.owner).to.eq(deployerAddr);
-      const digest = keccak256(
-        solidityPack(
-          ['bytes32', 'bytes32', 'address', 'uint8', 'uint8'],
-          [ZERO, batchId, b.owner, b.depth, b.bucketDepth]
-        )
+      // beforeEach logged a price change and a batch: two log entries.
+      expect(await postage.eventCount()).to.eq(2);
+      const good = await publicValues(round, [], {});
+      const lastEventBlock = (await postage.eventBlockAt(2)).toNumber();
+
+      const cases: ((pv: any) => void)[] = [
+        (pv) => (pv.inputs.postage.prevEventIndex = 1),
+        (pv) => (pv.inputs.postage.prevEventHash = keccak256('0x01')),
+        (pv) => (pv.inputs.postage.eventIndex = 3),
+        (pv) => (pv.inputs.postage.eventHash = keccak256('0x01')),
+        (pv) => (pv.inputs.postage.cutBlock = 10_000_000),
+        // Stops at entry 1 but cuts after entry 2: an entry would be left out.
+        (pv) => {
+          pv.inputs.postage.eventIndex = 1;
+          pv.inputs.postage.cutBlock = lastEventBlock;
+        },
+      ];
+      for (const mutate of cases) {
+        const pv = JSON.parse(JSON.stringify(good));
+        mutate(pv);
+        await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('InputMismatch\\(11\\)');
+      }
+
+      // Stopping at entry 1 with a cut before entry 2 is fine.
+      const partial = JSON.parse(JSON.stringify(good));
+      partial.inputs.postage.eventIndex = 1;
+      partial.inputs.postage.eventHash = await postage.eventHashAt(1);
+      partial.inputs.postage.cutBlock = lastEventBlock - 1;
+      await settlement.settleRound(encode(partial), '0x');
+      expect(await settlement.postageEventIndex()).to.eq(1);
+      expect(await settlement.postageStateHash()).to.eq(NEW_POSTAGE_STATE);
+      expect(await settlement.validChunkCount()).to.eq(1 << 20);
+    });
+
+    it('keeps the proven pot of rounds without payout for the next winner', async function () {
+      const owners = await Promise.all(nodes.map((n) => n.getAddress()));
+      const r1 = await anchoredRound();
+      await mineTo(r1 * ROUND_LENGTH + SEED_OFFSET + 1);
+      await settlement.settleRound(
+        encode(
+          await publicValues(r1, [], {
+            postage: { newStateHash: NEW_POSTAGE_STATE, potAmount: 700, validChunkCount: 0 },
+          })
+        ),
+        '0x'
       );
-      expect(await settlement.batchDigest([batchId])).to.eq(digest);
-      const pv = await publicValues(round, [], {});
-      pv.inputs.batchIds = [batchId];
-      pv.inputs.batchDigest = digest;
-      await settlement.settleRound(encode(pv), '0x');
-      expect(await settlement.lastSettledRound()).to.eq(round);
+      expect(await settlement.accruedPot()).to.eq(700);
+
+      const r2 = await mineToOffset(COMMIT_END, r1 + 1);
+      await settlement.anchorRound(r2, keccak256('0x'), 0, ZERO);
+      await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
+      const before = await token.balanceOf(owners[2]);
+      await settlement.settleRound(
+        encode(
+          await publicValues(r2, owners, {
+            hasTruth: true,
+            truthHash: keccak256('0xbb'),
+            winner: owners[2],
+            redundancy: 1,
+            postage: { newStateHash: keccak256('0x02'), potAmount: 300, validChunkCount: 0 },
+          })
+        ),
+        '0x'
+      );
+      // 700 + 300, minus the 1% prover fee (to the deployer, who settled).
+      expect((await token.balanceOf(owners[2])).sub(before)).to.eq(990);
+      expect(await settlement.accruedPot()).to.eq(0);
     });
 
     it('keeps forced claims as a hash chain, only in the claim window', async function () {

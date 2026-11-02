@@ -64,6 +64,10 @@ alloy::sol! {
         function OracleContract() external view returns (address);
         function PostageContract() external view returns (address);
         function sampleMaxValue() external view returns (uint256);
+        function postageStateHash() external view returns (bytes32);
+        function postageEventIndex() external view returns (uint64);
+        function postageEventHash() external view returns (bytes32);
+        function accruedPot() external view returns (uint256);
 
         event RoundAnchored(uint64 indexed round, bytes32 roundAnchor, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
         event CommitForced(uint64 indexed round, address indexed owner, bytes32 obfuscatedHash);
@@ -84,6 +88,18 @@ alloy::sol! {
 
     #[sol(rpc)]
     contract PostageStamp {
+        function eventCount() external view returns (uint64);
+        event PostageLog(
+            uint64 indexed index,
+            uint8 kind,
+            bytes32 batchId,
+            address owner,
+            uint8 depth,
+            uint8 bucketDepth,
+            uint256 value,
+            uint256 outpayment,
+            uint64 blockNumber
+        );
         function batches(bytes32 _batchId) external view returns (
             address owner,
             uint8 depth,

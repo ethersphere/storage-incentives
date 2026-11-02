@@ -13,8 +13,8 @@ use axum::{
 use serde_json::{json, Value};
 use std::sync::Arc;
 use swarm_prover::{
-    offset_of, round_of, seed_block, ClaimMsg, CommitMsg, OutcomeMsg, RevealMsg, ANCHOR_END, COMMIT_END,
-    REVEAL_END,
+    offset_of, round_of, seed_block, ClaimMsg, CommitMsg, OutcomeMsg, RevealMsg, ANCHOR_END,
+    COMMIT_END, REVEAL_END,
 };
 use swarm_vm::{commits_hash, recover_commit_signer, Reveal, RoundInput, SignedCommit};
 use tracing::info;
@@ -94,8 +94,8 @@ async fn commit(
         penalty_random_factor: 0,
         claim: None,
         forced_claims: vec![],
-        batches: vec![],
         sample_max_value: Default::default(),
+        postage: Default::default(),
     };
     if recover_commit_signer(&probe, &c) != Some(c.owner) {
         return Err(err(
@@ -186,7 +186,8 @@ async fn outcome(
     let input = crate::settler::build_input(&ctx, round, b, None)
         .await
         .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
-    let pv = swarm_vm::run(&input).map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:?}")))?;
+    let pv = swarm_vm::run(&input)
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:?}")))?;
     Ok(Json(OutcomeMsg {
         round,
         has_truth: pv.outcome.hasTruth || pv.outcome.unclaimed,
@@ -205,7 +206,14 @@ async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<J
     if b <= seed_block(m.round) {
         return Err(err(StatusCode::CONFLICT, "seed not available yet"));
     }
-    if ctx.store.lock().await.rounds.get(&m.round).is_some_and(|r| r.settle_tx.is_some()) {
+    if ctx
+        .store
+        .lock()
+        .await
+        .rounds
+        .get(&m.round)
+        .is_some_and(|r| r.settle_tx.is_some())
+    {
         return Err(err(StatusCode::CONFLICT, "round already settled"));
     }
     let input = crate::settler::build_input(&ctx, m.round, b, Some(m.witness.clone()))
@@ -213,6 +221,7 @@ async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<J
         .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
     let pv = swarm_vm::run(&input).map_err(|e| err(StatusCode::BAD_REQUEST, format!("{e:?}")))?;
     if !pv.outcome.hasTruth {
+        let batches = swarm_vm::claim_batch_records(&input).unwrap_or_default();
         let why = swarm_vm::claim::ClaimWitness::decode(&m.witness)
             .map(|w| {
                 let ctx2 = swarm_vm::claim::ClaimContext {
@@ -220,13 +229,16 @@ async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<J
                     seed: input.selection_seed,
                     sample_hash: pv.outcome.truthHash,
                     depth: pv.outcome.truthDepth,
-                    batches: &input.batches,
+                    batches: &batches,
                     sample_max_value: input.sample_max_value,
                 };
                 format!("{:?}", swarm_vm::claim::verify_claim(&w, &ctx2))
             })
             .unwrap_or_else(|| "witness does not decode".into());
-        return Err(err(StatusCode::BAD_REQUEST, format!("witness rejected: {why}")));
+        return Err(err(
+            StatusCode::BAD_REQUEST,
+            format!("witness rejected: {why}"),
+        ));
     }
     let mut store = ctx.store.lock().await;
     let r = store.get_mut(m.round);
