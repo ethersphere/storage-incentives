@@ -21,8 +21,8 @@ Two cross-checks with the real contracts:
 - The Rust postage accounting gives the same pot and `validChunkCount` as master's `PostageStamp` at every
   checkpoint of three random batch histories.
 
-Not yet done on this version: an end-to-end run with node-sim, and a real (non-mock) proof. Section 5 has
-the measurements of the earlier versions.
+This version ran end to end on a local chain with mock proofs (section 5, 2026-11-02). Not yet done: a
+real (non-mock) proof of this version, and a run on Sepolia.
 
 ---
 
@@ -456,6 +456,21 @@ These options give more margin and do not need a 10 GB laptop.
 (about 13k gas when cold). It also calls `freezeDeposit` one time for each freeze. A round has about 10
 participants, so this adds about 130k gas. The stake read does not cause a scale problem.
 
+**End-to-end local run with postage accounting in the proof** (2026-11-02; anvil, 1 s blocks, mock
+proofs; PostageStampZK; no fix was necessary). Rounds 4 to 14 settled with no manual steps:
+
+| Rounds | What happened | `settleRound` gas |
+| --- | --- | --- |
+| 4 | Liar won the truth draw: unclaimed. The proven pot for blocks 63-760 went to `accruedPot` | 272,017 (first postage state write) |
+| 5-8 | Liar won again (about 2% chance for five in a row with its 5/11 of the stake; checked: all honest reveals were valid and the seeds differ). Unclaimed; each round added 152 blocks × 24,000 × 2^20 = 3,825,205,248,000 | 175,414-175,426 |
+| 9, 10 | No commits; the pot still accrued | 104,943-104,955 |
+| 11 | Honest truth (second session without the liar). The winner sent the claim to the prover; paid all of `accruedPot` (rounds 4-11) minus 1%: exactly 42,976,935,936,000 | 297,748 |
+| 12, 13 | Same | 285,834 / 268,796 |
+| 14 | No commits. The proof replayed the three price changes of rounds 11-13 from the log | 131,149 |
+
+`accruedPot` and the winner balance were checked on chain against the expected values: they are equal to
+the unit. The postage accounting adds about 30k gas to a settlement (log checks and state writes).
+
 **PostageStampZK** (2026-11-02, Hardhat):
 
 | Measurement | Result |
@@ -536,7 +551,8 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 
 ### Open items (in priority order)
 
-1. Run the current version end to end (node-sim, local and Sepolia) and make one real proof on a GPU.
+1. Make one real proof of the current version on a GPU, and run it on Sepolia. (The local run with mock
+   proofs is done.)
 2. Timelock or exit window on `setVerifier`.
 3. Swarm as the data layer: upload the anchored list and the postage state; pass the reference as
    `dataRef`.
