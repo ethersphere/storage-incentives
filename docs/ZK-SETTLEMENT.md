@@ -21,8 +21,10 @@ Two cross-checks with the real contracts:
 - The Rust postage accounting gives the same pot and `validChunkCount` as master's `PostageStamp` at every
   checkpoint of three random batch histories.
 
-This version ran end to end on a local chain with mock proofs (section 5, 2026-11-02). Not yet done: a
-real (non-mock) proof of this version, and a run on Sepolia.
+This version ran end to end on a local chain with mock proofs (section 5, 2026-11-02). A real Groth16
+proof of this version came from the Succinct Prover Network in 42 seconds and passes SP1's verifier
+contract (section 5, 2026-11-03). Not yet done: a settlement with a real proof on a chain, and a run on
+Sepolia.
 
 ---
 
@@ -471,6 +473,21 @@ proofs; PostageStampZK; no fix was necessary). Rounds 4 to 14 settled with no ma
 `accruedPot` and the winner balance were checked on chain against the expected values: they are equal to
 the unit. The postage accounting adds about 30k gas to a settlement (log checks and state writes).
 
+**Real proof on the Succinct Prover Network** (2026-11-03; synthetic round: 10 participants, a valid claim
+with three witnesses, 100 live batches in the postage state):
+
+| Measurement | Result |
+| --- | --- |
+| Cycles | 8,296,167 |
+| Time from request to proof (auction, assignment after about 4 s) | 41.6 s |
+| Price | base fee 0.394 PROVE + at most 0.75 PROVE per billion PGU (7.6M PGU): at most about 0.40 PROVE |
+| Proof | Groth16, 356 bytes, circuit v6.1.0 (selector `0x4388a21c`) |
+| Verification on SP1's v6.1.0 Groth16 verifier (anvil) | Valid, 273,813 gas. One changed byte in the public values: rejected |
+| Program verification key | `0x00c999a8608036dd88962aa3340047a4eed518188eacb5fc41f1bab4b302d9ac` |
+
+Thus the network proves a round well inside the settle window (blocks 115-151, about 7 minutes on
+Ethereum). The base fee is the main part of the price for a round of this size.
+
 **PostageStampZK** (2026-11-02, Hardhat):
 
 | Measurement | Result |
@@ -551,8 +568,8 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 
 ### Open items (in priority order)
 
-1. Make one real proof of the current version on a GPU, and run it on Sepolia. (The local run with mock
-   proofs is done.)
+1. Settle a round with a real proof on a chain, and run on Sepolia. (The local run with mock proofs and a
+   real network proof are done.)
 2. Timelock or exit window on `setVerifier`.
 3. Swarm as the data layer: upload the anchored list and the postage state; pass the reference as
    `dataRef`.

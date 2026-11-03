@@ -63,8 +63,36 @@ Print the program verification key, which Settlement must be deployed with when 
 | --- | --- | --- |
 | `mock` | The zkVM still executes and the output is checked, but the proof is empty | `SP1MockVerifier` (`ZK_VERIFIER=mock`) |
 | `cpu` | Real Groth16 proof on this machine. Slow, needs a lot of RAM | SP1 verifier gateway |
-| `network` | Succinct Prover Network; needs `NETWORK_PRIVATE_KEY` with credits | SP1 verifier gateway |
+| `network` | Succinct Prover Network; needs `NETWORK_PRIVATE_KEY` and a PROVE balance | SP1 verifier gateway |
 | `cuda` | Local NVIDIA GPU | SP1 verifier gateway |
+
+## Use the Succinct Prover Network
+
+Measured on 2026-11-03: a 10-participant round with a claim and 100 live batches was proved in 42 s for at
+most about 0.40 PROVE (docs/ZK-SETTLEMENT.md, section 5).
+
+1. Make a requester key in a terminal outside the chat: `cast wallet new`. Do not use a wallet that holds
+   other funds; the key is stored in a plain text file.
+2. Buy PROVE with any wallet. In the Succinct Explorer (explorer.succinct.xyz), connect that wallet,
+   deposit the PROVE (Account, Deposit), and use Transfer to move the balance to the requester address.
+3. Write `prover/.env` (git ignores it):
+
+   ```
+   SP1_PROVER=network
+   NETWORK_PRIVATE_KEY=0x...
+   NETWORK_RPC_URL=https://rpc.mainnet.succinct.xyz
+   ```
+
+   Use `rpc.mainnet.succinct.xyz`. SP1 SDK 6.x sends PROVE-paid requests there. The older URL
+   `rpc.production.succinct.xyz` accepts the program registration but then fails with `Unimplemented`.
+   You can also remove the line: the SDK uses the mainnet URL by default.
+4. Run from `prover/`, so the program finds `.env`:
+
+   ```bash
+   ./target/release/swarm-prover execute --prove input.json
+   ```
+
+   The log shows the request id and an Explorer link.
 
 ## Run the prover on a rented GPU
 

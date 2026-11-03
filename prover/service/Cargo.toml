@@ -17,7 +17,7 @@ path = "src/bin/node_sim.rs"
 swarm-vm = { workspace = true }
 alloy-sol-types = { workspace = true }
 serde = { workspace = true }
-sp1-sdk = { version = "6.0.1", features = ["blocking", "native-gnark"] }
+sp1-sdk = { version = "6.0.1", features = ["blocking", "native-gnark", "network"] }
 alloy = { version = "2", features = ["full"] }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
