@@ -55,13 +55,20 @@ interface ISettlementOracle {
  * Round layout, in blocks relative to the round start. ROUND_LENGTH = 64: with 12 s blocks a round is about
  * 12.8 minutes, the same time as the Gnosis round of Redistribution (152 blocks x 5 s).
  *
- *   [ 0, 16)  commit       nodes send signed commits to a prover; or call forceCommit
- *   [16, 24)  anchor       a prover calls anchorRound(commitsHash) once; forceCommit still open
- *   [24, 48)  reveal       nodes send reveals to a prover; or call forceReveal
- *   48        seed block   its block hash becomes the selection seed. Nobody chooses it
- *   [49, 64)  claim        a truth-teller sends the claim witness to a prover; or calls forceClaim
- *   [49, ...) settle       anyone calls settleRound(publicValues, proof), rounds in increasing order.
- *                          A round whose truth has no valid witness ("unclaimed") settles only from 64
+ *   [ 0, 16)  commit         nodes send signed commits to a prover; or call forceCommit
+ *   [16, 20)  anchor         a prover calls anchorRound(commitsHash) once
+ *   [20, 24)  commit check   nodes check the anchored list; a node left out calls forceCommit
+ *   [24, 40)  reveal         nodes send reveals to a prover; or call forceReveal
+ *   [40, 44)  reveal anchor  the prover calls anchorReveals(revealsHash) once
+ *   [44, 48)  reveal check   nodes check the anchored reveals; a node left out calls forceReveal
+ *   48        seed block     its block hash becomes the selection seed. Nobody chooses it
+ *   [49, 64)  claim          a truth-teller sends the claim witness to a prover; or calls forceClaim
+ *   [49, ...) settle         anyone calls settleRound(publicValues, proof), rounds in increasing order.
+ *                            A round whose truth has no valid witness ("unclaimed") settles only from 64
+ *
+ * forceCommit stays open until 24 and forceReveal until 48, so the last 4 blocks of each window come after
+ * the anchor: a prover that leaves a node out of an anchored list cannot stop it from going on chain.
+ * Without anchorReveals the prover could keep a commit and drop its reveal, and so freeze an honest node.
  *
  * Nothing in this contract decides who won. It only checks that the proof's public inputs match what
  * the chain knows (anchor, seed, commit set, forced queues, stake records, game state, parameters) and
@@ -80,6 +87,8 @@ contract Settlement is AccessControl, Pausable {
         bytes32 selectionSeed;
         bytes32 commitsHash;
         uint32 commitCount;
+        bytes32 revealsHash;
+        uint32 revealCount;
         bytes32 forcedCommitsHash;
         bytes32 forcedRevealsHash;
         uint64 lastClaimRound;
@@ -146,13 +155,20 @@ contract Settlement is AccessControl, Pausable {
         uint32 forcedRevealCount;
         bytes32 forcedClaimsHash;
         uint32 forcedClaimCount;
+        // Off-chain reveals fixed by anchorReveals. Zero hash and count when the prover did not anchor them.
+        bytes32 revealsHash;
+        uint32 revealCount;
+        bool revealsAnchored;
     }
 
     // ----------------------------- State variables ------------------------------
 
     uint256 public constant ROUND_LENGTH = 64;
     uint256 public constant COMMIT_END = 16;
-    uint256 public constant ANCHOR_END = 24;
+    uint256 public constant ANCHOR_END = 20;
+    uint256 public constant REVEAL_START = 24;
+    uint256 public constant REVEAL_ANCHOR_START = 40;
+    uint256 public constant REVEAL_ANCHOR_END = 44;
     uint256 public constant REVEAL_END = 48;
     uint256 public constant SEED_OFFSET = 48;
     uint256 public constant CLAIM_START = 49;
@@ -218,6 +234,7 @@ contract Settlement is AccessControl, Pausable {
         uint32 commitCount,
         bytes32 dataRef
     );
+    event RevealsAnchored(uint64 indexed round, bytes32 revealsHash, uint32 revealCount, bytes32 dataRef);
     event CommitForced(uint64 indexed round, address indexed owner, bytes32 obfuscatedHash);
     event RevealForced(uint64 indexed round, bytes32 indexed overlay, uint8 depth, bytes32 hash, bytes32 nonce);
     event ClaimForced(uint64 indexed round, address indexed sender, bytes witness);
@@ -253,6 +270,7 @@ contract Settlement is AccessControl, Pausable {
     error ClaimWindowOpen();
     error WitnessTooLarge();
     error AlreadyAnchored();
+    error NotRevealAnchorPhase();
     error NotAnchored();
     error AlreadySettled();
     error RoundOutOfOrder();
@@ -317,12 +335,43 @@ contract Settlement is AccessControl, Pausable {
     }
 
     /**
+     * @notice Fix the set of off-chain reveals for the current round, so a node can check that its reveal is
+     * in it and call forceReveal before the reveal phase ends if not. Called once per round, after
+     * anchorRound, by a prover. A round settles without it; then only forced reveals count.
+     * @param _revealsHash keccak256(abi.encodePacked(overlay, depth, hash, nonce, ...)) over the list, in the
+     * published order. bytes32(0) for an empty list.
+     * @param _revealCount Number of reveals in that list.
+     * @param _dataRef Where the full reveal list is published (a Swarm reference). Only emitted.
+     */
+    function anchorReveals(
+        uint64 _round,
+        bytes32 _revealsHash,
+        uint32 _revealCount,
+        bytes32 _dataRef
+    ) external whenNotPaused {
+        if (!hasRole(ANCHOR_ROLE, msg.sender)) revert NotAdmin();
+        if (_round != currentRound()) revert WrongRound();
+        uint256 offset = block.number % ROUND_LENGTH;
+        if (offset < REVEAL_ANCHOR_START || offset >= REVEAL_ANCHOR_END) revert NotRevealAnchorPhase();
+
+        RoundInfo storage ri = rounds[_round];
+        if (!ri.anchored) revert NotAnchored();
+        if (ri.revealsAnchored) revert AlreadyAnchored();
+
+        ri.revealsAnchored = true;
+        ri.revealsHash = _revealsHash;
+        ri.revealCount = _revealCount;
+
+        emit RevealsAnchored(_round, _revealsHash, _revealCount, _dataRef);
+    }
+
+    /**
      * @notice Censorship escape hatch: commit on chain. The proof for this round must include it.
-     * Open during the commit and anchor phases, so a node can still react once it sees the anchored list.
+     * Open until the reveal phase, so a node has 4 blocks after the anchor phase to react to the list.
      */
     function forceCommit(uint64 _round, bytes32 _obfuscatedHash) external whenNotPaused {
         if (_round != currentRound()) revert WrongRound();
-        if (block.number % ROUND_LENGTH >= ANCHOR_END) revert NotCommitPhase();
+        if (block.number % ROUND_LENGTH >= REVEAL_START) revert NotCommitPhase();
 
         RoundInfo storage ri = rounds[_round];
         if (ri.forcedCommitCount >= MAX_FORCED_PER_ROUND) revert TooManyForced();
@@ -335,7 +384,8 @@ contract Settlement is AccessControl, Pausable {
 
     /**
      * @notice Censorship escape hatch: reveal on chain. The proof for this round must consider it.
-     * Anyone holding the preimage can submit it; the preimage itself is the authorisation.
+     * Anyone holding the preimage can submit it; the preimage itself is the authorisation. Open until the
+     * seed block, so a node has 4 blocks after the reveal anchor phase to react to the list.
      */
     function forceReveal(
         uint64 _round,
@@ -346,7 +396,7 @@ contract Settlement is AccessControl, Pausable {
     ) external whenNotPaused {
         if (_round != currentRound()) revert WrongRound();
         uint256 offset = block.number % ROUND_LENGTH;
-        if (offset < ANCHOR_END || offset >= REVEAL_END) revert NotRevealPhase();
+        if (offset < REVEAL_START || offset >= REVEAL_END) revert NotRevealPhase();
 
         RoundInfo storage ri = rounds[_round];
         if (ri.forcedRevealCount >= MAX_FORCED_PER_ROUND) revert TooManyForced();
@@ -596,6 +646,7 @@ contract Settlement is AccessControl, Pausable {
         if (pv.stakePrice != OracleContract.currentPrice()) revert InputMismatch(9);
         if (pv.forcedClaimsHash != ri.forcedClaimsHash) revert InputMismatch(10);
         if (pv.sampleMaxValue != sampleMaxValue) revert InputMismatch(12);
+        if (pv.revealsHash != ri.revealsHash || pv.revealCount != ri.revealCount) revert InputMismatch(13);
         _checkPostage(pv.postage);
     }
 

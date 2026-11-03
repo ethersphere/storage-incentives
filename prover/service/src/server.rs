@@ -13,10 +13,12 @@ use axum::{
 use serde_json::{json, Value};
 use std::sync::Arc;
 use swarm_prover::{
-    offset_of, round_of, seed_block, ClaimMsg, CommitMsg, OutcomeMsg, RevealMsg, ANCHOR_END,
-    COMMIT_END, REVEAL_END,
+    offset_of, round_of, seed_block, ClaimMsg, CommitMsg, OutcomeMsg, RevealMsg, COMMIT_END,
+    REVEAL_ANCHOR_START, REVEAL_START,
 };
-use swarm_vm::{commits_hash, recover_commit_signer, Reveal, RoundInput, SignedCommit};
+use swarm_vm::{
+    commits_hash, recover_commit_signer, reveals_hash, Reveal, RoundInput, SignedCommit,
+};
 use tracing::info;
 
 type Reply = (StatusCode, Json<Value>);
@@ -119,7 +121,8 @@ async fn reveal(
 ) -> Result<Json<Value>, Reply> {
     let b = block(&ctx).await?;
     let off = offset_of(b);
-    if m.round != round_of(b) || !(ANCHOR_END..REVEAL_END).contains(&off) {
+    // Off-chain reveals close when the reveal anchor phase starts; after that only forceReveal.
+    if m.round != round_of(b) || !(REVEAL_START..REVEAL_ANCHOR_START).contains(&off) {
         return Err(err(
             StatusCode::CONFLICT,
             format!("not the reveal phase of round {}", m.round),
@@ -131,13 +134,18 @@ async fn reveal(
         hash: m.hash,
         nonce: m.nonce,
     };
+    let obf = swarm_vm::wrap_commit(r.overlay, r.depth, r.hash, r.nonce);
+    // A node left out of the anchored list commits with forceCommit, and may still reveal here.
+    let forced = crate::settler::forced_commits(&ctx, m.round)
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, e))?;
     let mut store = ctx.store.lock().await;
     let msgs = store.get_mut(m.round);
-    let known = msgs.anchored.as_ref().is_some_and(|a| {
-        a.iter().any(|c| {
-            c.obfuscated_hash == swarm_vm::wrap_commit(r.overlay, r.depth, r.hash, r.nonce)
-        })
-    });
+    let known = forced.iter().any(|c| c.obfuscated_hash == obf)
+        || msgs
+            .anchored
+            .as_ref()
+            .is_some_and(|a| a.iter().any(|c| c.obfuscated_hash == obf));
     if !known {
         return Err(err(
             StatusCode::BAD_REQUEST,
@@ -154,8 +162,9 @@ async fn reveal(
     Ok(Json(json!({ "ok": true })))
 }
 
-/// The anchored commit list of a round, so a node can check it was included (and fall back to
-/// forceCommit if not), plus where the round stands.
+/// The anchored commit and reveal lists of a round, so a node can check it was included (and fall back
+/// to forceCommit or forceReveal if not), plus where the round stands. A node must compare the hashes
+/// with the chain (Settlement.rounds) before it trusts them.
 async fn round(State(ctx): State<Arc<Ctx>>, Path(round): Path<u64>) -> Result<Json<Value>, Reply> {
     let store = ctx.store.lock().await;
     let Some(m) = store.rounds.get(&round) else {
@@ -169,6 +178,10 @@ async fn round(State(ctx): State<Arc<Ctx>>, Path(round): Path<u64>) -> Result<Js
             "commits": a.iter().map(|c| json!({ "owner": c.owner, "obfuscatedHash": c.obfuscated_hash })).collect::<Vec<_>>(),
         })),
         "reveals": m.reveals.len(),
+        "revealsAnchored": m.reveals_anchored.as_ref().map(|a| json!({
+            "revealsHash": reveals_hash(a),
+            "reveals": a,
+        })),
         "settleTx": m.settle_tx,
         "failed": m.failed,
     })))

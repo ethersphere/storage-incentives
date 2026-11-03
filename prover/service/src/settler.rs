@@ -14,11 +14,12 @@ use anyhow::{anyhow, Context, Result};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use swarm_prover::{
     offset_of, round_of, seed_block, PostageStamp, PriceOracle, Settlement, StakeRegistry,
-    ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, REVEAL_END, ROUND_LENGTH,
-    SEED_OFFSET,
+    ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, REVEAL_ANCHOR_END,
+    REVEAL_ANCHOR_START, REVEAL_END, ROUND_LENGTH, SEED_OFFSET,
 };
 use swarm_vm::{
-    canonical_commits, commits_hash, ForcedCommit, PublicValues, Reveal, RoundInput, StakeRecord,
+    canonical_commits, commits_hash, reveals_hash, ForcedCommit, PublicValues, Reveal, RoundInput,
+    StakeRecord,
 };
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
@@ -42,6 +43,14 @@ pub struct Config {
     /// of PostageStampZK). Later settlements search from their last cut block.
     #[arg(long, env = "POSTAGE_FROM_BLOCK", default_value_t = 0)]
     pub postage_from_block: u64,
+    /// TEST ONLY: act as a censoring prover. Leave the commits of these staking addresses out of the
+    /// anchored commit list.
+    #[arg(long, env = "CENSOR_COMMITS", value_delimiter = ',')]
+    pub censor_commits: Vec<Address>,
+    /// TEST ONLY: keep the commits of these staking addresses but leave their reveals out of the
+    /// anchored reveal list (the attack anchorReveals exists for).
+    #[arg(long, env = "CENSOR_REVEALS", value_delimiter = ',')]
+    pub censor_reveals: Vec<Address>,
 }
 
 const TX_TIMEOUT: Duration = Duration::from_secs(180);
@@ -53,6 +62,9 @@ pub struct Ctx {
     /// The prover key's address, for explicit nonces.
     pub from: Address,
     pub postage_from_block: u64,
+    pub censor_commits: Vec<Address>,
+    /// Overlays of `Config::censor_reveals`.
+    pub censor_reveals: Vec<B256>,
     pub store: Mutex<Store>,
     /// Serialises transactions from the one prover key.
     pub tx_lock: Mutex<()>,
@@ -78,12 +90,23 @@ pub async fn serve(cfg: Config) -> Result<()> {
         warn!("SP1_PROVER=mock: proofs are empty and only SP1MockVerifier accepts them");
     }
 
+    let mut censor_reveals = vec![];
+    if !cfg.censor_commits.is_empty() || !cfg.censor_reveals.is_empty() {
+        warn!(commits = ?cfg.censor_commits, reveals = ?cfg.censor_reveals, "TEST MODE: censoring");
+        let staking = StakeRegistry::new(s.Stakes().call().await?, &provider);
+        for a in &cfg.censor_reveals {
+            censor_reveals.push(staking.overlayOfAddress(*a).call().await?);
+        }
+    }
+
     let ctx = Arc::new(Ctx {
         provider,
         settlement: cfg.settlement,
         chain_id,
         from,
         postage_from_block: cfg.postage_from_block,
+        censor_commits: cfg.censor_commits.clone(),
+        censor_reveals,
         store: Mutex::new(Store::open(cfg.data_dir.clone())?),
         tx_lock: Mutex::new(()),
     });
@@ -106,10 +129,17 @@ async fn anchor_loop(ctx: Arc<Ctx>, poll: Duration) {
 async fn anchor_tick(ctx: &Ctx) -> Result<()> {
     let block = ctx.provider.get_block_number().await?;
     let (round, offset) = (round_of(block), offset_of(block));
-    if !(COMMIT_END..ANCHOR_END).contains(&offset) {
-        return Ok(());
+    if (COMMIT_END..ANCHOR_END).contains(&offset) {
+        anchor_commits(ctx, round).await
+    } else if (REVEAL_ANCHOR_START..REVEAL_ANCHOR_END).contains(&offset) {
+        anchor_reveals(ctx, round).await
+    } else {
+        Ok(())
     }
-    if ctx.store.lock().await.get_mut(round).anchored.is_some() {
+}
+
+/// Fix the round's off-chain commit list on chain (anchorRound).
+async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {    if ctx.store.lock().await.get_mut(round).anchored.is_some() {
         return Ok(());
     }
 
@@ -123,7 +153,12 @@ async fn anchor_tick(ctx: &Ctx) -> Result<()> {
     let list: Vec<_> = {
         let mut store = ctx.store.lock().await;
         let r = store.get_mut(round);
-        let list: Vec<_> = r.commits.values().cloned().collect();
+        let list: Vec<_> = r
+            .commits
+            .values()
+            .filter(|c| !ctx.censor_commits.contains(&c.owner))
+            .cloned()
+            .collect();
         r.anchored = Some(list.clone());
         store.save(round)?;
         list
@@ -147,6 +182,51 @@ async fn anchor_tick(ctx: &Ctx) -> Result<()> {
         .get_receipt()
         .await?;
     info!(round, commits = list.len(), tx = %receipt.transaction_hash, "anchored");
+    Ok(())
+}
+
+/// Fix the round's off-chain reveal list on chain (anchorReveals), so a node left out can still call
+/// forceReveal. Only for rounds this prover anchored.
+async fn anchor_reveals(ctx: &Ctx, round: u64) -> Result<()> {
+    let list: Vec<Reveal> = {
+        let mut store = ctx.store.lock().await;
+        let r = store.get_mut(round);
+        if r.reveals_anchored.is_some() || r.anchored.as_ref().map_or(true, |a| a.is_empty()) {
+            return Ok(());
+        }
+        let mut list: Vec<Reveal> = r
+            .reveals
+            .iter()
+            .filter(|v| !ctx.censor_reveals.contains(&v.overlay))
+            .cloned()
+            .collect();
+        list.sort_by(|a, b| a.overlay.cmp(&b.overlay));
+        r.reveals_anchored = Some(list.clone());
+        store.save(round)?;
+        list
+    };
+    let s = Settlement::new(ctx.settlement, &ctx.provider);
+    if s.rounds(round).call().await?.revealsAnchored {
+        return Ok(());
+    }
+    let hash = reveals_hash(&list);
+    let data_ref = alloy::primitives::keccak256(serde_json::to_vec(&list)?);
+
+    let _g = ctx.tx_lock.lock().await;
+    let nonce = ctx
+        .provider
+        .get_transaction_count(ctx.from)
+        .pending()
+        .await?;
+    let receipt = s
+        .anchorReveals(round, hash, list.len() as u32, data_ref)
+        .nonce(nonce)
+        .send()
+        .await?
+        .with_timeout(Some(TX_TIMEOUT))
+        .get_receipt()
+        .await?;
+    info!(round, reveals = list.len(), tx = %receipt.transaction_hash, "reveals anchored");
     Ok(())
 }
 
@@ -195,11 +275,13 @@ async fn settle_tick(ctx: &Ctx) -> Result<()> {
                 Some("settled by another prover".into());
             continue;
         }
+        // An error here can be temporary (RPC, a missing postage state file that an operator can restore):
+        // retry next tick, and do not settle later rounds first, since they build on this one's state.
         let input = match build_input(ctx, round, block, None).await {
             Ok(i) => i,
             Err(e) => {
-                mark_failed(ctx, round, &format!("{e:#}")).await?;
-                continue;
+                warn!(round, "cannot build the round input yet: {e:#}");
+                break;
             }
         };
         // A truth without a valid witness can only settle once the claim window is closed: the winner
@@ -239,9 +321,17 @@ pub async fn build_input(
             .rounds
             .get(&round)
             .ok_or_else(|| anyhow!("no local data"))?;
+        // Before the reveal anchor (the outcome endpoint can ask early) use what was received.
+        let reveals = if ri.revealsAnchored {
+            m.reveals_anchored.clone().unwrap_or_default()
+        } else if block < round * ROUND_LENGTH + REVEAL_ANCHOR_END {
+            m.reveals.clone()
+        } else {
+            vec![]
+        };
         (
             m.anchored.clone().unwrap_or_default(),
-            m.reveals.clone(),
+            reveals,
             m.claim.clone(),
         )
     };
@@ -249,6 +339,11 @@ pub async fn build_input(
         || commits.len() as u32 != ri.commitCount
     {
         anyhow::bail!("local commit list does not match the anchored commitsHash");
+    }
+    if ri.revealsAnchored
+        && (reveals_hash(&reveals) != ri.revealsHash || reveals.len() as u32 != ri.revealCount)
+    {
+        anyhow::bail!("local reveal list does not match the anchored revealsHash");
     }
 
     let (forced_commits, forced_reveals) = forced_inputs(ctx, round).await?;
@@ -384,6 +479,11 @@ async fn forced_claims(ctx: &Ctx, round: u64, block: u64) -> Result<Vec<Bytes>> 
         );
     }
     Ok(out)
+}
+
+/// CommitForced events of a round, in chain order.
+pub async fn forced_commits(ctx: &Ctx, round: u64) -> Result<Vec<ForcedCommit>> {
+    Ok(forced_inputs(ctx, round).await?.0)
 }
 
 /// CommitForced and RevealForced events of a round, in chain order.

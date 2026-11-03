@@ -95,6 +95,7 @@ docs/ZK-REDISTRIBUTION.md              the proposal (copied from docs/zk-redistr
   claim proofs ─POST /v1/claim───►│  (after the seed; the winner)
   (censored?) forceCommit / forceReveal / forceClaim ──────────►  Settlement
                                   │                                ▲ anchorRound(commitsHash)   (1 tx/round)
+                                  │                                │ anchorReveals(revealsHash) (1 tx/round)
                          swarm-prover (service)                    │ settleRound(pv, proof)     (1 tx/round)
                          ├─ store messages ───────────────────────┘
                          ├─ read chain: anchor, seed, forced events, stake records, PostageLog, game state
@@ -102,7 +103,7 @@ docs/ZK-REDISTRIBUTION.md              the proposal (copied from docs/zk-redistr
                          └─ SP1: program(input) ─► Groth16 proof ─► settleRound
 ```
 
-Two transactions per round for the whole network, instead of about three per participating node today.
+Three transactions per round for the whole network, instead of about three per participating node today.
 Uploaders who buy or top up stamps send their own transactions to PostageStampZK, as today, but they do
 not pay for the expiry of other batches.
 
@@ -115,8 +116,11 @@ scaled from the Gnosis layout. Measurements in section 5 before 2026-11-03 used 
 | Blocks in round | Phase | What happens |
 | --- | --- | --- |
 | 0-15 | commit | Nodes sign commits and send them to a prover, or call `forceCommit` |
-| 16-23 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once. `forceCommit` is still open, so a node that is missing from the anchored list can still get in |
-| 24-47 | reveal | Nodes send reveals to the prover, or call `forceReveal` |
+| 16-19 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once |
+| 20-23 | commit check | Each node compares the anchored list with `commitsHash` on chain. A node that is missing calls `forceCommit` (open until block 23) |
+| 24-39 | reveal | Nodes send reveals to the prover, or call `forceReveal` |
+| 40-43 | reveal anchor | The prover calls `anchorReveals(round, revealsHash, count, dataRef)` once. The prover accepts no more off-chain reveals |
+| 44-47 | reveal check | Each node compares the anchored reveal list with `revealsHash` on chain. A node that is missing, or a node in a round without `anchorReveals`, calls `forceReveal` (open until block 47) |
 | 48 | seed block | Its block hash becomes the selection seed. Nobody chooses it |
 | 49-63 | claim | Truth and winner are known. The winner (or any node that holds the truth's sample) sends the three claim proofs to the prover, or calls `forceClaim` |
 | 49 onward | settle | Anyone with a valid proof calls `settleRound`. Rounds settle in increasing order. A round whose truth has no valid claim ("unclaimed") settles only from block 64 (the next round) |
@@ -147,6 +151,7 @@ one block hash.
 | `roundAnchor` | stored at `anchorRound` | 1 |
 | `selectionSeed` | recomputed from the seed block hash | 2 |
 | `commitsHash`, `commitCount` | stored at `anchorRound` | 3 |
+| `revealsHash`, `revealCount` | stored at `anchorReveals`; zero if the prover did not call it | 13 |
 | `forcedCommitsHash` | hash chain built by `forceCommit` | 4 |
 | `forcedRevealsHash` | hash chain built by `forceReveal` | 5 |
 | `lastClaimRound`, `lastWinnerDepth` | Settlement state (minimum depth rule) | 6 |
@@ -306,21 +311,30 @@ the same total with one settlement instead of six.
 
 **Input completeness (can the prover leave me out?).** The prover can drop your off-chain commit or
 reveal. The escape hatch: `forceCommit` (blocks 0-23) and `forceReveal` (blocks 24-47) record the
-message in a hash chain on chain, and `settleRound` rejects any proof that didn't consume exactly that
-chain. A node can check the anchored list at `GET /v1/rounds/{round}` during the anchor phase and force
-its commit if it's missing. node-sim's `--forced` flag runs this path. Still open from the proposal
-(§7.1c): scoping a forced entry so it re-opens the prover's obligation for several rounds, not one.
+message in a hash chain on chain. `settleRound` rejects a proof that does not use exactly that chain.
+
+Both off-chain lists are fixed on chain before the escape hatch closes:
+
+- `anchorRound` (blocks 16-19) fixes the commit list. `forceCommit` stays open for 4 more blocks.
+- `anchorReveals` (blocks 40-43) fixes the reveal list. `forceReveal` stays open for 4 more blocks.
+
+A node gets the lists at `GET /v1/rounds/{round}` (later: from the Swarm reference in `dataRef`). It
+compares each list with the hash on chain. If its message is missing, it uses the escape hatch. Without
+`anchorReveals`, a prover can keep a commit and drop the reveal. The node then gets a freeze for
+non-reveal, and it cannot see the attack before the seed block. node-sim does these checks for every
+node. The prover option `CENSOR_COMMITS` / `CENSOR_REVEALS` (test only) runs the attack (section 5).
+node-sim's `--forced` flag skips the prover and uses the escape hatches directly. Still open from the
+proposal (§7.1c): scoping a forced entry so it re-opens the prover's obligation for several rounds,
+not one.
 
 **Ordering.** The commit set is fixed on chain (`anchorRound`) before any reveal is accepted and before
 the seed block exists.
 
-**Reveal after the seed is known (known issue, from master).** Only the prover enforces the deadline for
-off-chain reveals (block 48). Thus a node that colludes with the prover can see the seed first and then
-select to reveal or not. A reveal cannot change the committed values, and a node that does not reveal
-gets a freeze. This issue is not new. In `Redistribution.sol`, the first reveal sets the seed, so each
-later revealer knows the seed and has the same option. Other branches fix the game in general, so this
-branch does not fix the issue. A possible fix here is an `anchorReveals(revealsHash)` transaction before
-the seed block.
+**Reveal after the seed is known (fixed).** `anchorReveals` fixes the off-chain reveals at blocks 40-43,
+and `forceReveal` closes at block 47. The seed is the hash of block 48. Thus all reveals are fixed
+before anybody knows the seed. A node that colludes with the prover cannot see the seed first and then
+select to reveal or not. In `Redistribution.sol` the first reveal sets the seed, so each later revealer
+has this option.
 
 **Storage possession.** Proven, with the same evidence as `claim` today (section 2, "Claim"). A prover can
 withhold the winner's witness; `forceClaim` is the escape hatch, the same as for commits and reveals.
@@ -354,7 +368,8 @@ fix is a Merkle tree of the batches, so a settlement touches only the batches th
 | `createBatch`, `topUp`, `increaseDepth` | Uploader | Any time | Uploader (only its own batch) | — |
 | Commit, reveal, claim witness | Node, off chain | Each round | Nobody (HTTP) | — |
 | `forceCommit`, `forceReveal`, `forceClaim` | Node | Only if the prover censors it | Node | No |
-| `anchorRound` | Prover with `ANCHOR_ROLE` (the Foundation at the start) | Blocks 16-23 of each round | Prover | No |
+| `anchorRound` | Prover with `ANCHOR_ROLE` (the Foundation at the start) | Blocks 16-19 of each round | Prover | No |
+| `anchorReveals` | The same prover | Blocks 40-43 of each round | Prover | No |
 | Proof | Prover (own GPU or a proving market) | After block 48 | Prover (off chain) | Through the fee |
 | `settleRound` | Anyone with a valid proof; in practice the prover service | From block 49 (unclaimed: from block 64) | Caller | `proverFeeBps` (1%) of the payout, only in rounds with a payout |
 
@@ -362,9 +377,10 @@ fix is a Merkle tree of the batches, so a settlement touches only the batches th
 (`swarm-prover serve`, `settler.rs`) calls it when the round is ready. Another prover, or the winner,
 can call it with its own proof. The first valid call wins; a second one reverts with `AlreadySettled`.
 
-**At the start.** The Foundation runs the prover. It pays the gas of `anchorRound` (about 75k) and
-`settleRound` (about 0.5M with a real proof), and the cost of the proofs. It gets back 1% of the pot in
-rounds with a payout. `anchorRound` and rounds without a payout give nothing back.
+**At the start.** The Foundation runs the prover. It pays the gas of `anchorRound` (about 97k on anvil),
+`anchorReveals` (about 76k on anvil) and `settleRound` (about 0.5M with a real proof), and the cost of
+the proofs. It gets back 1% of the pot in rounds with a payout. The two anchors and rounds without a
+payout give nothing back.
 
 **Later.** When the round data (commit lists, postage state) is public on Swarm, anyone can prove and
 settle. The fee is the reward.
@@ -525,6 +541,31 @@ Program key `0x001c0e2d6b5d8deec792fc7f16b282798afb4269d6f1eb7e8db58cc10c9b3f56`
 
 Transactions: settlements `0x4f3780e0…6f56` and `0x1cb78d2e…b134`; anchors `0x8c06d6eb…724a` and
 `0x4a510f81…b740`.
+
+**Censoring prover** (2026-11-03; anvil, 1 s blocks, mock proofs; 5 honest nodes). The prover ran with
+`CENSOR_COMMITS=<node 0>` and `CENSOR_REVEALS=<node 1>`. node-sim checked both anchored lists against
+the hashes on chain in every round.
+
+| Round | Commit anchor | Reveal anchor | Node actions | Settlement |
+| --- | --- | --- | --- | --- |
+| 10 | 4 commits, node 0 left out | 4 reveals, node 1 left out | Node 0: `forceCommit` at block 20-22, reveal to the prover. Node 1: `forceReveal` at block 44-46 | 5 participants, redundancy 5, 0 freezes, 395,238 gas |
+| 11 | The same | The same | The same | 5 participants, redundancy 5, 0 freezes, 304,201 gas |
+| 12 | The same | The same | The same | 5 participants, redundancy 5, 0 freezes, 304,239 gas |
+
+The first try found a bug. The prover accepted off-chain reveals only for anchored commits, so it refused
+the reveal of a node with a forced commit. node-sim then did not force the reveal, and the node was
+frozen. Now the prover also accepts reveals for forced commits. node-sim forces a reveal also when its
+off-chain reveal failed.
+
+**Prover restart** (2026-11-03; the same chain; node 2 forced, node 3 silent, node 4 liar). A second
+prover started with an empty data folder. It anchored rounds 14-16, but it could not settle them: it did
+not have the postage state of the last settlement (open item 3). It also marked the rounds as failed for
+good. Now an error while it builds the round input is only logged, and the prover tries again. With the
+postage state file copied into its folder, the restarted prover settled rounds 14, 15 and 16 in order
+with no other help. Rounds 14 and 15 settled as unclaimed: the winner could not get the outcome while the
+prover failed.
+
+The Sepolia deployment in this section has the contract from before `anchorReveals`.
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and

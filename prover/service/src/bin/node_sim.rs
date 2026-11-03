@@ -9,6 +9,12 @@
 //!   --forced 2      node 2 uses forceCommit / forceReveal / forceClaim -> the escape hatches
 //!   --no-claim 1    node 1 never sends the claim witness       -> the round settles unclaimed if it wins
 //!
+//! Every other node uses the prover, then checks it was not censored, as a Bee node must: after the
+//! anchor phase it compares the anchored commit list with Settlement.rounds and calls forceCommit if its
+//! commit is missing; after the reveal anchor phase it does the same for its reveal with forceReveal
+//! (also when the prover anchored no reveals at all). Start the prover with CENSOR_COMMITS or
+//! CENSOR_REVEALS to see this work.
+//!
 //! Honest nodes share one simulated reserve: `--reserve` chunks of 32 bytes, all stamped by one postage
 //! batch whose owner key is `--batch-owner-key`. Each round they compute the real reserve sample (the 16
 //! chunks with the smallest anchor-keyed transformed addresses) and commit to its hash. After the seed
@@ -34,7 +40,8 @@ use std::sync::Arc;
 use std::{collections::HashMap, time::Duration};
 use swarm_prover::{
     offset_of, round_of, ClaimMsg, CommitMsg, OutcomeMsg, PostageStamp, RevealMsg, Settlement,
-    StakeRegistry, ANCHOR_END, CLAIM_START, COMMIT_END, REVEAL_END,
+    StakeRegistry, ANCHOR_END, CLAIM_START, COMMIT_END, REVEAL_ANCHOR_END, REVEAL_ANCHOR_START,
+    REVEAL_END, REVEAL_START,
 };
 use swarm_vm::{
     claim::{address_to_bucket, PostageProof},
@@ -94,8 +101,13 @@ struct Played {
     depth: u8,
     hash: B256,
     nonce: B256,
+    obfuscated: B256,
     revealed: bool,
     claimed: bool,
+    /// The commit is on chain (forced) or was found in the anchored list.
+    commit_safe: bool,
+    /// The reveal is on chain (forced) or was found in the anchored list.
+    reveal_safe: bool,
 }
 
 /// The shared simulated reserve: chunk i is the 32-byte payload with i in its first 8 bytes.
@@ -305,8 +317,11 @@ async fn main() -> Result<()> {
                             depth,
                             hash: B256::ZERO,
                             nonce: B256::ZERO,
+                            obfuscated: B256::ZERO,
                             revealed: true,
                             claimed: true,
+                            commit_safe: true,
+                            reveal_safe: true,
                         },
                     );
                     continue;
@@ -350,8 +365,11 @@ async fn main() -> Result<()> {
                                 depth,
                                 hash,
                                 nonce,
+                                obfuscated: obf,
                                 revealed: false,
                                 claimed: false,
+                                commit_safe: args.forced.contains(&n.idx),
+                                reveal_safe: false,
                             },
                         );
                     }
@@ -360,8 +378,13 @@ async fn main() -> Result<()> {
             }
         }
 
-        // Reveal phase.
-        if (ANCHOR_END..REVEAL_END - 2).contains(&offset) {
+        // Commit check: the anchor phase is over, forceCommit is still open.
+        if (ANCHOR_END..REVEAL_START - 1).contains(&offset) {
+            check_commits(&args, &nodes, &http, &settlement, round, &mut played).await;
+        }
+
+        // Reveal phase: off-chain reveals until the reveal anchor phase, forceReveal until its end.
+        if (REVEAL_START..REVEAL_END - 2).contains(&offset) {
             for n in &nodes {
                 let Some(p) = played.get(&(round, n.idx)).cloned() else {
                     continue;
@@ -369,7 +392,11 @@ async fn main() -> Result<()> {
                 if p.revealed || args.silent.contains(&n.idx) {
                     continue;
                 }
-                let res = if args.forced.contains(&n.idx) {
+                let forced = args.forced.contains(&n.idx);
+                if !forced && offset >= REVEAL_ANCHOR_START - 2 {
+                    continue;
+                }
+                let res = if forced {
                     Settlement::new(args.settlement, &n.provider)
                         .forceReveal(round, n.overlay, p.depth, p.hash, p.nonce)
                         .send()
@@ -391,11 +418,18 @@ async fn main() -> Result<()> {
                 match res {
                     Ok(how) => {
                         info!(round, node = n.idx, how, "revealed");
-                        played.get_mut(&(round, n.idx)).unwrap().revealed = true;
+                        let p = played.get_mut(&(round, n.idx)).unwrap();
+                        p.revealed = true;
+                        p.reveal_safe = forced;
                     }
                     Err(e) => warn!(round, node = n.idx, "reveal failed: {e:#}"),
                 }
             }
+        }
+
+        // Reveal check: the reveal anchor phase is over, forceReveal is still open.
+        if (REVEAL_ANCHOR_END..REVEAL_END - 1).contains(&offset) {
+            check_reveals(&args, &nodes, &http, &settlement, round, &mut played).await;
         }
 
         // Claim phase: the honest winner proves storage for the truth's sample.
@@ -406,6 +440,160 @@ async fn main() -> Result<()> {
         played.retain(|(r, _), _| *r + 2 > round);
         samples.retain(|r, _| *r + 2 > round);
         tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// GET /v1/rounds/{round} from the prover. Stands in for downloading the list from its Swarm reference.
+async fn round_lists(http: &reqwest::Client, prover: &str, round: u64) -> Option<serde_json::Value> {
+    let r = http
+        .get(format!("{prover}/v1/rounds/{round}"))
+        .send()
+        .await
+        .ok()?;
+    if !r.status().is_success() {
+        return None;
+    }
+    r.json().await.ok()
+}
+
+/// After the anchor phase: a node whose commit is not in the anchored list (or the list cannot be
+/// fetched, or does not match the hash on chain) calls forceCommit.
+async fn check_commits(
+    args: &Args,
+    nodes: &[Node],
+    http: &reqwest::Client,
+    settlement: &Settlement::SettlementInstance<&DynProvider>,
+    round: u64,
+    played: &mut HashMap<(u64, usize), Played>,
+) {
+    let pending: Vec<usize> = nodes
+        .iter()
+        .filter(|n| played.get(&(round, n.idx)).is_some_and(|p| !p.commit_safe))
+        .map(|n| n.idx)
+        .collect();
+    if pending.is_empty() {
+        return;
+    }
+    let ri = match settlement.rounds(round).call().await {
+        Ok(ri) => ri,
+        Err(e) => return warn!(round, "rounds: {e:#}"),
+    };
+    if !ri.anchored {
+        // Nobody anchored the round: it cannot be settled, a forced commit would not count either.
+        warn!(round, "round not anchored");
+        for idx in pending {
+            played.get_mut(&(round, idx)).unwrap().commit_safe = true;
+        }
+        return;
+    }
+    let lists = round_lists(http, &args.prover_url, round).await;
+    let anchored: Vec<(Address, B256)> = lists
+        .as_ref()
+        .and_then(|v| v["anchored"]["commits"].as_array().cloned())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|c| {
+            Some((
+                c["owner"].as_str()?.parse().ok()?,
+                c["obfuscatedHash"].as_str()?.parse().ok()?,
+            ))
+        })
+        .collect();
+    let list_ok = swarm_vm::commits_hash(anchored.iter().map(|(o, h)| (o, h))) == ri.commitsHash
+        && anchored.len() as u32 == ri.commitCount;
+    for idx in pending {
+        let n = &nodes[idx];
+        let p = played.get_mut(&(round, idx)).unwrap();
+        if list_ok && anchored.contains(&(n.signer.address(), p.obfuscated)) {
+            p.commit_safe = true;
+            continue;
+        }
+        warn!(round, node = idx, list_ok, "commit missing from the anchored list, forcing it");
+        match Settlement::new(args.settlement, &n.provider)
+            .forceCommit(round, p.obfuscated)
+            .send()
+            .await
+        {
+            Ok(_) => {
+                info!(round, node = idx, "forceCommit tx");
+                p.commit_safe = true;
+            }
+            Err(e) => warn!(round, node = idx, "forceCommit failed: {e:#}"),
+        }
+    }
+}
+
+/// After the reveal anchor phase: a node whose reveal is not in the anchored reveal list (or no list
+/// was anchored, or it does not match the hash on chain) calls forceReveal.
+async fn check_reveals(
+    args: &Args,
+    nodes: &[Node],
+    http: &reqwest::Client,
+    settlement: &Settlement::SettlementInstance<&DynProvider>,
+    round: u64,
+    played: &mut HashMap<(u64, usize), Played>,
+) {
+    let pending: Vec<usize> = nodes
+        .iter()
+        // Also nodes whose off-chain reveal failed: the prover may have refused it.
+        .filter(|n| {
+            !args.silent.contains(&n.idx)
+                && played
+                    .get(&(round, n.idx))
+                    .is_some_and(|p| !p.reveal_safe && p.obfuscated != B256::ZERO)
+        })
+        .map(|n| n.idx)
+        .collect();
+    if pending.is_empty() {
+        return;
+    }
+    let ri = match settlement.rounds(round).call().await {
+        Ok(ri) => ri,
+        Err(e) => return warn!(round, "rounds: {e:#}"),
+    };
+    let anchored: Vec<swarm_vm::Reveal> = if ri.revealsAnchored {
+        round_lists(http, &args.prover_url, round)
+            .await
+            .and_then(|v| serde_json::from_value(v["revealsAnchored"]["reveals"].clone()).ok())
+            .unwrap_or_default()
+    } else {
+        vec![]
+    };
+    let list_ok = ri.revealsAnchored
+        && swarm_vm::reveals_hash(&anchored) == ri.revealsHash
+        && anchored.len() as u32 == ri.revealCount;
+    for idx in pending {
+        let n = &nodes[idx];
+        let p = played.get_mut(&(round, idx)).unwrap();
+        let mine = swarm_vm::Reveal {
+            overlay: n.overlay,
+            depth: p.depth,
+            hash: p.hash,
+            nonce: p.nonce,
+        };
+        if list_ok && anchored.contains(&mine) {
+            p.reveal_safe = true;
+            continue;
+        }
+        warn!(
+            round,
+            node = idx,
+            reveals_anchored = ri.revealsAnchored,
+            list_ok,
+            "reveal missing from the anchored list, forcing it"
+        );
+        match Settlement::new(args.settlement, &n.provider)
+            .forceReveal(round, n.overlay, p.depth, p.hash, p.nonce)
+            .send()
+            .await
+        {
+            Ok(_) => {
+                info!(round, node = idx, "forceReveal tx");
+                p.revealed = true;
+                p.reveal_safe = true;
+            }
+            Err(e) => warn!(round, node = idx, "forceReveal failed: {e:#}"),
+        }
     }
 }
 

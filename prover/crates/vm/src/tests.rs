@@ -303,6 +303,34 @@ fn forced_commit_and_reveal_count() {
 }
 
 #[test]
+fn anchored_reveals_are_public_and_a_dropped_reveal_can_be_forced() {
+    let ns = nodes(3);
+    let smp = sample(B256::ZERO, 0);
+    let h = smp.hash();
+    let mut input = play(&ns, 0, &[h; 3], &[true; 3]);
+    with_claim(&mut input, &smp);
+    let pv = run(&input).unwrap();
+    assert_eq!(pv.inputs.revealCount, 3);
+    assert_eq!(pv.inputs.revealsHash, reveals_hash(&input.reveals));
+    assert!(pv.outcome.freezeOwners.is_empty());
+
+    // A censoring prover keeps node 1's commit but leaves its reveal out of the anchored list: the
+    // node is frozen for non-reveal, and revealsHash on chain shows the list without it.
+    let dropped = input.reveals.remove(1);
+    let pv = run(&input).unwrap();
+    assert_eq!(pv.inputs.revealCount, 2);
+    assert_eq!(pv.outcome.freezeOwners, vec![ns[1].key.address()]);
+
+    // The node sees that and calls forceReveal before the seed block: not frozen.
+    input.forced_reveals.push(dropped);
+    let pv = run(&input).unwrap();
+    assert!(pv.outcome.freezeOwners.is_empty());
+    assert_eq!(pv.outcome.redundancy, 3);
+
+    assert_eq!(reveals_hash(&[]), B256::ZERO);
+}
+
+#[test]
 fn out_of_proximity_reveal_counts_as_not_revealed() {
     let mut ns = nodes(2);
     // depth 1 with height 0: overlay must share the first bit with the zero anchor.

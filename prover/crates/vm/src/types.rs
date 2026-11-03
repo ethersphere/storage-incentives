@@ -15,6 +15,8 @@ sol! {
         bytes32 selectionSeed;
         bytes32 commitsHash;
         uint32 commitCount;
+        bytes32 revealsHash;
+        uint32 revealCount;
         bytes32 forcedCommitsHash;
         bytes32 forcedRevealsHash;
         uint64 lastClaimRound;
@@ -123,7 +125,8 @@ pub struct RoundInput {
     pub commits: Vec<SignedCommit>,
     /// `CommitForced` events of the round, in chain order.
     pub forced_commits: Vec<ForcedCommit>,
-    /// Off-chain reveals the prover received, any order.
+    /// Off-chain reveals as anchored by `Settlement.anchorReveals`, in the anchored order (empty if the
+    /// prover did not anchor them).
     pub reveals: Vec<Reveal>,
     /// `RevealForced` events of the round, in chain order.
     pub forced_reveals: Vec<Reveal>,

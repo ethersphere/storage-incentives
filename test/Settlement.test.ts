@@ -9,7 +9,11 @@ import { BigNumber, Contract, Signer } from 'ethers';
 
 const ROUND_LENGTH = 64;
 const COMMIT_END = 16;
-const ANCHOR_END = 24;
+const ANCHOR_END = 20;
+const REVEAL_START = 24;
+const REVEAL_ANCHOR_START = 40;
+const REVEAL_ANCHOR_END = 44;
+const REVEAL_END = 48;
 const SEED_OFFSET = 48;
 const CLAIM_START = 49;
 const coder = ethers.utils.defaultAbiCoder;
@@ -18,7 +22,8 @@ const { keccak256, solidityPack } = ethers.utils;
 const PV_TYPE =
   'tuple(' +
   'tuple(uint256 chainId,address settlement,uint64 round,bytes32 roundAnchor,bytes32 selectionSeed,' +
-  'bytes32 commitsHash,uint32 commitCount,bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
+  'bytes32 commitsHash,uint32 commitCount,bytes32 revealsHash,uint32 revealCount,' +
+  'bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
   'uint64 lastClaimRound,uint8 lastWinnerDepth,uint8 penaltyMultiplierDisagreement,' +
   'uint8 penaltyMultiplierNonRevealed,uint8 penaltyRandomFactor,uint8 stakeAgeRounds,address[] participants,bytes32 stakeDigest,' +
   'uint32 stakePrice,bytes32 forcedClaimsHash,uint256 sampleMaxValue,' +
@@ -127,6 +132,8 @@ describe('Settlement', function () {
         selectionSeed: await settlement.selectionSeed(round),
         commitsHash: ri.commitsHash,
         commitCount: ri.commitCount,
+        revealsHash: ri.revealsHash,
+        revealCount: ri.revealCount,
         forcedCommitsHash: ri.forcedCommitsHash,
         forcedRevealsHash: ri.forcedRevealsHash,
         lastClaimRound: await settlement.lastClaimRound(),
@@ -192,7 +199,9 @@ describe('Settlement', function () {
       expect((await settlement.rounds(round)).forcedCommitsHash).to.eq(expected);
 
       await expect(settlement.forceReveal(round, ZERO, 1, ZERO, ZERO)).to.be.revertedWith('NotRevealPhase');
-      await mineToOffset(ANCHOR_END, round);
+      // forceCommit stays open after the anchor phase, so a node left out of the list can react.
+      await mineToOffset(REVEAL_START - 1, round);
+      await settlement.connect(nodes[2]).forceCommit(round, keccak256('0x06'));
       await expect(settlement.forceCommit(round, ZERO)).to.be.revertedWith('NotCommitPhase');
       await settlement.forceReveal(round, keccak256('0x03'), 2, keccak256('0x04'), keccak256('0x05'));
       const r = keccak256(
@@ -202,6 +211,37 @@ describe('Settlement', function () {
         )
       );
       expect((await settlement.rounds(round)).forcedRevealsHash).to.eq(r);
+      // forceReveal stays open after the reveal anchor phase, up to the seed block.
+      await mineToOffset(REVEAL_END - 1, round);
+      await settlement.forceReveal(round, keccak256('0x03'), 2, keccak256('0x04'), keccak256('0x05'));
+      await expect(settlement.forceReveal(round, ZERO, 1, ZERO, ZERO)).to.be.revertedWith('NotRevealPhase');
+    });
+
+    it('anchors commits only before the commit check blocks', async function () {
+      const round = await mineToOffset(ANCHOR_END);
+      await expect(settlement.anchorRound(round, ZERO, 0, ZERO)).to.be.revertedWith('NotAnchorPhase');
+    });
+
+    it('anchors reveals once, in the reveal anchor phase, after anchorRound, with ANCHOR_ROLE', async function () {
+      const h = keccak256('0x07');
+      let round = await mineToOffset(REVEAL_ANCHOR_START);
+      await expect(settlement.anchorReveals(round, h, 2, ZERO)).to.be.revertedWith('NotAnchored');
+
+      round = await anchoredRound();
+      await mineToOffset(REVEAL_ANCHOR_START - 1, round);
+      await expect(settlement.anchorReveals(round, h, 2, ZERO)).to.be.revertedWith('NotRevealAnchorPhase');
+      await expect(settlement.connect(nodes[0]).anchorReveals(round, h, 2, ZERO)).to.be.revertedWith('NotAdmin');
+      await expect(settlement.anchorReveals(round, h, 2, ZERO))
+        .to.emit(settlement, 'RevealsAnchored')
+        .withArgs(round, h, 2, ZERO);
+      await expect(settlement.anchorReveals(round, h, 2, ZERO)).to.be.revertedWith('AlreadyAnchored');
+      const ri = await settlement.rounds(round);
+      expect(ri.revealsAnchored).to.be.true;
+      expect(ri.revealsHash).to.eq(h);
+      expect(ri.revealCount).to.eq(2);
+
+      const next = await mineToOffset(REVEAL_ANCHOR_END, round + 1);
+      await expect(settlement.anchorReveals(next, h, 2, ZERO)).to.be.revertedWith('NotRevealAnchorPhase');
     });
 
     it('seed is unavailable until after the seed block', async function () {
@@ -336,6 +376,8 @@ describe('Settlement', function () {
         [10, (pv) => (pv.inputs.forcedClaimsHash = keccak256('0x01'))],
         [11, (pv) => (pv.inputs.postage.prevStateHash = keccak256('0x01'))],
         [12, (pv) => (pv.inputs.sampleMaxValue = 1)],
+        [13, (pv) => (pv.inputs.revealsHash = keccak256('0x01'))],
+        [13, (pv) => (pv.inputs.revealCount = 1)],
       ];
       for (const [code, mutate] of cases) {
         const pv = JSON.parse(JSON.stringify(good));

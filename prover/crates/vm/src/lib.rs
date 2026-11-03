@@ -101,6 +101,23 @@ pub fn commits_hash<'a>(commits: impl IntoIterator<Item = (&'a Address, &'a B256
     keccak256(buf)
 }
 
+/// keccak256(abi.encodePacked(overlay, depth, hash, nonce, ...)) over the anchored reveal list, as passed
+/// to `Settlement.anchorReveals`. Zero for an empty list, which is also what Settlement holds when the
+/// prover did not anchor reveals.
+pub fn reveals_hash(reveals: &[Reveal]) -> B256 {
+    if reveals.is_empty() {
+        return B256::ZERO;
+    }
+    let mut buf = Vec::with_capacity(reveals.len() * 97);
+    for r in reveals {
+        buf.extend_from_slice(r.overlay.as_slice());
+        buf.push(r.depth);
+        buf.extend_from_slice(r.hash.as_slice());
+        buf.extend_from_slice(r.nonce.as_slice());
+    }
+    keccak256(buf)
+}
+
 /// The hash chain `Settlement.forceCommit` keeps.
 pub fn forced_commits_hash(forced: &[ForcedCommit]) -> B256 {
     forced.iter().fold(B256::ZERO, |acc, c| {
@@ -290,6 +307,8 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         selectionSeed: input.selection_seed,
         commitsHash: commits_hash(input.commits.iter().map(|c| (&c.owner, &c.obfuscated_hash))),
         commitCount: input.commits.len() as u32,
+        revealsHash: reveals_hash(&input.reveals),
+        revealCount: input.reveals.len() as u32,
         forcedCommitsHash: forced_commits_hash(&input.forced_commits),
         forcedRevealsHash: forced_reveals_hash(&input.forced_reveals),
         lastClaimRound: input.last_claim_round,

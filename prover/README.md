@@ -166,6 +166,18 @@ SP1_PROVER=mock PROVER_PRIVATE_KEY=0xac09...ff80 DATA_DIR=data/zklocal ./target/
 
 The full anvil keys are the standard `test test ... junk` mnemonic accounts.
 
+To test the censorship escape hatches, start the prover as a censoring prover. It leaves the commits of
+`CENSOR_COMMITS` out of the anchored commit list, and the reveals of `CENSOR_REVEALS` out of the anchored
+reveal list. Use these options for tests only.
+
+```bash
+CENSOR_COMMITS=<node 0 address> CENSOR_REVEALS=<node 1 address> SP1_PROVER=mock ... ./target/release/swarm-prover serve
+./target/release/node-sim --depth 0 --rounds 3
+```
+
+node-sim finds that it is missing from the anchored lists. Node 0 then calls `forceCommit`, and node 1
+calls `forceReveal`. No node gets a freeze.
+
 ## Run it on Sepolia
 
 See [docs/ZK-SETTLEMENT.md, "Sepolia runbook"](../docs/ZK-SETTLEMENT.md#6-sepolia-runbook).
