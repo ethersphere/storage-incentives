@@ -30,13 +30,25 @@ const testnetEtherscanKey = process.env.TESTNET_ETHERSCAN_KEY;
 // Config for hardhat.
 const config: HardhatUserConfig = {
   solidity: {
-    version: '0.8.19',
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 1000,
+    compilers: [
+      {
+        version: '0.8.19',
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1000,
+          },
+        },
       },
-    },
+    ],
+    // The vendored SP1 verifier (tests only) needs 0.8.20.
+    overrides: Object.fromEntries(
+      [
+        'src/settlement/sp1/ISP1Verifier.sol',
+        'src/settlement/sp1/v6.1.0/SP1VerifierGroth16.sol',
+        'src/settlement/sp1/v6.1.0/Groth16Verifier.sol',
+      ].map((f) => [f, { version: '0.8.20', settings: { optimizer: { enabled: true, runs: 1000 } } }])
+    ),
   },
   mocha: {
     timeout: Number.MAX_SAFE_INTEGER,

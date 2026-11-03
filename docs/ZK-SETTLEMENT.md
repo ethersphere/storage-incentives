@@ -594,6 +594,56 @@ batches that expired since the last sweep. On PostageStampZK it does not.
 About 46k cycles for each live batch and settlement. This is the main cost at mainnet size. See
 "Size of the postage state" in section 3.
 
+**Real Gnosis postage history** (2026-11-03; `prover/service/src/bin/gnosis_postage.rs`). The tool reads
+all batch and price events of the Gnosis PostageStamp `0x45a1502382541Cd610CC9068e88727426b696293`
+from its deployment (block 31,305,656) to block 49,095,608. It converts them to the PostageLog entries
+that PostageStampZK writes, and replays them with one settlement every 152 blocks (one Gnosis round).
+
+| Item | Value |
+| --- | --- |
+| Events | 226,254: 47,364 create, 66,350 top-up, 915 depth, 111,625 price |
+| Settlements replayed natively | 117,034, in 2.9 s, with no error |
+| Live batches (most at any cut; now) | 8,013; 8,011 after the last cut |
+| Total outpayment at the last cut | 923,867,393,222: the same as `currentTotalOutPayment()` on Gnosis |
+| `validChunkCount` after the last cut | 7,991,984,128. Gnosis: 7,993,032,704. The difference is one depth-20 batch that has expired; Gnosis still counts it because nobody called `expireLimited` yet (`expiredBatchesExist()` is true) |
+| Pot of the last settlement (152 blocks) | 24.09 BZZ = 7.99e9 chunks × price 198,291 × 152 blocks |
+| Cycles of one settlement (8,013 live batches, 12 new events, no game) | **368,829,867** (6.1 s to execute on a laptop) |
+| Groth16 proof on the Succinct Prover Network | 356 bytes in **127 s** (request to proof). Gas limit 324,913,729 PGU; base fee 0.395 PROVE + at most 0.75 PROVE per billion PGU: **at most about 0.64 PROVE** |
+
+Thus at today's Gnosis size, the postage part alone is about 150 times the cycles of the game. The cost
+does not depend on the number of events in the round. It comes from the state: the proof reads and
+hashes all 8,013 batches, and each batch costs about 46k cycles.
+
+The proof still fits in a round: 127 s, against a round of 768 s. The price is mostly the fixed base
+fee: at most 0.64 PROVE, against about 0.40 PROVE for a small round. Thus today's state does not block
+mainnet. But the time and the variable price grow with the number of live batches: at 10 times today's
+batches, a proof takes many minutes. The Merkle postage state (optimization plan, item 9) touches only
+the batches that change or expire: 14 in this round. Then the cost stays near the cost of a small round.
+Item 9 is the first optimization to do.
+
+**Soundness tests** (2026-11-03). Three test groups check that a prover cannot select the result:
+
+1. `every_private_input_is_bound_to_a_public_input` (`prover/crates/vm/src/tests.rs`). It changes each
+   private input of the VM: commits, signatures, anchored and forced reveals, forced commits, stake
+   records, game parameters, seed, anchor, postage state, postage log, cut block, forced claims (27
+   changes). Each change must make the VM fail, or change a public input that `settleRound` checks
+   against the chain, or leave the outcome as it was. A check of the test: without `revealsHash` in the
+   public inputs, the test fails ("drop an anchored reveal"). The one documented exception is the
+   off-chain claim witness: without it, the round is unclaimed with the same public inputs. The defence
+   is `forceClaim` (section 3).
+2. `test/SP1Verifier.test.ts`. A real Groth16 proof of Sepolia round 188411
+   (`test/fixtures/sp1-settlement-proof.json`) and SP1's v6.1.0 verifier (vendored in
+   `src/settlement/sp1`). The proof passes as it is (267,701 gas, hardhat estimate). It fails after a
+   change to the winner, the truth, the unclaimed flag, the redundancy, the pot, the freezes, the round,
+   the commit or reveal list, the stake digest, the postage log position, the chain id, the program key,
+   or any proof byte (16 tests).
+3. `test/Settlement.test.ts`. Each public input that does not match the chain reverts with its
+   `InputMismatch` code (0-13).
+
+Note for tests: Hardhat's `eth_call` returns `0x` when the verifier reverts without data, for example
+for a too short proof. In a transaction the same call reverts. Thus the verifier tests use
+`estimateGas`.
+
 ---
 
 ## 6. Sepolia runbook
@@ -652,13 +702,15 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 
 ### Open items (in priority order)
 
-1. Measure gas on Sepolia (or with the same fork rules locally): PostageStamp against PostageStampZK, and
+1. A Merkle postage state, so the proof cost does not grow with all live batches (optimization plan,
+   item 9). With the real Gnosis state (8,013 live batches), one settlement is 369M cycles (the game is
+   about 2.5M), 127 s and at most 0.64 PROVE on the Succinct network (section 5, "Real Gnosis postage
+   history"). This fits in a round today, but it grows with the number of batches.
+2. Swarm as the data layer: upload the anchored lists and the postage state; pass the reference as
+   `dataRef`. Without it, a new prover cannot continue (section 5, "Prover restart").
+3. Measure gas on Sepolia (or with the same fork rules locally): PostageStamp against PostageStampZK, and
    `settleRound`. The anvil values are too low for current Ethereum rules.
-2. Timelock or exit window on `setVerifier`.
-3. Swarm as the data layer: upload the anchored list and the postage state; pass the reference as
-   `dataRef`.
-4. A Merkle postage state, so the proof cost does not grow with all live batches (optimization plan,
-   item 9).
+4. Timelock or exit window on `setVerifier`.
 5. Fee model for provers (section 4).
 6. Batch migration from Gnosis PostageStamp to PostageStampZK (`copyBatchBulk`), and a check with the Bee
    team that no Bee version reads `pot` or `validChunkCount`.

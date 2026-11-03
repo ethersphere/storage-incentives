@@ -685,3 +685,124 @@ fn postage_outcome_is_part_of_every_round() {
     assert_eq!(pv.outcome.postage.validChunkCount, U256::from(1u64 << 20));
     assert_eq!(pv.inputs.postage.prevStateHash, input.postage.state.hash());
 }
+
+/// Soundness: a prover controls the private parts of the input. For each of them, a change must make
+/// the VM fail, or change a public input (which Settlement checks against the chain), or leave the
+/// outcome as it was. Otherwise a prover could pick the outcome. The claim witness is the one known
+/// exception: a prover can withhold it, and the winner's defence is forceClaim (docs/ZK-SETTLEMENT.md).
+#[test]
+fn every_private_input_is_bound_to_a_public_input() {
+    let ns = nodes(4);
+    let smp = sample(B256::ZERO, 0);
+    let h = smp.hash();
+    let lie = keccak256(b"lie");
+    // The liar has the smallest stake, so the honest hash is the truth for this seed.
+    let liar = (0..4).min_by_key(|&i| ns[i].stake).unwrap();
+    let mut hashes = [h; 4];
+    hashes[liar] = lie;
+    let mut base = play(&ns, 0, &hashes, &[true; 4]);
+    with_claim(&mut base, &smp);
+    // One PostageStampZK log entry in the replayed range (a price event that keeps the price).
+    let block = SEED_BLOCK - 10;
+    let event = postage::PostageEvent {
+        index: 1,
+        kind: postage::KIND_PRICE,
+        batch_id: B256::ZERO,
+        owner: Address::ZERO,
+        depth: 0,
+        bucket_depth: 0,
+        value: U256::from(1u8),
+        outpayment: U256::from(block - 1),
+        block,
+    };
+    base.postage.events = vec![event];
+    base.postage.cut_block = SEED_BLOCK;
+    // Node 3 uses the escape hatches, so the forced lists are not empty.
+    let c = base.commits.remove(3);
+    let r = base.reveals.remove(3);
+    let s = base.stakes.remove(3);
+    base.forced_commits.push(ForcedCommit {
+        owner: c.owner,
+        obfuscated_hash: c.obfuscated_hash,
+    });
+    base.forced_reveals.push(r);
+    base.stakes.push(s);
+    let good = run(&base).expect("base round");
+    assert!(good.outcome.hasTruth);
+    assert_eq!(good.outcome.freezeOwners.len(), 1);
+
+    type Mutation = (&'static str, fn(&mut RoundInput));
+    let mutations: Vec<Mutation> = vec![
+        ("drop an anchored commit", |i| {
+            i.commits.remove(0);
+        }),
+        ("change a commit", |i| i.commits[1].obfuscated_hash = keccak256(b"x")),
+        ("break a commit signature", |i| {
+            i.commits[1].signature = Bytes::from(vec![1u8; 65])
+        }),
+        ("drop an anchored reveal", |i| {
+            i.reveals.remove(0);
+        }),
+        ("change a reveal nonce", |i| i.reveals[1].nonce = keccak256(b"x")),
+        ("add a reveal that was not anchored", |i| {
+            let mut r = i.forced_reveals[0].clone();
+            r.nonce = keccak256(b"y");
+            i.reveals.push(r);
+        }),
+        ("drop a forced commit", |i| {
+            i.forced_commits.clear();
+            i.stakes.pop();
+        }),
+        ("drop a forced reveal", |i| i.forced_reveals.clear()),
+        ("change a stake amount", |i| {
+            i.stakes[0].committed_stake *= U256::from(10u8)
+        }),
+        ("change a stake overlay", |i| i.stakes[1].overlay = keccak256(b"o")),
+        ("change a stake height", |i| i.stakes[1].height = 1),
+        ("change a stake update block", |i| {
+            i.stakes[1].last_updated = U256::from(SEED_BLOCK)
+        }),
+        ("swap two stake records", |i| i.stakes.swap(0, 1)),
+        ("change the stake price", |i| i.stake_price = 7),
+        ("change the game state", |i| i.last_claim_round = ROUND - 1),
+        ("change a penalty", |i| i.penalty_multiplier_non_revealed = 0),
+        ("change the stake age", |i| i.stake_age_rounds = 0),
+        ("change the sample bound", |i| i.sample_max_value = U256::from(1u8)),
+        ("change the seed", |i| i.selection_seed = keccak256(b"s")),
+        ("change the anchor", |i| i.round_anchor = keccak256(b"a")),
+        ("change a postage batch balance", |i| {
+            i.postage.state.batches[0].normalised_balance += U256::from(1u8)
+        }),
+        ("drop a postage batch", |i| i.postage.state.batches.clear()),
+        ("change the postage price", |i| i.postage.state.price = U256::from(2u8)),
+        ("change a postage log entry", |i| {
+            i.postage.events[0].value = U256::from(2u8)
+        }),
+        ("drop a postage log entry", |i| i.postage.events.clear()),
+        ("change the cut block", |i| i.postage.cut_block -= 1),
+        ("forge a forced claim", |i| {
+            i.forced_claims.push(Bytes::from(vec![0u8; 32]))
+        }),
+    ];
+
+    for (name, mutate) in mutations {
+        let mut m = base.clone();
+        mutate(&mut m);
+        match run(&m) {
+            Err(_) => {}
+            Ok(pv) => assert!(
+                pv.inputs != good.inputs || pv.outcome == good.outcome,
+                "{name}: the outcome changed but the public inputs did not"
+            ),
+        }
+    }
+
+    // The known exception: withholding the off-chain witness changes the outcome (unclaimed) with the
+    // same public inputs. Unclaimed rounds settle only after the claim window, so the winner can still
+    // call forceClaim, which changes forcedClaimsHash.
+    let mut m = base.clone();
+    m.claim = None;
+    let pv = run(&m).unwrap();
+    assert_eq!(pv.inputs, good.inputs);
+    assert!(pv.outcome.unclaimed && !pv.outcome.hasTruth);
+}

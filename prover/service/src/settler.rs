@@ -489,10 +489,12 @@ pub async fn forced_commits(ctx: &Ctx, round: u64) -> Result<Vec<ForcedCommit>> 
 /// CommitForced and RevealForced events of a round, in chain order.
 async fn forced_inputs(ctx: &Ctx, round: u64) -> Result<(Vec<ForcedCommit>, Vec<Reveal>)> {
     let start = round * ROUND_LENGTH;
+    // Not past the head: some RPC providers reject a range that ends in the future.
+    let head = ctx.provider.get_block_number().await?;
     let filter = Filter::new()
         .address(ctx.settlement)
         .from_block(start)
-        .to_block(start + REVEAL_END)
+        .to_block((start + REVEAL_END).min(head))
         .topic1(B256::from(U256::from(round)));
 
     let mut commits = vec![];

@@ -108,7 +108,19 @@ struct Played {
     commit_safe: bool,
     /// The reveal is on chain (forced) or was found in the anchored list.
     reveal_safe: bool,
+    /// forceCommit / forceReveal sent but not yet confirmed. A failed one is sent again while its
+    /// window is open.
+    commit_tx: Option<B256>,
+    reveal_tx: Option<B256>,
 }
+
+/// Gas limit of forceCommit and forceReveal. Not estimated: an estimate made against the pending
+/// state can assume an earlier forced entry of the round has already written the round's slots. When
+/// the block builder orders that entry later, the cheaper estimate runs out of gas (seen on Sepolia,
+/// where a first write costs about 240k and a later one about 48k).
+const FORCE_GAS: u64 = 600_000;
+/// forceClaim: the same, plus the calldata of a witness of up to 16 KB.
+const FORCE_CLAIM_GAS: u64 = 1_500_000;
 
 /// The shared simulated reserve: chunk i is the 32-byte payload with i in its first 8 bytes.
 struct Reserve {
@@ -322,6 +334,8 @@ async fn main() -> Result<()> {
                             claimed: true,
                             commit_safe: true,
                             reveal_safe: true,
+                            commit_tx: None,
+                            reveal_tx: None,
                         },
                     );
                     continue;
@@ -339,9 +353,10 @@ async fn main() -> Result<()> {
                 let res = if args.forced.contains(&n.idx) {
                     Settlement::new(args.settlement, &n.provider)
                         .forceCommit(round, obf)
+                        .gas(FORCE_GAS)
                         .send()
                         .await
-                        .map(|_| "forceCommit tx".to_string())
+                        .map(|tx| ("forceCommit tx".to_string(), Some(*tx.tx_hash())))
                         .map_err(anyhow::Error::from)
                 } else {
                     let digest = commit_digest(chain_id, args.settlement, round, obf);
@@ -354,10 +369,10 @@ async fn main() -> Result<()> {
                     };
                     post(&http, &format!("{}/v1/commit", args.prover_url), &msg)
                         .await
-                        .map(|_| "to prover".into())
+                        .map(|_| ("to prover".into(), None))
                 };
                 match res {
-                    Ok(how) => {
+                    Ok((how, tx)) => {
                         info!(round, node = n.idx, how, "committed");
                         played.insert(
                             (round, n.idx),
@@ -370,6 +385,8 @@ async fn main() -> Result<()> {
                                 claimed: false,
                                 commit_safe: args.forced.contains(&n.idx),
                                 reveal_safe: false,
+                                commit_tx: tx,
+                                reveal_tx: None,
                             },
                         );
                     }
@@ -377,6 +394,8 @@ async fn main() -> Result<()> {
                 }
             }
         }
+
+        confirm_forced(&read, round, &mut played).await;
 
         // Commit check: the anchor phase is over, forceCommit is still open.
         if (ANCHOR_END..REVEAL_START - 1).contains(&offset) {
@@ -399,9 +418,10 @@ async fn main() -> Result<()> {
                 let res = if forced {
                     Settlement::new(args.settlement, &n.provider)
                         .forceReveal(round, n.overlay, p.depth, p.hash, p.nonce)
+                        .gas(FORCE_GAS)
                         .send()
                         .await
-                        .map(|_| "forceReveal tx".to_string())
+                        .map(|tx| ("forceReveal tx".to_string(), Some(*tx.tx_hash())))
                         .map_err(anyhow::Error::from)
                 } else {
                     let msg = RevealMsg {
@@ -413,14 +433,15 @@ async fn main() -> Result<()> {
                     };
                     post(&http, &format!("{}/v1/reveal", args.prover_url), &msg)
                         .await
-                        .map(|_| "to prover".into())
+                        .map(|_| ("to prover".into(), None))
                 };
                 match res {
-                    Ok(how) => {
+                    Ok((how, tx)) => {
                         info!(round, node = n.idx, how, "revealed");
                         let p = played.get_mut(&(round, n.idx)).unwrap();
                         p.revealed = true;
                         p.reveal_safe = forced;
+                        p.reveal_tx = tx;
                     }
                     Err(e) => warn!(round, node = n.idx, "reveal failed: {e:#}"),
                 }
@@ -440,6 +461,39 @@ async fn main() -> Result<()> {
         played.retain(|(r, _), _| *r + 2 > round);
         samples.retain(|r, _| *r + 2 > round);
         tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// Check the receipts of forced transactions. A failed one clears the node's state so that it is sent
+/// again while its window is open (by the commit check, the reveal loop or the reveal check).
+async fn confirm_forced(
+    read: &DynProvider,
+    round: u64,
+    played: &mut HashMap<(u64, usize), Played>,
+) {
+    for ((r, idx), p) in played.iter_mut().filter(|((r, _), _)| *r == round) {
+        for (what, tx) in [("forceCommit", p.commit_tx), ("forceReveal", p.reveal_tx)] {
+            let Some(hash) = tx else { continue };
+            let Ok(Some(receipt)) = read.get_transaction_receipt(hash).await else {
+                continue; // not mined yet
+            };
+            if receipt.status() {
+                info!(round = r, node = idx, %hash, gas = receipt.gas_used, "{what} confirmed");
+            } else {
+                warn!(round = r, node = idx, %hash, "{what} failed on chain, sending it again");
+                if what == "forceCommit" {
+                    p.commit_safe = false;
+                } else {
+                    p.reveal_safe = false;
+                    p.revealed = false;
+                }
+            }
+            if what == "forceCommit" {
+                p.commit_tx = None;
+            } else {
+                p.reveal_tx = None;
+            }
+        }
     }
 }
 
@@ -511,12 +565,14 @@ async fn check_commits(
         warn!(round, node = idx, list_ok, "commit missing from the anchored list, forcing it");
         match Settlement::new(args.settlement, &n.provider)
             .forceCommit(round, p.obfuscated)
+            .gas(FORCE_GAS)
             .send()
             .await
         {
-            Ok(_) => {
+            Ok(tx) => {
                 info!(round, node = idx, "forceCommit tx");
                 p.commit_safe = true;
+                p.commit_tx = Some(*tx.tx_hash());
             }
             Err(e) => warn!(round, node = idx, "forceCommit failed: {e:#}"),
         }
@@ -584,13 +640,15 @@ async fn check_reveals(
         );
         match Settlement::new(args.settlement, &n.provider)
             .forceReveal(round, n.overlay, p.depth, p.hash, p.nonce)
+            .gas(FORCE_GAS)
             .send()
             .await
         {
-            Ok(_) => {
+            Ok(tx) => {
                 info!(round, node = idx, "forceReveal tx");
                 p.revealed = true;
                 p.reveal_safe = true;
+                p.reveal_tx = Some(*tx.tx_hash());
             }
             Err(e) => warn!(round, node = idx, "forceReveal failed: {e:#}"),
         }
@@ -669,6 +727,7 @@ async fn claim_phase(
         let res = if args.forced.contains(&idx) {
             Settlement::new(args.settlement, &n.provider)
                 .forceClaim(round, witness)
+                .gas(FORCE_CLAIM_GAS)
                 .send()
                 .await
                 .map(|_| "forceClaim tx".to_string())

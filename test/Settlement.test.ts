@@ -1,6 +1,7 @@
 import { expect } from './util/chai';
 import { ethers, network } from 'hardhat';
 import { BigNumber, Contract, Signer } from 'ethers';
+import { PV_TYPE } from './util/publicValues';
 
 // Settlement replaces Redistribution: the game runs off chain (prover/crates/vm), this contract checks
 // the public inputs of a proof against the chain and executes the outcome. These tests use
@@ -18,20 +19,6 @@ const SEED_OFFSET = 48;
 const CLAIM_START = 49;
 const coder = ethers.utils.defaultAbiCoder;
 const { keccak256, solidityPack } = ethers.utils;
-
-const PV_TYPE =
-  'tuple(' +
-  'tuple(uint256 chainId,address settlement,uint64 round,bytes32 roundAnchor,bytes32 selectionSeed,' +
-  'bytes32 commitsHash,uint32 commitCount,bytes32 revealsHash,uint32 revealCount,' +
-  'bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
-  'uint64 lastClaimRound,uint8 lastWinnerDepth,uint8 penaltyMultiplierDisagreement,' +
-  'uint8 penaltyMultiplierNonRevealed,uint8 penaltyRandomFactor,uint8 stakeAgeRounds,address[] participants,bytes32 stakeDigest,' +
-  'uint32 stakePrice,bytes32 forcedClaimsHash,uint256 sampleMaxValue,' +
-  'tuple(bytes32 prevStateHash,uint64 prevEventIndex,bytes32 prevEventHash,uint64 eventIndex,bytes32 eventHash,' +
-  'uint64 cutBlock) postage) inputs,' +
-  'tuple(bool hasTruth,bytes32 truthHash,uint8 truthDepth,address winner,bytes32 winnerOverlay,' +
-  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations,bool unclaimed,' +
-  'tuple(bytes32 newStateHash,uint256 potAmount,uint256 validChunkCount) postage) outcome)';
 
 const ZERO = ethers.constants.HashZero;
 

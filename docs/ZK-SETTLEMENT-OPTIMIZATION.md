@@ -24,7 +24,7 @@ chain stays the same when the rules become more complex, for example with SWIP-4
 | 6 | A smaller `anchorRound` | About 75k down to about 30k gas for each round | No | — |
 | 7 | Faster proof generation | No gas effect. Less time to finality | No | — |
 | 8 | **Done.** Postage accounting (expiry and pot) in the proof; `PostageStampZK` without the batch tree | `createBatch` 443k → 177k gas (measured, 50 batches); no expiry sweeps for anybody | Batches expire by comparison; nothing is removed on chain | — |
-| 9 | A Merkle postage state | No gas effect. Proof cost no longer grows with all live batches | No | 8 |
+| 9 | A Merkle postage state | No gas effect. Proof cost no longer grows with all live batches (Gnosis today: 369M cycles per settlement) | No | 8 |
 
 Order of work: 9, 1, 4, 3, 5, 6. Item 7 can occur at any time. Item 9 is first because the proof cost of
 item 8 grows with the number of live batches (about 46k cycles each).
@@ -270,6 +270,13 @@ This item is implemented. The design, the Bee compatibility and the tests are in
 The proof carries all live batches as one list. At each settlement it reads the list, hashes it two
 times (before and after) and credits each batch. The cost is about 46k cycles for each live batch: 50M
 cycles for 1,000 batches and 460M for 10,000. Most batches do not change in a round.
+
+Measured with the real Gnosis history (ZK-SETTLEMENT.md, section 5, "Real Gnosis postage history"):
+Gnosis has 8,013 live batches. One settlement of one 152-block round is 368,829,867 cycles. The game of
+that round costs about 2.5M cycles. In that round, 12 events changed batches and 2 batches expired. A
+Merkle state touches only those 14 batches. The Succinct Prover Network proved the full settlement in
+127 s for at most 0.64 PROVE (a small round: about 45 s and 0.40 PROVE). Thus today's state fits in a
+round, but the time and the variable price grow with the number of live batches.
 
 ### Design
 

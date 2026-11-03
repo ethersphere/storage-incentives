@@ -13,6 +13,10 @@ path = "src/main.rs"
 name = "node-sim"
 path = "src/bin/node_sim.rs"
 
+[[bin]]
+name = "gnosis-postage"
+path = "src/bin/gnosis_postage.rs"
+
 [dependencies]
 swarm-vm = { workspace = true }
 alloy-sol-types = { workspace = true }
