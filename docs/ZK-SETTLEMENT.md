@@ -24,7 +24,7 @@ Two cross-checks with the real contracts:
 This version ran end to end on a local chain with mock proofs (section 5, 2026-11-02). A real Groth16
 proof of this version came from the Succinct Prover Network in 42 seconds and passes SP1's verifier
 contract. Then live rounds were settled with real network proofs on a local chain, with Settlement using
-SP1's real Groth16 verifier (section 5, 2026-11-03). Not yet done: a run on Sepolia.
+SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section 5, 2026-11-03).
 
 ---
 
@@ -504,6 +504,33 @@ The verification of a real proof adds about 270k gas to `settleRound` (compare s
 verifier). The time includes the local execution and the program registration; the network assigned each
 request within about 5 s.
 
+**Sepolia run** (2026-11-03; 64-block rounds; Settlement with SP1's Groth16 verifier gateway
+`0x397A5f7f3dBd538f23DE225B51f532c34448dA9B`; network proofs; 4 simulated nodes, node 3 silent;
+`stakeAgeRounds = 0`):
+
+| Contract | Address (Sepolia) |
+| --- | --- |
+| Settlement | `0xB69BE1e0CF55F50C507E88273a39430dF87Bb6d8` |
+| PostageStampZK | `0x0d394c681D4937Ad0e8610738f4f2758cF29680e` |
+| PriceOracleZK | `0x0C47cbCf1498D12C1Ce02525bdCBAAf40b3DA58a` |
+| StakeRegistry | `0x6cE96a0e89EA06143b9AfD737928f6e57F95380E` |
+| TestToken (sBZZ) | `0x1e96D92aEF6ceA3cE35D1697F6C35877BadD7232` |
+
+Program key `0x001c0e2d6b5d8deec792fc7f16b282798afb4269d6f1eb7e8db58cc10c9b3f56`.
+
+| Round | What happened | Cycles | Time to proof | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 188401 | 4 commits, anchor, 3 reveals; winner (node 1) sent the claim; network proof; the gateway accepted it; paid; node 3 frozen | 2,489,424 | 79.6 s | 1,283,920 (first postage state and freeze writes) |
+| 188402 | Same; node 3 still frozen, so not eligible | 2,510,630 | 45.8 s | 768,706 |
+
+Transactions: settlements `0x4f3780e0…6f56` and `0x1cb78d2e…b134`; anchors `0x8c06d6eb…724a` and
+`0x4a510f81…b740`.
+
+**Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
+`createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
+Hardhat in this section are therefore too low for current Ethereum rules. Use the Sepolia values for cost
+estimates, and repeat the PostageStamp and PostageStampZK comparison on Sepolia.
+
 **PostageStampZK** (2026-11-02, Hardhat):
 
 | Measurement | Result |
@@ -584,8 +611,8 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 
 ### Open items (in priority order)
 
-1. Run on Sepolia with the SP1 verifier gateway and network proofs. (Local runs with mock proofs and with
-   real network proofs are done.)
+1. Measure gas on Sepolia (or with the same fork rules locally): PostageStamp against PostageStampZK, and
+   `settleRound`. The anvil values are too low for current Ethereum rules.
 2. Timelock or exit window on `setVerifier`.
 3. Swarm as the data layer: upload the anchored list and the postage state; pass the reference as
    `dataRef`.

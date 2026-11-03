@@ -61,7 +61,8 @@ async fn main() -> Result<()> {
     match Cli::parse().cmd {
         Cmd::Serve(cfg) => settler::serve(cfg).await,
         Cmd::Vkey => {
-            println!("{}", prover::vkey());
+            // The blocking SP1 SDK must not run on the async runtime's thread.
+            println!("{}", tokio::task::spawn_blocking(prover::vkey).await?);
             Ok(())
         }
         Cmd::Synth {
