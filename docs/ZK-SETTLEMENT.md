@@ -23,8 +23,8 @@ Two cross-checks with the real contracts:
 
 This version ran end to end on a local chain with mock proofs (section 5, 2026-11-02). A real Groth16
 proof of this version came from the Succinct Prover Network in 42 seconds and passes SP1's verifier
-contract (section 5, 2026-11-03). Not yet done: a settlement with a real proof on a chain, and a run on
-Sepolia.
+contract. Then live rounds were settled with real network proofs on a local chain, with Settlement using
+SP1's real Groth16 verifier (section 5, 2026-11-03). Not yet done: a run on Sepolia.
 
 ---
 
@@ -488,6 +488,19 @@ with three witnesses, 100 live batches in the postage state):
 Thus the network proves a round well inside the settle window (blocks 115-151, about 7 minutes on
 Ethereum). The base fee is the main part of the price for a round of this size.
 
+**Settlement with real proofs** (2026-11-03; anvil, 1 s blocks; Settlement deployed with SP1's v6.1.0
+Groth16 verifier and the program key, `ZK_VERIFIER=<address>`; prover with `SP1_PROVER=network`; 5 nodes,
+node 4 silent):
+
+| Round | What happened | Cycles | Time to proof (from start of proving) | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 4 | Commits and reveals off chain, honest truth, winner sent the claim. The network proved the round; Settlement checked the proof with the real verifier, paid the winner and froze the silent node until block 1101 (797 + 2 × 152) | 2,688,203 | 69.8 s | 625,965 |
+| 5 | No commits; the postage accounting still ran | 280,988 | 37.1 s | 360,952 |
+
+The verification of a real proof adds about 270k gas to `settleRound` (compare section 5 runs with the mock
+verifier). The time includes the local execution and the program registration; the network assigned each
+request within about 5 s.
+
 **PostageStampZK** (2026-11-02, Hardhat):
 
 | Measurement | Result |
@@ -568,8 +581,8 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 
 ### Open items (in priority order)
 
-1. Settle a round with a real proof on a chain, and run on Sepolia. (The local run with mock proofs and a
-   real network proof are done.)
+1. Run on Sepolia with the SP1 verifier gateway and network proofs. (Local runs with mock proofs and with
+   real network proofs are done.)
 2. Timelock or exit window on `setVerifier`.
 3. Swarm as the data layer: upload the anchored list and the postage state; pass the reference as
    `dataRef`.

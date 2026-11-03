@@ -5,8 +5,9 @@ import { networkConfig } from '../../helper-hardhat-config';
 //
 // ZK_VERIFIER=mock (default on zklocal) deploys SP1MockVerifier, which accepts empty proofs. Use it with
 // SP1_PROVER=mock on the prover side to run the whole flow without generating real proofs.
-// Otherwise the SP1 Groth16 verifier gateway from helper-hardhat-config is used, and PROGRAM_VKEY must be
-// the output of `swarm-prover vkey`.
+// ZK_VERIFIER=<address> uses that verifier (for example SP1VerifierGroth16 deployed on anvil). Otherwise the
+// SP1 Groth16 verifier gateway from helper-hardhat-config is used. With a real verifier, PROGRAM_VKEY must
+// be the output of `swarm-prover vkey`.
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network, ethers }) {
   const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
@@ -14,7 +15,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   const mode = process.env.ZK_VERIFIER || (network.name === 'zklocal' ? 'mock' : 'sp1');
   let verifier: string;
-  if (mode === 'mock') {
+  if (ethers.utils.isAddress(mode)) {
+    // An already deployed verifier, e.g. SP1VerifierGroth16 on anvil for a local run with real proofs.
+    verifier = mode;
+  } else if (mode === 'mock') {
     verifier = (await deploy('SP1MockVerifier', { from: deployer, log: true, waitConfirmations })).address;
   } else {
     const gateway = networkConfig[network.name]?.sp1VerifierGateway;
