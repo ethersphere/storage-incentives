@@ -93,7 +93,6 @@ describe('SP1 verifier with a real settlement proof', function () {
       b[i] ^= 1;
       await expect(verify(fixture.vkey, fixture.publicValues, ethers.utils.hexlify(b))).to.be.reverted;
     }
-    await expect(verify(fixture.vkey, fixture.publicValues, ethers.utils.hexlify(bytes.slice(0, 200)))).to.be
-      .reverted;
+    await expect(verify(fixture.vkey, fixture.publicValues, ethers.utils.hexlify(bytes.slice(0, 200)))).to.be.reverted;
   });
 });

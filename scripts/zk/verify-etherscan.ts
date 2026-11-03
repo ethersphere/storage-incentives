@@ -49,7 +49,11 @@ async function main() {
     const ctor = d.abi.find((f: { type: string }) => f.type === 'constructor');
     const args = ctor ? ethers.utils.defaultAbiCoder.encode(ctor.inputs, d.args || []).slice(2) : '';
 
-    const done = await api(chainId, { apikey: key, module: 'contract', action: 'getsourcecode', address: d.address }, false);
+    const done = await api(
+      chainId,
+      { apikey: key, module: 'contract', action: 'getsourcecode', address: d.address },
+      false
+    );
     if (done.status === '1' && (done.result as unknown as { SourceCode: string }[])[0]?.SourceCode) {
       console.log(`${name} ${d.address}: already verified`);
       continue;
@@ -78,7 +82,11 @@ async function main() {
     let result = 'no answer';
     for (let i = 0; i < 40; i++) {
       await new Promise((r) => setTimeout(r, 5000));
-      const st = await api(chainId, { apikey: key, module: 'contract', action: 'checkverifystatus', guid: sub.result }, false);
+      const st = await api(
+        chainId,
+        { apikey: key, module: 'contract', action: 'checkverifystatus', guid: sub.result },
+        false
+      );
       result = st.result;
       if (!result.startsWith('Pending')) break;
     }
