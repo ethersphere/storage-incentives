@@ -26,6 +26,23 @@ proof of this version came from the Succinct Prover Network in 42 seconds and pa
 contract. Then live rounds were settled with real network proofs on a local chain, with Settlement using
 SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section 5, 2026-11-03).
 
+**Latest state (2026-11-04):**
+
+- **Censorship.** The prover anchors both off-chain lists on chain: the commits (`anchorRound`, blocks
+  16-19) and the reveals (`anchorReveals`, blocks 40-43). After each anchor, a node has 4 blocks to see
+  that it was left out and to use `forceCommit` or `forceReveal`. A test mode of the prover censors
+  chosen nodes. With it, local runs and Sepolia runs with real proofs settled with all censored nodes
+  counted (section 5).
+- **Soundness tests.** A test changes each private input of the VM and checks that the prover cannot
+  get another outcome with the same public inputs. A real Sepolia proof is checked against SP1's
+  verifier: every change to the outcome, the inputs, the key or the proof is rejected (section 5).
+- **Real Gnosis postage data.** The full Gnosis postage history (226k events, 8,013 live batches)
+  replays with the same total outpayment as Gnosis. One settlement at this size is 369M cycles. The
+  Succinct network proved it in 127 s for at most 0.64 PROVE (section 5).
+- **Sepolia.** Settlement `0x8FA253E8dF857c1a2b8A15f7AEcEA9BaBeE1c3d0` with SP1's verifier gateway.
+- **Next.** The Merkle postage state (item 9), Swarm as the data layer for the anchored lists and the
+  postage state, and a gas comparison on Sepolia (section 7, "Open items").
+
 ---
 
 ## 1. What changed compared with master
@@ -526,7 +543,7 @@ request within about 5 s.
 
 | Contract | Address (Sepolia) |
 | --- | --- |
-| Settlement | `0xB69BE1e0CF55F50C507E88273a39430dF87Bb6d8` |
+| Settlement | `0xB69BE1e0CF55F50C507E88273a39430dF87Bb6d8` (replaced by `0x8FA253E8dF857c1a2b8A15f7AEcEA9BaBeE1c3d0`, with `anchorReveals`) |
 | PostageStampZK | `0x0d394c681D4937Ad0e8610738f4f2758cF29680e` |
 | PriceOracleZK | `0x0C47cbCf1498D12C1Ce02525bdCBAAf40b3DA58a` |
 | StakeRegistry | `0x6cE96a0e89EA06143b9AfD737928f6e57F95380E` |
@@ -565,7 +582,36 @@ postage state file copied into its folder, the restarted prover settled rounds 1
 with no other help. Rounds 14 and 15 settled as unclaimed: the winner could not get the outcome while the
 prover failed.
 
-The Sepolia deployment in this section has the contract from before `anchorReveals`.
+**Sepolia run with censorship** (2026-11-03/04; Settlement `0x8FA253E8dF857c1a2b8A15f7AEcEA9BaBeE1c3d0`
+with `anchorReveals`, SP1's verifier gateway, program key `0x007503aa…a6b1`; network proofs; the same
+PostageStampZK, PriceOracleZK, StakeRegistry and sBZZ as the first Sepolia run; 4 nodes). The prover
+censored node 0's commits and node 1's reveals. From round 188413, nodes 2 and 3 used only the escape
+hatches (`--forced 2,3`).
+
+| Round | What happened | Cycles | Proof | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 188411 | Node 0: `forceCommit`. A prover bug (below) refused all off-chain reveals; all 4 nodes called `forceReveal` in the same block, but 3 of the 4 transactions ran out of gas (below). Result: redundancy 1, 3 nodes frozen | 2,379,610 | 73 s | 1,223,223 |
+| 188412 | Node 0: `forceCommit`; node 1: `forceReveal`. Nodes 1-3 still frozen, so only node 0 counted | 2,381,342 | 39 s | 676,813 |
+| 188413 | The same escape hatches, plus nodes 2 and 3; all 6 forced transactions confirmed. Nodes 1-3 still frozen | 2,174,258 | 35 s | 676,765 |
+| 188414 | Node 0: `forceCommit`; node 1: `forceReveal`; nodes 2 and 3: `forceCommit` and `forceReveal`. All 6 confirmed. **4 participants, redundancy 4, 0 freezes** | 2,785,744 | 42 s | 872,999 |
+| 188415 | No commits (node-sim stopped); postage only | 285,203 | 26 s | 487,457 |
+
+Gas on Sepolia: `anchorRound` 355,077; `anchorReveals` 246,126; `forceCommit` and `forceReveal` about
+241k for the first one of a round and about 46k for each later one (the first writes new storage
+slots). These values are 3-4 times the anvil values.
+
+Two bugs that only Sepolia showed, both fixed:
+
+1. To accept a reveal for a forced commit, the prover read `CommitForced` logs up to block 48 of the
+   round. During the reveal phase that block is in the future, and the Sepolia RPC refuses such a range.
+   Anvil does not. Now the range ends at the current block.
+2. node-sim let the RPC estimate the gas of `forceReveal`. The estimate runs against the pending state.
+   There, node 0's transaction had already written the round's forced-reveal slots, so the estimate for
+   nodes 1-3 was about 48k. The block builder put node 0's transaction last. Thus nodes 1-3 ran first,
+   against empty slots, and ran out of gas. node-sim did not check the receipts and believed the reveals
+   were on chain. Now node-sim sends forced transactions with a fixed gas limit (600k; `forceClaim`
+   1.5M), checks each receipt, and sends a failed one again while its window is open. A Bee node must
+   do the same.
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
@@ -675,6 +721,12 @@ SP1_PROVER=network NETWORK_PRIVATE_KEY=0x.. PROVER_PRIVATE_KEY=0x.. DATA_DIR=dat
 
 # 5. Nodes. BATCH_OWNER_KEY = the deployer key (it owns the batch that stamps the simulated reserve)
 NODE_KEYS=0x..,0x.. BATCH_OWNER_KEY=0x.. ./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2
+#    Censorship test: start the prover with CENSOR_COMMITS=<address> and/or CENSOR_REVEALS=<address>.
+
+# 6. Verify the source code on Etherscan (repo root). TESTNET_ETHERSCAN_KEY = Etherscan API key.
+#    Uses the Etherscan v2 API and the compiler input that hardhat-deploy stored at deployment.
+npx hardhat run scripts/zk/verify-etherscan.ts --network sepoliazk
+#    Only some contracts: CONTRACTS=Settlement,PostageStamp npx hardhat run ...
 ```
 
 On Sepolia the selection seed is available for 8191 blocks (about 27 hours) through EIP-2935, so a slow
