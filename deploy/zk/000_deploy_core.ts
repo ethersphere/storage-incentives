@@ -27,7 +27,14 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations,
   });
   const postage = await get('PostageStamp');
-  await deploy('PriceOracle', { from: deployer, args: [postage.address], log: true, waitConfirmations });
+  // PriceOracleZK: PriceOracle with 64-block rounds (12 s blocks), as Settlement.
+  await deploy('PriceOracle', {
+    from: deployer,
+    contract: 'PriceOracleZK',
+    args: [postage.address],
+    log: true,
+    waitConfirmations,
+  });
   const oracle = await get('PriceOracle');
   await deploy('StakeRegistry', {
     from: deployer,

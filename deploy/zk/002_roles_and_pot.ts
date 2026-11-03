@@ -22,6 +22,13 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   await grant('Settlement', 'ANCHOR_ROLE', prover);
   log(`ANCHOR_ROLE granted to prover ${prover}`);
 
+  // STAKE_AGE_ROUNDS=0 lets nodes play in the round after they stake (test networks). Default: 2.
+  const age = Number(process.env.STAKE_AGE_ROUNDS ?? 2);
+  if ((await read('Settlement', 'stakeAgeRounds')) !== age) {
+    await execute('Settlement', from, 'setStakeAgeRounds', age);
+  }
+  log(`Settlement.stakeAgeRounds = ${age}`);
+
   if ((await read('PostageStamp', 'lastPrice')).eq(0)) {
     await execute('PriceOracle', from, 'setPrice', 24000);
   }

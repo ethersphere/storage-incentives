@@ -47,6 +47,7 @@ fn base_input() -> RoundInput {
         penalty_multiplier_disagreement: 1,
         penalty_multiplier_non_revealed: 2,
         penalty_random_factor: 100,
+        stake_age_rounds: 2,
         claim: None,
         forced_claims: vec![],
         sample_max_value: U256::MAX,
@@ -57,14 +58,14 @@ fn base_input() -> RoundInput {
     }
 }
 
-const SEED_BLOCK: u64 = ROUND * ROUND_LENGTH + 114;
+const SEED_BLOCK: u64 = ROUND * ROUND_LENGTH + SEED_OFFSET;
 
 /// Postage state with `batch()` alive and funded far beyond the round.
 fn postage_with_batch() -> postage::PostageInput {
     let b = batch();
     postage::PostageInput {
         state: postage::PostageState {
-            last_cut_block: SEED_BLOCK - 152,
+            last_cut_block: SEED_BLOCK - ROUND_LENGTH,
             price_block: 1,
             price_outpayment: U256::ZERO,
             price: U256::from(1u8),
@@ -74,7 +75,7 @@ fn postage_with_batch() -> postage::PostageInput {
                 depth: b.depth,
                 bucket_depth: b.bucket_depth,
                 normalised_balance: U256::from(10u64.pow(18)),
-                counted_to: U256::from(SEED_BLOCK - 152 - 1),
+                counted_to: U256::from(SEED_BLOCK - ROUND_LENGTH - 1),
             }],
         },
         prev_event_index: 0,
@@ -330,6 +331,22 @@ fn recently_staked_node_is_ignored() {
     let pv = run(&input).unwrap();
     assert_eq!(pv.outcome.redundancy, 1);
     assert_eq!(pv.inputs.participants.len(), 2);
+}
+
+#[test]
+fn stake_age_zero_lets_a_node_play_in_the_next_round() {
+    let ns = nodes(2);
+    let smp = sample(B256::ZERO, 0);
+    let mut input = play(&ns, 0, &[smp.hash(); 2], &[true; 2]);
+    with_claim(&mut input, &smp);
+    // Node 1 staked in the previous round.
+    input.stakes[1].last_updated = U256::from(ROUND * ROUND_LENGTH - 10);
+    assert_eq!(run(&input).unwrap().outcome.redundancy, 1);
+    input.stake_age_rounds = 0;
+    assert_eq!(run(&input).unwrap().outcome.redundancy, 2);
+    // A stake made during the round still does not count.
+    input.stakes[1].last_updated = U256::from(ROUND * ROUND_LENGTH + 3);
+    assert_eq!(run(&input).unwrap().outcome.redundancy, 1);
 }
 
 #[test]
@@ -634,9 +651,9 @@ fn postage_outcome_is_part_of_every_round() {
     input.postage = postage_with_batch();
     let pv = run(&input).unwrap();
     assert!(!pv.outcome.hasTruth);
-    // Counted to SEED_BLOCK - 153. Price 1 since block 1, so the outpayment at the cut (SEED_BLOCK + 1)
-    // is SEED_BLOCK: 153 blocks of 2^20 chunks.
-    assert_eq!(pv.outcome.postage.potAmount, U256::from(153u64 << 20));
+    // Counted to SEED_BLOCK - ROUND_LENGTH - 1. Price 1 since block 1, so the outpayment at the cut
+    // (SEED_BLOCK + 1) is SEED_BLOCK: ROUND_LENGTH + 1 blocks of 2^20 chunks.
+    assert_eq!(pv.outcome.postage.potAmount, U256::from((ROUND_LENGTH + 1) << 20));
     assert_eq!(pv.outcome.postage.validChunkCount, U256::from(1u64 << 20));
     assert_eq!(pv.inputs.postage.prevStateHash, input.postage.state.hash());
 }

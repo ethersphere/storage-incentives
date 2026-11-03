@@ -282,6 +282,7 @@ pub async fn build_input(
         penalty_multiplier_disagreement: s.penaltyMultiplierDisagreement().call().await?,
         penalty_multiplier_non_revealed: s.penaltyMultiplierNonRevealed().call().await?,
         penalty_random_factor: s.penaltyRandomFactor().call().await?,
+        stake_age_rounds: s.stakeAgeRounds().call().await?,
         claim: claim.or(stored_claim),
         forced_claims,
         sample_max_value: s.sampleMaxValue().call().await?,

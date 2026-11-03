@@ -7,12 +7,12 @@ use serde::{Deserialize, Serialize};
 pub use swarm_vm::ROUND_LENGTH;
 
 /// Round layout of Settlement.sol, in blocks from the round start.
-pub const COMMIT_END: u64 = 38;
-pub const ANCHOR_END: u64 = 57;
-pub const REVEAL_END: u64 = 114;
-pub const SEED_OFFSET: u64 = 114;
+pub const COMMIT_END: u64 = 16;
+pub const ANCHOR_END: u64 = 24;
+pub const REVEAL_END: u64 = 48;
+pub use swarm_vm::SEED_OFFSET;
 /// Claim witnesses are accepted from here to the end of the round.
-pub const CLAIM_START: u64 = 115;
+pub const CLAIM_START: u64 = 49;
 /// EIP-2935 serves this many past block hashes; after that a round's seed is gone for good.
 pub const HISTORY_SERVE_WINDOW: u64 = 8191;
 
@@ -59,6 +59,7 @@ alloy::sol! {
         function penaltyMultiplierDisagreement() external view returns (uint8);
         function penaltyMultiplierNonRevealed() external view returns (uint8);
         function penaltyRandomFactor() external view returns (uint8);
+        function stakeAgeRounds() external view returns (uint8);
         function programVKey() external view returns (bytes32);
         function Stakes() external view returns (address);
         function OracleContract() external view returns (address);

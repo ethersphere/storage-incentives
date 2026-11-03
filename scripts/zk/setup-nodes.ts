@@ -3,7 +3,8 @@
 //   NODE_KEYS=0xabc,0xdef npx hardhat run scripts/zk/setup-nodes.ts --network zklocal
 //
 // For each key: top up ETH from the deployer (NODE_ETH, default 0.02), send sBZZ, approve and call
-// StakeRegistry.manageStake. Skips nodes that are already staked. Nodes can play two rounds after staking.
+// StakeRegistry.manageStake. Skips nodes that are already staked. Nodes can play when their stake is
+// Settlement.stakeAgeRounds old (2 rounds by default; 0 with STAKE_AGE_ROUNDS=0 at deploy).
 import { ethers, deployments, network } from 'hardhat';
 
 async function main() {

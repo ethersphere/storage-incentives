@@ -52,15 +52,16 @@ interface ISettlementOracle {
  * winner the proven pot from PostageStampZK, freezes stakes and adjusts the price. See
  * docs/ZK-SETTLEMENT.md.
  *
- * Round layout, in blocks relative to the round start (ROUND_LENGTH = 152, the same as Redistribution):
+ * Round layout, in blocks relative to the round start. ROUND_LENGTH = 64: with 12 s blocks a round is about
+ * 12.8 minutes, the same time as the Gnosis round of Redistribution (152 blocks x 5 s).
  *
- *   [  0,  38)  commit       nodes send signed commits to a prover; or call forceCommit
- *   [ 38,  57)  anchor       a prover calls anchorRound(commitsHash) once; forceCommit still open
- *   [ 57, 114)  reveal       nodes send reveals to a prover; or call forceReveal
- *   114         seed block   its block hash becomes the selection seed. Nobody chooses it
- *   [115, 152)  claim        a truth-teller sends the claim witness to a prover; or calls forceClaim
- *   [115, ...)  settle       anyone calls settleRound(publicValues, proof), rounds in increasing order.
- *                            A round whose truth has no valid witness ("unclaimed") settles only from 152
+ *   [ 0, 16)  commit       nodes send signed commits to a prover; or call forceCommit
+ *   [16, 24)  anchor       a prover calls anchorRound(commitsHash) once; forceCommit still open
+ *   [24, 48)  reveal       nodes send reveals to a prover; or call forceReveal
+ *   48        seed block   its block hash becomes the selection seed. Nobody chooses it
+ *   [49, 64)  claim        a truth-teller sends the claim witness to a prover; or calls forceClaim
+ *   [49, ...) settle       anyone calls settleRound(publicValues, proof), rounds in increasing order.
+ *                          A round whose truth has no valid witness ("unclaimed") settles only from 64
  *
  * Nothing in this contract decides who won. It only checks that the proof's public inputs match what
  * the chain knows (anchor, seed, commit set, forced queues, stake records, game state, parameters) and
@@ -86,6 +87,7 @@ contract Settlement is AccessControl, Pausable {
         uint8 penaltyMultiplierDisagreement;
         uint8 penaltyMultiplierNonRevealed;
         uint8 penaltyRandomFactor;
+        uint8 stakeAgeRounds;
         address[] participants;
         bytes32 stakeDigest;
         uint32 stakePrice;
@@ -148,12 +150,12 @@ contract Settlement is AccessControl, Pausable {
 
     // ----------------------------- State variables ------------------------------
 
-    uint256 public constant ROUND_LENGTH = 152;
-    uint256 public constant COMMIT_END = 38;
-    uint256 public constant ANCHOR_END = 57;
-    uint256 public constant REVEAL_END = 114;
-    uint256 public constant SEED_OFFSET = 114;
-    uint256 public constant CLAIM_START = 115;
+    uint256 public constant ROUND_LENGTH = 64;
+    uint256 public constant COMMIT_END = 16;
+    uint256 public constant ANCHOR_END = 24;
+    uint256 public constant REVEAL_END = 48;
+    uint256 public constant SEED_OFFSET = 48;
+    uint256 public constant CLAIM_START = 49;
 
     // Upper bound on forced entries per round, so a spammer cannot make a round unprovable.
     uint32 public constant MAX_FORCED_PER_ROUND = 256;
@@ -186,6 +188,10 @@ contract Settlement is AccessControl, Pausable {
     uint8 public penaltyMultiplierDisagreement = 1;
     uint8 public penaltyMultiplierNonRevealed = 2;
     uint8 public penaltyRandomFactor = 100;
+
+    // A stake must be this many rounds old at the round start to play (Redistribution: 2). 0 lets a node
+    // play in the round after it staked; for test networks only.
+    uint8 public stakeAgeRounds = 2;
 
     // Redistribution's reserve size estimate bound (alpha=0.097612 beta=0.0716570 k=16).
     uint256 public sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
@@ -462,6 +468,11 @@ contract Settlement is AccessControl, Pausable {
         emit VerifierChanged(_verifier, _programVKey);
     }
 
+    function setStakeAgeRounds(uint8 _rounds) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
+        stakeAgeRounds = _rounds;
+    }
+
     function setFreezingParams(uint8 _disagreement, uint8 _nonRevealed, uint8 _randomFactor) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         penaltyMultiplierDisagreement = _disagreement;
@@ -577,7 +588,8 @@ contract Settlement is AccessControl, Pausable {
         if (
             pv.penaltyMultiplierDisagreement != penaltyMultiplierDisagreement ||
             pv.penaltyMultiplierNonRevealed != penaltyMultiplierNonRevealed ||
-            pv.penaltyRandomFactor != penaltyRandomFactor
+            pv.penaltyRandomFactor != penaltyRandomFactor ||
+            pv.stakeAgeRounds != stakeAgeRounds
         ) revert InputMismatch(7);
         // Read before any freeze or price adjustment of this settlement.
         if (pv.stakeDigest != stakeDigest(pv.participants)) revert InputMismatch(8);

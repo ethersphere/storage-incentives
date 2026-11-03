@@ -22,7 +22,10 @@ pub use types::*;
 
 use alloy_primitives::{keccak256, Address, Signature, B256, U256};
 
-pub const ROUND_LENGTH: u64 = 152;
+/// Blocks in a round. 64 x 12 s (Ethereum) is about the 760 s of the Gnosis round (152 x 5 s).
+pub const ROUND_LENGTH: u64 = 64;
+/// The seed block of a round, from its start (Settlement.SEED_OFFSET).
+pub const SEED_OFFSET: u64 = 48;
 
 /// `MAX_H` of Redistribution.sol: the low 128 bits.
 const MAX_H_PLUS_ONE: U256 = U256::from_limbs([0, 0, 1, 0]);
@@ -204,12 +207,14 @@ pub fn minimum_depth(round: u64, last_claim_round: u64, last_winner_depth: u8) -
 /// Redistribution.sol's `commit` rejects a node whose stake changed in the last two rounds. Here the
 /// check is against the round start, and against the record read at settlement time, so a stake change
 /// (or a freeze, which moves lastUpdated into the future) after the round started also disqualifies.
-pub fn is_eligible(stake: &StakeRecord, round: u64) -> bool {
-    let round_start = U256::from(round * ROUND_LENGTH);
-    let cutoff = U256::from(2 * ROUND_LENGTH);
+/// `age_rounds` is Settlement.stakeAgeRounds (2 as on master; 0 on test networks: the stake must only
+/// exist before the round starts).
+pub fn is_eligible(stake: &StakeRecord, round: u64, age_rounds: u8) -> bool {
+    let round_start = round * ROUND_LENGTH;
+    let cutoff = age_rounds as u64 * ROUND_LENGTH;
     !stake.last_updated.is_zero()
         && round_start >= cutoff
-        && stake.last_updated < round_start - cutoff
+        && stake.last_updated < U256::from(round_start - cutoff)
 }
 
 /// keccak256(abi.encodePacked(seed, tag, n)): the random numbers of getCurrentTruth ("0") and
@@ -255,13 +260,13 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
     let min_depth = minimum_depth(input.round, input.last_claim_round, input.last_winner_depth);
 
     // Postage accounting since the previous settlement: replay the event log, credit the pot, expire.
-    let seed_block = input.round * ROUND_LENGTH + 114;
+    let seed_block = input.round * ROUND_LENGTH + SEED_OFFSET;
     let pg = postage::apply(&input.postage, seed_block).map_err(VmError::Postage)?;
 
     // Commit + reveal phases. Ineligible nodes are dropped like a reverted `commit`.
     let mut entries: Vec<Entry> = Vec::new();
     for ((owner, obf), stake) in commits.iter().zip(&input.stakes) {
-        if !is_eligible(stake, input.round) {
+        if !is_eligible(stake, input.round, input.stake_age_rounds) {
             continue;
         }
         let revealed = input
@@ -292,6 +297,7 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         penaltyMultiplierDisagreement: input.penalty_multiplier_disagreement,
         penaltyMultiplierNonRevealed: input.penalty_multiplier_non_revealed,
         penaltyRandomFactor: input.penalty_random_factor,
+        stakeAgeRounds: input.stake_age_rounds,
         participants: commits.iter().map(|(o, _)| *o).collect(),
         stakeDigest: stake_digest(&input.stakes),
         stakePrice: input.stake_price,
@@ -430,7 +436,7 @@ pub fn claim_candidates(input: &RoundInput) -> impl Iterator<Item = claim::Claim
 
 /// `claim_batches` for callers outside `run` (the prover explains why a witness was rejected).
 pub fn claim_batch_records(input: &RoundInput) -> Result<Vec<claim::BatchRecord>, VmError> {
-    let pg = postage::apply(&input.postage, input.round * ROUND_LENGTH + 114)
+    let pg = postage::apply(&input.postage, input.round * ROUND_LENGTH + SEED_OFFSET)
         .map_err(VmError::Postage)?;
     Ok(claim_batches(input, &pg))
 }

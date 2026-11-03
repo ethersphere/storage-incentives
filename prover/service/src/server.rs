@@ -92,6 +92,7 @@ async fn commit(
         penalty_multiplier_disagreement: 0,
         penalty_multiplier_non_revealed: 0,
         penalty_random_factor: 0,
+        stake_age_rounds: 0,
         claim: None,
         forced_claims: vec![],
         sample_max_value: Default::default(),

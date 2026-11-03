@@ -129,7 +129,7 @@ The claim needs the batch of each witness: owner, depth, bucket depth, and wheth
 ### What nodes see
 
 1. Nodes play each round as now: commit, reveal and claim, off chain.
-2. The result of each round is known after its seed block (114). Anyone can calculate it from the public
+2. The result of each round is known after its seed block (48). Anyone can calculate it from the public
    messages. The prover gives it at `GET /v1/rounds/{n}/outcome`.
 3. At the epoch end, one `settleRound` applies the results of the K rounds.
 4. The payout and the on-chain freeze come at the epoch end. They do not come at the round end.

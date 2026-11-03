@@ -108,16 +108,18 @@ not pay for the expiry of other batches.
 
 ### Round timing
 
-`ROUND_LENGTH = 152` blocks, the same as Redistribution. On Sepolia and mainnet that is about 30 minutes.
+`ROUND_LENGTH = 64` blocks. With 12 s blocks (Sepolia, Ethereum mainnet) a round is 768 s, about 12.8
+minutes: the same time as the Redistribution round on Gnosis (152 blocks × 5 s = 760 s). All phases are
+scaled from the Gnosis layout. Measurements in section 5 before 2026-11-03 used 152-block rounds.
 
 | Blocks in round | Phase | What happens |
 | --- | --- | --- |
-| 0-37 | commit | Nodes sign commits and send them to a prover, or call `forceCommit` |
-| 38-56 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once. `forceCommit` is still open, so a node that is missing from the anchored list can still get in |
-| 57-113 | reveal | Nodes send reveals to the prover, or call `forceReveal` |
-| 114 | seed block | Its block hash becomes the selection seed. Nobody chooses it |
-| 115-151 | claim | Truth and winner are known. The winner (or any node that holds the truth's sample) sends the three claim proofs to the prover, or calls `forceClaim` |
-| 115 onward | settle | Anyone with a valid proof calls `settleRound`. Rounds settle in increasing order. A round whose truth has no valid claim ("unclaimed") settles only from block 152 |
+| 0-15 | commit | Nodes sign commits and send them to a prover, or call `forceCommit` |
+| 16-23 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once. `forceCommit` is still open, so a node that is missing from the anchored list can still get in |
+| 24-47 | reveal | Nodes send reveals to the prover, or call `forceReveal` |
+| 48 | seed block | Its block hash becomes the selection seed. Nobody chooses it |
+| 49-63 | claim | Truth and winner are known. The winner (or any node that holds the truth's sample) sends the three claim proofs to the prover, or calls `forceClaim` |
+| 49 onward | settle | Anyone with a valid proof calls `settleRound`. Rounds settle in increasing order. A round whose truth has no valid claim ("unclaimed") settles only from block 64 (the next round) |
 
 ### Randomness
 
@@ -174,7 +176,7 @@ The rules are ported one to one from `Redistribution.sol` on master:
 - `stakeDensity = stake * 2^(depth - height)`;
 - truth selection, a stake-density-weighted draw with `keccak(seed, "0", i)`;
 - winner selection, a weighted draw over truth-tellers with `keccak(seed, "1", redundancy)`;
-- freezes: `2 * 152 * 2^truthDepth` for committed but not revealed, and `1 * 152 * 2^truthDepth` for a
+- freezes: `2 * ROUND_LENGTH * 2^truthDepth` for committed but not revealed, and `1 * ROUND_LENGTH * 2^truthDepth` for a
   revealed disagreement (behind the random factor);
 - redundancy = the number of truth-tellers, which goes to the oracle.
 
@@ -212,7 +214,7 @@ witness before it accepts it at `POST /v1/claim`.
 
 **Unclaimed round.** On master, a `claim` without valid proofs reverts. Then the round has no effect: no
 payout, no freezes, no price change. The VM gives the same result, with `unclaimed = true`. Settlement
-accepts an unclaimed outcome only after the claim window (block 152), so a prover cannot close the round
+accepts an unclaimed outcome only after the claim window (block 64 of the round), so a prover cannot close the round
 before the winner had time to send the witness.
 
 **Batches come from the proven postage state.** The claim checks read each witness batch (owner, depth,
@@ -288,21 +290,22 @@ the same total with one settlement instead of six.
 | --- | --- | --- |
 | Commit order = transaction order | Anchored commits sorted by owner, then forced commits in chain order | No transactions to order |
 | `msg.sender` identifies the committer | EIP-191 signature over `commitDigest(round, obf)` | Same binding, off chain. Domain-separated by chain and contract |
+| Stake must be 2 rounds old | `Settlement.stakeAgeRounds` (default 2). `STAKE_AGE_ROUNDS=0` at deploy lets a node play in the round after it staked; for test networks only | Faster tests on Sepolia |
 | Stake snapshot at `commit` (`nodeEffectiveStake`) | Raw stake record read at `settleRound`; must be older than `roundStart - 2 rounds`. Effective stake = `min(2^height * committed * price, potential)`, computed in the VM | Avoids a stake snapshot transaction. A stake change or freeze after the round started disqualifies the node for that round. The raw record is used because `nodeEffectiveStake` depends on `block.number` (0 while frozen), which made the first version fail when a freeze expired between proving and settling (regression test in `test/Settlement.test.ts`) |
-| Seed updated with `prevrandao` at the first reveal | Block hash of a fixed block (114) | The prover must not influence randomness |
+| Seed updated with `prevrandao` at the first reveal | Block hash of a fixed block (48) | The prover must not influence randomness |
 | Disagreement freeze uses `block.prevrandao % 100` | `keccak(seed, "2") % 100` | Same reason |
 | Invalid reveal reverts, so the node stays "not revealed" | Invalid reveal is ignored, so the node stays "not revealed" | Same effect |
 | Anchored commit with a bad signature | Dropped from the round | A prover that anchored garbage must not make the round unprovable |
 | `claim` reads the batch at claim time: "exists" means not yet removed by `expireLimited` | The batch comes from the proven postage state; "alive" means balance above the outpayment at the seed block | Batches are no longer removed on chain. The comparison is exact, and it does not depend on when somebody swept |
 | `expireLimited` removes expired batches and credits the pot, paid by whoever buys a stamp or claims | The proof replays PostageStampZK's log, expires batches and credits the pot at each settlement | Stamp buyers pay only for their own batch. The pot is the same (differential test) |
-| Anyone can call `claim` during the claim phase | Anyone can send the witness to a prover, or call `forceClaim` (blocks 115-151) | The same, off chain |
+| Anyone can call `claim` during the claim phase | Anyone can send the witness to a prover, or call `forceClaim` (blocks 49-151) | The same, off chain |
 
 ---
 
 ## 3. The hard problems, and what this version does about each
 
 **Input completeness (can the prover leave me out?).** The prover can drop your off-chain commit or
-reveal. The escape hatch: `forceCommit` (blocks 0-56) and `forceReveal` (blocks 57-113) record the
+reveal. The escape hatch: `forceCommit` (blocks 0-23) and `forceReveal` (blocks 24-47) record the
 message in a hash chain on chain, and `settleRound` rejects any proof that didn't consume exactly that
 chain. A node can check the anchored list at `GET /v1/rounds/{round}` during the anchor phase and force
 its commit if it's missing. node-sim's `--forced` flag runs this path. Still open from the proposal
@@ -312,7 +315,7 @@ its commit if it's missing. node-sim's `--forced` flag runs this path. Still ope
 the seed block exists.
 
 **Reveal after the seed is known (known issue, from master).** Only the prover enforces the deadline for
-off-chain reveals (block 114). Thus a node that colludes with the prover can see the seed first and then
+off-chain reveals (block 48). Thus a node that colludes with the prover can see the seed first and then
 select to reveal or not. A reveal cannot change the committed values, and a node that does not reveal
 gets a freeze. This issue is not new. In `Redistribution.sol`, the first reveal sets the seed, so each
 later revealer knows the seed and has the same option. Other branches fix the game in general, so this
@@ -351,9 +354,9 @@ fix is a Merkle tree of the batches, so a settlement touches only the batches th
 | `createBatch`, `topUp`, `increaseDepth` | Uploader | Any time | Uploader (only its own batch) | — |
 | Commit, reveal, claim witness | Node, off chain | Each round | Nobody (HTTP) | — |
 | `forceCommit`, `forceReveal`, `forceClaim` | Node | Only if the prover censors it | Node | No |
-| `anchorRound` | Prover with `ANCHOR_ROLE` (the Foundation at the start) | Blocks 38-56 of each round | Prover | No |
-| Proof | Prover (own GPU or a proving market) | After block 114 | Prover (off chain) | Through the fee |
-| `settleRound` | Anyone with a valid proof; in practice the prover service | From block 115 (unclaimed: from block 152) | Caller | `proverFeeBps` (1%) of the payout, only in rounds with a payout |
+| `anchorRound` | Prover with `ANCHOR_ROLE` (the Foundation at the start) | Blocks 16-23 of each round | Prover | No |
+| Proof | Prover (own GPU or a proving market) | After block 48 | Prover (off chain) | Through the fee |
+| `settleRound` | Anyone with a valid proof; in practice the prover service | From block 49 (unclaimed: from block 64) | Caller | `proverFeeBps` (1%) of the payout, only in rounds with a payout |
 
 **Who calls `settleRound`.** It has no role check: the proof is the permission. The prover service
 (`swarm-prover serve`, `settler.rs`) calls it when the round is ready. Another prover, or the winner,
@@ -450,7 +453,7 @@ real round is near the 10-participant row: about 2M cycles.
 | Proof size | 356 bytes; verifier selector `0x4388a21c` (v6.1.0) |
 
 A laptop proves a round of this size in a few minutes. This time is inside the settle window (blocks
-115-151, about 7 minutes at 12 s blocks). A round has about 10 participants, so the proving time stays
+49-63, about 3 minutes at 12 s blocks). A round has about 10 participants, so the proving time stays
 in this range. For a production prover, use the Succinct Prover Network (`SP1_PROVER=network`) or a GPU.
 These options give more margin and do not need a 10 GB laptop.
 
@@ -485,7 +488,7 @@ with three witnesses, 100 live batches in the postage state):
 | Verification on SP1's v6.1.0 Groth16 verifier (anvil) | Valid, 273,813 gas. One changed byte in the public values: rejected |
 | Program verification key | `0x00c999a8608036dd88962aa3340047a4eed518188eacb5fc41f1bab4b302d9ac` |
 
-Thus the network proves a round well inside the settle window (blocks 115-151, about 7 minutes on
+Thus the network proves a round well inside the settle window (blocks 49-63, about 3 minutes on
 Ethereum). The base fee is the main part of the price for a round of this size.
 
 **Settlement with real proofs** (2026-11-03; anvil, 1 s blocks; Settlement deployed with SP1's v6.1.0
@@ -537,12 +540,12 @@ cd prover && cargo build --release && ./target/release/swarm-prover vkey   # -> 
 
 # 2. Deploy (repo root). WALLET_SECRET = deployer key, PRIVATE_RPC_TESTNET = Sepolia RPC
 #    Real proofs: verifier = SP1 Groth16 gateway 0x397A5f7f3dBd538f23DE225B51f532c34448dA9B
-PROGRAM_VKEY=0x00... PROVER_ADDRESS=<prover key address> npx hardhat deploy --network sepoliazk
+STAKE_AGE_ROUNDS=0 PROGRAM_VKEY=0x00... PROVER_ADDRESS=<prover key address> npx hardhat deploy --network sepoliazk
 #    Or a smoke test without proving: ZK_VERIFIER=mock npx hardhat deploy --network sepoliazk
 
 # 3. Stake the simulated nodes (needs the deployer to hold ETH for them; NODE_ETH per node, default 0.02)
 NODE_KEYS=0x..,0x..,0x.. npx hardhat run scripts/zk/setup-nodes.ts --network sepoliazk
-#    Nodes can play once their stake is older than two rounds (~1 hour on Sepolia).
+#    With STAKE_AGE_ROUNDS=0 at deploy, nodes play from the next round (~13 min). Default (2): ~26 min.
 
 # 4. Prover. POSTAGE_FROM_BLOCK = deployment block of PostageStampZK (deployments/sepoliazk/PostageStamp.json)
 cd prover
@@ -595,4 +598,4 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 8. Bee integration: the commit, reveal and claim messages, the HTTP API (or Swarm feeds), and when to
    fall back to `forceCommit`/`forceReveal`/`forceClaim`.
 9. Nodes don't know the minimum depth for round N+1 until round N is settled. Settling within the round
-   (blocks 115-151) avoids that, but needs fast proving.
+   (blocks 49-63) avoids that, but needs fast proving.

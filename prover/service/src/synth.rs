@@ -50,6 +50,7 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
         penalty_multiplier_disagreement: 1,
         penalty_multiplier_non_revealed: 2,
         penalty_random_factor: 100,
+        stake_age_rounds: 2,
         claim: None,
         forced_claims: vec![],
         sample_max_value: U256::MAX,
@@ -100,10 +101,10 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
     let witness = sample.witness(&anchor, seed, |addr| stamp(&owner, &batch, addr, 1));
     input.claim = Some(Bytes::from(witness.encode()));
     // The batch is alive in the carried postage state, paid far beyond the round.
-    let seed_block = round * swarm_vm::ROUND_LENGTH + 114;
+    let seed_block = round * swarm_vm::ROUND_LENGTH + swarm_vm::SEED_OFFSET;
     input.postage = PostageInput {
         state: PostageState {
-            last_cut_block: seed_block - 152,
+            last_cut_block: seed_block - swarm_vm::ROUND_LENGTH,
             price_block: 1,
             price_outpayment: U256::ZERO,
             price: U256::from(24000u32),
@@ -113,7 +114,7 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
                 depth: batch.depth,
                 bucket_depth: batch.bucket_depth,
                 normalised_balance: U256::from(u64::MAX),
-                counted_to: U256::from(24000u64 * (seed_block - 153)),
+                counted_to: U256::from(24000u64 * (seed_block - swarm_vm::ROUND_LENGTH - 1)),
             }],
         },
         prev_event_index: 0,
@@ -129,7 +130,7 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
             depth: 20,
             bucket_depth: 16,
             normalised_balance: U256::from(u64::MAX - i),
-            counted_to: U256::from(24000u64 * (seed_block - 153)),
+            counted_to: U256::from(24000u64 * (seed_block - swarm_vm::ROUND_LENGTH - 1)),
         };
         let at = input
             .postage

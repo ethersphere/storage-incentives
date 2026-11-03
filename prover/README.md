@@ -147,7 +147,7 @@ do the first run, and correct this section.
 ## Run it locally (anvil, mock proofs)
 
 ```bash
-anvil --block-time 1                       # one round = 152 s
+anvil --block-time 1                       # one round = 64 s
 
 # repo root: deploy token, postage, oracle, staking, mock verifier, Settlement, roles, one batch
 WALLET_SECRET=<any 64-hex> npx hardhat deploy --network zklocal
@@ -189,8 +189,8 @@ not search the log from block 0.
 
 | Method | Path | Body | Accepted |
 | --- | --- | --- | --- |
-| `POST` | `/v1/commit` | `{round, owner, obfuscatedHash, signature}` | blocks 0-37 of the round; the signature must recover to `owner` |
-| `POST` | `/v1/reveal` | `{round, overlay, depth, hash, nonce}` | blocks 57-113; must open an anchored commit |
+| `POST` | `/v1/commit` | `{round, owner, obfuscatedHash, signature}` | blocks 0-15 of the round; the signature must recover to `owner` |
+| `POST` | `/v1/reveal` | `{round, overlay, depth, hash, nonce}` | blocks 24-47; must open an anchored commit |
 | `POST` | `/v1/claim` | `{round, witness}` | after the seed block, until the round settles; the prover runs the VM with the witness and accepts it only if the claim is valid |
 | `GET` | `/v1/rounds/{round}` | | The anchored list (so a node can check it is in it), reveal count, settle tx |
 | `GET` | `/v1/rounds/{round}/outcome` | | After the seed block: truth, winner, anchor, seed, and whether a valid claim is known |

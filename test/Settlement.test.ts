@@ -7,10 +7,11 @@ import { BigNumber, Contract, Signer } from 'ethers';
 // SP1MockVerifier, so they exercise everything except the proof itself. Postage is PostageStampZK: the
 // proof replays its event log and gives the pot amount (outcome.postage.potAmount).
 
-const ROUND_LENGTH = 152;
-const COMMIT_END = 38;
-const ANCHOR_END = 57;
-const SEED_OFFSET = 114;
+const ROUND_LENGTH = 64;
+const COMMIT_END = 16;
+const ANCHOR_END = 24;
+const SEED_OFFSET = 48;
+const CLAIM_START = 49;
 const coder = ethers.utils.defaultAbiCoder;
 const { keccak256, solidityPack } = ethers.utils;
 
@@ -19,7 +20,7 @@ const PV_TYPE =
   'tuple(uint256 chainId,address settlement,uint64 round,bytes32 roundAnchor,bytes32 selectionSeed,' +
   'bytes32 commitsHash,uint32 commitCount,bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
   'uint64 lastClaimRound,uint8 lastWinnerDepth,uint8 penaltyMultiplierDisagreement,' +
-  'uint8 penaltyMultiplierNonRevealed,uint8 penaltyRandomFactor,address[] participants,bytes32 stakeDigest,' +
+  'uint8 penaltyMultiplierNonRevealed,uint8 penaltyRandomFactor,uint8 stakeAgeRounds,address[] participants,bytes32 stakeDigest,' +
   'uint32 stakePrice,bytes32 forcedClaimsHash,uint256 sampleMaxValue,' +
   'tuple(bytes32 prevStateHash,uint64 prevEventIndex,bytes32 prevEventHash,uint64 eventIndex,bytes32 eventHash,' +
   'uint64 cutBlock) postage) inputs,' +
@@ -55,7 +56,7 @@ describe('Settlement', function () {
 
     token = await (await ethers.getContractFactory('TestToken')).deploy('sBZZ', 'sBZZ', '1' + '0'.repeat(30));
     postage = await (await ethers.getContractFactory('PostageStampZK')).deploy(token.address, 16);
-    oracle = await (await ethers.getContractFactory('PriceOracle')).deploy(postage.address);
+    oracle = await (await ethers.getContractFactory('PriceOracleZK')).deploy(postage.address);
     staking = await (await ethers.getContractFactory('StakeRegistry')).deploy(token.address, 0, oracle.address);
     const verifier = await (await ethers.getContractFactory('SP1MockVerifier')).deploy();
     settlement = await (
@@ -133,6 +134,7 @@ describe('Settlement', function () {
         penaltyMultiplierDisagreement: 1,
         penaltyMultiplierNonRevealed: 2,
         penaltyRandomFactor: 100,
+        stakeAgeRounds: 2,
         participants,
         stakeDigest: await stakeDigest(participants),
         stakePrice: await oracle.currentPrice(),
@@ -327,6 +329,7 @@ describe('Settlement', function () {
         [5, (pv) => (pv.inputs.forcedRevealsHash = keccak256('0x01'))],
         [6, (pv) => (pv.inputs.lastWinnerDepth = 3)],
         [7, (pv) => (pv.inputs.penaltyRandomFactor = 50)],
+        [7, (pv) => (pv.inputs.stakeAgeRounds = 0)],
         [8, (pv) => (pv.inputs.stakeDigest = keccak256('0x01'))],
         [8, (pv) => (pv.inputs.participants = owners.slice(1))],
         [9, (pv) => (pv.inputs.stakePrice = 1)],
@@ -417,7 +420,7 @@ describe('Settlement', function () {
       const round = await anchoredRound();
       const witness = '0x' + 'ab'.repeat(100);
       await expect(settlement.forceClaim(round, witness)).to.be.revertedWith('NotClaimPhase');
-      await mineTo(round * ROUND_LENGTH + 115 - 1);
+      await mineTo(round * ROUND_LENGTH + CLAIM_START - 1);
       await settlement.connect(nodes[1]).forceClaim(round, witness);
       expect((await settlement.rounds(round)).forcedClaimsHash).to.eq(
         keccak256(solidityPack(['bytes32', 'bytes32'], [ZERO, keccak256(witness)]))

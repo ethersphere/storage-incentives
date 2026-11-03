@@ -22,6 +22,7 @@ sol! {
         uint8 penaltyMultiplierDisagreement;
         uint8 penaltyMultiplierNonRevealed;
         uint8 penaltyRandomFactor;
+        uint8 stakeAgeRounds;
         address[] participants;
         bytes32 stakeDigest;
         uint32 stakePrice;
@@ -135,6 +136,8 @@ pub struct RoundInput {
     pub penalty_multiplier_disagreement: u8,
     pub penalty_multiplier_non_revealed: u8,
     pub penalty_random_factor: u8,
+    /// Settlement.stakeAgeRounds: how many rounds old a stake must be at the round start.
+    pub stake_age_rounds: u8,
     /// The claim witness the prover received off chain: an ABI-encoded `ClaimWitness`.
     pub claim: Option<Bytes>,
     /// `ClaimForced` events of the round, in chain order.
