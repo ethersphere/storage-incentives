@@ -192,9 +192,10 @@ See [docs/ZK-SETTLEMENT.md, "Sepolia runbook"](../docs/ZK-SETTLEMENT.md#6-sepoli
   `./target/release/swarm-prover execute data/.../input.json` to get cycle counts, or add `--prove`.
 - `proof.json`: public values, proof bytes, cycles, proving time.
 
-`$DATA_DIR/postage/<hash>.json`: the postage state after each settlement (live batches and the price
-history point). Settlement stores only its hash, and the next settlement starts from this file. Do not
-delete it. Set `POSTAGE_FROM_BLOCK` to the PostageStampZK deployment block, so the first settlement does
+`$DATA_DIR/postage/<hash>.json`: the postage state after each settlement: the header (tree root, live
+chunks, last cut, last price change) and every leaf of the batch tree. Settlement stores only the
+header's hash. The next settlement starts from this file, and the prover builds the zkVM witness (Merkle
+proofs of the touched leaves) from it. Do not delete it. Set `POSTAGE_FROM_BLOCK` to the PostageStampZK deployment block, so the first settlement does
 not search the log from block 0.
 
 ## HTTP API

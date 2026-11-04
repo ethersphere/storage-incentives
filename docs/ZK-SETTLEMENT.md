@@ -37,11 +37,17 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   get another outcome with the same public inputs. A real Sepolia proof is checked against SP1's
   verifier: every change to the outcome, the inputs, the key or the proof is rejected (section 5).
 - **Real Gnosis postage data.** The full Gnosis postage history (226k events, 8,013 live batches)
-  replays with the same total outpayment as Gnosis. One settlement at this size is 369M cycles. The
-  Succinct network proved it in 127 s for at most 0.64 PROVE (section 5).
-- **Sepolia.** Settlement `0x8FA253E8dF857c1a2b8A15f7AEcEA9BaBeE1c3d0` with SP1's verifier gateway.
-- **Next.** The Merkle postage state (item 9), Swarm as the data layer for the anchored lists and the
-  postage state, and a gas comparison on Sepolia (section 7, "Open items").
+  replays with the same total outpayment as Gnosis (section 5).
+- **Merkle postage state.** The live batches are now an indexed Merkle tree; the proof touches only the
+  batches that change, expire or are read by a claim. With the SP1 keccak precompile (which the program
+  did not use before), one settlement with the Gnosis state went from 369M to 5.9M cycles. The number
+  of batches no longer changes the cost (section 2, "The batch tree"; section 5).
+- **Round ring.** Round state is kept in 256 reused entries, so anchors and forced messages write only
+  used storage slots (section 2, "Round storage").
+- **Sepolia.** Settlement `0x02CF166cADfFE7F320a50542659383Eb68965158` with SP1's verifier gateway,
+  program key `0x004b0af7…209e` (section 5).
+- **Next.** Swarm as the data layer for the anchored lists and the postage tree, a gas comparison on
+  Sepolia, and the rest of the optimization plan (section 7, "Open items").
 
 ---
 
@@ -668,6 +674,35 @@ Two bugs that only Sepolia showed, both fixed:
    1.5M), checks each receipt, and sends a failed one again while its window is open. A Bee node must
    do the same.
 
+**Sepolia run with the ring and the batch tree** (2026-11-04; Settlement
+`0x02CF166cADfFE7F320a50542659383Eb68965158`, program key
+`0x004b0af7ce9487951a8b57ecc1179044299afa862a853e4b348c12eb481b209e`; the same PostageStampZK,
+PriceOracleZK, StakeRegistry and sBZZ; 16 ring entries warmed at deployment, 10,609,814 gas, about 663k
+for each entry; network proofs). The same scenario as the run before: the prover censored node 0's
+commits and node 1's reveals, and nodes 2 and 3 used only the escape hatches.
+
+| Round | Result | Cycles | Proof | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 188421 | 4 participants, redundancy 4, 0 freezes; all 6 forced transactions confirmed | 1,098,221 | 63 s | 1,177,573 (first settlement of this Settlement: new storage) |
+| 188422 | The same | 661,428 | 50 s | 676,474 |
+
+| Gas on Sepolia | Before (new storage each round) | With the ring (warmed entries) |
+| --- | --- | --- |
+| `anchorRound` | 355,077 | **49,256** |
+| `anchorReveals` | 246,126 | **48,647** |
+| First `forceCommit` of a round | 241,360 | **46,038** |
+| First `forceReveal` of a round | 243,306 | **47,923** |
+| Cycles of a 4-node round with a claim | 2.4M-2.8M | 0.66M-1.10M |
+
+The two anchors together now cost about 98k gas for each round instead of about 601k. Without
+`warmRing`, the first use of each of the 256 entries still pays the new-slot cost once.
+
+**Source verification.** `scripts/zk/verify-etherscan.ts` submits the source to Etherscan (v2 API) and,
+with `SOURCIFY=1`, to Sourcify. Settlement `0x02CF…5158`, PostageStampZK and PriceOracleZK are verified on
+Sourcify with an exact match of the creation and runtime bytecode. Etherscan accepted the same input,
+but its queue did not process it for hours ("Pending in queue"); StakeRegistry and TestToken show as
+verified on Etherscan.
+
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
 Hardhat in this section are therefore too low for current Ethereum rules. Use the Sepolia values for cost
@@ -748,6 +783,12 @@ program cheaper: the game, the claim's BMT proofs and the tree.
 | Batch tree, keccak precompile | **5,870,816** |
 | Witness of that settlement | 66 leaf proofs and 37 hints (179 KB of JSON input) |
 
+| The same settlement on the Succinct Prover Network | Batch list (2026-11-03) | Batch tree (2026-11-04) |
+| --- | --- | --- |
+| Gas limit (PGU) | 324,913,729 | 10,474,500 |
+| Request to Groth16 proof | 127 s | 52 s |
+| Price, at most (base fee + 0.75 PROVE per billion PGU) | 0.64 PROVE | 0.41 PROVE |
+
 | Synthetic round (`synth`) | Cycles before | Cycles now |
 | --- | --- | --- |
 | 10 nodes, any number of batches | 3.71M (1 batch) to 463M (10,000 batches) | 1.10M |
@@ -760,8 +801,8 @@ program cheaper: the game, the claim's BMT proofs and the tree.
 | `anchorRound` | 75,023 | 40,823 |
 | `anchorReveals` | 57,051 | 39,951 |
 
-On Sepolia a new-slot write costs about 110k gas instead of 20k, so the saving there is larger (section
-5, "Sepolia run with the ring").
+On Sepolia a new-slot write costs about 110k gas instead of 20k, so the saving there is larger (see
+"Sepolia run with the ring and the batch tree" below).
 
 **Soundness tests** (2026-11-03). Three test groups check that a prover cannot select the result:
 
@@ -801,6 +842,7 @@ cd prover && cargo build --release && ./target/release/swarm-prover vkey   # -> 
 # 2. Deploy (repo root). WALLET_SECRET = deployer key, PRIVATE_RPC_TESTNET = Sepolia RPC
 #    Real proofs: verifier = SP1 Groth16 gateway 0x397A5f7f3dBd538f23DE225B51f532c34448dA9B
 STAKE_AGE_ROUNDS=0 PROGRAM_VKEY=0x00... PROVER_ADDRESS=<prover key address> npx hardhat deploy --network sepoliazk
+#    WARM_RING=16 also fills the next 16 round-ring entries (about 0.7M gas each on Sepolia).
 #    Or a smoke test without proving: ZK_VERIFIER=mock npx hardhat deploy --network sepoliazk
 
 # 3. Stake the simulated nodes (needs the deployer to hold ETH for them; NODE_ETH per node, default 0.02)
@@ -819,9 +861,11 @@ SP1_PROVER=network NETWORK_PRIVATE_KEY=0x.. PROVER_PRIVATE_KEY=0x.. DATA_DIR=dat
 NODE_KEYS=0x..,0x.. BATCH_OWNER_KEY=0x.. ./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2
 #    Censorship test: start the prover with CENSOR_COMMITS=<address> and/or CENSOR_REVEALS=<address>.
 
-# 6. Verify the source code on Etherscan (repo root). TESTNET_ETHERSCAN_KEY = Etherscan API key.
-#    Uses the Etherscan v2 API and the compiler input that hardhat-deploy stored at deployment.
+# 6. Verify the source code (repo root). Uses the compiler input that hardhat-deploy stored at deployment.
+#    Etherscan (v2 API), TESTNET_ETHERSCAN_KEY = Etherscan API key:
 npx hardhat run scripts/zk/verify-etherscan.ts --network sepoliazk
+#    Sourcify (no key):
+SOURCIFY=1 npx hardhat run scripts/zk/verify-etherscan.ts --network sepoliazk
 #    Only some contracts: CONTRACTS=Settlement,PostageStamp npx hardhat run ...
 ```
 
@@ -850,10 +894,7 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 
 ### Open items (in priority order)
 
-1. A Merkle postage state, so the proof cost does not grow with all live batches (optimization plan,
-   item 9). With the real Gnosis state (8,013 live batches), one settlement is 369M cycles (the game is
-   about 2.5M), 127 s and at most 0.64 PROVE on the Succinct network (section 5, "Real Gnosis postage
-   history"). This fits in a round today, but it grows with the number of batches.
+1. ~~A Merkle postage state~~ **Done** (2026-11-04): one Gnosis settlement 369M → 5.9M cycles.
 2. Swarm as the data layer: upload the anchored lists and the postage state; pass the reference as
    `dataRef`. Without it, a new prover cannot continue (section 5, "Prover restart").
 3. Measure gas on Sepolia (or with the same fork rules locally): PostageStamp against PostageStampZK, and

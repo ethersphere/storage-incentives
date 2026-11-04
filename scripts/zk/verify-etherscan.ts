@@ -33,19 +33,56 @@ async function api(chainId: number, params: Record<string, string>, post: boolea
   }
 }
 
+// SOURCIFY=1: verify on Sourcify (https://sourcify.dev, API v2) instead: the same standard JSON input, no
+// API key. Blockscout shows Sourcify results.
+async function sourcify(chainId: number, address: string, input: string, compiler: string, id: string) {
+  const base = 'https://sourcify.dev/server/v2';
+  const res = await fetch(`${base}/verify/${chainId}/${address}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stdJsonInput: JSON.parse(input), compilerVersion: compiler, contractIdentifier: id }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  const sub = (await res.json()) as { verificationId?: string; message?: string; customCode?: string };
+  if (!sub.verificationId) return `${res.status} ${sub.customCode ?? ''} ${sub.message ?? ''}`;
+  for (let i = 0; i < 60; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    const job = (await (await fetch(`${base}/verify/${sub.verificationId}`)).json()) as {
+      isJobCompleted: boolean;
+      contract?: { match?: string | null; runtimeMatch?: string | null };
+      error?: { customCode?: string; message?: string };
+    };
+    if (!job.isJobCompleted) continue;
+    if (job.error) return `failed: ${job.error.customCode} ${job.error.message}`;
+    return `verified: runtime ${job.contract?.runtimeMatch}, creation ${job.contract?.match}`;
+  }
+  return 'still running';
+}
+
 async function main() {
-  const key = process.env.TESTNET_ETHERSCAN_KEY || process.env.ETHERSCAN_API_KEY;
-  if (!key) throw new Error('set TESTNET_ETHERSCAN_KEY');
+  const key = process.env.TESTNET_ETHERSCAN_KEY || process.env.ETHERSCAN_API_KEY || '';
+  if (!key && !process.env.SOURCIFY) throw new Error('set TESTNET_ETHERSCAN_KEY');
   const chainId = network.config.chainId!;
 
   for (const name of CONTRACTS) {
     const d = await deployments.get(name);
     const meta = JSON.parse(d.metadata!);
     const [file, contract] = Object.entries(meta.settings.compilationTarget)[0] as [string, string];
-    const input = fs.readFileSync(
-      path.join(__dirname, '..', '..', 'deployments', network.name, 'solcInputs', `${d.solcInputHash}.json`),
-      'utf8'
+    const full = JSON.parse(
+      fs.readFileSync(
+        path.join(__dirname, '..', '..', 'deployments', network.name, 'solcInputs', `${d.solcInputHash}.json`),
+        'utf8'
+      )
     );
+    // Only the sources this contract was built from (its metadata lists them). The bytecode is the same:
+    // the metadata hash in it covers exactly these sources. The full input has every file of the repo.
+    const sources = Object.fromEntries(Object.keys(meta.sources).map((f) => [f, full.sources[f]]));
+    const input = JSON.stringify({ ...full, sources });
+    if (process.env.SOURCIFY) {
+      const r = await sourcify(chainId, d.address, input, meta.compiler.version, `${file}:${contract}`);
+      console.log(`${name} ${d.address}: Sourcify ${r}`);
+      continue;
+    }
     const ctor = d.abi.find((f: { type: string }) => f.type === 'constructor');
     const args = ctor ? ethers.utils.defaultAbiCoder.encode(ctor.inputs, d.args || []).slice(2) : '';
 
@@ -80,7 +117,7 @@ async function main() {
       continue;
     }
     let result = 'no answer';
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 120; i++) {
       await new Promise((r) => setTimeout(r, 5000));
       const st = await api(
         chainId,
