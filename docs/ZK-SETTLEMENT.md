@@ -44,8 +44,9 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   of batches no longer changes the cost (section 2, "The batch tree"; section 5).
 - **Round ring.** Round state is kept in 256 reused entries, so anchors and forced messages write only
   used storage slots (section 2, "Round storage").
-- **Sepolia.** Settlement `0x02CF166cADfFE7F320a50542659383Eb68965158` with SP1's verifier gateway,
-  program key `0x004b0af7…209e` (section 5).
+- **Sepolia.** Settlement `0x02CF166cADfFE7F320a50542659383Eb68965158` with SP1's verifier gateway.
+  Program key `0x00e6320d8e6aa4bbedd74d276fe21d5b7beae0d56837139a6c84558808aa7d4f` since the Merkle-root
+  lists (set with `scripts/zk/set-verifier.ts`; the rounds in section 5 used `0x004b0af7…209e`).
 - **Data layer.** The anchored lists are Merkle roots (a node checks its own entry with a proof). The
   prover uploads the lists and a daily postage snapshot to Swarm, and rebuilds the postage state from
   the chain (or a snapshot) when its file is missing. Uploads are off until a postage batch is bought
@@ -902,6 +903,9 @@ NODE_KEYS=0x..,0x.. BATCH_OWNER_KEY=0x.. ./target/release/node-sim --depth 0 --s
 #    Censorship test: start the prover with CENSOR_COMMITS=<address> and/or CENSOR_REVEALS=<address>.
 #    Swarm data layer: a Bee node and a mutable batch (ZK-PROVER-OPERATIONS.md, section 7), then add
 #    SWARM_API=http://localhost:1633 SWARM_BATCH_ID=<id> to the prover.
+
+# After a change to the zkVM program: give Settlement the new program key (admin, one transaction).
+PROGRAM_VKEY=0x00... npx hardhat run scripts/zk/set-verifier.ts --network sepoliazk
 
 # 6. Verify the source code (repo root). Uses the compiler input that hardhat-deploy stored at deployment.
 #    Etherscan (v2 API), TESTNET_ETHERSCAN_KEY = Etherscan API key:
