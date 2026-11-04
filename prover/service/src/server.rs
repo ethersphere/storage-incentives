@@ -323,6 +323,13 @@ async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<J
             format!("witness rejected: {why}"),
         ));
     }
+    if ctx.withhold_claims {
+        info!(
+            round = m.round,
+            "claim witness accepted and thrown away (TEST MODE)"
+        );
+        return Ok(Json(json!({ "ok": true })));
+    }
     let mut store = ctx.store.lock().await;
     let r = store.get_mut(m.round);
     if r.claim.is_none() {

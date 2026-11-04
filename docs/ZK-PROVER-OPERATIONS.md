@@ -31,9 +31,9 @@ There are about 112.5 rounds each day (64 blocks of 12 s = 768 s). Thus the prov
 transactions each day, three for each round.
 
 A round without a valid claim (unclaimed, or no reveals) still settles. The settlement carries the
-postage accounting. A prover can also skip rounds: settling round N + 1 makes round N unsettleable, and
-the next settlement pays the postage of the skipped period. Skipping saves the gas and the proof of a
-round, but the winner of that round gets nothing.
+postage accounting. A prover cannot skip an anchored round: `settleRound` reverts (`RoundPending`)
+while an earlier anchored round can still settle. A round whose data is lost blocks the next rounds until
+its seed is gone (about 27 hours); after that, the next rounds settle in order.
 
 ---
 

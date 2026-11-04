@@ -91,17 +91,20 @@ describe('Settlement', function () {
   }
 
   // The postage inputs of a proof that replays the whole log up to now.
-  async function postageInputs() {
+  // The postage inputs of a proof for `round`: the log up to the round's seed block (the cut).
+  async function postageInputs(round: number) {
     const prevEventIndex = (await settlement.postageEventIndex()).toNumber();
     const prevEventHash = await settlement.postageEventHash();
-    const eventIndex = (await postage.eventCount()).toNumber();
+    const cutBlock = round * ROUND_LENGTH + SEED_OFFSET;
+    let eventIndex = (await postage.eventCount()).toNumber();
+    while (eventIndex > prevEventIndex && (await postage.eventBlockAt(eventIndex)).toNumber() > cutBlock) eventIndex--;
     return {
       prevStateHash: await settlement.postageStateHash(),
       prevEventIndex,
       prevEventHash,
       eventIndex,
       eventHash: eventIndex > prevEventIndex ? await postage.eventHashAt(eventIndex) : prevEventHash,
-      cutBlock: await ethers.provider.getBlockNumber(),
+      cutBlock,
     };
   }
 
@@ -134,7 +137,7 @@ describe('Settlement', function () {
         stakePrice: await oracle.currentPrice(),
         forcedClaimsHash: ri.forcedClaimsHash,
         sampleMaxValue: (await settlement.sampleMaxValue()).toString(),
-        postage: await postageInputs(),
+        postage: await postageInputs(round),
       },
       outcome: {
         hasTruth: false,
@@ -386,11 +389,13 @@ describe('Settlement', function () {
         (pv) => (pv.inputs.postage.prevEventHash = keccak256('0x01')),
         (pv) => (pv.inputs.postage.eventIndex = 3),
         (pv) => (pv.inputs.postage.eventHash = keccak256('0x01')),
-        (pv) => (pv.inputs.postage.cutBlock = 10_000_000),
-        // Stops at entry 1 but cuts after entry 2: an entry would be left out.
+        // The cut must be the round's seed block: not later, not earlier.
+        (pv) => (pv.inputs.postage.cutBlock = pv.inputs.postage.cutBlock + 1),
+        (pv) => (pv.inputs.postage.cutBlock = lastEventBlock),
+        // Stops at entry 1 although entry 2 is before the cut: an entry would be left out.
         (pv) => {
           pv.inputs.postage.eventIndex = 1;
-          pv.inputs.postage.cutBlock = lastEventBlock;
+          pv.inputs.postage.eventHash = ZERO;
         },
       ];
       for (const mutate of cases) {
@@ -399,13 +404,9 @@ describe('Settlement', function () {
         await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('InputMismatch\\(11\\)');
       }
 
-      // Stopping at entry 1 with a cut before entry 2 is fine.
-      const partial = JSON.parse(JSON.stringify(good));
-      partial.inputs.postage.eventIndex = 1;
-      partial.inputs.postage.eventHash = await postage.eventHashAt(1);
-      partial.inputs.postage.cutBlock = lastEventBlock - 1;
-      await settlement.settleRound(encode(partial), '0x');
-      expect(await settlement.postageEventIndex()).to.eq(1);
+      expect(good.inputs.postage.cutBlock).to.eq(round * ROUND_LENGTH + SEED_OFFSET);
+      await settlement.settleRound(encode(good), '0x');
+      expect(await settlement.postageEventIndex()).to.eq(2);
       expect(await settlement.postageStateHash()).to.eq(NEW_POSTAGE_STATE);
       expect(await settlement.validChunkCount()).to.eq(1 << 20);
     });
@@ -490,14 +491,26 @@ describe('Settlement', function () {
       await expect(settlement.settleRound(encode(pv), '0x01')).to.be.reverted;
     });
 
-    it('settles in increasing round order only', async function () {
+    it('settles anchored rounds in order, without skipping one that can still settle', async function () {
       const r1 = await anchoredRound();
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
       await settlement.anchorRound(r2, keccak256('0x'), 0, ZERO);
-      await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
+      // r3 is not anchored: it is skipped without a settlement.
+      const r4 = await mineToOffset(COMMIT_END, r2 + 2);
+      await settlement.anchorRound(r4, keccak256('0x'), 0, ZERO);
+      await mineTo(r4 * ROUND_LENGTH + SEED_OFFSET + 1);
+      // Skipping r1 (and its winner) is not possible while r1 can settle.
+      await expect(settlement.settleRound(encode(await publicValues(r2, [], {})), '0x')).to.be.revertedWith(
+        'RoundPending'
+      );
+      await settlement.settleRound(encode(await publicValues(r1, [], {})), '0x');
+      await expect(settlement.settleRound(encode(await publicValues(r4, [], {})), '0x')).to.be.revertedWith(
+        'RoundPending'
+      );
       await settlement.settleRound(encode(await publicValues(r2, [], {})), '0x');
+      await settlement.settleRound(encode(await publicValues(r4, [], {})), '0x');
       await expect(settlement.settleRound(encode(await publicValues(r1, [], {})), '0x')).to.be.revertedWith(
-        'RoundOutOfOrder'
+        'AlreadySettled'
       );
     });
 
@@ -505,8 +518,8 @@ describe('Settlement', function () {
       const round = await anchoredRound();
       await mineTo(round * ROUND_LENGTH + SEED_OFFSET + 1);
       const pv = await publicValues(round, [], {});
-      // Same inputs, but submitted from a fresh deployment's point of view is not possible here, so
-      // instead check the seed guard directly on the next round.
+      await settlement.settleRound(encode(pv), '0x');
+      // Check the seed guard on the next round, before its seed block.
       const next = await mineToOffset(COMMIT_END, round + 1);
       await settlement.anchorRound(next, keccak256('0x'), 0, ZERO);
       pv.inputs.round = next;

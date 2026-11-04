@@ -207,7 +207,7 @@ one block hash.
 | `participants`, `stakeDigest` | `StakeRegistry.stakes(owner)` read now, for every participant: overlay, committed and potential stake, height, last update | 8 |
 | `stakePrice` | `PriceOracle.currentPrice()` (the VM computes effective stake from it) | 9 |
 | `forcedClaimsHash` | hash chain built by `forceClaim` | 10 |
-| `postage`: previous state hash, previous and new log position, log hash, cut block | Settlement's stored postage state hash and log position; `PostageStampZK.eventHashAt(index)`; the next log entry, if any, must be after the cut block; the cut block must not be in the future | 11 |
+| `postage`: previous state hash, previous and new log position, log hash, cut block | Settlement's stored postage state hash and log position; `PostageStampZK.eventHashAt(index)`; the next log entry, if any, must be after the cut block; the cut block must be the round's seed block | 11 |
 | `sampleMaxValue` | Settlement state (default: Redistribution's value) | 12 |
 
 Then `verifier.verifyProof(programVKey, publicValues, proof)`. Then it executes the outcome:
@@ -421,12 +421,24 @@ select to reveal or not. In `Redistribution.sol` the first reveal sets the seed,
 has this option.
 
 **Storage possession.** Proven, with the same evidence as `claim` today (section 2, "Claim"). A prover can
-withhold the winner's witness; `forceClaim` is the escape hatch, the same as for commits and reveals.
+withhold the winner's witness, or say in `/outcome` that a node did not win. The defence: if the round is
+not settled at block 58, a node that revealed the honest sample calls `forceClaim` itself (node-sim does
+this; about 4 KB of witness, about 100k-200k gas). An unclaimed round cannot settle before block 64, so
+"settled at block 58" means "settled with a winner". The prover option `WITHHOLD_CLAIMS` (test only) runs
+the attack.
+
+**The prover's power over the payouts (fixed 2026-11-04).** Before the fix, the prover could choose who is
+paid, and how much: (1) settle a round late with a late cut block, so that its winner gets the pot of the
+later rounds as well; (2) settle round N + 1 first, so that round N (and its winner) is skipped and its pot
+carries over; (3) withhold the winner's claim witness. Now: (1) the cut block must be the round's seed
+block; (2) `settleRound` reverts with `RoundPending` while an earlier anchored round can still settle;
+(3) the `forceClaim` backstop above.
 
 **Prover liveness.** `settleRound` is permissionless. `anchorRound` is limited to `ANCHOR_ROLE` (the
 Foundation's prover first, as the proposal says). If nobody settles, the payments stay in PostageStampZK.
-The next settlement replays the log and credits them. A round can be skipped: rounds settle in increasing
-order, so settling round N+1 makes round N unsettleable. Section 4 tells who settles and who pays.
+The next settlement replays the log and credits them. Rounds settle in increasing order. An anchored round
+cannot be skipped while it can still settle; a round without an anchor is skipped. Section 4 tells who
+settles and who pays.
 
 **Upgrade authority.** `setVerifier(verifier, programVKey)` is admin-only and instant. On mainnet it
 must sit behind a timelock with an exit window. This is the residual risk L2BEAT flags in Lighter and

@@ -307,6 +307,7 @@ contract Settlement is AccessControl, Pausable {
     error NotAnchored();
     error AlreadySettled();
     error RoundOutOfOrder();
+    error RoundPending(uint64 round);
     error SeedNotAvailable();
     error TooManyForced();
     error InputMismatch(uint8 which);
@@ -485,6 +486,7 @@ contract Settlement is AccessControl, Pausable {
         if (ri.round != pin.round || !ri.anchored) revert NotAnchored();
         if (ri.settled) revert AlreadySettled();
         if (pin.round <= lastSettledRound) revert RoundOutOfOrder();
+        _checkNoPendingRound(pin.round);
 
         _checkInputs(pin, ri);
 
@@ -753,20 +755,37 @@ contract Settlement is AccessControl, Pausable {
         if (pv.forcedClaimsHash != ri.forcedClaimsHash) revert InputMismatch(10);
         if (pv.sampleMaxValue != sampleMaxValue) revert InputMismatch(12);
         if (pv.revealsHash != ri.revealsHash || pv.revealCount != ri.revealCount) revert InputMismatch(13);
-        _checkPostage(pv.postage);
+        _checkPostage(pv.postage, pv.round);
     }
 
     /**
      * @dev The proof replayed PostageStampZK's event log from where the last settlement stopped
      * (prevEventIndex) to eventIndex, and every log entry up to cutBlock is in it.
      */
-    function _checkPostage(PostageInputs memory pg) internal view {
+    /**
+     * @dev A round cannot be skipped while it can still settle: settling a later round would make it
+     * unsettleable, and a prover could so choose which winners are paid (the pot carries over). An anchored,
+     * unsettled earlier round blocks until its seed block hash can no longer be read (EIP-2935: 8191
+     * blocks). Rounds without an anchor are skipped.
+     */
+    function _checkNoPendingRound(uint64 _round) internal view {
+        for (uint64 r = _round - 1; r > lastSettledRound && r + RING_SIZE > _round; r--) {
+            // The seed of r (and of every older round) can no longer be read: r can never settle.
+            if (_blockHash(seedBlock(r)) == bytes32(0)) break;
+            RoundSlot storage e = ring[r % RING_SIZE];
+            if (e.round == r && e.anchored) revert RoundPending(r);
+        }
+    }
+
+    function _checkPostage(PostageInputs memory pg, uint64 _round) internal view {
         if (
             pg.prevStateHash != postageStateHash ||
             pg.prevEventIndex != postageEventIndex ||
             pg.prevEventHash != postageEventHash
         ) revert InputMismatch(11);
-        if (pg.cutBlock > block.number || pg.eventIndex < pg.prevEventIndex) revert InputMismatch(11);
+        // The cut is the round's seed block, so the pot of a round does not depend on when it settles: a late
+        // settlement cannot move the pot of later rounds to this round's winner.
+        if (pg.cutBlock != seedBlock(_round) || pg.eventIndex < pg.prevEventIndex) revert InputMismatch(11);
 
         uint64 count = PostageContract.eventCount();
         if (pg.eventIndex > count) revert InputMismatch(11);

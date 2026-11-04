@@ -41,7 +41,7 @@ use std::{collections::HashMap, time::Duration};
 use swarm_prover::{
     offset_of, round_of, ClaimMsg, CommitMsg, OutcomeMsg, PostageStamp, RevealMsg, Settlement,
     StakeRegistry, ANCHOR_END, CLAIM_START, COMMIT_END, REVEAL_ANCHOR_END, REVEAL_ANCHOR_START,
-    REVEAL_END, REVEAL_START,
+    REVEAL_END, REVEAL_START, ROUND_LENGTH,
 };
 use swarm_vm::{
     claim::{address_to_bucket, PostageProof},
@@ -83,6 +83,9 @@ struct Args {
     /// Batch id. Defaults to the batch deploy/zk/002_roles_and_pot.ts creates.
     #[arg(long, env = "BATCH_ID")]
     batch_id: Option<B256>,
+    /// Do not call forceClaim when the round is not settled by block 58 (to test a withholding prover).
+    #[arg(long)]
+    no_claim_backstop: bool,
     /// Stop after this many rounds (0 = run forever).
     #[arg(long, default_value_t = 0)]
     rounds: u64,
@@ -287,6 +290,7 @@ async fn main() -> Result<()> {
     let mut played: HashMap<(u64, usize), Played> = HashMap::new();
     let mut samples: HashMap<u64, Arc<Sample>> = HashMap::new();
     let mut first_round = None;
+    let mut backstop_done: std::collections::HashSet<u64> = Default::default();
 
     loop {
         let block = read.get_block_number().await?;
@@ -457,6 +461,19 @@ async fn main() -> Result<()> {
         if offset >= CLAIM_START {
             claim_phase(&args, &nodes, &http, round, &mut played, &samples, &batch).await;
         }
+        // Claim backstop: the prover may withhold the claim witness or lie in /outcome.
+        if (CLAIM_BACKSTOP..ROUND_LENGTH - 1).contains(&offset) && !args.no_claim_backstop {
+            claim_backstop(
+                &args,
+                &nodes,
+                &settlement,
+                round,
+                &samples,
+                &batch,
+                &mut backstop_done,
+            )
+            .await;
+        }
 
         played.retain(|(r, _), _| *r + 2 > round);
         samples.retain(|r, _| *r + 2 > round);
@@ -494,6 +511,68 @@ async fn confirm_forced(
                 p.reveal_tx = None;
             }
         }
+    }
+}
+
+/// From this block of a round, a node that revealed the honest sample calls forceClaim itself if the
+/// round is not settled yet and nobody else did. An unclaimed round cannot settle before the round ends,
+/// so "settled" here means settled with a winner.
+const CLAIM_BACKSTOP: u64 = 58;
+
+async fn claim_backstop(
+    args: &Args,
+    nodes: &[Node],
+    settlement: &Settlement::SettlementInstance<&DynProvider>,
+    round: u64,
+    samples: &HashMap<u64, Arc<Sample>>,
+    batch: &Batch,
+    done: &mut std::collections::HashSet<u64>,
+) {
+    if done.contains(&round) {
+        return;
+    }
+    let Some(sample) = samples.get(&round) else {
+        return;
+    };
+    let ri = match settlement.rounds(round).call().await {
+        Ok(ri) => ri,
+        Err(e) => return warn!(round, "rounds: {e:#}"),
+    };
+    if !ri.anchored || ri.settled || ri.forcedClaimCount > 0 {
+        done.insert(round);
+        return;
+    }
+    let (Ok(anchor), Ok(seed)) = (
+        settlement.roundAnchor(round).call().await,
+        settlement.selectionSeed(round).call().await,
+    ) else {
+        return;
+    };
+    // Any honest node in the neighbourhood holds the same sample; the payout goes to the proven winner.
+    let Some(n) = nodes.iter().find(|n| {
+        !args.liar.contains(&n.idx)
+            && !args.silent.contains(&n.idx)
+            && !args.no_claim.contains(&n.idx)
+    }) else {
+        return;
+    };
+    let witness = Bytes::from(sample.witness(&anchor, seed, |a| batch.stamp(a)).encode());
+    warn!(
+        round,
+        node = n.idx,
+        "round not settled by block {CLAIM_BACKSTOP}: forceClaim as a backstop"
+    );
+    match Settlement::new(args.settlement, &n.provider)
+        .forceClaim(round, witness)
+        .gas(FORCE_CLAIM_GAS)
+        .send()
+        .await
+    {
+        Ok(_) => {
+            info!(round, node = n.idx, "forceClaim tx (backstop)");
+            done.insert(round);
+        }
+        Err(e) => warn!(round, node = n.idx, "forceClaim failed: {e:#}"),
     }
 }
 

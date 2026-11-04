@@ -52,6 +52,10 @@ pub struct Config {
     /// anchored reveal list (the attack anchorReveals exists for).
     #[arg(long, env = "CENSOR_REVEALS", value_delimiter = ',')]
     pub censor_reveals: Vec<Address>,
+    /// TEST ONLY: accept claim witnesses but throw them away (the attack the winner's forceClaim
+    /// backstop exists for).
+    #[arg(long, env = "WITHHOLD_CLAIMS")]
+    pub withhold_claims: bool,
     /// Bee API of the prover's own Swarm node (for example http://localhost:1633). Without it, nothing is
     /// uploaded and `dataRef` is the keccak256 of the document.
     #[arg(long, env = "SWARM_API")]
@@ -85,6 +89,7 @@ pub struct Ctx {
     pub censor_commits: Vec<Address>,
     /// Overlays of `Config::censor_reveals`.
     pub censor_reveals: Vec<B256>,
+    pub withhold_claims: bool,
     /// The prover's Bee node, if configured.
     pub bee: Option<Bee>,
     pub snapshot_every: u64,
@@ -114,6 +119,9 @@ pub async fn serve(cfg: Config) -> Result<()> {
     }
 
     let mut censor_reveals = vec![];
+    if cfg.withhold_claims {
+        warn!("TEST MODE: claim witnesses are thrown away");
+    }
     if !cfg.censor_commits.is_empty() || !cfg.censor_reveals.is_empty() {
         warn!(commits = ?cfg.censor_commits, reveals = ?cfg.censor_reveals, "TEST MODE: censoring");
         let staking = StakeRegistry::new(s.Stakes().call().await?, &provider);
@@ -130,6 +138,7 @@ pub async fn serve(cfg: Config) -> Result<()> {
         postage_from_block: cfg.postage_from_block,
         censor_commits: cfg.censor_commits.clone(),
         censor_reveals,
+        withhold_claims: cfg.withhold_claims,
         bee: cfg
             .swarm_api
             .as_deref()
@@ -325,8 +334,16 @@ async fn settle_tick(ctx: &Ctx) -> Result<()> {
         if block <= sb {
             break; // later rounds are not ready either
         }
-        if block - sb > HISTORY_SERVE_WINDOW {
-            mark_failed(ctx, round, "seed expired").await?;
+        // The seed must still be readable on chain (EIP-2935 window; 256 blocks where the history contract
+        // is missing, for example on anvil). If not, the round can never settle, and Settlement lets
+        // later rounds pass it.
+        let seed_gone = match s.selectionSeed(round).call().await {
+            // SeedNotAvailable(): only this revert, not an RPC error, means the seed is gone.
+            Err(e) => format!("{e:?}").contains("52d1ee1c"),
+            Ok(_) => false,
+        };
+        if block - sb > HISTORY_SERVE_WINDOW || seed_gone {
+            mark_failed(ctx, round, "seed no longer available").await?;
             continue;
         }
         let ri = s.rounds(round).call().await?;
@@ -463,14 +480,15 @@ pub async fn build_input(
     }
 
     // Postage last: its witness covers the batches of the claim candidates, which are known now.
-    let (mut state, prev_index, prev_hash, events) = postage_events(ctx, block).await?;
+    // The cut is the seed block (Settlement checks it), whenever the round settles.
+    let (mut state, prev_index, prev_hash, events) = postage_events(ctx, seed_block(round)).await?;
     let ids = swarm_vm::claim_batch_ids(&input);
     let (_, postage) = state
         .settle(
             prev_index,
             prev_hash,
             events,
-            block,
+            seed_block(round),
             seed_block(round),
             &ids,
             true,
