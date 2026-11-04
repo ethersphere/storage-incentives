@@ -462,6 +462,8 @@ pub async fn build_input(
         claim: claim.or(stored_claim),
         forced_claims,
         sample_max_value: s.sampleMaxValue().call().await?,
+        // The fee goes to this prover's own address; the proof binds it.
+        fee_recipient: ctx.from,
         postage: Default::default(),
     };
 

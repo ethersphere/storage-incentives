@@ -51,6 +51,7 @@ fn base_input() -> RoundInput {
         claim: None,
         forced_claims: vec![],
         sample_max_value: U256::MAX,
+        fee_recipient: Address::repeat_byte(0xfe),
         postage: postage::PostageInput {
             cut_block: SEED_BLOCK,
             ..Default::default()
@@ -247,6 +248,8 @@ fn honest_round_pays_one_and_freezes_nobody() {
     assert!(pv.outcome.freezeOwners.is_empty());
     assert_eq!(pv.inputs.participants.len(), 4);
     assert_eq!(pv.inputs.stakeDigest, stake_digest(&input.stakes));
+    // The fee recipient is part of the proof's output.
+    assert_eq!(pv.outcome.feeRecipient, Address::repeat_byte(0xfe));
 }
 
 #[test]

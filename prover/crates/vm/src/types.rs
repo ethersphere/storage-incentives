@@ -65,6 +65,7 @@ sol! {
         address[] freezeOwners;
         uint256[] freezeDurations;
         bool unclaimed;
+        address feeRecipient;
         PostageOutcome postage;
     }
 
@@ -147,6 +148,10 @@ pub struct RoundInput {
     pub forced_claims: Vec<Bytes>,
     /// Settlement.sampleMaxValue (Redistribution's reserve size estimate bound).
     pub sample_max_value: U256,
+    /// Receives the prover fee (`Outcome.feeRecipient`): the prover's own address. In the proof, so a
+    /// copied settleRound transaction does not pay the copier.
+    #[serde(default)]
+    pub fee_recipient: Address,
     /// Postage accounting since the previous settlement (see `postage.rs`).
     pub postage: crate::postage::PostageInput,
 }

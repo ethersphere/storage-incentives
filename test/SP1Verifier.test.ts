@@ -3,7 +3,20 @@ import { ethers } from 'hardhat';
 import { BigNumber, Contract } from 'ethers';
 import fs from 'fs';
 import path from 'path';
-import { PV_TYPE } from './util/publicValues';
+// The fixture proof was made before Outcome.feeRecipient existed: keep the layout it was made with.
+const PV_TYPE =
+  'tuple(' +
+  'tuple(uint256 chainId,address settlement,uint64 round,bytes32 roundAnchor,bytes32 selectionSeed,' +
+  'bytes32 commitsHash,uint32 commitCount,bytes32 revealsHash,uint32 revealCount,' +
+  'bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
+  'uint64 lastClaimRound,uint8 lastWinnerDepth,uint8 penaltyMultiplierDisagreement,' +
+  'uint8 penaltyMultiplierNonRevealed,uint8 penaltyRandomFactor,uint8 stakeAgeRounds,address[] participants,bytes32 stakeDigest,' +
+  'uint32 stakePrice,bytes32 forcedClaimsHash,uint256 sampleMaxValue,' +
+  'tuple(bytes32 prevStateHash,uint64 prevEventIndex,bytes32 prevEventHash,uint64 eventIndex,bytes32 eventHash,' +
+  'uint64 cutBlock) postage) inputs,' +
+  'tuple(bool hasTruth,bytes32 truthHash,uint8 truthDepth,address winner,bytes32 winnerOverlay,' +
+  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations,bool unclaimed,' +
+  'tuple(bytes32 newStateHash,uint256 potAmount,uint256 validChunkCount) postage) outcome)';
 
 // Soundness at the contract boundary: a real Groth16 proof of the settlement program (a round settled on
 // Sepolia, test/fixtures/sp1-settlement-proof.json) checked by SP1's v6.1.0 verifier, vendored in

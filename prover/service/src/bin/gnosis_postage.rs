@@ -356,6 +356,7 @@ async fn main() -> Result<()> {
         claim: None,
         forced_claims: vec![],
         sample_max_value: U256::MAX,
+        fee_recipient: Address::ZERO,
         postage,
     };
     std::fs::create_dir_all(&args.out)?;

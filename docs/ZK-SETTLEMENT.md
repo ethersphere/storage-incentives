@@ -215,7 +215,10 @@ Then `verifier.verifyProof(programVKey, publicValues, proof)`. Then it executes 
 1. For every round: store the new postage state hash and log position, and add the proven
    `potAmount` to `accruedPot`.
 2. For a round with a valid claim: freezes, `adjustPrice(redundancy)`, then withdraw `accruedPot` from
-   PostageStampZK. Pay `proverFeeBps` (default 1%) to the caller and the rest to the winner.
+   PostageStampZK. Pay `proverFeeBps` (default 1%) to `outcome.feeRecipient` and the rest to the winner.
+   The fee recipient is an output of the proof, not `msg.sender`: before this, a bot could copy a
+   `settleRound` transaction from the mempool, send it first and take the fee (found in review,
+   2026-11-04).
 
 ### What the VM proves (prover/crates/vm/src/lib.rs)
 

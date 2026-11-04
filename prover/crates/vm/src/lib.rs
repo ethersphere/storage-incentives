@@ -413,6 +413,7 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         freezeOwners: vec![],
         freezeDurations: vec![],
         unclaimed: false,
+        feeRecipient: input.fee_recipient,
         postage: PostageOutcome {
             newStateHash: pg.new_header.hash(),
             potAmount: pg.pot,

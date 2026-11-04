@@ -11,5 +11,5 @@ export const PV_TYPE =
   'tuple(bytes32 prevStateHash,uint64 prevEventIndex,bytes32 prevEventHash,uint64 eventIndex,bytes32 eventHash,' +
   'uint64 cutBlock) postage) inputs,' +
   'tuple(bool hasTruth,bytes32 truthHash,uint8 truthDepth,address winner,bytes32 winnerOverlay,' +
-  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations,bool unclaimed,' +
+  'uint256 winnerStakeDensity,uint16 redundancy,address[] freezeOwners,uint256[] freezeDurations,bool unclaimed,address feeRecipient,' +
   'tuple(bytes32 newStateHash,uint256 potAmount,uint256 validChunkCount) postage) outcome)';

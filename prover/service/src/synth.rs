@@ -54,6 +54,7 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
         claim: None,
         forced_claims: vec![],
         sample_max_value: U256::MAX,
+        fee_recipient: Address::repeat_byte(0xfe),
         postage: Default::default(),
     };
     for (key, i) in nodes {

@@ -103,6 +103,7 @@ async fn commit(
         claim: None,
         forced_claims: vec![],
         sample_max_value: Default::default(),
+        fee_recipient: Default::default(),
         postage: Default::default(),
     };
     if recover_commit_signer(&probe, &c) != Some(c.owner) {

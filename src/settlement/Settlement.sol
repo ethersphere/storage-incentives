@@ -135,6 +135,9 @@ contract Settlement is AccessControl, Pausable {
         uint256[] freezeDurations;
         // A truth was selected but no valid claim witness was given: like a reverted claim, no effects.
         bool unclaimed;
+        // Receives the prover fee. Part of the proof, so copying a settleRound transaction (front-running)
+        // does not move the fee to the copier. Zero: no fee, the winner gets all.
+        address feeRecipient;
         PostageOutcome postage;
     }
 
@@ -512,7 +515,7 @@ contract Settlement is AccessControl, Pausable {
 
         if (!out.hasTruth) {
             // Same as Redistribution: a round without valid reveals, or whose claim fails, changes nothing.
-            emit RoundSettled(pin.round, false, bytes32(0), 0, address(0), 0, 0, msg.sender, 0);
+            emit RoundSettled(pin.round, false, bytes32(0), 0, address(0), 0, 0, out.feeRecipient, 0);
             return;
         }
 
@@ -536,7 +539,7 @@ contract Settlement is AccessControl, Pausable {
             emit PriceAdjustmentSkipped(out.redundancy);
         }
 
-        (uint256 payout, uint256 fee) = _payout(out.winner);
+        (uint256 payout, uint256 fee) = _payout(out.winner, out.feeRecipient);
 
         emit RoundSettled(
             pin.round,
@@ -546,7 +549,7 @@ contract Settlement is AccessControl, Pausable {
             out.winner,
             out.redundancy,
             payout,
-            msg.sender,
+            out.feeRecipient,
             fee
         );
     }
@@ -799,7 +802,7 @@ contract Settlement is AccessControl, Pausable {
     }
 
     /// Pays out everything accrued since the last payout: the proven pot of this and earlier settlements.
-    function _payout(address winner) internal returns (uint256 payout, uint256 fee) {
+    function _payout(address winner, address feeRecipient) internal returns (uint256 payout, uint256 fee) {
         uint256 amount = accruedPot;
         if (amount == 0) return (0, 0);
         accruedPot = 0;
@@ -807,10 +810,10 @@ contract Settlement is AccessControl, Pausable {
         PostageContract.withdraw(address(this), amount);
 
         IERC20 token = IERC20(PostageContract.bzzToken());
-        fee = (amount * proverFeeBps) / 10000;
+        fee = feeRecipient == address(0) ? 0 : (amount * proverFeeBps) / 10000;
         payout = amount - fee;
 
-        if (fee > 0 && !token.transfer(msg.sender, fee)) revert TransferFailed();
+        if (fee > 0 && !token.transfer(feeRecipient, fee)) revert TransferFailed();
         if (payout > 0 && !token.transfer(winner, payout)) revert TransferFailed();
     }
 

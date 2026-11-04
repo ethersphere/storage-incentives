@@ -150,6 +150,7 @@ describe('Settlement', function () {
         freezeOwners: [],
         freezeDurations: [],
         unclaimed: false,
+        feeRecipient: await deployer.getAddress(),
         postage: { newStateHash: NEW_POSTAGE_STATE, potAmount: 0, validChunkCount: 1 << 20 },
         ...outcome,
       },
@@ -283,19 +284,26 @@ describe('Settlement', function () {
         redundancy: 3,
         freezeOwners: [frozen],
         freezeDurations: [2 * ROUND_LENGTH * 4],
+        feeRecipient: owners[0],
         postage: { newStateHash: NEW_POSTAGE_STATE, potAmount: 1_000_000, validChunkCount: 1 << 20 },
       });
 
-      const prover = nodes[0];
+      // Someone else copies the prover's transaction (front-running): the fee still goes to the
+      // fee recipient in the proof, owners[0].
+      const copier = nodes[2];
       const before = await token.balanceOf(winner);
       const proverBefore = await token.balanceOf(owners[0]);
-      const tx = await settlement.connect(prover).settleRound(encode(pv), '0x');
+      const copierBefore = await token.balanceOf(await copier.getAddress());
+      const tx = await settlement.connect(copier).settleRound(encode(pv), '0x');
       const rc = await tx.wait();
 
       const won = (await token.balanceOf(winner)).sub(before);
       const fee = (await token.balanceOf(owners[0])).sub(proverBefore);
       expect(won.add(fee)).to.eq(1_000_000);
       expect(fee).to.eq(10_000);
+      if (winner !== (await copier.getAddress())) {
+        expect(await token.balanceOf(await copier.getAddress())).to.eq(copierBefore);
+      }
       expect(await settlement.accruedPot()).to.eq(0);
       expect(await staking.lastUpdatedBlockNumberOfAddress(frozen)).to.eq(rc.blockNumber + 2 * ROUND_LENGTH * 4);
       expect(await settlement.lastClaimRound()).to.eq(round);

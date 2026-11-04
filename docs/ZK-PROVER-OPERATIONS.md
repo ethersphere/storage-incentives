@@ -50,7 +50,9 @@ Use a different key for each role. Then a compromised key does only the damage o
 | **Fee destination** (optional)                     | —                                                                          | A cold address that the prover sweeps its fees to                                   | Cold                                           |
 
 **Does the prover have its own address?** Yes: the address of `PROVER_PRIVATE_KEY`. Settlement knows it
-only through `ANCHOR_ROLE`. `settleRound` is open to everybody; it pays the fee to whoever calls it.
+only through `ANCHOR_ROLE`. `settleRound` is open to everybody. The fee goes to `feeRecipient`, an output
+of the proof: the prover puts its own address there. A copy of the transaction (front-running) thus pays
+the copier nothing.
 
 **Who owns the postage batch?** The Bee node wallet. A batch's owner signs every stamp, so the owner key
 must be in the Bee node that uploads. Do not use the prover key for this. Bee buys the batch with its own
@@ -141,7 +143,8 @@ snapshot of about 3.5 MB (about 900 chunks) each day.
 
 ### 4.4 Income
 
-`settleRound` pays `proverFeeBps` (default 1%) of the payout to its caller, only in rounds with a winner.
+`settleRound` pays `proverFeeBps` (default 1%) of the payout to the proof's `feeRecipient`, only in rounds
+with a winner.
 On Gnosis today the pot of one round (152 blocks, about the length of a 64-block round on Ethereum) is
 about 24 BZZ, so the fee is about 0.24 BZZ for each round with a winner, at most about 27 BZZ each day.
 
