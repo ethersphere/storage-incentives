@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 pub use swarm_vm::ROUND_LENGTH;
 
+pub mod swarm;
+
 /// Round layout of Settlement.sol, in blocks from the round start.
 pub const COMMIT_END: u64 = 16;
 /// anchorRound is accepted in [COMMIT_END, ANCHOR_END); forceCommit until REVEAL_START.
@@ -81,6 +83,7 @@ alloy::sol! {
         function accruedPot() external view returns (uint256);
 
         event RoundAnchored(uint64 indexed round, bytes32 roundAnchor, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
+        event PostageSettled(uint64 indexed round, uint64 eventIndex, uint64 cutBlock, uint256 potAmount, uint256 accruedPot);
         event RevealsAnchored(uint64 indexed round, bytes32 revealsHash, uint32 revealCount, bytes32 dataRef);
         event CommitForced(uint64 indexed round, address indexed owner, bytes32 obfuscatedHash);
         event RevealForced(uint64 indexed round, bytes32 indexed overlay, uint8 depth, bytes32 hash, bytes32 nonce);

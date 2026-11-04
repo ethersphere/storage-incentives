@@ -403,6 +403,8 @@ impl BatchTree for WitnessTree<'_> {
 /// queries. With `record` set, it writes down the proofs and hints the zkVM needs.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct FullTree {
+    /// Stored as (index, leaf) for the non-empty leaves only: most leaves of a long history are empty.
+    #[serde(with = "sparse_leaves")]
     leaves: Vec<Leaf>,
     /// Node hashes by level, built from `leaves` when first needed. Missing entries are empty subtrees.
     #[serde(skip)]
@@ -415,6 +417,41 @@ pub struct FullTree {
     by_bal: BTreeMap<(U256, B256), u64>,
     #[serde(skip)]
     pub(crate) record: Option<PostageWitness>,
+}
+
+mod sparse_leaves {
+    use super::Leaf;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize, Deserialize)]
+    struct Sparse {
+        len: u64,
+        leaves: Vec<(u64, Leaf)>,
+    }
+
+    pub fn serialize<S: Serializer>(v: &[Leaf], s: S) -> Result<S::Ok, S::Error> {
+        Sparse {
+            len: v.len() as u64,
+            leaves: v
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| !l.is_empty())
+                .map(|(i, l)| (i as u64, l.clone()))
+                .collect(),
+        }
+        .serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<Leaf>, D::Error> {
+        let sp = Sparse::deserialize(d)?;
+        let mut v = vec![Leaf::default(); sp.len as usize];
+        for (i, l) in sp.leaves {
+            if let Some(slot) = v.get_mut(i as usize) {
+                *slot = l;
+            }
+        }
+        Ok(v)
+    }
 }
 
 impl FullTree {

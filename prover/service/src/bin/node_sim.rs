@@ -497,25 +497,20 @@ async fn confirm_forced(
     }
 }
 
-/// GET /v1/rounds/{round} from the prover. Stands in for downloading the list from its Swarm reference.
-async fn round_lists(
-    http: &reqwest::Client,
-    prover: &str,
-    round: u64,
-) -> Option<serde_json::Value> {
-    let r = http
-        .get(format!("{prover}/v1/rounds/{round}"))
-        .send()
-        .await
-        .ok()?;
+/// A Merkle proof from the prover that an entry is in an anchored list: (index, sibling hashes).
+async fn inclusion_proof(http: &reqwest::Client, url: String) -> Option<(usize, Vec<B256>)> {
+    let r = http.get(url).send().await.ok()?;
     if !r.status().is_success() {
         return None;
     }
-    r.json().await.ok()
+    let v: serde_json::Value = r.json().await.ok()?;
+    let index = v["index"].as_u64()? as usize;
+    let proof = serde_json::from_value(v["proof"].clone()).ok()?;
+    Some((index, proof))
 }
 
-/// After the anchor phase: a node whose commit is not in the anchored list (or the list cannot be
-/// fetched, or does not match the hash on chain) calls forceCommit.
+/// After the anchor phase: a node checks that its commit is in the anchored list with a Merkle proof from
+/// the prover against the root and count on chain. No proof, or a proof that does not check: forceCommit.
 async fn check_commits(
     args: &Args,
     nodes: &[Node],
@@ -544,32 +539,25 @@ async fn check_commits(
         }
         return;
     }
-    let lists = round_lists(http, &args.prover_url, round).await;
-    let anchored: Vec<(Address, B256)> = lists
-        .as_ref()
-        .and_then(|v| v["anchored"]["commits"].as_array().cloned())
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|c| {
-            Some((
-                c["owner"].as_str()?.parse().ok()?,
-                c["obfuscatedHash"].as_str()?.parse().ok()?,
-            ))
-        })
-        .collect();
-    let list_ok = swarm_vm::commits_hash(anchored.iter().map(|(o, h)| (o, h))) == ri.commitsHash
-        && anchored.len() as u32 == ri.commitCount;
     for idx in pending {
         let n = &nodes[idx];
         let p = played.get_mut(&(round, idx)).unwrap();
-        if list_ok && anchored.contains(&(n.signer.address(), p.obfuscated)) {
+        let url = format!(
+            "{}/v1/rounds/{round}/commit-proof/{}",
+            args.prover_url,
+            n.signer.address()
+        );
+        let leaf = swarm_vm::commit_leaf(&n.signer.address(), &p.obfuscated);
+        let included = inclusion_proof(http, url).await.is_some_and(|(i, proof)| {
+            swarm_vm::list_verify(ri.commitsHash, ri.commitCount, i, leaf, &proof)
+        });
+        if included {
             p.commit_safe = true;
             continue;
         }
         warn!(
             round,
             node = idx,
-            list_ok,
             "commit missing from the anchored list, forcing it"
         );
         match Settlement::new(args.settlement, &n.provider)
@@ -588,8 +576,8 @@ async fn check_commits(
     }
 }
 
-/// After the reveal anchor phase: a node whose reveal is not in the anchored reveal list (or no list
-/// was anchored, or it does not match the hash on chain) calls forceReveal.
+/// After the reveal anchor phase: the same check for the reveal (Merkle proof against the anchored root
+/// and count). No anchored reveals, no proof, or a bad proof: forceReveal.
 async fn check_reveals(
     args: &Args,
     nodes: &[Node],
@@ -616,17 +604,6 @@ async fn check_reveals(
         Ok(ri) => ri,
         Err(e) => return warn!(round, "rounds: {e:#}"),
     };
-    let anchored: Vec<swarm_vm::Reveal> = if ri.revealsAnchored {
-        round_lists(http, &args.prover_url, round)
-            .await
-            .and_then(|v| serde_json::from_value(v["revealsAnchored"]["reveals"].clone()).ok())
-            .unwrap_or_default()
-    } else {
-        vec![]
-    };
-    let list_ok = ri.revealsAnchored
-        && swarm_vm::reveals_hash(&anchored) == ri.revealsHash
-        && anchored.len() as u32 == ri.revealCount;
     for idx in pending {
         let n = &nodes[idx];
         let p = played.get_mut(&(round, idx)).unwrap();
@@ -636,7 +613,16 @@ async fn check_reveals(
             hash: p.hash,
             nonce: p.nonce,
         };
-        if list_ok && anchored.contains(&mine) {
+        let url = format!(
+            "{}/v1/rounds/{round}/reveal-proof/{}",
+            args.prover_url, n.overlay
+        );
+        let included = ri.revealsAnchored
+            && inclusion_proof(http, url).await.is_some_and(|(i, proof)| {
+                let leaf = swarm_vm::reveal_leaf(&mine);
+                swarm_vm::list_verify(ri.revealsHash, ri.revealCount, i, leaf, &proof)
+            });
+        if included {
             p.reveal_safe = true;
             continue;
         }
@@ -644,7 +630,6 @@ async fn check_reveals(
             round,
             node = idx,
             reveals_anchored = ri.revealsAnchored,
-            list_ok,
             "reveal missing from the anchored list, forcing it"
         );
         match Settlement::new(args.settlement, &n.provider)

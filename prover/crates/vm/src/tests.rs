@@ -862,3 +862,27 @@ fn every_private_input_is_bound_to_a_public_input() {
     assert_eq!(pv.inputs, good.inputs);
     assert!(pv.outcome.unclaimed && !pv.outcome.hasTruth);
 }
+
+#[test]
+fn anchored_lists_are_merkle_roots_a_node_can_check_alone() {
+    let leaves: Vec<B256> = (0u8..5).map(|i| keccak256([i])).collect();
+    let root = list_root(&leaves);
+    for (i, l) in leaves.iter().enumerate() {
+        let p = list_proof(&leaves, i);
+        assert!(list_verify(root, 5, i, *l, &p));
+        // Not at another index, not another leaf. (The count is the one anchored on chain.)
+        assert!(!list_verify(root, 5, (i + 1) % 5, *l, &p));
+        assert!(!list_verify(root, 5, i, keccak256(b"x"), &p));
+    }
+    // A padding position is not a member.
+    assert!(!list_verify(
+        root,
+        5,
+        5,
+        B256::ZERO,
+        &list_proof(&leaves, 5)
+    ));
+    assert_eq!(list_root(&[]), B256::ZERO);
+    assert_eq!(list_root(&leaves[..1]), leaves[0]);
+    assert_eq!(reveals_hash(&[]), B256::ZERO);
+}

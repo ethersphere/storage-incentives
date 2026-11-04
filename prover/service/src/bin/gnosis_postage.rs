@@ -315,6 +315,16 @@ async fn main() -> Result<()> {
         f64::from(last.pot) / 1e16,
         last.valid_chunk_count
     );
+    let snapshot = serde_json::to_vec(&state)?;
+    let back: PostageState = serde_json::from_slice(&snapshot)?;
+    if back.hash() != state.hash() || back.batches() != state.batches() {
+        bail!("postage state JSON does not round-trip");
+    }
+    println!(
+        "postage state as JSON (a Swarm snapshot): {} bytes, {} leaf slots",
+        snapshot.len(),
+        state.header.next_free
+    );
     println!(
         "witness of the last settlement: {} leaf proofs, {} hints",
         postage.witness.proofs.len(),

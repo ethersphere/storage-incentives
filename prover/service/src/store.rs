@@ -94,6 +94,22 @@ impl Store {
         Ok(serde_json::from_slice(&bytes)?)
     }
 
+    /// The newest postage snapshot this prover uploaded (`$DATA_DIR/postage/latest-snapshot.json`).
+    pub fn latest_snapshot(&self) -> Option<swarm_prover::swarm::SnapshotRef> {
+        let bytes = std::fs::read(self.dir.join("postage").join("latest-snapshot.json")).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    pub fn save_snapshot_ref(&self, r: &swarm_prover::swarm::SnapshotRef) -> Result<()> {
+        let dir = self.dir.join("postage");
+        std::fs::create_dir_all(&dir)?;
+        std::fs::write(
+            dir.join("latest-snapshot.json"),
+            serde_json::to_vec_pretty(r)?,
+        )?;
+        Ok(())
+    }
+
     pub fn write_file(&self, round: u64, name: &str, bytes: &[u8]) -> Result<()> {
         let dir = self.round_dir(round);
         std::fs::create_dir_all(&dir)?;

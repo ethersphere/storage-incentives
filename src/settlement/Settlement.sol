@@ -341,9 +341,12 @@ contract Settlement is AccessControl, Pausable {
      * @notice Fix the set of off-chain commits for the current round, before any reveal and before the seed
      * exists. Called once per round by a prover during the anchor phase.
      * @param _round The current round.
-     * @param _commitsHash keccak256 over (owner, obfuscatedHash) of every signed commit, sorted by owner.
+     * @param _commitsHash Merkle root of the signed commits, sorted by owner: leaves keccak256(owner,
+     * obfuscatedHash), padded with zero to a power of two, nodes keccak256(left, right). A node checks its own
+     * commit with a Merkle proof against this root and `_commitCount` (prover/crates/vm, `list_verify`).
      * @param _commitCount Number of commits in that list.
-     * @param _dataRef Where the full commit list is published (a Swarm reference). Only emitted.
+     * @param _dataRef Swarm reference of the round document with the full commit list (or its keccak256 if
+     * the prover does not upload). Only emitted.
      */
     function anchorRound(
         uint64 _round,
@@ -370,10 +373,11 @@ contract Settlement is AccessControl, Pausable {
      * @notice Fix the set of off-chain reveals for the current round, so a node can check that its reveal is
      * in it and call forceReveal before the reveal phase ends if not. Called once per round, after
      * anchorRound, by a prover. A round settles without it; then only forced reveals count.
-     * @param _revealsHash keccak256(abi.encodePacked(overlay, depth, hash, nonce, ...)) over the list, in the
-     * published order. bytes32(0) for an empty list, and only for an empty list.
+     * @param _revealsHash Merkle root of the reveals in the published order (leaves keccak256(overlay, depth,
+     * hash, nonce), built as for `_commitsHash`). bytes32(0) for an empty list, and only for an empty list.
      * @param _revealCount Number of reveals in that list.
-     * @param _dataRef Where the full reveal list is published (a Swarm reference). Only emitted.
+     * @param _dataRef Swarm reference of the round document with the full reveal list (or its keccak256).
+     * Only emitted.
      */
     function anchorReveals(
         uint64 _round,

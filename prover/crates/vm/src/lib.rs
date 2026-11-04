@@ -90,32 +90,93 @@ pub fn in_proximity(a: B256, b: B256, minimum: u8) -> bool {
     x < (U256::from(1u8) << (256 - minimum as usize))
 }
 
-/// keccak256(abi.encodePacked(owner, obfuscatedHash, ...)) over the anchored list, as passed to
-/// `Settlement.anchorRound`.
-pub fn commits_hash<'a>(commits: impl IntoIterator<Item = (&'a Address, &'a B256)>) -> B256 {
-    let mut buf = Vec::new();
-    for (owner, obf) in commits {
-        buf.extend_from_slice(owner.as_slice());
-        buf.extend_from_slice(obf.as_slice());
-    }
+/// Leaf of the anchored commit list: keccak256(owner, obfuscatedHash).
+pub fn commit_leaf(owner: &Address, obf: &B256) -> B256 {
+    let mut buf = [0u8; 52];
+    buf[..20].copy_from_slice(owner.as_slice());
+    buf[20..].copy_from_slice(obf.as_slice());
     keccak256(buf)
 }
 
-/// keccak256(abi.encodePacked(overlay, depth, hash, nonce, ...)) over the anchored reveal list, as passed
-/// to `Settlement.anchorReveals`. Zero for an empty list, which is also what Settlement holds when the
-/// prover did not anchor reveals.
-pub fn reveals_hash(reveals: &[Reveal]) -> B256 {
-    if reveals.is_empty() {
+/// Leaf of the anchored reveal list: keccak256(overlay, depth, hash, nonce).
+pub fn reveal_leaf(r: &Reveal) -> B256 {
+    let mut buf = [0u8; 97];
+    buf[..32].copy_from_slice(r.overlay.as_slice());
+    buf[32] = r.depth;
+    buf[33..65].copy_from_slice(r.hash.as_slice());
+    buf[65..].copy_from_slice(r.nonce.as_slice());
+    keccak256(buf)
+}
+
+/// Merkle root of a list, as `Settlement.anchorRound` and `anchorReveals` take it: the leaves in list
+/// order, padded with zero to a power of two, and each node keccak256(left, right). Zero for an empty
+/// list; the leaf itself for one leaf. The count is anchored with the root, so the padding is not
+/// ambiguous. A node checks its own entry with `list_proof` and `list_verify`: it does not need the list.
+pub fn list_root(leaves: &[B256]) -> B256 {
+    if leaves.is_empty() {
         return B256::ZERO;
     }
-    let mut buf = Vec::with_capacity(reveals.len() * 97);
-    for r in reveals {
-        buf.extend_from_slice(r.overlay.as_slice());
-        buf.push(r.depth);
-        buf.extend_from_slice(r.hash.as_slice());
-        buf.extend_from_slice(r.nonce.as_slice());
+    let mut level = leaves.to_vec();
+    level.resize(leaves.len().next_power_of_two(), B256::ZERO);
+    while level.len() > 1 {
+        level = level.chunks(2).map(|p| hash_pair(&p[0], &p[1])).collect();
     }
+    level[0]
+}
+
+/// Sibling hashes from leaf `index` to the root (leaf level first).
+pub fn list_proof(leaves: &[B256], index: usize) -> Vec<B256> {
+    let mut level = leaves.to_vec();
+    level.resize(leaves.len().next_power_of_two(), B256::ZERO);
+    let mut out = Vec::new();
+    let mut i = index;
+    while level.len() > 1 {
+        out.push(level[i ^ 1]);
+        level = level.chunks(2).map(|p| hash_pair(&p[0], &p[1])).collect();
+        i >>= 1;
+    }
+    out
+}
+
+/// Does `leaf` sit at `index` of a list with `count` entries and this root?
+pub fn list_verify(root: B256, count: u32, index: usize, leaf: B256, proof: &[B256]) -> bool {
+    if index >= count as usize
+        || proof.len() != (count as usize).next_power_of_two().trailing_zeros() as usize
+    {
+        return false;
+    }
+    let mut h = leaf;
+    for (level, s) in proof.iter().enumerate() {
+        h = if (index >> level) & 1 == 0 {
+            hash_pair(&h, s)
+        } else {
+            hash_pair(s, &h)
+        };
+    }
+    h == root
+}
+
+fn hash_pair(l: &B256, r: &B256) -> B256 {
+    let mut buf = [0u8; 64];
+    buf[..32].copy_from_slice(l.as_slice());
+    buf[32..].copy_from_slice(r.as_slice());
     keccak256(buf)
+}
+
+/// The commit list root (see `list_root`), as passed to `Settlement.anchorRound`.
+pub fn commits_hash<'a>(commits: impl IntoIterator<Item = (&'a Address, &'a B256)>) -> B256 {
+    let leaves: Vec<B256> = commits
+        .into_iter()
+        .map(|(o, h)| commit_leaf(o, h))
+        .collect();
+    list_root(&leaves)
+}
+
+/// The reveal list root (see `list_root`), as passed to `Settlement.anchorReveals`. Zero for an empty
+/// list, which is also what Settlement holds when the prover did not anchor reveals.
+pub fn reveals_hash(reveals: &[Reveal]) -> B256 {
+    let leaves: Vec<B256> = reveals.iter().map(reveal_leaf).collect();
+    list_root(&leaves)
 }
 
 /// The hash chain `Settlement.forceCommit` keeps.

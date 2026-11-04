@@ -46,7 +46,11 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   used storage slots (section 2, "Round storage").
 - **Sepolia.** Settlement `0x02CF166cADfFE7F320a50542659383Eb68965158` with SP1's verifier gateway,
   program key `0x004b0af7…209e` (section 5).
-- **Next.** Swarm as the data layer for the anchored lists and the postage tree, a gas comparison on
+- **Data layer.** The anchored lists are Merkle roots (a node checks its own entry with a proof). The
+  prover uploads the lists and a daily postage snapshot to Swarm, and rebuilds the postage state from
+  the chain (or a snapshot) when its file is missing. Uploads are off until a postage batch is bought
+  (`swarm-prover stamp buy`). Prover keys, actions and costs: [ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md).
+- **Next.** Buy the batch and turn on the uploads, a gas comparison on
   Sepolia, and the rest of the optimization plan (section 7, "Open items").
 
 ---
@@ -395,8 +399,10 @@ Both off-chain lists are fixed on chain before the escape hatch closes:
 - `anchorRound` (blocks 16-19) fixes the commit list. `forceCommit` stays open for 4 more blocks.
 - `anchorReveals` (blocks 40-43) fixes the reveal list. `forceReveal` stays open for 4 more blocks.
 
-A node gets the lists at `GET /v1/rounds/{round}` (later: from the Swarm reference in `dataRef`). It
-compares each list with the hash on chain. If its message is missing, it uses the escape hatch. Without
+The anchored hashes are Merkle roots of the lists. A node does not need a list: it asks the prover for a
+Merkle proof of its own entry (`GET /v1/rounds/{round}/commit-proof/{owner}` and
+`.../reveal-proof/{overlay}`) and checks it against the root and count on chain. No proof, or a proof
+that does not check, and the node uses the escape hatch. Without
 `anchorReveals`, a prover can keep a commit and drop the reveal. The node then gets a freeze for
 non-reveal, and it cannot see the attack before the seed block. node-sim does these checks for every
 node. The prover option `CENSOR_COMMITS` / `CENSOR_REVEALS` (test only) runs the attack (section 5).
@@ -425,11 +431,29 @@ order, so settling round N+1 makes round N unsettleable. Section 4 tells who set
 must sit behind a timelock with an exit window. This is the residual risk L2BEAT flags in Lighter and
 Derive.
 
-**Data availability.** The anchored list is held by the prover (`data/rounds/<n>/messages.json`, served
-at `/v1/rounds/{n}`). `anchorRound` already takes a `dataRef`. The next step is to upload the list to
-Swarm and pass the reference there. The postage state (`data/postage/<hash>.json`) has the same problem:
-another prover needs it to continue. It can also be rebuilt from the `PostageLog` history and the cut
-blocks of the earlier settlements (`PostageSettled` events), but the prover does not do this yet.
+**Data availability (built; uploads off until a batch is bought).** Missing data cannot make a result
+wrong: the proof and the escape hatches see to that. It can only stop a round from settling (the round is
+skipped and the pot carries over), or keep a new prover from starting. Thus the data goes to Swarm, not
+to a data availability layer such as Celestia, and not into Ethereum calldata (about 170k more gas each
+round).
+
+| Data | Size | Kept for | Where |
+| --- | --- | --- | --- |
+| Anchored commit list, with signatures | about 117 bytes for each commit | Until the round settles (at most 128 rounds, about 27 h) | Swarm; its reference is `dataRef` of `anchorRound` |
+| Anchored reveal list | about 97 bytes for each reveal | The same | Swarm; `dataRef` of `anchorReveals` |
+| Postage state snapshot | about 3.4 MB for the Gnosis state (8,013 batches) | Until the next snapshot (one each day, `SNAPSHOT_EVERY`) | Swarm; its reference is in the next commit-list document |
+
+- Every document can be checked against a hash on chain (the list roots, `postageStateHash`), so a
+  reader does not have to trust the prover.
+- The uploads use one mutable postage batch of the prover's Bee node (depth 20). When a bucket is full,
+  the newest chunk replaces the oldest, so old round data drops out by itself.
+- The postage state can always be rebuilt from the chain without Swarm: replay the `PostageLog` entries,
+  settlement by settlement, with the cut blocks and log positions of the `PostageSettled` events, and
+  check the result against `postageStateHash`. The prover does this when its file is missing; with a
+  Bee node it starts from the newest snapshot. Ethereum clients will stop keeping old logs (EIP-4444),
+  which is a reason for the snapshots.
+- Without `SWARM_API` and `SWARM_BATCH_ID`, nothing is uploaded and `dataRef` is the keccak256 of each
+  document. Setup, costs and keys: [ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md).
 
 **Size of the postage state (fixed).** The proof used to read and hash all live batches at each
 settlement: about 46k cycles for each live batch. The batch tree (section 2) touches only the batches
@@ -440,6 +464,9 @@ question (below).
 ---
 
 ## 4. Prover and settlement: who does what, and who pays
+
+All prover actions, keys, costs and wallet balances, and Succinct against an own GPU, are in
+[ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md).
 
 | Action | Who | When | Gas paid by | Paid back |
 | --- | --- | --- | --- | --- |
@@ -804,6 +831,19 @@ program cheaper: the game, the claim's BMT proofs and the tree.
 On Sepolia a new-slot write costs about 110k gas instead of 20k, so the saving there is larger (see
 "Sepolia run with the ring and the batch tree" below).
 
+**Data layer, local test** (2026-11-04; anvil, mock proofs, a stand-in for the Bee API that keeps uploads
+in memory; the prover censored node 0's commits, node 2 used the escape hatches):
+
+| Step | What happened | Result |
+| --- | --- | --- |
+| Rounds 9-10, uploads on, `SNAPSHOT_EVERY=1` | Each round: commit list and reveal list uploaded, their references in `dataRef`; a postage snapshot after each settlement. Nodes checked their entries with Merkle proofs; node 0 found its commit missing and forced it | Both rounds settled; 5 participants, 0 freezes |
+| Prover restarted with a postage file it could not read (older format), and an old snapshot | Replay from the chain: `PostageSettled` and `PostageLog` events | State rebuilt, equal to `postageStateHash`; round 11 settled |
+| Prover restarted with no postage files, Swarm on | The newest snapshot, found through the last anchor's round document | State rebuilt; round 12 settled |
+| Prover restarted with no postage files, Swarm off | Replay from the chain | State rebuilt; round 13 settled |
+
+The Gnosis postage state as a snapshot: 3,397,514 bytes of JSON (47,365 leaf slots, of which 8,014 are
+in use; empty leaves are not stored).
+
 **Soundness tests** (2026-11-03). Three test groups check that a prover cannot select the result:
 
 1. `every_private_input_is_bound_to_a_public_input` (`prover/crates/vm/src/tests.rs`). It changes each
@@ -860,6 +900,8 @@ SP1_PROVER=network NETWORK_PRIVATE_KEY=0x.. PROVER_PRIVATE_KEY=0x.. DATA_DIR=dat
 # 5. Nodes. BATCH_OWNER_KEY = the deployer key (it owns the batch that stamps the simulated reserve)
 NODE_KEYS=0x..,0x.. BATCH_OWNER_KEY=0x.. ./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2
 #    Censorship test: start the prover with CENSOR_COMMITS=<address> and/or CENSOR_REVEALS=<address>.
+#    Swarm data layer: a Bee node and a mutable batch (ZK-PROVER-OPERATIONS.md, section 7), then add
+#    SWARM_API=http://localhost:1633 SWARM_BATCH_ID=<id> to the prover.
 
 # 6. Verify the source code (repo root). Uses the compiler input that hardhat-deploy stored at deployment.
 #    Etherscan (v2 API), TESTNET_ETHERSCAN_KEY = Etherscan API key:
@@ -895,8 +937,9 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 ### Open items (in priority order)
 
 1. ~~A Merkle postage state~~ **Done** (2026-11-04): one Gnosis settlement 369M → 5.9M cycles.
-2. Swarm as the data layer: upload the anchored lists and the postage state; pass the reference as
-   `dataRef`. Without it, a new prover cannot continue (section 5, "Prover restart").
+2. ~~Swarm as the data layer~~ **Built** (2026-11-04): lists and snapshots to Swarm, rebuild of the
+   postage state from the chain. To do: buy the batch and turn the uploads on
+   ([ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md), section 7).
 3. Measure gas on Sepolia (or with the same fork rules locally): PostageStamp against PostageStampZK, and
    `settleRound`. The anvil values are too low for current Ethereum rules.
 4. Timelock or exit window on `setVerifier`.

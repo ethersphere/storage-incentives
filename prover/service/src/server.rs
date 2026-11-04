@@ -33,6 +33,11 @@ pub async fn run(ctx: Arc<Ctx>, listen: &str) -> Result<()> {
         .route("/v1/commit", post(commit))
         .route("/v1/reveal", post(reveal))
         .route("/v1/rounds/{round}", get(round))
+        .route("/v1/rounds/{round}/commit-proof/{owner}", get(commit_proof))
+        .route(
+            "/v1/rounds/{round}/reveal-proof/{overlay}",
+            get(reveal_proof),
+        )
         .route("/v1/rounds/{round}/outcome", get(outcome))
         .route("/v1/claim", post(claim))
         .with_state(ctx);
@@ -184,6 +189,70 @@ async fn round(State(ctx): State<Arc<Ctx>>, Path(round): Path<u64>) -> Result<Js
         })),
         "settleTx": m.settle_tx,
         "failed": m.failed,
+    })))
+}
+
+/// Merkle proof that `owner`'s commit is in the anchored commit list. A node checks it against
+/// Settlement.rounds(round).commitsHash and commitCount (swarm_vm::list_verify), so it does not need the
+/// list. No proof: the node calls forceCommit.
+async fn commit_proof(
+    State(ctx): State<Arc<Ctx>>,
+    Path((round, owner)): Path<(u64, alloy::primitives::Address)>,
+) -> Result<Json<Value>, Reply> {
+    let store = ctx.store.lock().await;
+    let list = store
+        .rounds
+        .get(&round)
+        .and_then(|m| m.anchored.clone())
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "round not anchored here"))?;
+    let index = list.iter().position(|c| c.owner == owner).ok_or_else(|| {
+        err(
+            StatusCode::NOT_FOUND,
+            "no commit of this owner in the anchored list",
+        )
+    })?;
+    let leaves: Vec<_> = list
+        .iter()
+        .map(|c| swarm_vm::commit_leaf(&c.owner, &c.obfuscated_hash))
+        .collect();
+    Ok(Json(json!({
+        "round": round,
+        "index": index,
+        "count": list.len(),
+        "root": commits_hash(list.iter().map(|c| (&c.owner, &c.obfuscated_hash))),
+        "obfuscatedHash": list[index].obfuscated_hash,
+        "proof": swarm_vm::list_proof(&leaves, index),
+    })))
+}
+
+/// Merkle proof that the reveal of `overlay` is in the anchored reveal list (see `commit_proof`).
+async fn reveal_proof(
+    State(ctx): State<Arc<Ctx>>,
+    Path((round, overlay)): Path<(u64, alloy::primitives::B256)>,
+) -> Result<Json<Value>, Reply> {
+    let store = ctx.store.lock().await;
+    let list = store
+        .rounds
+        .get(&round)
+        .and_then(|m| m.reveals_anchored.clone())
+        .ok_or_else(|| err(StatusCode::NOT_FOUND, "reveals not anchored here"))?;
+    let index = list
+        .iter()
+        .position(|r| r.overlay == overlay)
+        .ok_or_else(|| {
+            err(
+                StatusCode::NOT_FOUND,
+                "no reveal of this overlay in the anchored list",
+            )
+        })?;
+    let leaves: Vec<_> = list.iter().map(swarm_vm::reveal_leaf).collect();
+    Ok(Json(json!({
+        "round": round,
+        "index": index,
+        "count": list.len(),
+        "root": reveals_hash(&list),
+        "reveal": list[index],
+        "proof": swarm_vm::list_proof(&leaves, index),
     })))
 }
 

@@ -466,3 +466,19 @@ fn a_settlement_touches_only_what_changes() {
         U256::from(5_000_000u64)
     );
 }
+
+#[test]
+fn the_prover_state_round_trips_through_json_without_empty_leaves() {
+    let mut log = Log::new();
+    log.price(1, 1);
+    log.create(1, 17, 10, 2); // expires early
+    log.create(2, 17, 10_000, 3);
+    let (_, s) = settle(&genesis(), (0, B256::ZERO), &log.events, 100);
+    assert_eq!(s.batches().len(), 1);
+    let json = serde_json::to_string(&s).unwrap();
+    // Only the head and batch 2 are stored; batch 1's leaf is empty.
+    assert_eq!(json.matches("\"bucket_depth\"").count(), 2);
+    let mut back: PostageState = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.hash(), s.hash());
+    assert_eq!(BatchTree::root(&mut back.tree), s.header.root);
+}

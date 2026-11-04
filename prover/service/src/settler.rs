@@ -12,6 +12,7 @@ use alloy::{
 use alloy_sol_types::SolType;
 use anyhow::{anyhow, Context, Result};
 use std::{path::PathBuf, sync::Arc, time::Duration};
+use swarm_prover::swarm::{Bee, PostageSnapshot, RoundData, SnapshotRef, DATA_VERSION};
 use swarm_prover::{
     offset_of, round_of, seed_block, PostageStamp, PriceOracle, Settlement, StakeRegistry,
     ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, REVEAL_ANCHOR_END,
@@ -51,6 +52,25 @@ pub struct Config {
     /// anchored reveal list (the attack anchorReveals exists for).
     #[arg(long, env = "CENSOR_REVEALS", value_delimiter = ',')]
     pub censor_reveals: Vec<Address>,
+    /// Bee API of the prover's own Swarm node (for example http://localhost:1633). Without it, nothing is
+    /// uploaded and `dataRef` is the keccak256 of the document.
+    #[arg(long, env = "SWARM_API")]
+    pub swarm_api: Option<String>,
+    /// Mutable postage batch for the uploads (`swarm-prover stamp buy`). Without it, nothing is uploaded.
+    #[arg(long, env = "SWARM_BATCH_ID")]
+    pub swarm_batch: Option<String>,
+    /// Upload a postage snapshot every this many rounds (112 rounds is about one day).
+    #[arg(long, env = "SNAPSHOT_EVERY", default_value_t = 112)]
+    pub snapshot_every: u64,
+    /// Warn (or top up, see SWARM_TOPUP_DAYS) when the batch has less than this many days left.
+    #[arg(long, env = "SWARM_MIN_TTL_DAYS", default_value_t = 7.0)]
+    pub swarm_min_ttl_days: f64,
+    /// Days of storage to add when the batch runs low. 0: only warn.
+    #[arg(long, env = "SWARM_TOPUP_DAYS", default_value_t = 0.0)]
+    pub swarm_topup_days: f64,
+    /// Block time of the chain of the Swarm postage contract (5 on Gnosis, 12 on Ethereum).
+    #[arg(long, env = "SWARM_BLOCK_SECONDS", default_value_t = 5.0)]
+    pub swarm_block_secs: f64,
 }
 
 const TX_TIMEOUT: Duration = Duration::from_secs(180);
@@ -65,6 +85,9 @@ pub struct Ctx {
     pub censor_commits: Vec<Address>,
     /// Overlays of `Config::censor_reveals`.
     pub censor_reveals: Vec<B256>,
+    /// The prover's Bee node, if configured.
+    pub bee: Option<Bee>,
+    pub snapshot_every: u64,
     pub store: Mutex<Store>,
     /// Serialises transactions from the one prover key.
     pub tx_lock: Mutex<()>,
@@ -107,13 +130,26 @@ pub async fn serve(cfg: Config) -> Result<()> {
         postage_from_block: cfg.postage_from_block,
         censor_commits: cfg.censor_commits.clone(),
         censor_reveals,
+        bee: cfg
+            .swarm_api
+            .as_deref()
+            .map(|api| Bee::new(api, cfg.swarm_batch.clone())),
+        snapshot_every: cfg.snapshot_every.max(1),
         store: Mutex::new(Store::open(cfg.data_dir.clone())?),
         tx_lock: Mutex::new(()),
     });
+    match ctx.bee.as_ref().map(|b| b.batch().is_some()) {
+        Some(true) => info!("Swarm uploads on: round lists and postage snapshots"),
+        Some(false) => warn!("SWARM_API set without SWARM_BATCH_ID: nothing is uploaded"),
+        None => info!("Swarm uploads off: dataRef is the keccak256 of each document"),
+    }
 
     let poll = Duration::from_secs(cfg.poll_secs);
     tokio::spawn(anchor_loop(ctx.clone(), poll));
     tokio::spawn(settle_loop(ctx.clone(), poll));
+    if let Some(bee) = ctx.bee.clone().filter(|b| b.batch().is_some()) {
+        tokio::spawn(stamp_loop(bee, cfg.clone()));
+    }
     server::run(ctx, &cfg.listen).await
 }
 
@@ -165,8 +201,20 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
         list
     };
     let hash = commits_hash(list.iter().map(|c| (&c.owner, &c.obfuscated_hash)));
-    // Stand-in for a Swarm reference to the published list.
-    let data_ref = alloy::primitives::keccak256(serde_json::to_vec(&list)?);
+    let doc = RoundData {
+        version: DATA_VERSION,
+        chain_id: ctx.chain_id,
+        settlement: ctx.settlement,
+        round,
+        commits: Some(list.clone()),
+        reveals: None,
+        postage_snapshot: ctx.store.lock().await.latest_snapshot(),
+    };
+    let (data_ref, uploaded, bytes) = Bee::publish(ctx.bee.as_ref(), &doc).await;
+    ctx.store
+        .lock()
+        .await
+        .write_file(round, "commits-data.json", &bytes)?;
 
     let _g = ctx.tx_lock.lock().await;
     let nonce = ctx
@@ -182,7 +230,7 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
         .with_timeout(Some(TX_TIMEOUT))
         .get_receipt()
         .await?;
-    info!(round, commits = list.len(), tx = %receipt.transaction_hash, "anchored");
+    info!(round, commits = list.len(), %data_ref, uploaded, tx = %receipt.transaction_hash, "anchored");
     Ok(())
 }
 
@@ -211,7 +259,20 @@ async fn anchor_reveals(ctx: &Ctx, round: u64) -> Result<()> {
         return Ok(());
     }
     let hash = reveals_hash(&list);
-    let data_ref = alloy::primitives::keccak256(serde_json::to_vec(&list)?);
+    let doc = RoundData {
+        version: DATA_VERSION,
+        chain_id: ctx.chain_id,
+        settlement: ctx.settlement,
+        round,
+        commits: None,
+        reveals: Some(list.clone()),
+        postage_snapshot: None,
+    };
+    let (data_ref, uploaded, bytes) = Bee::publish(ctx.bee.as_ref(), &doc).await;
+    ctx.store
+        .lock()
+        .await
+        .write_file(round, "reveals-data.json", &bytes)?;
 
     let _g = ctx.tx_lock.lock().await;
     let nonce = ctx
@@ -227,7 +288,7 @@ async fn anchor_reveals(ctx: &Ctx, round: u64) -> Result<()> {
         .with_timeout(Some(TX_TIMEOUT))
         .get_receipt()
         .await?;
-    info!(round, reveals = list.len(), tx = %receipt.transaction_hash, "reveals anchored");
+    info!(round, reveals = list.len(), %data_ref, uploaded, tx = %receipt.transaction_hash, "reveals anchored");
     Ok(())
 }
 
@@ -432,23 +493,72 @@ async fn postage_events(
     let prev_hash = s.postageStateHash().call().await?;
     let prev_event_index = s.postageEventIndex().call().await?;
     let prev_event_hash = s.postageEventHash().call().await?;
-    let state = ctx.store.lock().await.load_postage(prev_hash)?;
+    let loaded = ctx.store.lock().await.load_postage(prev_hash);
+    let state = match loaded {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("{e:#}; rebuilding the postage state");
+            rebuild_postage(ctx, prev_hash).await?
+        }
+    };
 
-    let postage = PostageStamp::new(s.PostageContract().call().await?, &ctx.provider);
     let from = if state.header.last_cut_block == 0 {
         ctx.postage_from_block
     } else {
         state.header.last_cut_block
     };
-    let filter = Filter::new()
-        .address(*postage.address())
-        .from_block(from)
-        .to_block(cut)
-        .event_signature(PostageStamp::PostageLog::SIGNATURE_HASH);
-    let mut events: Vec<swarm_vm::postage::PostageEvent> = vec![];
-    for log in ctx.provider.get_logs(&filter).await? {
+    let events = postage_logs(ctx, from, cut, prev_event_index, u64::MAX).await?;
+    Ok((state, prev_event_index, prev_event_hash, events))
+}
+
+/// Blocks for each eth_getLogs request (RPC providers limit the range).
+const LOG_CHUNK: u64 = 10_000;
+
+/// Logs of one event of one contract in [from, to], in chunks of LOG_CHUNK blocks.
+async fn logs_in(
+    ctx: &Ctx,
+    address: Address,
+    signature: B256,
+    from: u64,
+    to: u64,
+) -> Result<Vec<alloy::rpc::types::Log>> {
+    let mut out = vec![];
+    let mut start = from;
+    while start <= to {
+        let end = (start + LOG_CHUNK - 1).min(to);
+        let filter = Filter::new()
+            .address(address)
+            .from_block(start)
+            .to_block(end)
+            .event_signature(signature);
+        out.extend(ctx.provider.get_logs(&filter).await?);
+        start = end + 1;
+    }
+    Ok(out)
+}
+
+/// PostageStampZK log entries with index in (after, upto], from blocks [from, to], consecutive.
+async fn postage_logs(
+    ctx: &Ctx,
+    from: u64,
+    to: u64,
+    after: u64,
+    upto: u64,
+) -> Result<Vec<swarm_vm::postage::PostageEvent>> {
+    let s = Settlement::new(ctx.settlement, &ctx.provider);
+    let postage = s.PostageContract().call().await?;
+    let mut events = vec![];
+    for log in logs_in(
+        ctx,
+        postage,
+        PostageStamp::PostageLog::SIGNATURE_HASH,
+        from,
+        to,
+    )
+    .await?
+    {
         let e = log.log_decode::<PostageStamp::PostageLog>()?.inner.data;
-        if e.index <= prev_event_index {
+        if e.index <= after || e.index > upto {
             continue;
         }
         events.push(swarm_vm::postage::PostageEvent {
@@ -465,14 +575,198 @@ async fn postage_events(
     }
     events.sort_by_key(|e| e.index);
     for (i, e) in events.iter().enumerate() {
-        if e.index != prev_event_index + 1 + i as u64 {
+        if e.index != after + 1 + i as u64 {
             anyhow::bail!(
                 "PostageLog gap at index {} (RPC log range?)",
-                prev_event_index + 1 + i as u64
+                after + 1 + i as u64
             );
         }
     }
-    Ok((state, prev_event_index, prev_event_hash, events))
+    Ok(events)
+}
+
+/// Rebuild the postage state with hash `target` (Settlement.postageStateHash) when the local file is
+/// missing: start from the newest snapshot on Swarm (if a Bee node is configured), else from genesis, and
+/// replay every settlement after it from the chain: the PostageSettled events give each settlement's
+/// cut block and log position, and the PostageLog entries give the events. The result is checked against
+/// `target`. A new prover can thus continue without the old prover's files.
+pub async fn rebuild_postage(ctx: &Ctx, target: B256) -> Result<swarm_vm::postage::PostageState> {
+    let mut start = None;
+    if ctx.bee.is_some() {
+        match find_snapshot(ctx).await {
+            Ok(Some(snap)) => start = Some(snap),
+            Ok(None) => info!("no postage snapshot found on Swarm"),
+            Err(e) => warn!("postage snapshot lookup failed: {e:#}"),
+        }
+    }
+    let r = match start {
+        Some(snap) => {
+            match replay_postage(ctx, snap.state, snap.event_index, snap.event_hash, target).await {
+                Ok(s) => Ok(s),
+                Err(e) => {
+                    warn!("replay from the snapshot failed ({e:#}); replaying from genesis");
+                    replay_postage(ctx, Default::default(), 0, B256::ZERO, target).await
+                }
+            }
+        }
+        None => replay_postage(ctx, Default::default(), 0, B256::ZERO, target).await,
+    }?;
+    ctx.store.lock().await.save_postage(&r)?;
+    info!(state = %target, batches = r.batches().len(), "postage state rebuilt");
+    Ok(r)
+}
+
+async fn replay_postage(
+    ctx: &Ctx,
+    mut state: swarm_vm::postage::PostageState,
+    mut index: u64,
+    mut hash: B256,
+    target: B256,
+) -> Result<swarm_vm::postage::PostageState> {
+    let head = ctx.provider.get_block_number().await?;
+    let start = state.header.last_cut_block.max(ctx.postage_from_block);
+    let settled = logs_in(
+        ctx,
+        ctx.settlement,
+        Settlement::PostageSettled::SIGNATURE_HASH,
+        start,
+        head,
+    )
+    .await?;
+    if state.hash() == target {
+        return Ok(state);
+    }
+    for log in settled {
+        let e = log.log_decode::<Settlement::PostageSettled>()?.inner.data;
+        if !state.header.is_genesis() && e.cutBlock <= state.header.last_cut_block {
+            continue; // already in the starting state
+        }
+        let from = if state.header.last_cut_block == 0 {
+            ctx.postage_from_block
+        } else {
+            state.header.last_cut_block
+        };
+        let events = postage_logs(ctx, from, e.cutBlock, index, e.eventIndex).await?;
+        // Claim lookups and the probe do not change the state: replay without them.
+        let (r, _) = state
+            .settle(index, hash, events, e.cutBlock, e.cutBlock, &[], false)
+            .map_err(|err| anyhow!("replay of round {}: {err:?}", e.round))?;
+        (index, hash) = (r.event_index, r.event_hash);
+        if state.hash() == target {
+            return Ok(state);
+        }
+    }
+    anyhow::bail!("replay ended at state {} instead of {target}", state.hash())
+}
+
+/// The newest postage snapshot referenced by a recent anchor's round document, checked against its hash.
+async fn find_snapshot(ctx: &Ctx) -> Result<Option<PostageSnapshot>> {
+    let Some(bee) = ctx.bee.as_ref() else {
+        return Ok(None);
+    };
+    let head = ctx.provider.get_block_number().await?;
+    let from = head.saturating_sub(300 * ROUND_LENGTH);
+    let mut anchors = logs_in(
+        ctx,
+        ctx.settlement,
+        Settlement::RoundAnchored::SIGNATURE_HASH,
+        from,
+        head,
+    )
+    .await?;
+    anchors.reverse();
+    for log in anchors.into_iter().take(50) {
+        let e = log.log_decode::<Settlement::RoundAnchored>()?.inner.data;
+        let Ok(doc) = bee.fetch::<RoundData>(e.dataRef).await else {
+            continue;
+        };
+        let Some(r) = doc.postage_snapshot else {
+            continue;
+        };
+        let snap: PostageSnapshot = bee.fetch(r.reference).await?;
+        if snap.state.hash() != r.state_hash || snap.state_hash != r.state_hash {
+            anyhow::bail!("snapshot {} does not match its state hash", r.reference);
+        }
+        info!(round = r.round, reference = %r.reference, "postage snapshot found");
+        return Ok(Some(snap));
+    }
+    Ok(None)
+}
+
+/// Upload a snapshot of the postage state after `round` when the last one is SNAPSHOT_EVERY rounds old.
+async fn maybe_snapshot(
+    ctx: &Ctx,
+    round: u64,
+    state: &swarm_vm::postage::PostageState,
+    event_index: u64,
+    event_hash: B256,
+) -> Result<()> {
+    let Some(bee) = ctx.bee.as_ref().filter(|b| b.batch().is_some()) else {
+        return Ok(());
+    };
+    if let Some(last) = ctx.store.lock().await.latest_snapshot() {
+        if round < last.round + ctx.snapshot_every {
+            return Ok(());
+        }
+    }
+    let snap = PostageSnapshot {
+        version: DATA_VERSION,
+        state_hash: state.hash(),
+        event_index,
+        event_hash,
+        state: state.clone(),
+    };
+    let bytes = serde_json::to_vec(&snap)?;
+    let size = bytes.len();
+    let reference = bee.upload(bytes).await?;
+    let r = SnapshotRef {
+        state_hash: snap.state_hash,
+        reference,
+        round,
+        cut_block: state.header.last_cut_block,
+    };
+    ctx.store.lock().await.save_snapshot_ref(&r)?;
+    info!(round, %reference, bytes = size, "postage snapshot uploaded");
+    Ok(())
+}
+
+/// Watch the upload batch: warn, or top up, when it has less than SWARM_MIN_TTL_DAYS left.
+async fn stamp_loop(bee: Bee, cfg: Config) {
+    let batch = bee.batch().unwrap_or_default().to_string();
+    loop {
+        match bee.stamp(&batch).await {
+            Ok(st) => {
+                let days = st.ttl_secs as f64 / 86_400.0;
+                if !st.usable {
+                    warn!(%batch, "postage batch not usable yet");
+                } else if days < cfg.swarm_min_ttl_days {
+                    if cfg.swarm_topup_days > 0.0 {
+                        let r = async {
+                            let price = bee.chainstate().await?.current_price;
+                            let amount = swarm_prover::swarm::amount_for_days(
+                                price,
+                                cfg.swarm_topup_days,
+                                cfg.swarm_block_secs,
+                            );
+                            bee.topup(&batch, amount).await?;
+                            anyhow::Ok(amount)
+                        }
+                        .await;
+                        match r {
+                            Ok(amount) => info!(%batch, days, %amount, "postage batch topped up"),
+                            Err(e) => warn!(%batch, days, "postage batch top-up failed: {e:#}"),
+                        }
+                    } else {
+                        warn!(%batch, days, "postage batch runs low: top it up (swarm-prover stamp topup)");
+                    }
+                } else {
+                    info!(%batch, days = days as u64, utilization = st.utilization, "postage batch");
+                }
+            }
+            Err(e) => warn!(%batch, "postage batch status: {e:#}"),
+        }
+        tokio::time::sleep(Duration::from_secs(3600)).await;
+    }
 }
 
 /// ClaimForced events of a round, in chain order. forceClaim is open from CLAIM_START to the round end.
@@ -550,12 +844,12 @@ async fn forced_inputs(ctx: &Ctx, round: u64) -> Result<(Vec<ForcedCommit>, Vec<
 }
 
 async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
-    {
+    let (new_postage, event_index, event_hash) = {
         // Keep the postage state this settlement produces: the next one starts from it.
         let store = ctx.store.lock().await;
         let mut state = store.load_postage(input.postage.header.hash())?;
         let p = &input.postage;
-        state
+        let (r, _) = state
             .settle(
                 p.prev_event_index,
                 p.prev_event_hash,
@@ -568,7 +862,8 @@ async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
             .map_err(|e| anyhow!("postage: {e:?}"))?;
         store.save_postage(&state)?;
         store.write_file(round, "input.json", &serde_json::to_vec_pretty(&input)?)?;
-    }
+        (state, r.event_index, r.event_hash)
+    };
     let native = swarm_vm::run(&input).map_err(|e| anyhow!("vm: {e:?}"))?;
     info!(
         round,
@@ -617,7 +912,13 @@ async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
         anyhow::bail!("settleRound reverted: {}", receipt.transaction_hash);
     }
     info!(round, tx = %receipt.transaction_hash, gas = receipt.gas_used, "settled");
-    let mut store = ctx.store.lock().await;
-    store.get_mut(round).settle_tx = Some(receipt.transaction_hash.to_string());
-    store.save(round)
+    {
+        let mut store = ctx.store.lock().await;
+        store.get_mut(round).settle_tx = Some(receipt.transaction_hash.to_string());
+        store.save(round)?;
+    }
+    if let Err(e) = maybe_snapshot(ctx, round, &new_postage, event_index, event_hash).await {
+        warn!(round, "postage snapshot: {e:#}");
+    }
+    Ok(())
 }
