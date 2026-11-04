@@ -4,7 +4,7 @@
 //! chain (the list roots, `postageStateHash`), so a reader does not have to trust the prover.
 //!
 //! Uploads use one mutable postage batch of the prover's Bee node: when a bucket is full, the newest chunk
-//! replaces the oldest, so old round data drops out by itself. Only the last day or two are of use (a round
+//! replaces the oldest, so old anchored lists and snapshots drop out by itself. Only the last day or two are of use (a round
 //! can settle for at most 128 rounds, about 27 hours; only the newest snapshot is needed).
 //!
 //! Bee API endpoints used (Bee 2.x): POST /bytes, GET /bytes/{ref}, GET /chainstate, GET /stamps/{id},
@@ -19,7 +19,8 @@ use swarm_vm::{postage::PostageState, Reveal, SignedCommit};
 /// Format version of the uploaded documents.
 pub const DATA_VERSION: u8 = 1;
 
-/// The document behind a round's `dataRef`.
+/// The `dataRef` document: what the `dataRef` of `anchorRound` (with the anchored commit list) or of
+/// `anchorReveals` (with the anchored reveal list) refers to.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoundData {

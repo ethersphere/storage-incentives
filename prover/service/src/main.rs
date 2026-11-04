@@ -47,7 +47,7 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
-    /// The mutable postage batch the prover uploads round lists and postage snapshots with.
+    /// The mutable postage batch the prover uploads the anchored commit and reveal lists and the postage snapshots with.
     Stamp {
         #[command(subcommand)]
         cmd: StampCmd,
@@ -79,7 +79,7 @@ enum StampCmd {
     },
     /// Buy a new mutable batch. The Bee node pays from its wallet. Prints the batch id for SWARM_BATCH_ID.
     Buy {
-        /// 2^depth chunks. 20 (about 1M chunks) holds more than a year of round lists and snapshots.
+        /// 2^depth chunks. 20 (about 1M chunks) holds more than a year of anchored lists and postage snapshots.
         #[arg(long, default_value_t = 20)]
         depth: u8,
         #[arg(long, default_value_t = 30.0)]

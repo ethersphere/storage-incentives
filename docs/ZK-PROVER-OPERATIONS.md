@@ -68,7 +68,7 @@ Ethereum (BZZ and ETH).
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Prover key**             | Spend its ETH. Anchor bad or empty lists in each round: the nodes then must use `forceCommit` and `forceReveal`, which costs them gas (about 46k-48k each). Not anchor at all: the rounds cannot settle (lost rounds, the pot carries over) | Change any result: each settlement needs a valid proof. Take the pot: the payout goes to the proven winner. Freeze nodes wrongly | The admin revokes `ANCHOR_ROLE` from the key and grants it to a new key. Keep only a few days of gas on the key                                                              |
 | **Succinct requester key** | Spend the PROVE balance on its own proofs                                                                                                                                                                                                   | Anything on chain                                                                                                                | Withdraw or stop the balance; make a new requester key. Keep only a few days of PROVE on it                                                                                  |
-| **Bee node wallet**        | Spend its BZZ and gas. Upload junk with the batch: in a mutable batch this pushes out our round lists and snapshots                                                                                                                         | Change results. The lists and snapshots are checked against hashes on chain, so junk is detected                                 | Make a new Bee wallet and batch. Lost round data: those rounds are skipped. The postage state can be rebuilt from the chain (section 5 of ZK-SETTLEMENT.md)                  |
+| **Bee node wallet**        | Spend its BZZ and gas. Upload junk with the batch: in a mutable batch this pushes out our anchored commit and reveal lists and snapshots                                                                                                    | Change results. The lists and snapshots are checked against hashes on chain, so junk is detected                                 | Make a new Bee wallet and batch. Lost round data: those rounds are skipped. The postage state can be rebuilt from the chain (section 5 of ZK-SETTLEMENT.md)                  |
 | **Admin key**              | `setVerifier` to a verifier that accepts anything: then any result, and the pot, can be stolen. Revoke the prover. Pause                                                                                                                    | —                                                                                                                                | This is the critical key. On mainnet: a multisig and a timelock with an exit window, so that a bad change can be seen before it takes effect (open item in ZK-SETTLEMENT.md) |
 
 The prover key and the requester key are hot keys on an internet-facing server. Thus they will be
@@ -127,7 +127,7 @@ For each day: 112.5 proofs × 0.40 PROVE = **about 45 PROVE**. For each year: ab
 
 ### 4.3 Swarm (data layer)
 
-One mutable batch of depth 20 (about 1M chunks; holds more than a year of round lists and snapshots
+One mutable batch of depth 20 (about 1M chunks; holds more than a year of anchored commit and reveal lists and postage snapshots
 before old data is overwritten). Uploads: about 2 chunks for each list, 2 lists for each round, and one
 snapshot of about 3.5 MB (about 900 chunks) each day.
 
@@ -175,7 +175,7 @@ the loss if a key is compromised (section 3).
 
 Watch these balances. If the prover key runs out of gas, rounds are not anchored and cannot settle. If
 the requester runs out of PROVE, rounds wait until their seed is too old (about 27 hours) and are then
-lost. If the batch expires, uploads stop; the rounds still settle, but other provers lose the round data.
+lost. If the batch expires, uploads stop; the rounds still settle, but other provers cannot get the anchored commit and reveal lists.
 
 ---
 
@@ -201,7 +201,7 @@ the input and calls `settleRound`.
 the role itself decentralized are:
 
 1. `settleRound` is already open to everybody: any party with a valid proof can settle.
-2. Publish the round lists and the postage state (the Swarm data layer, now built), so that any party
+2. Publish the anchored commit and reveal lists and the postage state (the Swarm data layer, now built), so that any party
    can build the input of a round without our files.
 3. Grant `ANCHOR_ROLE` to more than one operator (for example the Foundation and some large node
    operators), or replace it with a bonded, open role later.

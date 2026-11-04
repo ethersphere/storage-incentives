@@ -447,7 +447,7 @@ round).
 - Every document can be checked against a hash on chain (the list roots, `postageStateHash`), so a
   reader does not have to trust the prover.
 - The uploads use one mutable postage batch of the prover's Bee node (depth 20). When a bucket is full,
-  the newest chunk replaces the oldest, so old round data drops out by itself.
+  the newest chunk replaces the oldest, so old anchored lists and snapshots drop out by itself.
 - The postage state can always be rebuilt from the chain without Swarm: replay the `PostageLog` entries,
   settlement by settlement, with the cut blocks and log positions of the `PostageSettled` events, and
   check the result against `postageStateHash`. The prover does this when its file is missing; with a
@@ -488,7 +488,7 @@ can call it with its own proof. The first valid call wins; a second one reverts 
 the proofs. It gets back 1% of the pot in rounds with a payout. The two anchors and rounds without a
 payout give nothing back.
 
-**Later.** When the round data (commit lists, postage state) is public on Swarm, anyone can prove and
+**Later.** When the anchored commit and reveal lists and the postage state are public on Swarm, anyone can prove and
 settle. The fee is the reward.
 
 **Open points.**
@@ -839,7 +839,7 @@ in memory; the prover censored node 0's commits, node 2 used the escape hatches)
 | --- | --- | --- |
 | Rounds 9-10, uploads on, `SNAPSHOT_EVERY=1` | Each round: commit list and reveal list uploaded, their references in `dataRef`; a postage snapshot after each settlement. Nodes checked their entries with Merkle proofs; node 0 found its commit missing and forced it | Both rounds settled; 5 participants, 0 freezes |
 | Prover restarted with a postage file it could not read (older format), and an old snapshot | Replay from the chain: `PostageSettled` and `PostageLog` events | State rebuilt, equal to `postageStateHash`; round 11 settled |
-| Prover restarted with no postage files, Swarm on | The newest snapshot, found through the last anchor's round document | State rebuilt; round 12 settled |
+| Prover restarted with no postage files, Swarm on | The newest snapshot, found through the `dataRef` document of the last `anchorRound` | State rebuilt; round 12 settled |
 | Prover restarted with no postage files, Swarm off | Replay from the chain | State rebuilt; round 13 settled |
 
 The Gnosis postage state as a snapshot: 3,397,514 bytes of JSON (47,365 leaf slots, of which 8,014 are

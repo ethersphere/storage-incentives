@@ -139,7 +139,9 @@ pub async fn serve(cfg: Config) -> Result<()> {
         tx_lock: Mutex::new(()),
     });
     match ctx.bee.as_ref().map(|b| b.batch().is_some()) {
-        Some(true) => info!("Swarm uploads on: round lists and postage snapshots"),
+        Some(true) => {
+            info!("Swarm uploads on: anchored commit and reveal lists, postage snapshots")
+        }
         Some(false) => warn!("SWARM_API set without SWARM_BATCH_ID: nothing is uploaded"),
         None => info!("Swarm uploads off: dataRef is the keccak256 of each document"),
     }
@@ -659,7 +661,7 @@ async fn replay_postage(
     anyhow::bail!("replay ended at state {} instead of {target}", state.hash())
 }
 
-/// The newest postage snapshot referenced by a recent anchor's round document, checked against its hash.
+/// The newest postage snapshot referenced by the `dataRef` document (RoundData) of a recent anchorRound, checked against its hash.
 async fn find_snapshot(ctx: &Ctx) -> Result<Option<PostageSnapshot>> {
     let Some(bee) = ctx.bee.as_ref() else {
         return Ok(None);
