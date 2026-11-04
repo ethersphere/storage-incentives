@@ -470,9 +470,12 @@ unsettleable, and forced entries counted for nothing. Rounds settle in increasin
 cannot be skipped while it can still settle; a round without an anchor is skipped. Section 4 tells who
 settles and who pays.
 
-**Upgrade authority.** `setVerifier(verifier, programVKey)` is admin-only and instant. On mainnet it
-must sit behind a timelock with an exit window. This is the residual risk L2BEAT flags in Lighter and
-Derive.
+**Upgrade authority (timelock added 2026-11-04).** A new verifier or program key takes two steps:
+`proposeVerifier(verifier, programVKey)` (admin), then `applyVerifier()` (anybody) after
+`verifierDelay` seconds; the admin can `cancelVerifier()` in between. The delay is fixed at deployment
+(`VERIFIER_DELAY`): 0 on test networks, for example 7 days on mainnet. A verifier that accepts anything
+could pay the pot to anybody, so nodes and users must see such a change before it takes effect. The admin
+must still be a multisig. This is the residual risk L2BEAT flags in Lighter and Derive.
 
 **Data availability (built; uploads off until a batch is bought).** Missing data cannot make a result
 wrong: the proof and the escape hatches see to that. It can only stop a round from settling (the round is
@@ -988,7 +991,8 @@ winners collect, a smaller anchor, a Merkle postage state) is in
    ([ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md), section 7).
 3. Measure gas on Sepolia (or with the same fork rules locally): PostageStamp against PostageStampZK, and
    `settleRound`. The anvil values are too low for current Ethereum rules.
-4. Timelock or exit window on `setVerifier`.
+4. ~~Timelock on `setVerifier`~~ **Done** (`proposeVerifier` / `applyVerifier`, delay fixed at
+   deployment). To do: the admin as a multisig, and a mainnet value for `VERIFIER_DELAY`.
 5. Fee model for provers (section 4).
 6. Batch migration from Gnosis PostageStamp to PostageStampZK (`copyBatchBulk`), and a check with the Bee
    team that no Bee version reads `pot` or `validChunkCount`.

@@ -53,7 +53,7 @@ describe('Settlement', function () {
     const verifier = await (await ethers.getContractFactory('SP1MockVerifier')).deploy();
     settlement = await (
       await ethers.getContractFactory('Settlement')
-    ).deploy(staking.address, postage.address, oracle.address, verifier.address, keccak256('0x01'));
+    ).deploy(staking.address, postage.address, oracle.address, verifier.address, keccak256('0x01'), 7 * 86400);
 
     await postage.grantRole(await postage.PRICE_ORACLE_ROLE(), oracle.address);
     await postage.grantRole(await postage.REDISTRIBUTOR_ROLE(), settlement.address);
@@ -594,6 +594,32 @@ describe('Settlement', function () {
       pv.inputs.round = next;
       pv.inputs.anchorBlockHash = (await settlement.rounds(next)).anchorBlockHash;
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('SeedNotAvailable');
+    });
+  });
+
+  describe('verifier change', function () {
+    it('takes effect only after the delay, and anybody can apply it', async function () {
+      const other = nodes[0];
+      const newKey = keccak256('0x02');
+      expect(await settlement.verifierDelay()).to.eq(7 * 86400);
+      await expect(settlement.connect(other).proposeVerifier(other.getAddress(), newKey)).to.be.revertedWith(
+        'NotAdmin'
+      );
+      await expect(settlement.applyVerifier()).to.be.revertedWith('NoPendingVerifier');
+      await settlement.proposeVerifier(await other.getAddress(), newKey);
+      await expect(settlement.connect(other).applyVerifier()).to.be.revertedWith('VerifierDelayNotOver');
+      expect(await settlement.programVKey()).to.eq(keccak256('0x01'));
+
+      // The admin can cancel during the delay.
+      await settlement.cancelVerifier();
+      await expect(settlement.applyVerifier()).to.be.revertedWith('NoPendingVerifier');
+
+      await settlement.proposeVerifier(await other.getAddress(), newKey);
+      await network.provider.send('evm_increaseTime', [7 * 86400]);
+      await network.provider.send('evm_mine', []);
+      await settlement.connect(other).applyVerifier();
+      expect(await settlement.programVKey()).to.eq(newKey);
+      expect(await settlement.verifier()).to.eq(await other.getAddress());
     });
   });
 

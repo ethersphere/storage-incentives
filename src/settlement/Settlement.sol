@@ -230,6 +230,16 @@ contract Settlement is AccessControl, Pausable {
     ISP1Verifier public verifier;
     bytes32 public programVKey;
 
+    // Seconds between proposeVerifier and the earliest applyVerifier. Fixed at deployment: 0 on test
+    // networks; on mainnet long enough for nodes to react (for example 7 days).
+    uint64 public immutable verifierDelay;
+    struct PendingVerifier {
+        address verifier;
+        bytes32 programVKey;
+        uint64 eta;
+    }
+    PendingVerifier public pendingVerifier;
+
     RoundSlot[256] internal ring;
 
     // Game state carried between rounds. Same meaning as currentClaimRound / winner.depth in Redistribution.
@@ -306,6 +316,7 @@ contract Settlement is AccessControl, Pausable {
     );
     event PriceAdjustmentSkipped(uint16 redundancyCount);
     event VerifierChanged(address verifier, bytes32 programVKey);
+    event VerifierProposed(address verifier, bytes32 programVKey, uint64 eta);
 
     // ----------------------------- Errors ------------------------------
 
@@ -324,6 +335,8 @@ contract Settlement is AccessControl, Pausable {
     error AlreadySettled();
     error RoundOutOfOrder();
     error RoundPending(uint64 round);
+    error NoPendingVerifier();
+    error VerifierDelayNotOver();
     error SeedNotAvailable();
     error TooManyForced();
     error NotStaked();
@@ -342,8 +355,10 @@ contract Settlement is AccessControl, Pausable {
         address postageContract,
         address oracleContract,
         address _verifier,
-        bytes32 _programVKey
+        bytes32 _programVKey,
+        uint64 _verifierDelay
     ) {
+        verifierDelay = _verifierDelay;
         Stakes = ISettlementStakes(staking);
         PostageContract = ISettlementPostage(postageContract);
         OracleContract = ISettlementOracle(oracleContract);
@@ -604,13 +619,34 @@ contract Settlement is AccessControl, Pausable {
 
     // ----------------------------- Admin ------------------------------
 
-    /// @notice Replace the verifier or program. This is the upgrade key of the whole game; on mainnet it
-    /// must sit behind a timelock (see docs/ZK-SETTLEMENT.md, open items).
-    function setVerifier(address _verifier, bytes32 _programVKey) external {
+    /**
+     * @notice Propose a new verifier or program. This is the upgrade key of the whole game: a verifier that
+     * accepts anything could pay the pot to anybody. So a change takes effect only `verifierDelay` seconds
+     * after the proposal (`applyVerifier`), and everybody can see it coming. A new proposal replaces the
+     * pending one and starts the delay again.
+     */
+    function proposeVerifier(address _verifier, bytes32 _programVKey) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
-        verifier = ISP1Verifier(_verifier);
-        programVKey = _programVKey;
-        emit VerifierChanged(_verifier, _programVKey);
+        uint64 eta = uint64(block.timestamp) + verifierDelay;
+        pendingVerifier = PendingVerifier(_verifier, _programVKey, eta);
+        emit VerifierProposed(_verifier, _programVKey, eta);
+    }
+
+    /// @notice Make the pending verifier change take effect, once its delay has passed. Anybody can call it.
+    function applyVerifier() external {
+        PendingVerifier memory p = pendingVerifier;
+        if (p.eta == 0) revert NoPendingVerifier();
+        if (block.timestamp < p.eta) revert VerifierDelayNotOver();
+        delete pendingVerifier;
+        verifier = ISP1Verifier(p.verifier);
+        programVKey = p.programVKey;
+        emit VerifierChanged(p.verifier, p.programVKey);
+    }
+
+    function cancelVerifier() external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
+        delete pendingVerifier;
+        emit VerifierProposed(address(0), bytes32(0), 0);
     }
 
     function setStakeAgeRounds(uint8 _rounds) external {

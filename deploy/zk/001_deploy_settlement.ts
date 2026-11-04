@@ -38,6 +38,9 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       (await get('PriceOracle')).address,
       verifier,
       vkey,
+      // VERIFIER_DELAY seconds between proposeVerifier and applyVerifier: 0 on test networks, for
+      // example 604800 (7 days) on mainnet.
+      Number(process.env.VERIFIER_DELAY ?? 0),
     ],
     log: true,
     waitConfirmations,

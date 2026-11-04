@@ -2,8 +2,8 @@
 //
 //   PROGRAM_VKEY=0x00... npx hardhat run scripts/zk/set-verifier.ts --network sepoliazk
 //
-// The verifier stays the same unless ZK_VERIFIER=<address> is set. Admin only. On mainnet this call must be
-// behind a timelock (docs/ZK-SETTLEMENT.md, open items).
+// The verifier stays the same unless ZK_VERIFIER=<address> is set. Admin only. The change takes effect after
+// Settlement.verifierDelay (0 on test networks): the script proposes it, and applies it once the delay is over.
 import { deployments, ethers } from 'hardhat';
 
 async function main() {
@@ -17,7 +17,18 @@ async function main() {
     console.log(`Settlement ${s.address} already uses verifier ${verifier} and program key ${vkey}`);
     return;
   }
-  const rc = await (await s.setVerifier(verifier, vkey)).wait();
+  const pending = await s.pendingVerifier();
+  if (pending.eta.eq(0) || pending.programVKey.toLowerCase() !== vkey.toLowerCase()) {
+    await (await s.proposeVerifier(verifier, vkey)).wait();
+    console.log(`proposed program key ${vkey} (verifier ${verifier}); delay ${await s.verifierDelay()} s`);
+  }
+  const eta = (await s.pendingVerifier()).eta.toNumber();
+  const now = (await ethers.provider.getBlock('latest')).timestamp;
+  if (now < eta) {
+    console.log(`apply after ${new Date(eta * 1000).toISOString()}: run this script again then`);
+    return;
+  }
+  const rc = await (await s.applyVerifier()).wait();
   console.log(`Settlement ${s.address}: program key ${current} -> ${vkey} (verifier ${verifier}), gas ${rc.gasUsed}`);
 }
 
