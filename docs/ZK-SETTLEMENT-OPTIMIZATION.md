@@ -21,13 +21,13 @@ chain stays the same when the rules become more complex, for example with SWIP-4
 | 3 | Settle an epoch of K rounds with one proof | Divides the proof check (about 270k gas) by K | Payouts and on-chain freezes arrive at the epoch end | 1, 4 |
 | 4 | `PriceOracle.adjustPrice` for a list of rounds | Needed for 3 | No | — |
 | 5 | Payouts that winners collect | Removes token transfers from `settleRound` | Winners send one transaction to collect | 3 |
-| 6 | A smaller `anchorRound` | About 75k down to about 30k gas for each round | No | — |
+| 6 | **Done in part (round ring).** Cheaper anchors and forced messages | Writes to used slots only. Hardhat: `anchorRound` 75k → 41k, `anchorReveals` 57k → 40k; Sepolia: see ZK-SETTLEMENT.md | No | — |
 | 7 | Faster proof generation | No gas effect. Less time to finality | No | — |
 | 8 | **Done.** Postage accounting (expiry and pot) in the proof; `PostageStampZK` without the batch tree | `createBatch` 443k → 177k gas (measured, 50 batches); no expiry sweeps for anybody | Batches expire by comparison; nothing is removed on chain | — |
-| 9 | A Merkle postage state | No gas effect. Proof cost no longer grows with all live batches (Gnosis today: 369M cycles per settlement) | No | 8 |
+| 9 | **Done.** A Merkle postage state (indexed Merkle tree) | No gas effect. One settlement with the Gnosis state: 369M → 5.9M cycles; the number of batches no longer changes the cost | No | 8 |
 
-Order of work: 9, 1, 4, 3, 5, 6. Item 7 can occur at any time. Item 9 is first because the proof cost of
-item 8 grows with the number of live batches (about 46k cycles each).
+Order of work: 1, 4, 3, 5, then the rest of 6. Item 7 can occur at any time. Items 8 and 9 are done, and
+the first part of item 6 (the round ring).
 
 ---
 
@@ -220,7 +220,13 @@ for the transfer.
 `anchorRound` must stay one transaction for each round. It fixes the commit set before the seed of the
 round exists. No other method gives this order without a transaction in the round.
 
-To decrease its cost (now about 75k gas):
+**Done (2026-11-04): the round ring.** Settlement keeps round state in `ring[round % 256]` and never sets
+a hash slot back to zero. Thus every write after the first 256 rounds (or after `warmRing`) is to a used
+slot. See ZK-SETTLEMENT.md, "Round storage: a ring of 256 entries". Measured on Hardhat: `anchorRound`
+75,023 → 40,823 gas, `anchorReveals` 57,051 → 39,951 gas. On Sepolia, where a new slot costs about 110k
+gas, the saving is larger.
+
+A further step, not done:
 
 1. Keep one rolling hash for all rounds: `anchors = keccak256(anchors, round, commitsHash, count)`. The
    update writes one slot that is not zero. This costs about 5k gas instead of about 22k.
@@ -278,7 +284,15 @@ Merkle state touches only those 14 batches. The Succinct Prover Network proved t
 127 s for at most 0.64 PROVE (a small round: about 45 s and 0.40 PROVE). Thus today's state fits in a
 round, but the time and the variable price grow with the number of live batches.
 
-### Design
+### Done (2026-11-04)
+
+Implemented as one indexed Merkle tree with two sorted lists (by id and by expiry) through the same
+leaves, instead of two trees. See ZK-SETTLEMENT.md, "The batch tree", and section 5, "Merkle postage
+state". The differential vectors and the full Gnosis history give the same pot and `validChunkCount` as
+before. One Gnosis settlement: 368,829,867 cycles before, 5,870,816 now (with the keccak precompile, which
+the program did not use before).
+
+### Design (as planned)
 
 Use the method of `expireLimited`, inside the proof:
 

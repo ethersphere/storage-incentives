@@ -533,6 +533,7 @@ dependencies = [
  "secp256k1 0.31.1",
  "serde",
  "sha3",
+ "tiny-keccak",
 ]
 
 [[package]]

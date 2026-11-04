@@ -143,6 +143,7 @@ contract Settlement is AccessControl, Pausable {
         Outcome outcome;
     }
 
+    /// What `rounds(round)` returns: the round's state, with zero for everything not set yet.
     struct RoundInfo {
         bytes32 roundAnchor;
         bytes32 commitsHash;
@@ -159,6 +160,30 @@ contract Settlement is AccessControl, Pausable {
         bytes32 revealsHash;
         uint32 revealCount;
         bool revealsAnchored;
+    }
+
+    /**
+     * @dev One entry of the round ring (`ring[round % RING_SIZE]`). The first storage slot holds the round
+     * number, the counts and the flags; it is rewritten when a new round takes the entry. The five hash
+     * slots are never set back to zero: a write to a zero slot costs a new-slot write (about 20k gas,
+     * about 110k on Sepolia), a write to a used slot about 5k. A hash slot counts only when its count or
+     * flag says it was written for this round (see `rounds`).
+     */
+    struct RoundSlot {
+        uint64 round;
+        uint32 commitCount;
+        uint32 revealCount;
+        uint32 forcedCommitCount;
+        uint32 forcedRevealCount;
+        uint32 forcedClaimCount;
+        bool anchored;
+        bool revealsAnchored;
+        bool settled;
+        bytes32 commitsHash;
+        bytes32 revealsHash;
+        bytes32 forcedCommitsHash;
+        bytes32 forcedRevealsHash;
+        bytes32 forcedClaimsHash;
     }
 
     // ----------------------------- State variables ------------------------------
@@ -178,6 +203,13 @@ contract Settlement is AccessControl, Pausable {
     uint32 public constant MAX_FORCED_CLAIMS_PER_ROUND = 16;
     uint256 public constant MAX_CLAIM_WITNESS_SIZE = 16384;
 
+    // Round state is kept for the last RING_SIZE rounds. A round can only settle while EIP-2935 still
+    // serves its seed block hash, 8191 blocks = 128 rounds, so older entries can be reused. Must be more
+    // than 128: round N stays settleable until block 47 of round N + 128.
+    uint64 public constant RING_SIZE = 256;
+    // Round number of a ring entry that warmRing filled but no round has used yet.
+    uint64 private constant WARM = type(uint64).max;
+
     // EIP-2935 block hash history contract (Pectra). Serves the last 8191 block hashes.
     address public constant HISTORY_STORAGE = 0x0000F90827F1C53a10cb7A02335B175320002935;
     uint256 public constant HISTORY_SERVE_WINDOW = 8191;
@@ -193,7 +225,7 @@ contract Settlement is AccessControl, Pausable {
     ISP1Verifier public verifier;
     bytes32 public programVKey;
 
-    mapping(uint64 => RoundInfo) public rounds;
+    RoundSlot[256] internal ring;
 
     // Game state carried between rounds. Same meaning as currentClaimRound / winner.depth in Redistribution.
     uint64 public lastSettledRound;
@@ -271,6 +303,7 @@ contract Settlement is AccessControl, Pausable {
     error WitnessTooLarge();
     error AlreadyAnchored();
     error NotRevealAnchorPhase();
+    error RevealsHashMismatch();
     error NotAnchored();
     error AlreadySettled();
     error RoundOutOfOrder();
@@ -323,15 +356,14 @@ contract Settlement is AccessControl, Pausable {
         uint256 offset = block.number % ROUND_LENGTH;
         if (offset < COMMIT_END || offset >= ANCHOR_END) revert NotAnchorPhase();
 
-        RoundInfo storage ri = rounds[_round];
+        RoundSlot storage ri = _entry(_round);
         if (ri.anchored) revert AlreadyAnchored();
 
         ri.anchored = true;
-        ri.roundAnchor = roundAnchor(_round);
         ri.commitsHash = _commitsHash;
         ri.commitCount = _commitCount;
 
-        emit RoundAnchored(_round, ri.roundAnchor, _commitsHash, _commitCount, _dataRef);
+        emit RoundAnchored(_round, roundAnchor(_round), _commitsHash, _commitCount, _dataRef);
     }
 
     /**
@@ -339,7 +371,7 @@ contract Settlement is AccessControl, Pausable {
      * in it and call forceReveal before the reveal phase ends if not. Called once per round, after
      * anchorRound, by a prover. A round settles without it; then only forced reveals count.
      * @param _revealsHash keccak256(abi.encodePacked(overlay, depth, hash, nonce, ...)) over the list, in the
-     * published order. bytes32(0) for an empty list.
+     * published order. bytes32(0) for an empty list, and only for an empty list.
      * @param _revealCount Number of reveals in that list.
      * @param _dataRef Where the full reveal list is published (a Swarm reference). Only emitted.
      */
@@ -354,13 +386,15 @@ contract Settlement is AccessControl, Pausable {
         uint256 offset = block.number % ROUND_LENGTH;
         if (offset < REVEAL_ANCHOR_START || offset >= REVEAL_ANCHOR_END) revert NotRevealAnchorPhase();
 
-        RoundInfo storage ri = rounds[_round];
+        RoundSlot storage ri = _entry(_round);
         if (!ri.anchored) revert NotAnchored();
         if (ri.revealsAnchored) revert AlreadyAnchored();
+        if ((_revealCount == 0) != (_revealsHash == bytes32(0))) revert RevealsHashMismatch();
 
         ri.revealsAnchored = true;
-        ri.revealsHash = _revealsHash;
         ri.revealCount = _revealCount;
+        // An empty list leaves the hash slot as it is (it does not count with a zero count).
+        if (_revealCount != 0) ri.revealsHash = _revealsHash;
 
         emit RevealsAnchored(_round, _revealsHash, _revealCount, _dataRef);
     }
@@ -373,10 +407,11 @@ contract Settlement is AccessControl, Pausable {
         if (_round != currentRound()) revert WrongRound();
         if (block.number % ROUND_LENGTH >= REVEAL_START) revert NotCommitPhase();
 
-        RoundInfo storage ri = rounds[_round];
+        RoundSlot storage ri = _entry(_round);
         if (ri.forcedCommitCount >= MAX_FORCED_PER_ROUND) revert TooManyForced();
 
-        ri.forcedCommitsHash = keccak256(abi.encodePacked(ri.forcedCommitsHash, msg.sender, _obfuscatedHash));
+        bytes32 prev = ri.forcedCommitCount == 0 ? bytes32(0) : ri.forcedCommitsHash;
+        ri.forcedCommitsHash = keccak256(abi.encodePacked(prev, msg.sender, _obfuscatedHash));
         ri.forcedCommitCount++;
 
         emit CommitForced(_round, msg.sender, _obfuscatedHash);
@@ -398,10 +433,11 @@ contract Settlement is AccessControl, Pausable {
         uint256 offset = block.number % ROUND_LENGTH;
         if (offset < REVEAL_START || offset >= REVEAL_END) revert NotRevealPhase();
 
-        RoundInfo storage ri = rounds[_round];
+        RoundSlot storage ri = _entry(_round);
         if (ri.forcedRevealCount >= MAX_FORCED_PER_ROUND) revert TooManyForced();
 
-        ri.forcedRevealsHash = keccak256(abi.encodePacked(ri.forcedRevealsHash, _overlay, _depth, _hash, _nonce));
+        bytes32 prev = ri.forcedRevealCount == 0 ? bytes32(0) : ri.forcedRevealsHash;
+        ri.forcedRevealsHash = keccak256(abi.encodePacked(prev, _overlay, _depth, _hash, _nonce));
         ri.forcedRevealCount++;
 
         emit RevealForced(_round, _overlay, _depth, _hash, _nonce);
@@ -419,10 +455,11 @@ contract Settlement is AccessControl, Pausable {
         if (block.number % ROUND_LENGTH < CLAIM_START) revert NotClaimPhase();
         if (_witness.length > MAX_CLAIM_WITNESS_SIZE) revert WitnessTooLarge();
 
-        RoundInfo storage ri = rounds[_round];
+        RoundSlot storage ri = _entry(_round);
         if (ri.forcedClaimCount >= MAX_FORCED_CLAIMS_PER_ROUND) revert TooManyForced();
 
-        ri.forcedClaimsHash = keccak256(abi.encodePacked(ri.forcedClaimsHash, keccak256(_witness)));
+        bytes32 prev = ri.forcedClaimCount == 0 ? bytes32(0) : ri.forcedClaimsHash;
+        ri.forcedClaimsHash = keccak256(abi.encodePacked(prev, keccak256(_witness)));
         ri.forcedClaimCount++;
 
         emit ClaimForced(_round, msg.sender, _witness);
@@ -438,9 +475,10 @@ contract Settlement is AccessControl, Pausable {
         PublicValues memory pv = abi.decode(_publicValues, (PublicValues));
         PublicInputs memory pin = pv.inputs;
         Outcome memory out = pv.outcome;
-        RoundInfo storage ri = rounds[pin.round];
+        RoundSlot storage ri = ring[pin.round % RING_SIZE];
 
-        if (!ri.anchored) revert NotAnchored();
+        // A round whose entry another round took is too old to settle anyway (its seed is gone).
+        if (ri.round != pin.round || !ri.anchored) revert NotAnchored();
         if (ri.settled) revert AlreadySettled();
         if (pin.round <= lastSettledRound) revert RoundOutOfOrder();
 
@@ -583,7 +621,7 @@ contract Settlement is AccessControl, Pausable {
         if (block.number <= sb) revert SeedNotAvailable();
         bytes32 bh = _blockHash(sb);
         if (bh == bytes32(0)) revert SeedNotAvailable();
-        return keccak256(abi.encode(rounds[_round].roundAnchor, bh));
+        return keccak256(abi.encode(roundAnchor(_round), bh));
     }
 
     /**
@@ -623,13 +661,77 @@ contract Settlement is AccessControl, Pausable {
         }
     }
 
+    /// @notice The state of a round, or all zero if nothing happened in it (or its ring entry was reused).
+    function rounds(uint64 _round) external view returns (RoundInfo memory) {
+        return _info(_round, ring[_round % RING_SIZE]);
+    }
+
+    /**
+     * @notice Fill ring entries once with non-zero values, so that the first round that uses an entry
+     * also pays only for writes to used slots. Optional: without it, each entry pays the new-slot cost
+     * once, on its first use. Leaves an entry that a round already uses as it is.
+     */
+    function warmRing(uint64 _from, uint64 _count) external {
+        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
+        for (uint64 i = _from; i < _from + _count && i < RING_SIZE; i++) {
+            RoundSlot storage e = ring[i];
+            if (e.round != 0 || e.anchored || e.forcedCommitCount != 0 || e.forcedRevealCount != 0) continue;
+            e.round = WARM;
+            bytes32 one = bytes32(uint256(1));
+            if (e.commitsHash == 0) e.commitsHash = one;
+            if (e.revealsHash == 0) e.revealsHash = one;
+            if (e.forcedCommitsHash == 0) e.forcedCommitsHash = one;
+            if (e.forcedRevealsHash == 0) e.forcedRevealsHash = one;
+            if (e.forcedClaimsHash == 0) e.forcedClaimsHash = one;
+        }
+    }
+
     ////////////////////////////////////////
     //              INTERNAL              //
     ////////////////////////////////////////
 
-    function _checkInputs(PublicInputs memory pv, RoundInfo storage ri) internal view {
+    /// @dev The ring entry of `_round`, taken over (counts and flags cleared) if it held another round.
+    function _entry(uint64 _round) internal returns (RoundSlot storage e) {
+        e = ring[_round % RING_SIZE];
+        if (e.round != _round) {
+            e.round = _round;
+            e.commitCount = 0;
+            e.revealCount = 0;
+            e.forcedCommitCount = 0;
+            e.forcedRevealCount = 0;
+            e.forcedClaimCount = 0;
+            e.anchored = false;
+            e.revealsAnchored = false;
+            e.settled = false;
+        }
+    }
+
+    /// @dev The round's state from its ring entry: stale hashes count as zero.
+    function _info(uint64 _round, RoundSlot storage e) internal view returns (RoundInfo memory ri) {
+        if (e.round != _round) return ri;
+        ri.anchored = e.anchored;
+        ri.settled = e.settled;
+        ri.commitCount = e.commitCount;
+        ri.revealCount = e.revealCount;
+        ri.revealsAnchored = e.revealsAnchored;
+        ri.forcedCommitCount = e.forcedCommitCount;
+        ri.forcedRevealCount = e.forcedRevealCount;
+        ri.forcedClaimCount = e.forcedClaimCount;
+        if (e.anchored) {
+            ri.commitsHash = e.commitsHash;
+            bytes32 bh = _blockHash(roundStart(_round) - 1);
+            if (bh != bytes32(0)) ri.roundAnchor = keccak256(abi.encode(bh, _round));
+        }
+        if (e.revealCount != 0) ri.revealsHash = e.revealsHash;
+        if (e.forcedCommitCount != 0) ri.forcedCommitsHash = e.forcedCommitsHash;
+        if (e.forcedRevealCount != 0) ri.forcedRevealsHash = e.forcedRevealsHash;
+        if (e.forcedClaimCount != 0) ri.forcedClaimsHash = e.forcedClaimsHash;
+    }
+
+    function _checkInputs(PublicInputs memory pv, RoundSlot storage s) internal view {
+        RoundInfo memory ri = _info(pv.round, s);
         if (pv.chainId != block.chainid || pv.settlement != address(this)) revert InputMismatch(0);
-        if (pv.roundAnchor != ri.roundAnchor) revert InputMismatch(1);
+        if (pv.roundAnchor != roundAnchor(pv.round)) revert InputMismatch(1);
         if (pv.selectionSeed != selectionSeed(pv.round)) revert InputMismatch(2);
         if (pv.commitsHash != ri.commitsHash || pv.commitCount != ri.commitCount) revert InputMismatch(3);
         if (pv.forcedCommitsHash != ri.forcedCommitsHash) revert InputMismatch(4);

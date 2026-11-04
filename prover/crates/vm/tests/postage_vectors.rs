@@ -5,7 +5,7 @@
 //!   DUMP_POSTAGE_VECTORS=1 npx hardhat test test/PostageStampZK.test.ts
 
 use alloy_primitives::{Address, B256, U256};
-use swarm_vm::postage::{apply, PostageEvent, PostageInput, PostageState};
+use swarm_vm::postage::{verify, PostageEvent, PostageState};
 
 fn load(seed: u32) -> (Vec<PostageEvent>, Vec<(u64, U256, U256)>) {
     let path = format!(
@@ -54,18 +54,19 @@ fn replay_matches_master_postage_stamp() {
         let mut total = U256::ZERO;
 
         for (cut, master_pot, master_valid) in checkpoints {
-            let input = PostageInput {
-                state,
-                prev_event_index: prev.0,
-                prev_event_hash: prev.1,
-                events: events
-                    .iter()
-                    .filter(|e| e.index > prev.0 && e.block <= cut)
-                    .cloned()
-                    .collect(),
-                cut_block: cut,
-            };
-            let r = apply(&input, cut).unwrap_or_else(|e| panic!("seed {seed}, cut {cut}: {e:?}"));
+            let batch = events
+                .iter()
+                .filter(|e| e.index > prev.0 && e.block <= cut)
+                .cloned()
+                .collect();
+            let (r, input) = state
+                .settle(prev.0, prev.1, batch, cut, cut, &[], true)
+                .unwrap_or_else(|e| panic!("seed {seed}, cut {cut}: {e:?}"));
+            // The zkVM side accepts the witness and gets the same result.
+            let guest = verify(&input.unwrap(), cut, &[]).unwrap();
+            assert_eq!(guest.new_header, r.new_header);
+            assert_eq!(guest.pot, r.pot);
+
             total += r.pot;
             assert_eq!(total, master_pot, "seed {seed}: pot at block {cut}");
             assert_eq!(
@@ -73,7 +74,6 @@ fn replay_matches_master_postage_stamp() {
                 "seed {seed}: validChunkCount at block {cut}"
             );
             prev = (r.event_index, r.event_hash);
-            state = r.new_state;
         }
     }
 }
@@ -83,21 +83,14 @@ fn one_settlement_or_many_gives_the_same_pot() {
     for seed in [1, 2, 3] {
         let (events, checkpoints) = load(seed);
         let (last_cut, master_pot, _) = *checkpoints.last().unwrap();
-        let input = PostageInput {
-            state: PostageState::default(),
-            prev_event_index: 0,
-            prev_event_hash: B256::ZERO,
-            events: events
-                .iter()
-                .filter(|e| e.block <= last_cut)
-                .cloned()
-                .collect(),
-            cut_block: last_cut,
-        };
-        assert_eq!(
-            apply(&input, last_cut).unwrap().pot,
-            master_pot,
-            "seed {seed}"
-        );
+        let batch = events
+            .iter()
+            .filter(|e| e.block <= last_cut)
+            .cloned()
+            .collect();
+        let (r, _) = PostageState::default()
+            .settle(0, B256::ZERO, batch, last_cut, last_cut, &[], false)
+            .unwrap();
+        assert_eq!(r.pot, master_pot, "seed {seed}");
     }
 }

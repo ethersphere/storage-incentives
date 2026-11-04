@@ -24,8 +24,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 use swarm_vm::postage::{
-    apply, event_hash, PostageEvent, PostageInput, PostageState, KIND_CREATE, KIND_DEPTH,
-    KIND_PRICE, KIND_TOPUP,
+    event_hash, verify, PostageEvent, PostageState, KIND_CREATE, KIND_DEPTH, KIND_PRICE, KIND_TOPUP,
 };
 use swarm_vm::{RoundInput, ROUND_LENGTH, SEED_OFFSET};
 
@@ -256,6 +255,7 @@ async fn main() -> Result<()> {
     let mut next = 0usize;
     let mut total_pot = U256::ZERO;
     let mut max_live = 0usize;
+    let mut live = 0usize;
     let mut cut = first;
     let started = std::time::Instant::now();
     while cut <= prev_cut {
@@ -263,17 +263,20 @@ async fn main() -> Result<()> {
             .iter()
             .position(|e| e.block > cut)
             .map_or(log.len(), |p| next + p);
-        let input = PostageInput {
-            state,
-            prev_event_index: idx,
-            prev_event_hash: hash,
-            events: log[next..end].to_vec(),
-            cut_block: cut,
-        };
-        let r = apply(&input, cut).map_err(|e| anyhow::anyhow!("cut {cut}: {e:?}"))?;
+        let creates = log[next..end]
+            .iter()
+            .filter(|e| e.kind == KIND_CREATE)
+            .count();
+        let (r, _) = state
+            .settle(idx, hash, log[next..end].to_vec(), cut, cut, &[], false)
+            .map_err(|e| anyhow::anyhow!("cut {cut}: {e:?}"))?;
         total_pot += r.pot;
-        (state, idx, hash, next) = (r.new_state, r.event_index, r.event_hash, end);
-        max_live = max_live.max(state.batches.len());
+        (idx, hash, next) = (r.event_index, r.event_hash, end);
+        // Live batches: count leaves only when it can have changed.
+        if creates > 0 || r.pot > U256::ZERO {
+            live = state.batches().len();
+            max_live = max_live.max(live);
+        }
         cut += args.settle_every;
     }
     let replay_time = started.elapsed();
@@ -281,31 +284,41 @@ async fn main() -> Result<()> {
         bail!("event hash chain mismatch");
     }
 
-    // The last settlement, as a round input with no game.
+    // The last settlement, as a round input with no game, with the zkVM witness.
     let round = (last_cut - SEED_OFFSET - 1) / ROUND_LENGTH;
-    let postage = PostageInput {
-        state: state.clone(),
-        prev_event_index: idx,
-        prev_event_hash: hash,
-        events: log[next..].iter().filter(|e| e.block <= last_cut).cloned().collect(),
-        cut_block: last_cut,
-    };
-    let last = apply(&postage, round * ROUND_LENGTH + SEED_OFFSET)
+    let before = state.batches().len();
+    let events: Vec<PostageEvent> = log[next..]
+        .iter()
+        .filter(|e| e.block <= last_cut)
+        .cloned()
+        .collect();
+    let n_events = events.len();
+    let probe = round * ROUND_LENGTH + SEED_OFFSET;
+    let (last, postage) = state
+        .settle(idx, hash, events, last_cut, probe, &[], true)
         .map_err(|e| anyhow::anyhow!("last settlement: {e:?}"))?;
+    let postage = postage.expect("recorded");
     total_pot += last.pot;
+    let guest = verify(&postage, probe, &[]).map_err(|e| anyhow::anyhow!("zkVM side: {e:?}"))?;
+    if guest.new_header != last.new_header || guest.pot != last.pot {
+        bail!("zkVM side differs from the prover side");
+    }
 
     println!(
-        "native replay: {} settlements in {replay_time:?}; most live batches at a cut: {max_live}",
+        "replay on the batch tree: {} settlements in {replay_time:?}; most live batches at a cut: {max_live} (now {live})",
         (prev_cut - first) / args.settle_every + 1
     );
     println!(
-        "last settlement (cut {last_cut}): {} live batches before, {} after, {} new events, pot {} (BZZ {:.4}), validChunkCount {}",
-        state.batches.len(),
-        last.new_state.batches.len(),
-        postage.events.len(),
+        "last settlement (cut {last_cut}): {before} live batches before, {} after, {n_events} new events, pot {} (BZZ {:.4}), validChunkCount {}",
+        state.batches().len(),
         last.pot,
         f64::from(last.pot) / 1e16,
         last.valid_chunk_count
+    );
+    println!(
+        "witness of the last settlement: {} leaf proofs, {} hints",
+        postage.witness.proofs.len(),
+        postage.witness.hints.len()
     );
     println!(
         "pot over the whole history: {total_pot} (BZZ {:.2})",

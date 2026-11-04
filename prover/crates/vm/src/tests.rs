@@ -60,29 +60,51 @@ fn base_input() -> RoundInput {
 
 const SEED_BLOCK: u64 = ROUND * ROUND_LENGTH + SEED_OFFSET;
 
-/// Postage state with `batch()` alive and funded far beyond the round.
-fn postage_with_batch() -> postage::PostageInput {
-    let b = batch();
-    postage::PostageInput {
-        state: postage::PostageState {
-            last_cut_block: SEED_BLOCK - ROUND_LENGTH,
-            price_block: 1,
-            price_outpayment: U256::ZERO,
-            price: U256::from(1u8),
-            batches: vec![postage::BatchState {
-                id: b.batch_id,
-                owner: b.owner,
-                depth: b.depth,
-                bucket_depth: b.bucket_depth,
-                normalised_balance: U256::from(10u64.pow(18)),
-                counted_to: U256::from(SEED_BLOCK - ROUND_LENGTH - 1),
-            }],
-        },
-        prev_event_index: 0,
-        prev_event_hash: B256::ZERO,
-        events: vec![],
-        cut_block: SEED_BLOCK + 1,
-    }
+/// Give the round a postage state with these batches (and their normalisedBalance) alive since the last
+/// cut at SEED_BLOCK - ROUND_LENGTH, price 1 since block 1, and replay `events` up to SEED_BLOCK + 1. The
+/// witness covers the batches of the round's current claim candidates, so call this after setting them.
+fn set_postage(
+    input: &mut RoundInput,
+    batches: &[(BatchRecord, U256)],
+    events: Vec<postage::PostageEvent>,
+) {
+    let leaves: Vec<postage::Leaf> = batches
+        .iter()
+        .map(|(b, balance)| postage::Leaf {
+            id: b.batch_id,
+            owner: b.owner,
+            depth: b.depth,
+            bucket_depth: b.bucket_depth,
+            balance: *balance,
+            ..Default::default()
+        })
+        .collect();
+    let mut state = postage::PostageState::from_batches(
+        SEED_BLOCK - ROUND_LENGTH,
+        1,
+        U256::ZERO,
+        U256::from(1u8),
+        &leaves,
+    )
+    .unwrap();
+    let ids = claim_batch_ids(input);
+    let (_, p) = state
+        .settle(
+            0,
+            B256::ZERO,
+            events,
+            SEED_BLOCK + 1,
+            SEED_BLOCK,
+            &ids,
+            true,
+        )
+        .unwrap();
+    input.postage = p.unwrap();
+}
+
+/// `batch()` alive and funded far beyond the round.
+fn postage_with_batch(input: &mut RoundInput) {
+    set_postage(input, &[(batch(), U256::from(10u64.pow(18)))], vec![]);
 }
 
 fn batch_owner() -> PrivateKeySigner {
@@ -141,7 +163,7 @@ fn sample(anchor: B256, depth: u8) -> Sample {
 fn with_claim(input: &mut RoundInput, s: &Sample) {
     let w = s.witness(&input.round_anchor, input.selection_seed, stamp);
     input.claim = Some(Bytes::from(w.encode()));
-    input.postage = postage_with_batch();
+    postage_with_batch(input);
 }
 
 fn stake_of(n: &Node) -> StakeRecord {
@@ -637,7 +659,7 @@ fn forced_claim_counts_when_the_prover_has_none() {
     let mut input = play(&ns, 0, &[s.hash(); 3], &[true; 3]);
     let w = s.witness(&input.round_anchor, input.selection_seed, stamp);
     input.forced_claims = vec![Bytes::from(vec![1, 2, 3]), Bytes::from(w.encode())];
-    input.postage = postage_with_batch();
+    postage_with_batch(&mut input);
     let pv = run(&input).unwrap();
     assert!(pv.outcome.hasTruth);
     assert_eq!(
@@ -652,8 +674,9 @@ fn claim_needs_the_batch_in_the_postage_state() {
     let s = sample(B256::ZERO, 0);
     let mut input = play(&ns, 0, &[s.hash(); 2], &[true; 2]);
     with_claim(&mut input, &s);
-    // The batch is unknown to the proven postage state: the claim fails, the round is unclaimed.
-    input.postage.state.batches.clear();
+    // The batch is unknown to the proven postage state: the claim fails, the round is unclaimed. The
+    // proof shows that the batch is not in the tree.
+    set_postage(&mut input, &[], vec![]);
     let pv = run(&input).unwrap();
     assert!(pv.outcome.unclaimed && !pv.outcome.hasTruth);
 }
@@ -665,9 +688,9 @@ fn claim_needs_a_batch_alive_at_the_seed_block() {
     let mut input = play(&ns, 0, &[s.hash(); 2], &[true; 2]);
     with_claim(&mut input, &s);
     // Outpayment at the seed block is SEED_BLOCK - 1 (price 1 since block 1): balance just at it.
-    input.postage.state.batches[0].normalised_balance = U256::from(SEED_BLOCK - 1);
+    set_postage(&mut input, &[(batch(), U256::from(SEED_BLOCK - 1))], vec![]);
     assert!(run(&input).unwrap().outcome.unclaimed);
-    input.postage.state.batches[0].normalised_balance = U256::from(SEED_BLOCK);
+    set_postage(&mut input, &[(batch(), U256::from(SEED_BLOCK))], vec![]);
     assert!(run(&input).unwrap().outcome.hasTruth);
 }
 
@@ -676,14 +699,17 @@ fn postage_outcome_is_part_of_every_round() {
     // Even a round without reveals settles the postage accounting.
     let ns = nodes(2);
     let mut input = play(&ns, 0, &[keccak256(b"x"); 2], &[false; 2]);
-    input.postage = postage_with_batch();
+    postage_with_batch(&mut input);
     let pv = run(&input).unwrap();
     assert!(!pv.outcome.hasTruth);
-    // Counted to SEED_BLOCK - ROUND_LENGTH - 1. Price 1 since block 1, so the outpayment at the cut
+    // Paid to the outpayment at the last cut, SEED_BLOCK - ROUND_LENGTH - 1. Price 1 since block 1, so the outpayment at the cut
     // (SEED_BLOCK + 1) is SEED_BLOCK: ROUND_LENGTH + 1 blocks of 2^20 chunks.
-    assert_eq!(pv.outcome.postage.potAmount, U256::from((ROUND_LENGTH + 1) << 20));
+    assert_eq!(
+        pv.outcome.postage.potAmount,
+        U256::from((ROUND_LENGTH + 1) << 20)
+    );
     assert_eq!(pv.outcome.postage.validChunkCount, U256::from(1u64 << 20));
-    assert_eq!(pv.inputs.postage.prevStateHash, input.postage.state.hash());
+    assert_eq!(pv.inputs.postage.prevStateHash, input.postage.header.hash());
 }
 
 /// Soundness: a prover controls the private parts of the input. For each of them, a change must make
@@ -715,8 +741,11 @@ fn every_private_input_is_bound_to_a_public_input() {
         outpayment: U256::from(block - 1),
         block,
     };
-    base.postage.events = vec![event];
-    base.postage.cut_block = SEED_BLOCK;
+    set_postage(
+        &mut base,
+        &[(batch(), U256::from(10u64.pow(18)))],
+        vec![event],
+    );
     // Node 3 uses the escape hatches, so the forced lists are not empty.
     let c = base.commits.remove(3);
     let r = base.reveals.remove(3);
@@ -736,14 +765,18 @@ fn every_private_input_is_bound_to_a_public_input() {
         ("drop an anchored commit", |i| {
             i.commits.remove(0);
         }),
-        ("change a commit", |i| i.commits[1].obfuscated_hash = keccak256(b"x")),
+        ("change a commit", |i| {
+            i.commits[1].obfuscated_hash = keccak256(b"x")
+        }),
         ("break a commit signature", |i| {
             i.commits[1].signature = Bytes::from(vec![1u8; 65])
         }),
         ("drop an anchored reveal", |i| {
             i.reveals.remove(0);
         }),
-        ("change a reveal nonce", |i| i.reveals[1].nonce = keccak256(b"x")),
+        ("change a reveal nonce", |i| {
+            i.reveals[1].nonce = keccak256(b"x")
+        }),
         ("add a reveal that was not anchored", |i| {
             let mut r = i.forced_reveals[0].clone();
             r.nonce = keccak256(b"y");
@@ -757,7 +790,9 @@ fn every_private_input_is_bound_to_a_public_input() {
         ("change a stake amount", |i| {
             i.stakes[0].committed_stake *= U256::from(10u8)
         }),
-        ("change a stake overlay", |i| i.stakes[1].overlay = keccak256(b"o")),
+        ("change a stake overlay", |i| {
+            i.stakes[1].overlay = keccak256(b"o")
+        }),
         ("change a stake height", |i| i.stakes[1].height = 1),
         ("change a stake update block", |i| {
             i.stakes[1].last_updated = U256::from(SEED_BLOCK)
@@ -765,16 +800,34 @@ fn every_private_input_is_bound_to_a_public_input() {
         ("swap two stake records", |i| i.stakes.swap(0, 1)),
         ("change the stake price", |i| i.stake_price = 7),
         ("change the game state", |i| i.last_claim_round = ROUND - 1),
-        ("change a penalty", |i| i.penalty_multiplier_non_revealed = 0),
+        ("change a penalty", |i| {
+            i.penalty_multiplier_non_revealed = 0
+        }),
         ("change the stake age", |i| i.stake_age_rounds = 0),
-        ("change the sample bound", |i| i.sample_max_value = U256::from(1u8)),
+        ("change the sample bound", |i| {
+            i.sample_max_value = U256::from(1u8)
+        }),
         ("change the seed", |i| i.selection_seed = keccak256(b"s")),
         ("change the anchor", |i| i.round_anchor = keccak256(b"a")),
-        ("change a postage batch balance", |i| {
-            i.postage.state.batches[0].normalised_balance += U256::from(1u8)
+        ("change a batch leaf in the postage witness", |i| {
+            let p = i
+                .postage
+                .witness
+                .proofs
+                .iter_mut()
+                .find(|p| p.leaf.id == batch().batch_id);
+            p.unwrap().leaf.balance += U256::from(1u8)
         }),
-        ("drop a postage batch", |i| i.postage.state.batches.clear()),
-        ("change the postage price", |i| i.postage.state.price = U256::from(2u8)),
+        ("drop a postage proof", |i| {
+            i.postage.witness.proofs.pop();
+        }),
+        ("change a postage hint", |i| i.postage.witness.hints[0] ^= 1),
+        ("change the batch tree root", |i| {
+            i.postage.header.root = keccak256(b"r")
+        }),
+        ("change the postage price", |i| {
+            i.postage.header.price = U256::from(2u8)
+        }),
         ("change a postage log entry", |i| {
             i.postage.events[0].value = U256::from(2u8)
         }),
@@ -802,6 +855,9 @@ fn every_private_input_is_bound_to_a_public_input() {
     // call forceClaim, which changes forcedClaimsHash.
     let mut m = base.clone();
     m.claim = None;
+    // Without the claim, the prover builds the postage witness for no claim batches.
+    let event = base.postage.events.clone();
+    set_postage(&mut m, &[(batch(), U256::from(10u64.pow(18)))], event);
     let pv = run(&m).unwrap();
     assert_eq!(pv.inputs, good.inputs);
     assert!(pv.outcome.unclaimed && !pv.outcome.hasTruth);

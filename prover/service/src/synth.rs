@@ -9,7 +9,7 @@ use anyhow::Result;
 use swarm_vm::{
     claim::{address_to_bucket, BatchRecord, PostageProof},
     commit_digest,
-    postage::{BatchState as PostageBatch, PostageInput, PostageState},
+    postage::{Leaf as PostageLeaf, PostageState},
     sample::{Sample, SampleEntry, SAMPLE_SIZE},
     wrap_commit, Reveal, RoundInput, SignedCommit, StakeRecord,
 };
@@ -100,46 +100,48 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
     };
     let witness = sample.witness(&anchor, seed, |addr| stamp(&owner, &batch, addr, 1));
     input.claim = Some(Bytes::from(witness.encode()));
-    // The batch is alive in the carried postage state, paid far beyond the round.
+    // The batch is alive in the carried postage state, paid far beyond the round, with `extra_batches`
+    // more batches beside it.
     let seed_block = round * swarm_vm::ROUND_LENGTH + swarm_vm::SEED_OFFSET;
-    input.postage = PostageInput {
-        state: PostageState {
-            last_cut_block: seed_block - swarm_vm::ROUND_LENGTH,
-            price_block: 1,
-            price_outpayment: U256::ZERO,
-            price: U256::from(24000u32),
-            batches: vec![PostageBatch {
-                id: batch.batch_id,
-                owner: batch.owner,
-                depth: batch.depth,
-                bucket_depth: batch.bucket_depth,
-                normalised_balance: U256::from(u64::MAX),
-                counted_to: U256::from(24000u64 * (seed_block - swarm_vm::ROUND_LENGTH - 1)),
-            }],
-        },
-        prev_event_index: 0,
-        prev_event_hash: B256::ZERO,
-        events: vec![],
-        cut_block: seed_block + 1,
-    };
+    let mut leaves = vec![PostageLeaf {
+        id: batch.batch_id,
+        owner: batch.owner,
+        depth: batch.depth,
+        bucket_depth: batch.bucket_depth,
+        balance: U256::from(u64::MAX),
+        ..Default::default()
+    }];
     for i in 0..extra_batches as u64 {
-        let id = keccak256([b"synth extra batch".as_slice(), &i.to_be_bytes()].concat());
-        let b = PostageBatch {
-            id,
+        leaves.push(PostageLeaf {
+            id: keccak256([b"synth extra batch".as_slice(), &i.to_be_bytes()].concat()),
             owner: Address::repeat_byte(0x11),
             depth: 20,
             bucket_depth: 16,
-            normalised_balance: U256::from(u64::MAX - i),
-            counted_to: U256::from(24000u64 * (seed_block - swarm_vm::ROUND_LENGTH - 1)),
-        };
-        let at = input
-            .postage
-            .state
-            .batches
-            .binary_search_by(|x| x.id.cmp(&id))
-            .unwrap_err();
-        input.postage.state.batches.insert(at, b);
+            balance: U256::from(u64::MAX - 1 - i),
+            ..Default::default()
+        });
     }
+    let mut state = PostageState::from_batches(
+        seed_block - swarm_vm::ROUND_LENGTH,
+        1,
+        U256::ZERO,
+        U256::from(24000u32),
+        &leaves,
+    )
+    .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    let ids = swarm_vm::claim_batch_ids(&input);
+    let (_, postage) = state
+        .settle(
+            0,
+            B256::ZERO,
+            vec![],
+            seed_block + 1,
+            seed_block,
+            &ids,
+            true,
+        )
+        .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+    input.postage = postage.expect("recorded");
     let _ = B256::ZERO;
     Ok(input)
 }

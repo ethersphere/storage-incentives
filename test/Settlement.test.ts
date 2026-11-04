@@ -514,4 +514,107 @@ describe('Settlement', function () {
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('SeedNotAvailable');
     });
   });
+
+  describe('round ring', function () {
+    const RING = 256;
+
+    async function gasOf(tx: Promise<{ wait: () => Promise<{ gasUsed: BigNumber }> }>) {
+      return (await (await tx).wait()).gasUsed.toNumber();
+    }
+
+    it('reuses an entry after RING_SIZE rounds without the old round leaking into the new one', async function () {
+      expect(await settlement.RING_SIZE()).to.eq(RING);
+      const a = await nodes[0].getAddress();
+      const b = await nodes[1].getAddress();
+      const r1 = await mineToOffset(10);
+      await settlement.connect(nodes[0]).forceCommit(r1, keccak256('0x01'));
+      await mineToOffset(COMMIT_END, r1);
+      await settlement.anchorRound(r1, keccak256('0x02'), 3, ZERO);
+      await mineToOffset(REVEAL_ANCHOR_START, r1);
+      await settlement.anchorReveals(r1, keccak256('0x03'), 2, ZERO);
+      expect((await settlement.rounds(r1)).forcedCommitCount).to.eq(1);
+
+      const r2 = await mineToOffset(10, r1 + RING);
+      expect(r2).to.eq(r1 + RING);
+      await settlement.connect(nodes[1]).forceCommit(r2, keccak256('0x04'));
+      const ri = await settlement.rounds(r2);
+      // A fresh chain, not continued from r1's.
+      expect(ri.forcedCommitsHash).to.eq(
+        keccak256(solidityPack(['bytes32', 'address', 'bytes32'], [ZERO, b, keccak256('0x04')]))
+      );
+      expect(ri.forcedCommitCount).to.eq(1);
+      expect(ri.anchored).to.be.false;
+      expect(ri.commitsHash).to.eq(ZERO);
+      expect(ri.revealsAnchored).to.be.false;
+      expect(ri.revealsHash).to.eq(ZERO);
+      // r1 is gone.
+      const old = await settlement.rounds(r1);
+      expect(old.anchored).to.be.false;
+      expect(old.forcedCommitCount).to.eq(0);
+      expect(a).to.not.eq(b);
+    });
+
+    it('a reused entry writes no new storage slots', async function () {
+      const r1 = await mineToOffset(COMMIT_END);
+      const first = await gasOf(settlement.anchorRound(r1, keccak256('0x01'), 3, ZERO));
+      await mineToOffset(REVEAL_ANCHOR_START, r1);
+      const firstReveals = await gasOf(settlement.anchorReveals(r1, keccak256('0x02'), 2, ZERO));
+
+      const r2 = await mineToOffset(COMMIT_END, r1 + RING);
+      const again = await gasOf(settlement.anchorRound(r2, keccak256('0x03'), 3, ZERO));
+      await mineToOffset(REVEAL_ANCHOR_START, r2);
+      const againReveals = await gasOf(settlement.anchorReveals(r2, keccak256('0x04'), 2, ZERO));
+      console.log(
+        `      anchorRound ${first} -> ${again}, anchorReveals ${firstReveals} -> ${againReveals} gas (new entry -> reused entry)`
+      );
+      // Each avoided new-slot write saves 15k here (20k vs 5k); on Sepolia about 105k.
+      expect(first - again).to.be.greaterThan(25_000);
+      expect(firstReveals - againReveals).to.be.greaterThan(12_000);
+    });
+
+    it('warmRing makes the first use of an entry as cheap as a reuse', async function () {
+      const r = await mineToOffset(COMMIT_END - 2);
+      await expect(settlement.connect(nodes[0]).warmRing(0, RING)).to.be.revertedWith('NotAdmin');
+      await settlement.warmRing(r % RING, 1);
+      await mineToOffset(COMMIT_END, r);
+      const warm = await gasOf(settlement.anchorRound(r, keccak256('0x01'), 3, ZERO));
+      const cold = await gasOf(
+        settlement.anchorRound(
+          await (async () => {
+            const n = await mineToOffset(COMMIT_END, r + 1);
+            return n;
+          })(),
+          keccak256('0x01'),
+          3,
+          ZERO
+        )
+      );
+      expect(cold - warm).to.be.greaterThan(25_000);
+      // A warmed entry reads as an empty round.
+      const ri = await settlement.rounds(r + 2);
+      expect(ri.anchored).to.be.false;
+    });
+
+    it('a round whose entry was reused cannot settle', async function () {
+      const r1 = await anchoredRound();
+      await mineToOffset(COMMIT_END, r1 + RING);
+      await settlement.anchorRound(r1 + RING, keccak256('0x'), 0, ZERO);
+      await mineTo((r1 + RING) * ROUND_LENGTH + SEED_OFFSET + 1);
+      const owners = await Promise.all(nodes.map((n) => n.getAddress()));
+      const pv = await publicValues(r1 + RING, owners, {});
+      pv.inputs.round = r1;
+      await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('NotAnchored');
+    });
+
+    it('an empty reveal list has the zero hash, and only an empty list', async function () {
+      const r = await anchoredRound();
+      await mineToOffset(REVEAL_ANCHOR_START, r);
+      await expect(settlement.anchorReveals(r, ZERO, 1, ZERO)).to.be.revertedWith('RevealsHashMismatch');
+      await expect(settlement.anchorReveals(r, keccak256('0x01'), 0, ZERO)).to.be.revertedWith('RevealsHashMismatch');
+      await settlement.anchorReveals(r, ZERO, 0, ZERO);
+      const ri = await settlement.rounds(r);
+      expect(ri.revealsAnchored).to.be.true;
+      expect(ri.revealsHash).to.eq(ZERO);
+    });
+  });
 });

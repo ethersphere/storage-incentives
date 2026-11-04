@@ -142,6 +142,26 @@ scaled from the Gnosis layout. Measurements in section 5 before 2026-11-03 used 
 | 49-63 | claim | Truth and winner are known. The winner (or any node that holds the truth's sample) sends the three claim proofs to the prover, or calls `forceClaim` |
 | 49 onward | settle | Anyone with a valid proof calls `settleRound`. Rounds settle in increasing order. A round whose truth has no valid claim ("unclaimed") settles only from block 64 (the next round) |
 
+### Round storage: a ring of 256 entries
+
+Settlement keeps the state of a round (anchored commit and reveal hashes, forced hash chains, counts,
+flags) in `ring[round % 256]`, not in a new storage entry for each round. When a new round takes an
+entry, it writes the slot with the round number, the counts and the flags. The five hash slots are never
+set back to zero; a hash counts only when its count or flag says it is from this round. `rounds(round)`
+returns the round's state with zero for everything that is not set.
+
+**Why.** A write to a storage slot that is zero costs a new-slot write. A write to a slot that is in use
+costs about 5k gas. On Sepolia a new-slot write costs about 110k gas, so the anchors cost 355k and 246k
+gas with a new entry for each round (section 5). With the ring, the entries are reused after 256 rounds.
+`warmRing(from, count)` (admin) fills entries once, so that the first use is cheap too.
+
+**Why 256 is safe.** A round can settle only while EIP-2935 serves the block hash of its seed block:
+8,191 blocks, which is 128 rounds (about 27 hours). Round N stays settleable until block 47 of round
+N + 128. Round N + 256 takes its entry about 27 hours after that. A round whose entry was taken cannot
+settle (`NotAnchored`), and it could not settle anyway. The round anchor is not stored: Settlement
+calculates it from the block hash before the round start. Its block is 49 blocks older than the seed
+block, so the last 49 blocks of the 8,191-block window are not available for a settlement.
+
 ### Randomness
 
 - **Round anchor** (neighbourhood selection) = `keccak256(blockhash(roundStart - 1), round)`. Every node
@@ -272,20 +292,54 @@ value, outpayment, block)`. The contract keeps the hash and block of the last 25
 (`eventHashAt`, `eventBlockAt`) and emits `PostageLog` with the same fields. This costs about 15k gas for
 each change.
 
+**The batch tree.** The live batches are the leaves of a Merkle tree with 2^32 leaves. Settlement
+stores only the hash of the postage header, and the header holds the tree root, the next free leaf, the
+live chunk count, the last cut block and the last price change. Each leaf is in two sorted linked lists
+at the same time:
+
+- by batch id, so that the proof can find a batch, and can prove that a batch does not exist;
+- by expiry, (normalisedBalance, id), so that the expired batches are always at the front.
+
+Leaf 0 is the head of both lists. A new batch takes the next free leaf. A top-up or a depth increase
+keeps the leaf and its place in the id list, and moves the leaf in the expiry list. An expired batch is
+removed from both lists and its leaf becomes empty. This is an "indexed Merkle tree".
+
+The program does not receive the batches. It receives the header, and a Merkle proof for each leaf that
+the settlement reads or writes, plus "hints": the leaf of a batch, or the leaf before a key in a list.
+The program checks each proof against the current root and calculates the new root after each write. It
+checks each hint by the order of the neighbours: for example, the leaf before a new batch must have a
+smaller id, and its successor a larger one. Thus a wrong hint makes the proof fail. The prover cannot
+hide a batch from a claim: "not found" needs the leaf before the id in the id list, and its successor
+must have a larger id.
+
+The algorithm (`postage::apply`) is the same code on two trees. The prover's `FullTree` has every leaf
+and writes down the proofs and hints. The program's `WitnessTree` checks them. Thus both sides ask for the
+same leaves in the same order.
+
 **One settlement, step by step.**
 
 1. The prover reads Settlement's `postageStateHash`, `postageEventIndex` and `postageEventHash`, loads the
-   postage state with that hash (`$DATA_DIR/postage/<hash>.json`), and reads the `PostageLog` entries
-   after `postageEventIndex` up to the cut block (the current block).
-2. The program replays the entries in order. Before an entry changes a batch, it credits that batch up
-   to the entry's outpayment. It checks each entry's outpayment against the last price change.
-3. The program runs the game and the claim. The claim reads the batches from the state after step 2.
-4. The program credits every batch up to the outpayment at the cut block, and removes the batches whose
-   balance ended. A batch never pays more than its balance.
-5. The outputs are the new state hash, the pot amount and `validChunkCount`.
+   postage state with that hash (`$DATA_DIR/postage/<hash>.json`, the header and all leaves), and reads
+   the `PostageLog` entries after `postageEventIndex` up to the cut block (the current block). It runs
+   the settlement on its tree and records the witness.
+2. The program replays the entries in order. Before each entry, all batches in the tree pay up to the
+   entry's outpayment: `pot += liveChunks × Δoutpayment`. Then the entry adds a batch, or changes a
+   batch's balance or depth, or changes the price. The program checks each entry's outpayment against
+   the last price change.
+3. The program reads the batches of the claim witnesses from the tree (after step 2), and runs the game
+   and the claim.
+4. All batches pay up to the outpayment at the cut block. Then the program removes the batches at the
+   front of the expiry list whose balance the cut reached, and takes back what each one did not pay:
+   `size × (outpayment at cut − normalisedBalance)`. A batch never pays more than its balance.
+5. The outputs are the new header hash, the pot amount and `validChunkCount`.
 6. Settlement checks the log position and hash against PostageStampZK, and that the next entry (if any)
    is after the cut block. Thus no entry up to the cut is missing. Then it adds the pot amount to
    `accruedPot`.
+
+**Cost.** A settlement touches only the leaves of its events, of its expired batches and of its claim:
+about 4 leaf proofs for each. The number of live batches does not change the cost (section 5, "Merkle
+postage state"). Batch ids `0x00…00` and `0xff…ff` are reserved for the list head and end;
+PostageStampZK makes ids with keccak256, so they do not occur.
 
 **Who expires batches?** Nobody has to send a transaction. A batch is expired as soon as its balance ends,
 and every reader can calculate this. Bee already calculates it from the events (`pkg/postage/batchstore`,
@@ -371,10 +425,11 @@ Swarm and pass the reference there. The postage state (`data/postage/<hash>.json
 another prover needs it to continue. It can also be rebuilt from the `PostageLog` history and the cut
 blocks of the earlier settlements (`PostageSettled` events), but the prover does not do this yet.
 
-**Size of the postage state.** The proof reads and hashes all live batches at each settlement: about 46k
-cycles for each live batch (section 5). That is 50M cycles for 1,000 batches and 460M for 10,000. The
-fix is a Merkle tree of the batches, so a settlement touches only the batches that changed or expired
-(ZK-SETTLEMENT-OPTIMIZATION.md, item 9).
+**Size of the postage state (fixed).** The proof used to read and hash all live batches at each
+settlement: about 46k cycles for each live batch. The batch tree (section 2) touches only the batches
+that change, expire or are read by a claim. The cost no longer depends on the number of live batches
+(section 5, "Merkle postage state"). The prover still needs the full tree, which is a data availability
+question (below).
 
 ---
 
@@ -631,14 +686,14 @@ batches that expired since the last sweep. On PostageStampZK it does not.
 
 **zkVM cycles with postage accounting** (`synth --nodes 10 --batches N`, `execute`, no proof):
 
-| Live batches in the postage state | Cycles |
-| --- | --- |
-| 1 | 3.71M |
-| 1,000 | 49.6M |
-| 10,000 | 463M |
+| Live batches in the postage state | Cycles: batch list (before 2026-11-04) | Cycles: batch tree and keccak precompile |
+| --- | --- | --- |
+| 1 | 3.71M | 1.10M |
+| 1,000 | 49.6M | 1.10M |
+| 10,000 | 463M | 1.10M |
 
-About 46k cycles for each live batch and settlement. This is the main cost at mainnet size. See
-"Size of the postage state" in section 3.
+With the batch list, each live batch cost about 46k cycles in each settlement. With the batch tree, the
+number of live batches does not change the cost. See "Merkle postage state" below.
 
 **Real Gnosis postage history** (2026-11-03; `prover/service/src/bin/gnosis_postage.rs`). The tool reads
 all batch and price events of the Gnosis PostageStamp `0x45a1502382541Cd610CC9068e88727426b696293`
@@ -666,6 +721,47 @@ mainnet. But the time and the variable price grow with the number of live batche
 batches, a proof takes many minutes. The Merkle postage state (optimization plan, item 9) touches only
 the batches that change or expire: 14 in this round. Then the cost stays near the cost of a small round.
 Item 9 is the first optimization to do.
+
+**Merkle postage state and the keccak precompile** (2026-11-04). The batch tree replaced the list of
+all live batches (section 2, "The batch tree"). Checks:
+
+- The comparison with master's PostageStamp (3 random histories, 18 checkpoints) gives the same pot
+  and `validChunkCount` at every checkpoint. Each settlement also runs in zkVM mode from the recorded
+  witness and gives the same result.
+- The full Gnosis history, replayed on the batch tree (117,034 settlements, 18 s natively), gives the
+  same results as the batch list: the same total pot over all settlements
+  (19,292,378,374,310,260,506,624), the same pot of the last settlement (240,916,066,438,479,872) and
+  the same `validChunkCount` (7,991,984,128).
+- Tests for a dishonest prover: a prover that says "not found" for a batch that exists cannot finish
+  its own run, and the zkVM rejects the witness it recorded (`BadHint`). A changed leaf, a wrong
+  sibling, or an extra proof are rejected.
+
+While measuring, a second problem showed up. `alloy-primitives` computes keccak256 with the `sha3` crate
+unless its `tiny-keccak` feature is on. SP1's keccak patch replaces `tiny-keccak`, so the program did not
+use SP1's keccak precompile at all. The workspace now enables the feature. This makes all hashing in the
+program cheaper: the game, the claim's BMT proofs and the tree.
+
+| One settlement with the real Gnosis state (8,013 live batches, 12 events, no game) | Cycles |
+| --- | --- |
+| Batch list (all batches read and hashed) | 368,829,867 |
+| Batch tree, keccak in software | 63,153,627 |
+| Batch tree, keccak precompile | **5,870,816** |
+| Witness of that settlement | 66 leaf proofs and 37 hints (179 KB of JSON input) |
+
+| Synthetic round (`synth`) | Cycles before | Cycles now |
+| --- | --- | --- |
+| 10 nodes, any number of batches | 3.71M (1 batch) to 463M (10,000 batches) | 1.10M |
+| 50 nodes | not measured | 3.47M |
+
+**Round ring** (2026-11-04; Hardhat gas rules; `test/Settlement.test.ts`, "round ring"):
+
+| Transaction | New ring entry | Reused (or warmed) entry |
+| --- | --- | --- |
+| `anchorRound` | 75,023 | 40,823 |
+| `anchorReveals` | 57,051 | 39,951 |
+
+On Sepolia a new-slot write costs about 110k gas instead of 20k, so the saving there is larger (section
+5, "Sepolia run with the ring").
 
 **Soundness tests** (2026-11-03). Three test groups check that a prover cannot select the result:
 

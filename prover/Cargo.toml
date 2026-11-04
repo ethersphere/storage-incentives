@@ -3,7 +3,7 @@ members = ["crates/vm", "program", "service"]
 resolver = "2"
 
 [workspace.dependencies]
-alloy-primitives = { version = "1.7", features = ["serde", "k256"] }
+alloy-primitives = { version = "1.7", features = ["serde", "k256", "tiny-keccak"] }
 alloy-sol-types = "1.7"
 serde = { version = "1", features = ["derive"] }
 swarm-vm = { path = "crates/vm" }

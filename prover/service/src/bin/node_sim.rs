@@ -498,7 +498,11 @@ async fn confirm_forced(
 }
 
 /// GET /v1/rounds/{round} from the prover. Stands in for downloading the list from its Swarm reference.
-async fn round_lists(http: &reqwest::Client, prover: &str, round: u64) -> Option<serde_json::Value> {
+async fn round_lists(
+    http: &reqwest::Client,
+    prover: &str,
+    round: u64,
+) -> Option<serde_json::Value> {
     let r = http
         .get(format!("{prover}/v1/rounds/{round}"))
         .send()
@@ -562,7 +566,12 @@ async fn check_commits(
             p.commit_safe = true;
             continue;
         }
-        warn!(round, node = idx, list_ok, "commit missing from the anchored list, forcing it");
+        warn!(
+            round,
+            node = idx,
+            list_ok,
+            "commit missing from the anchored list, forcing it"
+        );
         match Settlement::new(args.settlement, &n.provider)
             .forceCommit(round, p.obfuscated)
             .gas(FORCE_GAS)
