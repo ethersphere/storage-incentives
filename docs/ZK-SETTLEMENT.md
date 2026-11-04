@@ -400,6 +400,12 @@ the same total with one settlement instead of six.
 reveal. The escape hatch: `forceCommit` (blocks 0-23) and `forceReveal` (blocks 24-47) record the
 message in a hash chain on chain. `settleRound` rejects a proof that does not use exactly that chain.
 
+Only a staked address can use an escape hatch, once per round for each kind (`forceCommit`,
+`forceReveal`, `forceClaim`), and `forceReveal` only for its own overlay. The caps (256 forced commits
+and reveals, 16 forced claims for each round) keep a round provable. Before this rule (found in review,
+2026-11-04), anybody could fill a cap with junk entries for about 12M gas, and then a censored node could
+not get in. Now a full cap needs 256 (or 16) staked addresses.
+
 Both off-chain lists are fixed on chain before the escape hatch closes:
 
 - `anchorRound` (blocks 16-19) fixes the commit list. `forceCommit` stays open for 4 more blocks.

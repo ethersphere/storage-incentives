@@ -194,18 +194,54 @@ describe('Settlement', function () {
       await mineToOffset(REVEAL_START - 1, round);
       await settlement.connect(nodes[2]).forceCommit(round, keccak256('0x06'));
       await expect(settlement.forceCommit(round, ZERO)).to.be.revertedWith('NotCommitPhase');
-      await settlement.forceReveal(round, keccak256('0x03'), 2, keccak256('0x04'), keccak256('0x05'));
+      const oa = await staking.overlayOfAddress(a);
+      await settlement.connect(nodes[0]).forceReveal(round, oa, 2, keccak256('0x04'), keccak256('0x05'));
       const r = keccak256(
         solidityPack(
           ['bytes32', 'bytes32', 'uint8', 'bytes32', 'bytes32'],
-          [ZERO, keccak256('0x03'), 2, keccak256('0x04'), keccak256('0x05')]
+          [ZERO, oa, 2, keccak256('0x04'), keccak256('0x05')]
         )
       );
       expect((await settlement.rounds(round)).forcedRevealsHash).to.eq(r);
       // forceReveal stays open after the reveal anchor phase, up to the seed block.
       await mineToOffset(REVEAL_END - 1, round);
-      await settlement.forceReveal(round, keccak256('0x03'), 2, keccak256('0x04'), keccak256('0x05'));
-      await expect(settlement.forceReveal(round, ZERO, 1, ZERO, ZERO)).to.be.revertedWith('NotRevealPhase');
+      await settlement.connect(nodes[1]).forceReveal(round, await staking.overlayOfAddress(b), 2, ZERO, ZERO);
+      await expect(settlement.connect(nodes[2]).forceReveal(round, ZERO, 1, ZERO, ZERO)).to.be.revertedWith(
+        'NotRevealPhase'
+      );
+    });
+
+    it('accepts forced entries only from staked addresses, once per round, for their own overlay', async function () {
+      const outsider = (await ethers.getSigners())[15];
+      const round = await mineToOffset(10);
+      await expect(settlement.connect(outsider).forceCommit(round, keccak256('0x01'))).to.be.revertedWith('NotStaked');
+      await settlement.connect(nodes[0]).forceCommit(round, keccak256('0x01'));
+      // A second forced commit of the same node in the same round (spam to fill the cap) is refused.
+      await expect(settlement.connect(nodes[0]).forceCommit(round, keccak256('0x02'))).to.be.revertedWith(
+        'AlreadyForced'
+      );
+
+      await mineToOffset(REVEAL_START, round);
+      const own = await staking.overlayOfAddress(await nodes[0].getAddress());
+      const other = await staking.overlayOfAddress(await nodes[1].getAddress());
+      await expect(settlement.connect(nodes[0]).forceReveal(round, other, 1, ZERO, ZERO)).to.be.revertedWith(
+        'NotOwnOverlay'
+      );
+      await expect(settlement.connect(outsider).forceReveal(round, own, 1, ZERO, ZERO)).to.be.revertedWith('NotStaked');
+      await settlement.connect(nodes[0]).forceReveal(round, own, 1, ZERO, ZERO);
+      await expect(settlement.connect(nodes[0]).forceReveal(round, own, 1, ZERO, ZERO)).to.be.revertedWith(
+        'AlreadyForced'
+      );
+
+      await mineToOffset(CLAIM_START, round);
+      await expect(settlement.connect(outsider).forceClaim(round, '0x01')).to.be.revertedWith('NotStaked');
+      await settlement.connect(nodes[0]).forceClaim(round, '0x01');
+      await expect(settlement.connect(nodes[0]).forceClaim(round, '0x02')).to.be.revertedWith('AlreadyForced');
+
+      // The next round, the same node can force again.
+      const next = await mineToOffset(10, round + 1);
+      await settlement.connect(nodes[0]).forceCommit(next, keccak256('0x03'));
+      expect((await settlement.rounds(next)).forcedCommitCount).to.eq(1);
     });
 
     it('anchors commits only before the commit check blocks', async function () {

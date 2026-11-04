@@ -260,6 +260,16 @@ contract Settlement is AccessControl, Pausable {
     // Share of the pot paid to whoever submits a valid settlement, in basis points.
     uint16 public proverFeeBps = 100;
 
+    // The last round (+1) in which an address used each escape hatch: one forced commit, reveal and claim
+    // for each staked address and round. Without it, junk entries from anyone filled the per-round caps
+    // cheaply, and censorship worked again. One reused slot for each address.
+    struct ForcedRounds {
+        uint64 commit;
+        uint64 reveal;
+        uint64 claim;
+    }
+    mapping(address => ForcedRounds) internal forcedBy;
+
     // ----------------------------- Events ------------------------------
 
     event RoundAnchored(
@@ -313,6 +323,9 @@ contract Settlement is AccessControl, Pausable {
     error RoundPending(uint64 round);
     error SeedNotAvailable();
     error TooManyForced();
+    error NotStaked();
+    error AlreadyForced();
+    error NotOwnOverlay();
     error InputMismatch(uint8 which);
     error OutputMismatch();
     error NotAdmin();
@@ -414,6 +427,10 @@ contract Settlement is AccessControl, Pausable {
     function forceCommit(uint64 _round, bytes32 _obfuscatedHash) external whenNotPaused {
         if (_round != currentRound()) revert WrongRound();
         if (block.number % ROUND_LENGTH >= REVEAL_START) revert NotCommitPhase();
+        _stakedOverlay(msg.sender);
+        ForcedRounds storage f = forcedBy[msg.sender];
+        if (f.commit == _round + 1) revert AlreadyForced();
+        f.commit = _round + 1;
 
         RoundSlot storage ri = _entry(_round);
         if (ri.forcedCommitCount >= MAX_FORCED_PER_ROUND) revert TooManyForced();
@@ -427,7 +444,7 @@ contract Settlement is AccessControl, Pausable {
 
     /**
      * @notice Censorship escape hatch: reveal on chain. The proof for this round must consider it.
-     * Anyone holding the preimage can submit it; the preimage itself is the authorisation. Open until the
+     * Only the staked owner of `_overlay` can submit it, once per round. Open until the
      * seed block, so a node has 4 blocks after the reveal anchor phase to react to the list.
      */
     function forceReveal(
@@ -440,6 +457,10 @@ contract Settlement is AccessControl, Pausable {
         if (_round != currentRound()) revert WrongRound();
         uint256 offset = block.number % ROUND_LENGTH;
         if (offset < REVEAL_START || offset >= REVEAL_END) revert NotRevealPhase();
+        if (_stakedOverlay(msg.sender) != _overlay) revert NotOwnOverlay();
+        ForcedRounds storage f = forcedBy[msg.sender];
+        if (f.reveal == _round + 1) revert AlreadyForced();
+        f.reveal = _round + 1;
 
         RoundSlot storage ri = _entry(_round);
         if (ri.forcedRevealCount >= MAX_FORCED_PER_ROUND) revert TooManyForced();
@@ -462,6 +483,10 @@ contract Settlement is AccessControl, Pausable {
         if (_round != currentRound()) revert WrongRound();
         if (block.number % ROUND_LENGTH < CLAIM_START) revert NotClaimPhase();
         if (_witness.length > MAX_CLAIM_WITNESS_SIZE) revert WitnessTooLarge();
+        _stakedOverlay(msg.sender);
+        ForcedRounds storage f = forcedBy[msg.sender];
+        if (f.claim == _round + 1) revert AlreadyForced();
+        f.claim = _round + 1;
 
         RoundSlot storage ri = _entry(_round);
         if (ri.forcedClaimCount >= MAX_FORCED_CLAIMS_PER_ROUND) revert TooManyForced();
@@ -698,6 +723,13 @@ contract Settlement is AccessControl, Pausable {
     ////////////////////////////////////////
     //              INTERNAL              //
     ////////////////////////////////////////
+
+    /// @dev The overlay of a staked address; reverts for an address without stake.
+    function _stakedOverlay(address _owner) internal view returns (bytes32 overlay) {
+        uint256 lastUpdated;
+        (overlay, , , lastUpdated, ) = Stakes.stakes(_owner);
+        if (lastUpdated == 0) revert NotStaked();
+    }
 
     /// @dev The ring entry of `_round`, taken over (counts and flags cleared) if it held another round.
     function _entry(uint64 _round) internal returns (RoundSlot storage e) {
