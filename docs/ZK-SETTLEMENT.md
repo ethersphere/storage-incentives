@@ -445,6 +445,13 @@ carries over; (3) withhold the winner's claim witness. Now: (1) the cut block mu
 block; (2) `settleRound` reverts with `RoundPending` while an earlier anchored round can still settle;
 (3) the `forceClaim` backstop above.
 
+**Prover API under load (fixed 2026-11-04).** `/outcome` and `/claim` build a whole round input (dozens
+of RPC calls and a VM run). Now: `/outcome` answers are cached for 10 s for each round; `/claim` rejects a
+witness that is too large or does not decode before any RPC call, and returns at once if the round
+already has a valid witness; at most 2 such requests run at the same time (others get 503). Test: 200
+junk claims and 100 parallel `/outcome` requests in a claim phase; the rounds still anchored and settled.
+A node must never wait long for the prover: node-sim uses a 5 s timeout, and no answer means "force".
+
 **Prover liveness.** `settleRound` is permissionless. `anchorRound` is limited to `ANCHOR_ROLE` (the
 Foundation's prover first, as the proposal says). If nobody settles, the payments stay in PostageStampZK.
 The next settlement replays the log and credits them. If no prover calls `anchorRound` in blocks 16-19,

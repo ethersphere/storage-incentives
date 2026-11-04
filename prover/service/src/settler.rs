@@ -83,6 +83,12 @@ pub struct Config {
 const TX_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub struct Ctx {
+    /// Limits the HTTP requests that build a round input (dozens of RPC calls and a VM run each), so
+    /// that a flood of them cannot starve anchoring and settling.
+    pub heavy: tokio::sync::Semaphore,
+    /// The last /outcome answer for each round, and when it was computed.
+    pub outcomes:
+        Mutex<std::collections::HashMap<u64, (std::time::Instant, swarm_prover::OutcomeMsg)>>,
     pub provider: DynProvider,
     pub settlement: Address,
     pub chain_id: U256,
@@ -135,6 +141,8 @@ pub async fn serve(cfg: Config) -> Result<()> {
     }
 
     let ctx = Arc::new(Ctx {
+        heavy: tokio::sync::Semaphore::new(2),
+        outcomes: Mutex::new(Default::default()),
         provider,
         settlement: cfg.settlement,
         chain_id,

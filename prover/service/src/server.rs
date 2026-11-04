@@ -23,6 +23,9 @@ use tracing::info;
 
 type Reply = (StatusCode, Json<Value>);
 
+/// How long an /outcome answer is served from the cache.
+const OUTCOME_CACHE: std::time::Duration = std::time::Duration::from_secs(10);
+
 fn err(code: StatusCode, msg: impl ToString) -> Reply {
     (code, Json(json!({ "error": msg.to_string() })))
 }
@@ -267,12 +270,21 @@ async fn outcome(
     if b <= seed_block(round) {
         return Err(err(StatusCode::CONFLICT, "seed not available yet"));
     }
+    if let Some((at, o)) = ctx.outcomes.lock().await.get(&round) {
+        if at.elapsed() < OUTCOME_CACHE {
+            return Ok(Json(o.clone()));
+        }
+    }
+    let _permit = ctx
+        .heavy
+        .try_acquire()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "busy, try again"))?;
     let input = crate::settler::build_input(&ctx, round, b, None)
         .await
         .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
     let pv = swarm_vm::run(&input)
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:?}")))?;
-    Ok(Json(OutcomeMsg {
+    let o = OutcomeMsg {
         round,
         has_truth: pv.outcome.hasTruth || pv.outcome.unclaimed,
         truth_hash: pv.outcome.truthHash,
@@ -281,11 +293,38 @@ async fn outcome(
         round_anchor: input.round_anchor,
         selection_seed: input.selection_seed,
         claimed: pv.outcome.hasTruth,
-    }))
+    };
+    ctx.outcomes
+        .lock()
+        .await
+        .insert(round, (std::time::Instant::now(), o.clone()));
+    Ok(Json(o))
 }
 
 /// Accept a claim witness only if it makes the round claimed: the VM runs with it before it is stored.
 async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<Json<Value>, Reply> {
+    // Cheap checks first: the heavy check below builds the whole round input.
+    if m.witness.len() > 16_384 {
+        return Err(err(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "witness larger than 16 KB",
+        ));
+    }
+    if swarm_vm::claim::ClaimWitness::decode(&m.witness).is_none() {
+        return Err(err(StatusCode::BAD_REQUEST, "witness does not decode"));
+    }
+    if ctx
+        .store
+        .lock()
+        .await
+        .rounds
+        .get(&m.round)
+        .is_some_and(|r| r.claim.is_some())
+    {
+        return Ok(Json(
+            json!({ "ok": true, "note": "a valid witness is already known" }),
+        ));
+    }
     let b = block(&ctx).await?;
     if b <= seed_block(m.round) {
         return Err(err(StatusCode::CONFLICT, "seed not available yet"));
@@ -300,6 +339,10 @@ async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<J
     {
         return Err(err(StatusCode::CONFLICT, "round already settled"));
     }
+    let _permit = ctx
+        .heavy
+        .try_acquire()
+        .map_err(|_| err(StatusCode::SERVICE_UNAVAILABLE, "busy, try again"))?;
     let input = crate::settler::build_input(&ctx, m.round, b, Some(m.witness.clone()))
         .await
         .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
@@ -339,6 +382,7 @@ async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<J
     store
         .save(m.round)
         .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    ctx.outcomes.lock().await.remove(&m.round); // "claimed" changed
     info!(round = m.round, "claim witness accepted");
     Ok(Json(json!({ "ok": true })))
 }

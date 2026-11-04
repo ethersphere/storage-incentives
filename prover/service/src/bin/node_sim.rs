@@ -286,7 +286,10 @@ async fn main() -> Result<()> {
     );
     info!(chunks = args.reserve, batch = %batch_id, elapsed = ?started.elapsed(), "reserve ready");
 
-    let http = reqwest::Client::new();
+    // A prover can stall its answers to eat a 4-block window: never wait long. No answer means force.
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()?;
     let mut played: HashMap<(u64, usize), Played> = HashMap::new();
     let mut samples: HashMap<u64, Arc<Sample>> = HashMap::new();
     let mut first_round = None;
