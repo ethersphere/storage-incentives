@@ -51,8 +51,22 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   prover uploads the lists and a daily postage snapshot to Swarm, and rebuilds the postage state from
   the chain (or a snapshot) when its file is missing. Uploads are off until a postage batch is bought
   (`swarm-prover stamp buy`). Prover keys, actions and costs: [ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md).
-- **Next.** Buy the batch and turn on the uploads, a gas comparison on
-  Sepolia, and the rest of the optimization plan (section 7, "Open items").
+- **Review fixes (2026-11-04).** A hard review found nine problems; all nine are fixed, each with tests
+  and a local run:
+  1. a node could leave a round after it saw the seed, to escape a freeze (now: non-reveal freeze);
+  2. the prover could choose who is paid: late cut, skipped rounds, withheld claim (now: cut = seed
+     block, no skipping of a round that can still settle, `forceClaim` backstop at block 58);
+  3. anybody could take the prover fee by front-running (now: `feeRecipient` in the proof);
+  4. cheap top-ups could block every settlement (now: postage log ring of 8,192);
+  5. junk could fill the escape-hatch caps (now: staked addresses only, once per round);
+  6. a stopped prover stopped the game (now: `anchorEmpty` fallback);
+  7. the prover API could be flooded, and node-sim waited forever (now: limits, cache, 5 s timeout);
+  8. block builders could grind the randomness (now: `prevrandao` from the headers);
+  9. verifier changes took effect at once (now: timelock).
+- **Not yet on Sepolia.** The Sepolia contracts are from before the review fixes. A new deployment (all
+  contracts changed) is needed for the next Sepolia run.
+- **Next.** Buy the batch and turn on the uploads, a gas comparison on Sepolia, and the rest of the
+  optimization plan (section 7, "Open items").
 
 ---
 
@@ -1000,4 +1014,11 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 8. Bee integration: the commit, reveal and claim messages, the HTTP API (or Swarm feeds), and when to
    fall back to `forceCommit`/`forceReveal`/`forceClaim`.
 9. Nodes don't know the minimum depth for round N+1 until round N is settled. Settling within the round
-   (blocks 49-63) avoids that, but needs fast proving.
+   (blocks 49-63) avoids that, but needs fast proving. If the settlement is late, an honest node can
+   commit below the minimum depth, and its reveal then counts as no reveal (a freeze). A fix: take the
+   minimum depth for round N from the game state after round N-2 (Settlement keeps the last two states).
+10. The check windows are 4 blocks (48 s). Under a gas spike a forced transaction may not land in time:
+    a node must pay a high priority fee for escape-hatch transactions, and check the receipt (node-sim
+    does both).
+11. The fee model: at today's prices the costs of a prover (gas, proofs) are higher than the 1% fee
+    (ZK-PROVER-OPERATIONS.md, section 4). Without a better fee, only a paid operator runs a prover.
