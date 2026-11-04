@@ -343,10 +343,18 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
     let pg = postage::verify(&input.postage, seed_block, &claim_batch_ids(input))
         .map_err(VmError::Postage)?;
 
-    // Commit + reveal phases. Ineligible nodes are dropped like a reverted `commit`.
+    // Commit + reveal phases. Ineligible nodes are dropped like a reverted `commit`. A node whose stake
+    // record changed after the round started (manageStake, or a freeze) is also dropped, but it is frozen
+    // like a node that did not reveal: otherwise a node could look at the seed and then leave the round to
+    // escape a freeze, or to change the draw. The stake record is read at settlement, not at round start.
     let mut entries: Vec<Entry> = Vec::new();
+    let mut left: Vec<Address> = Vec::new();
+    let round_start = U256::from(input.round * ROUND_LENGTH);
     for ((owner, obf), stake) in commits.iter().zip(&input.stakes) {
         if !is_eligible(stake, input.round, input.stake_age_rounds) {
+            if stake.last_updated >= round_start {
+                left.push(*owner);
+            }
             continue;
         }
         let revealed = input
@@ -474,6 +482,10 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
                 out.freezeDurations.push(freeze_non_revealed);
             }
         }
+    }
+    for owner in &left {
+        out.freezeOwners.push(*owner);
+        out.freezeDurations.push(freeze_non_revealed);
     }
 
     out.truthHash = truth_hash;

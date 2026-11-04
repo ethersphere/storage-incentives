@@ -886,3 +886,26 @@ fn anchored_lists_are_merkle_roots_a_node_can_check_alone() {
     assert_eq!(list_root(&leaves[..1]), leaves[0]);
     assert_eq!(reveals_hash(&[]), B256::ZERO);
 }
+
+#[test]
+fn a_node_that_changes_its_stake_during_the_round_is_frozen_not_just_dropped() {
+    let ns = nodes(3);
+    let smp = sample(B256::ZERO, 0);
+    let h = smp.hash();
+    let mut input = play(&ns, 0, &[h, h, keccak256(b"lie")], &[true; 3]);
+    with_claim(&mut input, &smp);
+    // The liar sees the seed and calls manageStake(nonce, 0, height) before the settlement.
+    input.stakes[2].last_updated = U256::from(SEED_BLOCK + 1);
+    let pv = run(&input).unwrap();
+    assert!(pv.outcome.hasTruth);
+    assert_eq!(pv.outcome.redundancy, 2);
+    let i = pv
+        .outcome
+        .freezeOwners
+        .iter()
+        .position(|o| *o == ns[2].key.address())
+        .expect("the node that left is frozen");
+    // The non-reveal freeze: more than the disagreement freeze it tried to escape.
+    let unit = U256::from(ROUND_LENGTH) << pv.outcome.truthDepth as usize;
+    assert_eq!(pv.outcome.freezeDurations[i], unit * U256::from(2u8));
+}
