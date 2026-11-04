@@ -159,7 +159,7 @@ describe('Settlement', function () {
 
   const encode = (pv: unknown) => coder.encode([PV_TYPE], [pv]);
 
-  async function anchoredRound(commitsHash = keccak256('0x'), count = 0) {
+  async function anchoredRound(commitsHash = ZERO, count = 0) {
     const round = await mineToOffset(COMMIT_END);
     await settlement.anchorRound(round, commitsHash, count, ZERO);
     return round;
@@ -242,6 +242,31 @@ describe('Settlement', function () {
       const next = await mineToOffset(10, round + 1);
       await settlement.connect(nodes[0]).forceCommit(next, keccak256('0x03'));
       expect((await settlement.rounds(next)).forcedCommitCount).to.eq(1);
+    });
+
+    it('lets anybody anchor an empty list when no prover anchored (liveness fallback)', async function () {
+      const outsider = (await ethers.getSigners())[15];
+      // No prover anchored: not before block 20, then anybody, once.
+      const round = await mineToOffset(ANCHOR_END - 1);
+      await expect(settlement.connect(outsider).anchorEmpty(round)).to.be.revertedWith('NotAnchorPhase');
+      await settlement.connect(nodes[0]).forceCommit(round, keccak256('0x01'));
+      await settlement.connect(outsider).anchorEmpty(round);
+      await expect(settlement.connect(outsider).anchorEmpty(round)).to.be.revertedWith('AlreadyAnchored');
+      const ri = await settlement.rounds(round);
+      expect(ri.anchored).to.be.true;
+      expect(ri.commitCount).to.eq(0);
+      expect(ri.commitsHash).to.eq(ZERO);
+      // The forced commit counts, and forceCommit is still open until block 23.
+      expect(ri.forcedCommitCount).to.eq(1);
+      await settlement.connect(nodes[1]).forceCommit(round, keccak256('0x02'));
+      // The round settles like any other.
+      await mineTo(round * ROUND_LENGTH + SEED_OFFSET + 1);
+      const owners = [await nodes[0].getAddress(), await nodes[1].getAddress()];
+      await settlement.settleRound(encode(await publicValues(round, owners, {})), '0x');
+      expect(await settlement.lastSettledRound()).to.eq(round);
+      // An empty list needs the zero hash in anchorRound too.
+      const next = await mineToOffset(COMMIT_END, round + 1);
+      await expect(settlement.anchorRound(next, keccak256('0x'), 0, ZERO)).to.be.revertedWith('RevealsHashMismatch');
     });
 
     it('anchors commits only before the commit check blocks', async function () {
@@ -370,7 +395,7 @@ describe('Settlement', function () {
       const frozenUntil = (await staking.lastUpdatedBlockNumberOfAddress(owners[3])).toNumber();
 
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, keccak256('0x'), 0, ZERO);
+      await settlement.anchorRound(r2, ZERO, 0, ZERO);
       await mineTo(Math.max(r2 * ROUND_LENGTH + SEED_OFFSET + 1, frozenUntil - 1));
       const pv2 = await publicValues(r2, owners, {});
       await mineTo(frozenUntil + 2);
@@ -470,7 +495,7 @@ describe('Settlement', function () {
       expect(await settlement.accruedPot()).to.eq(700);
 
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, keccak256('0x'), 0, ZERO);
+      await settlement.anchorRound(r2, ZERO, 0, ZERO);
       await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
       const before = await token.balanceOf(owners[2]);
       await settlement.settleRound(
@@ -538,10 +563,10 @@ describe('Settlement', function () {
     it('settles anchored rounds in order, without skipping one that can still settle', async function () {
       const r1 = await anchoredRound();
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, keccak256('0x'), 0, ZERO);
+      await settlement.anchorRound(r2, ZERO, 0, ZERO);
       // r3 is not anchored: it is skipped without a settlement.
       const r4 = await mineToOffset(COMMIT_END, r2 + 2);
-      await settlement.anchorRound(r4, keccak256('0x'), 0, ZERO);
+      await settlement.anchorRound(r4, ZERO, 0, ZERO);
       await mineTo(r4 * ROUND_LENGTH + SEED_OFFSET + 1);
       // Skipping r1 (and its winner) is not possible while r1 can settle.
       await expect(settlement.settleRound(encode(await publicValues(r2, [], {})), '0x')).to.be.revertedWith(
@@ -565,7 +590,7 @@ describe('Settlement', function () {
       await settlement.settleRound(encode(pv), '0x');
       // Check the seed guard on the next round, before its seed block.
       const next = await mineToOffset(COMMIT_END, round + 1);
-      await settlement.anchorRound(next, keccak256('0x'), 0, ZERO);
+      await settlement.anchorRound(next, ZERO, 0, ZERO);
       pv.inputs.round = next;
       pv.inputs.roundAnchor = (await settlement.rounds(next)).roundAnchor;
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('SeedNotAvailable');
@@ -655,7 +680,7 @@ describe('Settlement', function () {
     it('a round whose entry was reused cannot settle', async function () {
       const r1 = await anchoredRound();
       await mineToOffset(COMMIT_END, r1 + RING);
-      await settlement.anchorRound(r1 + RING, keccak256('0x'), 0, ZERO);
+      await settlement.anchorRound(r1 + RING, ZERO, 0, ZERO);
       await mineTo((r1 + RING) * ROUND_LENGTH + SEED_OFFSET + 1);
       const owners = await Promise.all(nodes.map((n) => n.getAddress()));
       const pv = await publicValues(r1 + RING, owners, {});

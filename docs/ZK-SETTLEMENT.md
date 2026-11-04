@@ -144,7 +144,7 @@ scaled from the Gnosis layout. Measurements in section 5 before 2026-11-03 used 
 | Blocks in round | Phase | What happens |
 | --- | --- | --- |
 | 0-15 | commit | Nodes sign commits and send them to a prover, or call `forceCommit` |
-| 16-19 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once |
+| 16-19 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once. If it does not, anybody can call `anchorEmpty(round)` in blocks 20-23 |
 | 20-23 | commit check | Each node compares the anchored list with `commitsHash` on chain. A node that is missing calls `forceCommit` (open until block 23) |
 | 24-39 | reveal | Nodes send reveals to the prover, or call `forceReveal` |
 | 40-43 | reveal anchor | The prover calls `anchorReveals(round, revealsHash, count, dataRef)` once. The prover accepts no more off-chain reveals |
@@ -447,7 +447,12 @@ block; (2) `settleRound` reverts with `RoundPending` while an earlier anchored r
 
 **Prover liveness.** `settleRound` is permissionless. `anchorRound` is limited to `ANCHOR_ROLE` (the
 Foundation's prover first, as the proposal says). If nobody settles, the payments stay in PostageStampZK.
-The next settlement replays the log and credits them. Rounds settle in increasing order. An anchored round
+The next settlement replays the log and credits them. If no prover calls `anchorRound` in blocks 16-19,
+anybody can call `anchorEmpty(round)` in blocks 20-23: the round is anchored with an empty commit list,
+the nodes force their commits and reveals, and any prover can settle the round from data that is all on
+chain (node-sim does this; the prover option `NO_ANCHOR`, test only, runs a prover that stopped
+anchoring). Before this fallback (found in review, 2026-11-04), a stopped prover made every round
+unsettleable, and forced entries counted for nothing. Rounds settle in increasing order. An anchored round
 cannot be skipped while it can still settle; a round without an anchor is skipped. Section 4 tells who
 settles and who pays.
 

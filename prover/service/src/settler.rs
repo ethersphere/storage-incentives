@@ -52,6 +52,9 @@ pub struct Config {
     /// anchored reveal list (the attack anchorReveals exists for).
     #[arg(long, env = "CENSOR_REVEALS", value_delimiter = ',')]
     pub censor_reveals: Vec<Address>,
+    /// TEST ONLY: never anchor (a prover that stopped anchoring); still settles rounds that others anchored.
+    #[arg(long, env = "NO_ANCHOR")]
+    pub no_anchor: bool,
     /// TEST ONLY: accept claim witnesses but throw them away (the attack the winner's forceClaim
     /// backstop exists for).
     #[arg(long, env = "WITHHOLD_CLAIMS")]
@@ -90,6 +93,7 @@ pub struct Ctx {
     /// Overlays of `Config::censor_reveals`.
     pub censor_reveals: Vec<B256>,
     pub withhold_claims: bool,
+    pub no_anchor: bool,
     /// The prover's Bee node, if configured.
     pub bee: Option<Bee>,
     pub snapshot_every: u64,
@@ -139,6 +143,7 @@ pub async fn serve(cfg: Config) -> Result<()> {
         censor_commits: cfg.censor_commits.clone(),
         censor_reveals,
         withhold_claims: cfg.withhold_claims,
+        no_anchor: cfg.no_anchor,
         bee: cfg
             .swarm_api
             .as_deref()
@@ -176,6 +181,12 @@ async fn anchor_loop(ctx: Arc<Ctx>, poll: Duration) {
 async fn anchor_tick(ctx: &Ctx) -> Result<()> {
     let block = ctx.provider.get_block_number().await?;
     let (round, offset) = (round_of(block), offset_of(block));
+    if offset >= ANCHOR_END {
+        note_empty_anchor(ctx, round).await?;
+    }
+    if ctx.no_anchor {
+        return Ok(());
+    }
     if (COMMIT_END..ANCHOR_END).contains(&offset) {
         anchor_commits(ctx, round).await
     } else if (REVEAL_ANCHOR_START..REVEAL_ANCHOR_END).contains(&offset) {
@@ -183,6 +194,28 @@ async fn anchor_tick(ctx: &Ctx) -> Result<()> {
     } else {
         Ok(())
     }
+}
+
+/// A round this prover did not anchor, but somebody anchored with an empty list (`anchorEmpty`, the
+/// liveness fallback): settle it too. Its inputs are all on chain (forced entries).
+async fn note_empty_anchor(ctx: &Ctx, round: u64) -> Result<()> {
+    if ctx.store.lock().await.get_mut(round).anchored.is_some() {
+        return Ok(());
+    }
+    let ri = Settlement::new(ctx.settlement, &ctx.provider)
+        .rounds(round)
+        .call()
+        .await?;
+    if ri.anchored && ri.commitCount == 0 {
+        info!(
+            round,
+            "round anchored with an empty list by somebody else; settling it from forced entries"
+        );
+        let mut store = ctx.store.lock().await;
+        store.get_mut(round).anchored = Some(vec![]);
+        store.save(round)?;
+    }
+    Ok(())
 }
 
 /// Fix the round's off-chain commit list on chain (anchorRound).

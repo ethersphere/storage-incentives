@@ -40,6 +40,7 @@ alloy::sol! {
     #[sol(rpc)]
     contract Settlement {
         function anchorRound(uint64 _round, bytes32 _commitsHash, uint32 _commitCount, bytes32 _dataRef) external;
+        function anchorEmpty(uint64 _round) external;
         function anchorReveals(uint64 _round, bytes32 _revealsHash, uint32 _revealCount, bytes32 _dataRef) external;
         function forceCommit(uint64 _round, bytes32 _obfuscatedHash) external;
         function forceReveal(uint64 _round, bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _nonce) external;

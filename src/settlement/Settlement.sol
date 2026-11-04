@@ -316,6 +316,7 @@ contract Settlement is AccessControl, Pausable {
     error WitnessTooLarge();
     error AlreadyAnchored();
     error NotRevealAnchorPhase();
+    // An anchored list's hash must be zero exactly when its count is zero (commit or reveal list).
     error RevealsHashMismatch();
     error NotAnchored();
     error AlreadySettled();
@@ -376,14 +377,34 @@ contract Settlement is AccessControl, Pausable {
         uint256 offset = block.number % ROUND_LENGTH;
         if (offset < COMMIT_END || offset >= ANCHOR_END) revert NotAnchorPhase();
 
+        if ((_commitCount == 0) != (_commitsHash == bytes32(0))) revert RevealsHashMismatch();
         RoundSlot storage ri = _entry(_round);
         if (ri.anchored) revert AlreadyAnchored();
 
         ri.anchored = true;
-        ri.commitsHash = _commitsHash;
         ri.commitCount = _commitCount;
+        // An empty list leaves the hash slot as it is (it does not count with a zero count).
+        if (_commitCount != 0) ri.commitsHash = _commitsHash;
 
         emit RoundAnchored(_round, roundAnchor(_round), _commitsHash, _commitCount, _dataRef);
+    }
+
+    /**
+     * @notice Liveness fallback: if no prover anchored the round in blocks 16-19, anybody can anchor it with
+     * an empty commit list in blocks 20-23. The nodes then use forceCommit and forceReveal (still open), and
+     * any prover can settle the round from data that is all on chain. Without this, a prover that stops
+     * makes every round unsettleable, and the forced entries count for nothing.
+     */
+    function anchorEmpty(uint64 _round) external whenNotPaused {
+        if (_round != currentRound()) revert WrongRound();
+        uint256 offset = block.number % ROUND_LENGTH;
+        if (offset < ANCHOR_END || offset >= REVEAL_START) revert NotAnchorPhase();
+
+        RoundSlot storage ri = _entry(_round);
+        if (ri.anchored) revert AlreadyAnchored();
+        ri.anchored = true;
+
+        emit RoundAnchored(_round, roundAnchor(_round), bytes32(0), 0, bytes32(0));
     }
 
     /**
@@ -759,7 +780,7 @@ contract Settlement is AccessControl, Pausable {
         ri.forcedRevealCount = e.forcedRevealCount;
         ri.forcedClaimCount = e.forcedClaimCount;
         if (e.anchored) {
-            ri.commitsHash = e.commitsHash;
+            if (e.commitCount != 0) ri.commitsHash = e.commitsHash;
             bytes32 bh = _blockHash(roundStart(_round) - 1);
             if (bh != bytes32(0)) ri.roundAnchor = keccak256(abi.encode(bh, _round));
         }

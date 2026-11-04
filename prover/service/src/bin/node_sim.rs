@@ -611,12 +611,25 @@ async fn check_commits(
         Err(e) => return warn!(round, "rounds: {e:#}"),
     };
     if !ri.anchored {
-        // Nobody anchored the round: it cannot be settled, a forced commit would not count either.
-        warn!(round, "round not anchored");
-        for idx in pending {
-            played.get_mut(&(round, idx)).unwrap().commit_safe = true;
+        // No prover anchored the round: anchor it with an empty list (anchorEmpty, open to anybody from
+        // block 20), then every node forces its commit below.
+        let n = &nodes[pending[0]];
+        match Settlement::new(args.settlement, &n.provider)
+            .anchorEmpty(round)
+            .gas(FORCE_GAS)
+            .send()
+            .await
+        {
+            Ok(tx) => match tx.get_receipt().await {
+                Ok(r) if r.status() => warn!(
+                    round,
+                    node = n.idx,
+                    "round not anchored by a prover: anchorEmpty"
+                ),
+                _ => return warn!(round, "anchorEmpty failed (another node may have done it)"),
+            },
+            Err(e) => return warn!(round, "anchorEmpty: {e:#}"),
         }
-        return;
     }
     for idx in pending {
         let n = &nodes[idx];
