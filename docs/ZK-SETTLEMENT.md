@@ -302,8 +302,10 @@ to count.
 
 **The event log.** Each change that affects the pot (batch created or copied, topped up, deepened, price
 changed) appends one entry: `hash_i = keccak256(hash_{i-1}, kind, batchId, owner, depth, bucketDepth,
-value, outpayment, block)`. The contract keeps the hash and block of the last 256 entries
-(`eventHashAt`, `eventBlockAt`) and emits `PostageLog` with the same fields. This costs about 15k gas for
+value, outpayment, block)`. The contract keeps the hash and block of the last 8,192 entries
+(`eventHashAt`, `eventBlockAt`) and emits `PostageLog` with the same fields. (With 256 entries, about 17M
+gas of cheap top-ups between a round's seed block and its `settleRound` transaction pushed the needed
+entries out and made the settlement revert; found in review, 2026-11-04.) This costs about 15k gas for
 each change.
 
 **The batch tree.** The live batches are the leaves of a Merkle tree with 2^32 leaves. Settlement

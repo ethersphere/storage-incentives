@@ -89,6 +89,21 @@ describe('PostageStampZK', function () {
     expect(entries[3].depth).to.eq(19);
   });
 
+  it('keeps 8192 log entries, so a burst of cheap top-ups cannot push a settlement out of the ring', async function () {
+    expect(await stamp.EVENT_RING()).to.eq(8192);
+    const perChunk = (await stamp.minimumInitialBalancePerChunk()).mul(100);
+    const id = await create(ZERO, perChunk);
+    // 300 top-ups of 1 per chunk: more than the old ring of 256.
+    await network.provider.send('evm_setAutomine', [false]);
+    for (let i = 0; i < 300; i++) await stamp.topUp(id, 1, { gasLimit: 200_000 });
+    for (let b = 0; b < 5; b++) await network.provider.send('evm_mine', []); // more than one block of gas
+    await network.provider.send('evm_setAutomine', [true]);
+    expect(await stamp.eventCount()).to.eq(302);
+    // The first entries can still be checked.
+    expect(await stamp.eventHashAt(1)).to.not.eq(ZERO);
+    expect(await stamp.eventBlockAt(2)).to.be.gt(0);
+  });
+
   it('keeps the events Bee follows', async function () {
     const perChunk = (await stamp.minimumInitialBalancePerChunk()).mul(2);
     await expect(stamp.createBatch(await deployer.getAddress(), perChunk, 18, 16, ZERO, false)).to.emit(

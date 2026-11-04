@@ -41,11 +41,15 @@ contract PostageStampZK is AccessControl, Pausable {
     uint64 public lastUpdatedBlock;
 
     // Event log for the settlement proof. Entry i (1-based) is hashed into eventHash(i); the last
-    // EVENT_RING entries keep their hash and block so Settlement can check a prefix of the log.
-    uint256 public constant EVENT_RING = 256;
+    // EVENT_RING entries keep their hash and block so Settlement can check a prefix of the log. A settlement
+    // needs the entries from its cut block (the seed block of its round) to its own transaction to still be
+    // in the ring. With 256 entries, about 17M gas of cheap top-ups in a minute pushed them out and made
+    // settleRound revert; 8192 entries need about 550M. Each log entry still writes one hash slot (and a
+    // quarter of a block slot): the slots are reused, so the larger ring costs gas only on first use.
+    uint256 public constant EVENT_RING = 8192;
     uint64 public eventCount;
-    bytes32[256] private eventHashRing;
-    uint64[256] private eventBlockRing;
+    bytes32[8192] private eventHashRing;
+    uint64[8192] private eventBlockRing;
 
     uint8 public constant KIND_CREATE = 1;
     uint8 public constant KIND_TOPUP = 2;
