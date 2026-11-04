@@ -34,8 +34,13 @@ fn base_input() -> RoundInput {
         chain_id: U256::from(11155111u64),
         settlement: address!("00000000000000000000000000000000000000aa"),
         round: ROUND,
-        round_anchor: b256!("0000000000000000000000000000000000000000000000000000000000000000"),
-        selection_seed: keccak256(b"seed"),
+        round_anchor: rnd().round_anchor,
+        selection_seed: rnd().selection_seed,
+        anchor_header: randomness::synthetic_header(
+            ROUND * ROUND_LENGTH - 1,
+            keccak256(b"anchor mix"),
+        ),
+        seed_header: randomness::synthetic_header(SEED_BLOCK, keccak256(b"seed mix")),
         commits: vec![],
         forced_commits: vec![],
         reveals: vec![],
@@ -60,6 +65,22 @@ fn base_input() -> RoundInput {
 }
 
 const SEED_BLOCK: u64 = ROUND * ROUND_LENGTH + SEED_OFFSET;
+
+/// The randomness of the test round, from two synthetic headers.
+fn rnd() -> randomness::Randomness {
+    randomness::derive(
+        ROUND,
+        ROUND_LENGTH,
+        SEED_OFFSET,
+        &randomness::synthetic_header(ROUND * ROUND_LENGTH - 1, keccak256(b"anchor mix")),
+        &randomness::synthetic_header(SEED_BLOCK, keccak256(b"seed mix")),
+    )
+    .unwrap()
+}
+
+fn anchor() -> B256 {
+    rnd().round_anchor
+}
 
 /// Give the round a postage state with these batches (and their normalisedBalance) alive since the last
 /// cut at SEED_BLOCK - ROUND_LENGTH, price 1 since block 1, and replay `events` up to SEED_BLOCK + 1. The
@@ -235,7 +256,7 @@ fn minimum_depth_matches_solidity() {
 #[test]
 fn honest_round_pays_one_and_freezes_nobody() {
     let ns = nodes(4);
-    let s = sample(B256::ZERO, 0);
+    let s = sample(anchor(), 0);
     let h = s.hash();
     let mut input = play(&ns, 0, &[h; 4], &[true; 4]);
     with_claim(&mut input, &s);
@@ -255,7 +276,7 @@ fn honest_round_pays_one_and_freezes_nobody() {
 #[test]
 fn liar_and_silent_nodes_are_frozen() {
     let ns = nodes(5);
-    let s = sample(B256::ZERO, 0);
+    let s = sample(anchor(), 0);
     let h = s.hash();
     let lie = keccak256(b"lie");
     // Node 4 lies, node 3 never reveals. With 3 honest stakes against one liar the truth can still
@@ -290,7 +311,7 @@ fn liar_and_silent_nodes_are_frozen() {
 #[test]
 fn bad_signature_is_dropped_not_fatal() {
     let ns = nodes(3);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let h = smp.hash();
     let mut input = play(&ns, 0, &[h; 3], &[true; 3]);
     input.commits[1].signature = Bytes::from(vec![0u8; 65]);
@@ -306,7 +327,7 @@ fn bad_signature_is_dropped_not_fatal() {
 #[test]
 fn forced_commit_and_reveal_count() {
     let ns = nodes(3);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let h = smp.hash();
     let mut input = play(&ns, 0, &[h; 3], &[true; 3]);
     // Move node 2 to the forced path: drop its off-chain commit and reveal.
@@ -330,7 +351,7 @@ fn forced_commit_and_reveal_count() {
 #[test]
 fn anchored_reveals_are_public_and_a_dropped_reveal_can_be_forced() {
     let ns = nodes(3);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let h = smp.hash();
     let mut input = play(&ns, 0, &[h; 3], &[true; 3]);
     with_claim(&mut input, &smp);
@@ -358,10 +379,13 @@ fn anchored_reveals_are_public_and_a_dropped_reveal_can_be_forced() {
 #[test]
 fn out_of_proximity_reveal_counts_as_not_revealed() {
     let mut ns = nodes(2);
-    // depth 1 with height 0: overlay must share the first bit with the zero anchor.
-    ns[0].overlay = b256!("0100000000000000000000000000000000000000000000000000000000000000");
-    ns[1].overlay = b256!("8100000000000000000000000000000000000000000000000000000000000000");
-    let smp = sample(B256::ZERO, 1);
+    // depth 1 with height 0: overlay must share the first bit with the round anchor.
+    let first = anchor()[0] & 0x80;
+    ns[0].overlay = B256::with_last_byte(1);
+    ns[0].overlay.0[0] = first | 0x01;
+    ns[1].overlay = B256::with_last_byte(1);
+    ns[1].overlay.0[0] = (first ^ 0x80) | 0x01;
+    let smp = sample(anchor(), 1);
     let h = smp.hash();
     let mut input = play(&ns, 1, &[h; 2], &[true; 2]);
     with_claim(&mut input, &smp);
@@ -376,7 +400,7 @@ fn out_of_proximity_reveal_counts_as_not_revealed() {
 #[test]
 fn recently_staked_node_is_ignored() {
     let ns = nodes(2);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let h = smp.hash();
     let mut input = play(&ns, 0, &[h; 2], &[true; 2]);
     input.stakes[1].last_updated = U256::from(ROUND * ROUND_LENGTH - 10);
@@ -389,7 +413,7 @@ fn recently_staked_node_is_ignored() {
 #[test]
 fn stake_age_zero_lets_a_node_play_in_the_next_round() {
     let ns = nodes(2);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let mut input = play(&ns, 0, &[smp.hash(); 2], &[true; 2]);
     with_claim(&mut input, &smp);
     // Node 1 staked in the previous round.
@@ -439,7 +463,7 @@ fn unsorted_commits_are_rejected() {
 fn public_values_roundtrip_abi() {
     use alloy_sol_types::SolType;
     let ns = nodes(3);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let mut input = play(&ns, 0, &[smp.hash(); 3], &[true, true, false]);
     with_claim(&mut input, &smp);
     let pv = run(&input).unwrap();
@@ -647,7 +671,7 @@ fn wrong_order_in_sample_is_rejected() {
 #[test]
 fn truth_without_witness_is_unclaimed() {
     let ns = nodes(3);
-    let s = sample(B256::ZERO, 0);
+    let s = sample(anchor(), 0);
     let input = play(&ns, 0, &[s.hash(); 3], &[true, true, false]);
     let pv = run(&input).unwrap();
     assert!(!pv.outcome.hasTruth);
@@ -658,7 +682,7 @@ fn truth_without_witness_is_unclaimed() {
 #[test]
 fn forced_claim_counts_when_the_prover_has_none() {
     let ns = nodes(3);
-    let s = sample(B256::ZERO, 0);
+    let s = sample(anchor(), 0);
     let mut input = play(&ns, 0, &[s.hash(); 3], &[true; 3]);
     let w = s.witness(&input.round_anchor, input.selection_seed, stamp);
     input.forced_claims = vec![Bytes::from(vec![1, 2, 3]), Bytes::from(w.encode())];
@@ -674,7 +698,7 @@ fn forced_claim_counts_when_the_prover_has_none() {
 #[test]
 fn claim_needs_the_batch_in_the_postage_state() {
     let ns = nodes(2);
-    let s = sample(B256::ZERO, 0);
+    let s = sample(anchor(), 0);
     let mut input = play(&ns, 0, &[s.hash(); 2], &[true; 2]);
     with_claim(&mut input, &s);
     // The batch is unknown to the proven postage state: the claim fails, the round is unclaimed. The
@@ -687,7 +711,7 @@ fn claim_needs_the_batch_in_the_postage_state() {
 #[test]
 fn claim_needs_a_batch_alive_at_the_seed_block() {
     let ns = nodes(2);
-    let s = sample(B256::ZERO, 0);
+    let s = sample(anchor(), 0);
     let mut input = play(&ns, 0, &[s.hash(); 2], &[true; 2]);
     with_claim(&mut input, &s);
     // Outpayment at the seed block is SEED_BLOCK - 1 (price 1 since block 1): balance just at it.
@@ -722,7 +746,7 @@ fn postage_outcome_is_part_of_every_round() {
 #[test]
 fn every_private_input_is_bound_to_a_public_input() {
     let ns = nodes(4);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let h = smp.hash();
     let lie = keccak256(b"lie");
     // The liar has the smallest stake, so the honest hash is the truth for this seed.
@@ -893,7 +917,7 @@ fn anchored_lists_are_merkle_roots_a_node_can_check_alone() {
 #[test]
 fn a_node_that_changes_its_stake_during_the_round_is_frozen_not_just_dropped() {
     let ns = nodes(3);
-    let smp = sample(B256::ZERO, 0);
+    let smp = sample(anchor(), 0);
     let h = smp.hash();
     let mut input = play(&ns, 0, &[h, h, keccak256(b"lie")], &[true; 3]);
     with_claim(&mut input, &smp);

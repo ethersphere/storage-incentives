@@ -175,16 +175,23 @@ block, so the last 49 blocks of the 8,191-block window are not available for a s
 
 ### Randomness
 
-- **Round anchor** (neighbourhood selection) = `keccak256(blockhash(roundStart - 1), round)`. Every node
-  knows it from the first block of the round. Stored at `anchorRound`.
-- **Selection seed** (truth, winner, freeze lottery) = `keccak256(roundAnchor, blockhash(roundStart + 114))`.
-  It's fixed after every commit and reveal deadline has passed. Settlement recomputes it itself, from
-  `blockhash` or from the EIP-2935 history contract (8191 blocks, about 27 hours), and rejects a proof
-  that used anything else.
+- **Round anchor** (neighbourhood selection) = `keccak256(abi.encode(prevrandao of block roundStart - 1,
+  round))`. Every node knows it from the first block of the round: it reads `prevrandao` (the header's
+  `mixHash`) from its Ethereum node.
+- **Selection seed** (truth, winner, freeze lottery) = `keccak256(abi.encode(round anchor, prevrandao of
+  block roundStart + 48))`. It is fixed after every commit and reveal deadline.
+- **How the contract checks it.** A contract cannot read the `prevrandao` of an earlier block. So the
+  proof gets the RLP headers of the two blocks, checks that each header hashes to the block hash it
+  commits to (`anchorBlockHash`, `seedBlockHash`), and reads `mixHash` from them. Settlement compares the
+  two hashes with the block hashes it reads itself (BLOCKHASH, or EIP-2935 for 8,191 blocks). Code:
+  `prover/crates/vm/src/randomness.rs`.
 
-This removes the "first revealer chooses the seed block" lever of today's contract
-([ZK-REDISTRIBUTION.md §6](./ZK-REDISTRIBUTION.md)). What's left is the usual proposer influence over
-one block hash.
+**Why `prevrandao` and not the block hash (changed 2026-11-04).** A block builder chooses the
+transactions of a block, so it can try many orderings and keep a block hash that selects the neighbourhood
+or the winner it wants. With the anchored reveal list public (Swarm data layer), anybody can compute the
+winner for each candidate hash. `prevrandao` is fixed before the slot; the proposer can only skip its
+slot, which is one bit of influence. This also removes the "first revealer chooses the seed block" lever
+of today's contract ([ZK-REDISTRIBUTION.md §6](./ZK-REDISTRIBUTION.md)).
 
 ### What the proof commits to
 
@@ -384,7 +391,7 @@ the same total with one settlement instead of six.
 | `msg.sender` identifies the committer | EIP-191 signature over `commitDigest(round, obf)` | Same binding, off chain. Domain-separated by chain and contract |
 | Stake must be 2 rounds old | `Settlement.stakeAgeRounds` (default 2). `STAKE_AGE_ROUNDS=0` at deploy lets a node play in the round after it staked; for test networks only | Faster tests on Sepolia |
 | Stake snapshot at `commit` (`nodeEffectiveStake`) | Raw stake record read at `settleRound`; must be older than `roundStart - 2 rounds`. Effective stake = `min(2^height * committed * price, potential)`, computed in the VM | Avoids a stake snapshot transaction. A stake change or freeze after the round started disqualifies the node for that round, and the node gets the non-reveal freeze. Without that freeze, a node could see the seed, call `manageStake(nonce, 0, height)` (only gas), and leave the round to escape a freeze or to change the draw (found in review, 2026-11-04). Reading the stakes as of round start (optimization item 1) removes the rule. The raw record is used because `nodeEffectiveStake` depends on `block.number` (0 while frozen), which made the first version fail when a freeze expired between proving and settling (regression test in `test/Settlement.test.ts`) |
-| Seed updated with `prevrandao` at the first reveal | Block hash of a fixed block (48) | The prover must not influence randomness |
+| Seed updated with `prevrandao` at the first reveal | `prevrandao` of a fixed block (48), read from its header in the proof | The prover must not influence randomness; a block builder must not either (a block hash can be ground) |
 | Disagreement freeze uses `block.prevrandao % 100` | `keccak(seed, "2") % 100` | Same reason |
 | Invalid reveal reverts, so the node stays "not revealed" | Invalid reveal is ignored, so the node stays "not revealed" | Same effect |
 | Anchored commit with a bad signature | Dropped from the round | A prover that anchored garbage must not make the round unprovable |

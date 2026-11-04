@@ -11,8 +11,8 @@ sol! {
         uint256 chainId;
         address settlement;
         uint64 round;
-        bytes32 roundAnchor;
-        bytes32 selectionSeed;
+        bytes32 anchorBlockHash;
+        bytes32 seedBlockHash;
         bytes32 commitsHash;
         uint32 commitCount;
         bytes32 revealsHash;
@@ -120,8 +120,15 @@ pub struct RoundInput {
     pub chain_id: U256,
     pub settlement: Address,
     pub round: u64,
+    /// Derived from the headers below (`randomness::derive`); the VM checks them.
     pub round_anchor: B256,
     pub selection_seed: B256,
+    /// RLP header of block roundStart - 1 (its mixHash is prevrandao).
+    #[serde(default)]
+    pub anchor_header: Bytes,
+    /// RLP header of the seed block, roundStart + SEED_OFFSET.
+    #[serde(default)]
+    pub seed_header: Bytes,
     /// Anchored off-chain commits, sorted by owner, as hashed into `commitsHash`.
     pub commits: Vec<SignedCommit>,
     /// `CommitForced` events of the round, in chain order.

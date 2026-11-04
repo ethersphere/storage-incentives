@@ -24,6 +24,46 @@ pub const CLAIM_START: u64 = 49;
 /// EIP-2935 serves this many past block hashes; after that a round's seed is gone for good.
 pub const HISTORY_SERVE_WINDOW: u64 = 8191;
 
+/// The RLP header of block `number`, checked against the block hash the node reports.
+pub async fn header_rlp<P: alloy::providers::Provider>(
+    p: &P,
+    number: u64,
+) -> anyhow::Result<Bytes> {
+    let block = p
+        .get_block_by_number(number.into())
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("block {number} not found"))?;
+    let rlp = alloy::rlp::encode(&block.header.inner);
+    if alloy::primitives::keccak256(&rlp) != block.header.hash {
+        anyhow::bail!("block {number}: the RLP of the header does not hash to the block hash");
+    }
+    Ok(Bytes::from(rlp))
+}
+
+/// The round anchor (neighbourhood selection), known from the first block of the round: from prevrandao
+/// of block roundStart - 1. Returns the header too (the proof needs it).
+pub async fn round_anchor<P: alloy::providers::Provider>(
+    p: &P,
+    round: u64,
+) -> anyhow::Result<(B256, Bytes)> {
+    let header = header_rlp(p, round * ROUND_LENGTH - 1).await?;
+    let (mix, _) = swarm_vm::randomness::header_mix_hash(&header)
+        .ok_or_else(|| anyhow::anyhow!("bad header"))?;
+    Ok((swarm_vm::randomness::round_anchor(mix, round), header))
+}
+
+/// The round's randomness and the two headers it comes from, once the seed block exists.
+pub async fn round_randomness<P: alloy::providers::Provider>(
+    p: &P,
+    round: u64,
+) -> anyhow::Result<(swarm_vm::randomness::Randomness, Bytes, Bytes)> {
+    let anchor = header_rlp(p, round * ROUND_LENGTH - 1).await?;
+    let seed = header_rlp(p, seed_block(round)).await?;
+    let r = swarm_vm::randomness::derive(round, ROUND_LENGTH, SEED_OFFSET, &anchor, &seed)
+        .ok_or_else(|| anyhow::anyhow!("headers do not give the round's randomness"))?;
+    Ok((r, anchor, seed))
+}
+
 pub fn round_of(block: u64) -> u64 {
     block / ROUND_LENGTH
 }
@@ -48,7 +88,7 @@ alloy::sol! {
         function settleRound(bytes calldata _publicValues, bytes calldata _proofBytes) external;
 
         function rounds(uint64) external view returns (
-            bytes32 roundAnchor,
+            bytes32 anchorBlockHash,
             bytes32 commitsHash,
             uint32 commitCount,
             bool anchored,
@@ -63,8 +103,8 @@ alloy::sol! {
             uint32 revealCount,
             bool revealsAnchored
         );
-        function roundAnchor(uint64 _round) external view returns (bytes32);
-        function selectionSeed(uint64 _round) external view returns (bytes32);
+        function anchorBlockHash(uint64 _round) external view returns (bytes32);
+        function seedBlockHash(uint64 _round) external view returns (bytes32);
         function commitDigest(uint64 _round, bytes32 _obfuscatedHash) external view returns (bytes32);
         function lastSettledRound() external view returns (uint64);
         function lastClaimRound() external view returns (uint64);
@@ -83,7 +123,7 @@ alloy::sol! {
         function postageEventHash() external view returns (bytes32);
         function accruedPot() external view returns (uint256);
 
-        event RoundAnchored(uint64 indexed round, bytes32 roundAnchor, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
+        event RoundAnchored(uint64 indexed round, bytes32 anchorBlockHash, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
         event PostageSettled(uint64 indexed round, uint64 eventIndex, uint64 cutBlock, uint256 potAmount, uint256 accruedPot);
         event RevealsAnchored(uint64 indexed round, bytes32 revealsHash, uint32 revealCount, bytes32 dataRef);
         event CommitForced(uint64 indexed round, address indexed owner, bytes32 obfuscatedHash);

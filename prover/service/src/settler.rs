@@ -378,7 +378,7 @@ async fn settle_tick(ctx: &Ctx) -> Result<()> {
         // The seed must still be readable on chain (EIP-2935 window; 256 blocks where the history contract
         // is missing, for example on anvil). If not, the round can never settle, and Settlement lets
         // later rounds pass it.
-        let seed_gone = match s.selectionSeed(round).call().await {
+        let seed_gone = match s.seedBlockHash(round).call().await {
             // SeedNotAvailable(): only this revert, not an RPC error, means the seed is gone.
             Err(e) => format!("{e:?}").contains("52d1ee1c"),
             Ok(_) => false,
@@ -479,12 +479,17 @@ pub async fn build_input(
         anyhow::bail!("ClaimForced events do not match the on-chain hash chain (RPC log gap?)");
     }
 
+    // Randomness from prevrandao in the two headers (checked against their block hashes).
+    let (rnd, anchor_header, seed_header) =
+        swarm_prover::round_randomness(&ctx.provider, round).await?;
     let mut input = RoundInput {
         chain_id: ctx.chain_id,
         settlement: ctx.settlement,
         round,
-        round_anchor: ri.roundAnchor,
-        selection_seed: s.selectionSeed(round).call().await?,
+        round_anchor: rnd.round_anchor,
+        selection_seed: rnd.selection_seed,
+        anchor_header,
+        seed_header,
         commits,
         forced_commits,
         reveals,

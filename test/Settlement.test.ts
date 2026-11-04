@@ -118,8 +118,8 @@ describe('Settlement', function () {
         chainId: network.config.chainId,
         settlement: settlement.address,
         round,
-        roundAnchor: ri.roundAnchor,
-        selectionSeed: await settlement.selectionSeed(round),
+        anchorBlockHash: ri.anchorBlockHash,
+        seedBlockHash: await settlement.seedBlockHash(round),
         commitsHash: ri.commitsHash,
         commitCount: ri.commitCount,
         revealsHash: ri.revealsHash,
@@ -176,7 +176,7 @@ describe('Settlement', function () {
       await expect(settlement.anchorRound(round, ZERO, 0, ZERO)).to.be.revertedWith('AlreadyAnchored');
       const ri = await settlement.rounds(round);
       expect(ri.anchored).to.be.true;
-      expect(ri.roundAnchor).to.eq(await settlement.roundAnchor(round));
+      expect(ri.anchorBlockHash).to.eq(await settlement.anchorBlockHash(round));
     });
 
     it('keeps forced commits and reveals as hash chains, inside their windows', async function () {
@@ -299,9 +299,9 @@ describe('Settlement', function () {
     it('seed is unavailable until after the seed block', async function () {
       const round = await anchoredRound();
       await mineTo(round * ROUND_LENGTH + SEED_OFFSET - 1);
-      await expect(settlement.selectionSeed(round)).to.be.revertedWith('SeedNotAvailable');
+      await expect(settlement.seedBlockHash(round)).to.be.revertedWith('SeedNotAvailable');
       await mineTo(round * ROUND_LENGTH + SEED_OFFSET + 1);
-      expect(await settlement.selectionSeed(round)).to.not.eq(ZERO);
+      expect(await settlement.seedBlockHash(round)).to.not.eq(ZERO);
     });
   });
 
@@ -420,8 +420,8 @@ describe('Settlement', function () {
 
       const cases: [number, (pv: any) => void][] = [
         [0, (pv) => (pv.inputs.chainId = 1)],
-        [1, (pv) => (pv.inputs.roundAnchor = keccak256('0x01'))],
-        [2, (pv) => (pv.inputs.selectionSeed = keccak256('0x01'))],
+        [1, (pv) => (pv.inputs.anchorBlockHash = keccak256('0x01'))],
+        [2, (pv) => (pv.inputs.seedBlockHash = keccak256('0x01'))],
         [3, (pv) => (pv.inputs.commitsHash = keccak256('0x01'))],
         [3, (pv) => (pv.inputs.commitCount = 9)],
         [4, (pv) => (pv.inputs.forcedCommitsHash = keccak256('0x01'))],
@@ -592,7 +592,7 @@ describe('Settlement', function () {
       const next = await mineToOffset(COMMIT_END, round + 1);
       await settlement.anchorRound(next, ZERO, 0, ZERO);
       pv.inputs.round = next;
-      pv.inputs.roundAnchor = (await settlement.rounds(next)).roundAnchor;
+      pv.inputs.anchorBlockHash = (await settlement.rounds(next)).anchorBlockHash;
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('SeedNotAvailable');
     });
   });

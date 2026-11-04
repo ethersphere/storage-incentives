@@ -2,7 +2,7 @@
 // prover/crates/vm/src/types.rs field for field.
 export const PV_TYPE =
   'tuple(' +
-  'tuple(uint256 chainId,address settlement,uint64 round,bytes32 roundAnchor,bytes32 selectionSeed,' +
+  'tuple(uint256 chainId,address settlement,uint64 round,bytes32 anchorBlockHash,bytes32 seedBlockHash,' +
   'bytes32 commitsHash,uint32 commitCount,bytes32 revealsHash,uint32 revealCount,' +
   'bytes32 forcedCommitsHash,bytes32 forcedRevealsHash,' +
   'uint64 lastClaimRound,uint8 lastWinnerDepth,uint8 penaltyMultiplierDisagreement,' +

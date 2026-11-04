@@ -61,7 +61,7 @@ interface ISettlementOracle {
  *   [24, 40)  reveal         nodes send reveals to a prover; or call forceReveal
  *   [40, 44)  reveal anchor  the prover calls anchorReveals(revealsHash) once
  *   [44, 48)  reveal check   nodes check the anchored reveals; a node left out calls forceReveal
- *   48        seed block     its block hash becomes the selection seed. Nobody chooses it
+ *   48        seed block     its prevrandao becomes the selection seed. Nobody chooses it
  *   [49, 64)  claim          a truth-teller sends the claim witness to a prover; or calls forceClaim
  *   [49, ...) settle         anyone calls settleRound(publicValues, proof), rounds in increasing order.
  *                            A round whose truth has no valid witness ("unclaimed") settles only from 64
@@ -83,8 +83,10 @@ contract Settlement is AccessControl, Pausable {
         uint256 chainId;
         address settlement;
         uint64 round;
-        bytes32 roundAnchor;
-        bytes32 selectionSeed;
+        // Hashes of the blocks whose prevrandao gives the round anchor and the selection seed. The proof
+        // reads prevrandao from the headers with these hashes (prover/crates/vm/src/randomness.rs).
+        bytes32 anchorBlockHash;
+        bytes32 seedBlockHash;
         bytes32 commitsHash;
         uint32 commitCount;
         bytes32 revealsHash;
@@ -148,7 +150,7 @@ contract Settlement is AccessControl, Pausable {
 
     /// What `rounds(round)` returns: the round's state, with zero for everything not set yet.
     struct RoundInfo {
-        bytes32 roundAnchor;
+        bytes32 anchorBlockHash;
         bytes32 commitsHash;
         uint32 commitCount;
         bool anchored;
@@ -274,7 +276,7 @@ contract Settlement is AccessControl, Pausable {
 
     event RoundAnchored(
         uint64 indexed round,
-        bytes32 roundAnchor,
+        bytes32 anchorBlockHash,
         bytes32 commitsHash,
         uint32 commitCount,
         bytes32 dataRef
@@ -386,7 +388,7 @@ contract Settlement is AccessControl, Pausable {
         // An empty list leaves the hash slot as it is (it does not count with a zero count).
         if (_commitCount != 0) ri.commitsHash = _commitsHash;
 
-        emit RoundAnchored(_round, roundAnchor(_round), _commitsHash, _commitCount, _dataRef);
+        emit RoundAnchored(_round, anchorBlockHash(_round), _commitsHash, _commitCount, _dataRef);
     }
 
     /**
@@ -404,7 +406,7 @@ contract Settlement is AccessControl, Pausable {
         if (ri.anchored) revert AlreadyAnchored();
         ri.anchored = true;
 
-        emit RoundAnchored(_round, roundAnchor(_round), bytes32(0), 0, bytes32(0));
+        emit RoundAnchored(_round, anchorBlockHash(_round), bytes32(0), 0, bytes32(0));
     }
 
     /**
@@ -661,22 +663,26 @@ contract Settlement is AccessControl, Pausable {
     }
 
     /**
-     * @notice Neighbourhood anchor of a round: keccak256(blockhash(roundStart - 1), round). Known to every
-     * node from the first block of the round; nobody in the game chooses it.
+     * @notice Hash of block roundStart - 1. The round anchor (neighbourhood selection) is
+     * keccak256(abi.encode(prevrandao of that block, round)): prevrandao, not the block hash, because a block
+     * builder can grind a block hash but not prevrandao. Nodes read prevrandao (mixHash) from the header.
      */
-    function roundAnchor(uint64 _round) public view returns (bytes32) {
+    function anchorBlockHash(uint64 _round) public view returns (bytes32) {
         bytes32 bh = _blockHash(roundStart(_round) - 1);
         if (bh == bytes32(0)) revert SeedNotAvailable();
-        return keccak256(abi.encode(bh, _round));
+        return bh;
     }
 
-    /// @notice Selection seed of a round, available from block seedBlock(round) + 1.
-    function selectionSeed(uint64 _round) public view returns (bytes32) {
+    /**
+     * @notice Hash of the seed block, available from block seedBlock(round) + 1. The selection seed is
+     * keccak256(abi.encode(round anchor, prevrandao of the seed block)).
+     */
+    function seedBlockHash(uint64 _round) public view returns (bytes32) {
         uint256 sb = seedBlock(_round);
         if (block.number <= sb) revert SeedNotAvailable();
         bytes32 bh = _blockHash(sb);
         if (bh == bytes32(0)) revert SeedNotAvailable();
-        return keccak256(abi.encode(roundAnchor(_round), bh));
+        return bh;
     }
 
     /**
@@ -781,8 +787,7 @@ contract Settlement is AccessControl, Pausable {
         ri.forcedClaimCount = e.forcedClaimCount;
         if (e.anchored) {
             if (e.commitCount != 0) ri.commitsHash = e.commitsHash;
-            bytes32 bh = _blockHash(roundStart(_round) - 1);
-            if (bh != bytes32(0)) ri.roundAnchor = keccak256(abi.encode(bh, _round));
+            ri.anchorBlockHash = _blockHash(roundStart(_round) - 1);
         }
         if (e.revealCount != 0) ri.revealsHash = e.revealsHash;
         if (e.forcedCommitCount != 0) ri.forcedCommitsHash = e.forcedCommitsHash;
@@ -793,8 +798,8 @@ contract Settlement is AccessControl, Pausable {
     function _checkInputs(PublicInputs memory pv, RoundSlot storage s) internal view {
         RoundInfo memory ri = _info(pv.round, s);
         if (pv.chainId != block.chainid || pv.settlement != address(this)) revert InputMismatch(0);
-        if (pv.roundAnchor != roundAnchor(pv.round)) revert InputMismatch(1);
-        if (pv.selectionSeed != selectionSeed(pv.round)) revert InputMismatch(2);
+        if (pv.anchorBlockHash != anchorBlockHash(pv.round)) revert InputMismatch(1);
+        if (pv.seedBlockHash != seedBlockHash(pv.round)) revert InputMismatch(2);
         if (pv.commitsHash != ri.commitsHash || pv.commitCount != ri.commitCount) revert InputMismatch(3);
         if (pv.forcedCommitsHash != ri.forcedCommitsHash) revert InputMismatch(4);
         if (pv.forcedRevealsHash != ri.forcedRevealsHash) revert InputMismatch(5);

@@ -91,6 +91,8 @@ async fn commit(
         round: m.round,
         round_anchor: Default::default(),
         selection_seed: Default::default(),
+        anchor_header: Default::default(),
+        seed_header: Default::default(),
         commits: vec![],
         forced_commits: vec![],
         reveals: vec![],

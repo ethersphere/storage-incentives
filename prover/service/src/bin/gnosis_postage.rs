@@ -335,12 +335,29 @@ async fn main() -> Result<()> {
         f64::from(total_pot) / 1e16
     );
 
+    let anchor_header =
+        swarm_vm::randomness::synthetic_header(round * ROUND_LENGTH - 1, B256::repeat_byte(1));
+    let seed_header = swarm_vm::randomness::synthetic_header(
+        round * ROUND_LENGTH + SEED_OFFSET,
+        B256::repeat_byte(2),
+    );
+    let rnd = swarm_vm::randomness::derive(
+        round,
+        ROUND_LENGTH,
+        SEED_OFFSET,
+        &anchor_header,
+        &seed_header,
+    )
+    .expect("synthetic headers");
     let input = RoundInput {
         chain_id: U256::from(100u8),
         settlement: Address::ZERO,
         round,
-        round_anchor: B256::ZERO,
-        selection_seed: B256::ZERO,
+        // The game is empty; synthetic headers give the round valid randomness.
+        round_anchor: rnd.round_anchor,
+        selection_seed: rnd.selection_seed,
+        anchor_header,
+        seed_header,
         commits: vec![],
         forced_commits: vec![],
         reveals: vec![],

@@ -18,8 +18,23 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
     let chain_id = U256::from(11155111u64);
     let settlement = Address::repeat_byte(0xaa);
     let round = 1000u64;
-    let anchor = keccak256(b"anchor");
-    let seed = keccak256(b"seed");
+    let anchor_header = swarm_vm::randomness::synthetic_header(
+        round * swarm_vm::ROUND_LENGTH - 1,
+        keccak256(b"anchor"),
+    );
+    let seed_header = swarm_vm::randomness::synthetic_header(
+        round * swarm_vm::ROUND_LENGTH + swarm_vm::SEED_OFFSET,
+        keccak256(b"seed"),
+    );
+    let rnd = swarm_vm::randomness::derive(
+        round,
+        swarm_vm::ROUND_LENGTH,
+        swarm_vm::SEED_OFFSET,
+        &anchor_header,
+        &seed_header,
+    )
+    .expect("synthetic headers");
+    let (anchor, seed) = (rnd.round_anchor, rnd.selection_seed);
     let sample = sim_sample(anchor);
     let truth = sample.hash();
 
@@ -39,6 +54,8 @@ pub fn round(n: usize, extra_batches: usize) -> Result<RoundInput> {
         round,
         round_anchor: anchor,
         selection_seed: seed,
+        anchor_header,
+        seed_header,
         commits: vec![],
         forced_commits: vec![],
         reveals: vec![],

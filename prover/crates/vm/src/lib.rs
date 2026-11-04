@@ -15,6 +15,7 @@
 pub mod bmt;
 pub mod claim;
 pub mod postage;
+pub mod randomness;
 pub mod sample;
 mod types;
 
@@ -40,6 +41,8 @@ pub enum VmError {
     Overflow,
     /// Postage event replay failed.
     Postage(postage::PostageError),
+    /// The headers are not valid, or the anchor or seed in the input does not follow from them.
+    Randomness,
 }
 
 /// keccak256("SwarmSettlementCommit(uint256 chainId,address settlement,uint64 round,bytes32 obfuscatedHash)")
@@ -335,6 +338,19 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         return Err(VmError::StakesMismatch);
     }
 
+    // Randomness from prevrandao in the two headers; their hashes are public inputs Settlement checks.
+    let rnd = randomness::derive(
+        input.round,
+        ROUND_LENGTH,
+        SEED_OFFSET,
+        &input.anchor_header,
+        &input.seed_header,
+    )
+    .ok_or(VmError::Randomness)?;
+    if rnd.round_anchor != input.round_anchor || rnd.selection_seed != input.selection_seed {
+        return Err(VmError::Randomness);
+    }
+
     let min_depth = minimum_depth(input.round, input.last_claim_round, input.last_winner_depth);
 
     // Postage accounting since the previous settlement: replay the event log, credit the pot, expire.
@@ -374,8 +390,8 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         chainId: input.chain_id,
         settlement: input.settlement,
         round: input.round,
-        roundAnchor: input.round_anchor,
-        selectionSeed: input.selection_seed,
+        anchorBlockHash: rnd.anchor_block_hash,
+        seedBlockHash: rnd.seed_block_hash,
         commitsHash: commits_hash(input.commits.iter().map(|c| (&c.owner, &c.obfuscated_hash))),
         commitCount: input.commits.len() as u32,
         revealsHash: reveals_hash(&input.reveals),

@@ -1,6 +1,7 @@
 //! node-sim: plays the Bee side of the off-chain game for a set of staked keys.
 //!
-//! Each round, for every node: check neighbourhood eligibility against Settlement.roundAnchor, commit
+//! Each round, for every node: check neighbourhood eligibility against the round anchor (from prevrandao
+//! of the block before the round, read from its header), commit
 //! (signed message to the prover, or forceCommit on chain), then reveal (to the prover, or forceReveal).
 //! Behaviours per node index let you exercise the paths that matter:
 //!
@@ -307,7 +308,7 @@ async fn main() -> Result<()> {
 
         // Commit phase. Leave two blocks of margin so the message or tx lands in time.
         if offset + 2 < COMMIT_END && (args.rounds == 0 || round < first + args.rounds) {
-            let anchor = settlement.roundAnchor(round).call().await?;
+            let (anchor, _) = swarm_prover::round_anchor(&read, round).await?;
             if !samples.contains_key(&round) {
                 let started = std::time::Instant::now();
                 let (r, depth) = (reserve.clone(), args.depth);
@@ -545,12 +546,10 @@ async fn claim_backstop(
         done.insert(round);
         return;
     }
-    let (Ok(anchor), Ok(seed)) = (
-        settlement.roundAnchor(round).call().await,
-        settlement.selectionSeed(round).call().await,
-    ) else {
+    let Ok((rnd, _, _)) = swarm_prover::round_randomness(settlement.provider(), round).await else {
         return;
     };
+    let (anchor, seed) = (rnd.round_anchor, rnd.selection_seed);
     // Any honest node in the neighbourhood holds the same sample; the payout goes to the proven winner.
     let Some(n) = nodes.iter().find(|n| {
         !args.liar.contains(&n.idx)
