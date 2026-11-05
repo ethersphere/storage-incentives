@@ -44,9 +44,13 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   of batches no longer changes the cost (section 2, "The batch tree"; section 5).
 - **Round ring.** Round state is kept in 256 reused entries, so anchors and forced messages write only
   used storage slots (section 2, "Round storage").
-- **Sepolia.** Settlement `0x02CF166cADfFE7F320a50542659383Eb68965158` with SP1's verifier gateway.
-  Program key `0x00e6320d8e6aa4bbedd74d276fe21d5b7beae0d56837139a6c84558808aa7d4f` since the Merkle-root
-  lists (set with `scripts/zk/set-verifier.ts`; the rounds in section 5 used `0x004b0af7…209e`).
+- **Sepolia (2026-11-05, with all review fixes).** Settlement
+  `0x9C90E8ABa4B172F2E929DDB40eee2C62269D95d1`, PostageStampZK
+  `0xeC680D0241B4Dc01822BaCA5e6dBE105BE0d2679`, PriceOracleZK `0xA0f2367A9CA0c72cBEEf56fBE3Df1084264D26bf`,
+  StakeRegistry `0xBA69c8A4bF2D2F1833E5Fe3B411902795cD0f6Ba`, sBZZ
+  `0x1e96D92aEF6ceA3cE35D1697F6C35877BadD7232`; SP1's verifier gateway; program key
+  `0x0027935554b533c1957b7a2b8b5471239bd82a634f160457b60a367724314669`. Source verified on Etherscan and
+  Sourcify. Run: section 5, "Sepolia run after the review fixes".
 - **Data layer.** The anchored lists are Merkle roots (a node checks its own entry with a proof). The
   prover uploads the lists and a daily postage snapshot to Swarm, and rebuilds the postage state from
   the chain (or a snapshot) when its file is missing. Uploads are off until a postage batch is bought
@@ -63,8 +67,6 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   7. the prover API could be flooded, and node-sim waited forever (now: limits, cache, 5 s timeout);
   8. block builders could grind the randomness (now: `prevrandao` from the headers);
   9. verifier changes took effect at once (now: timelock).
-- **Not yet on Sepolia.** The Sepolia contracts are from before the review fixes. A new deployment (all
-  contracts changed) is needed for the next Sepolia run.
 - **Next.** Buy the batch and turn on the uploads, a gas comparison on Sepolia, and the rest of the
   optimization plan (section 7, "Open items").
 
@@ -789,6 +791,21 @@ with `SOURCIFY=1`, to Sourcify. Settlement `0x02CF…5158`, PostageStampZK and P
 Sourcify with an exact match of the creation and runtime bytecode. Etherscan accepted the same input,
 but its queue did not process it for hours ("Pending in queue"); StakeRegistry and TestToken show as
 verified on Etherscan.
+
+**Sepolia run after the review fixes** (2026-11-05; the contracts above; network proofs; 4 nodes; stake
+age 0; 16 ring entries warmed). The prover ran in test mode as an attacker: it censored node 0's commits
+and node 1's reveals, and threw away every claim witness (`WITHHOLD_CLAIMS`). Node 3 used only the escape
+hatches.
+
+| Round | What happened | Cycles | Proof | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 188528 | Node 0 found its commit missing (inclusion proof) and forced it; node 1 forced its reveal; node 3 forced both. The prover withheld the claim; at block 58 node 0 called `forceClaim` (backstop). **4 participants, redundancy 4, 0 freezes, winner paid** | 1,146,773 | 46 s | 1,966,450 (first settlement of this deployment: new storage) |
+| 188529 | The same attacks, the same defences. **4 participants, redundancy 4, 0 freezes, winner paid** | 733,603 | 42 s | 507,201 |
+| 188530 | No game (node-sim stopped); postage only | 199,594 | 39 s | 452,286 |
+
+Gas on Sepolia in this run: `anchorRound` 49,211; `anchorReveals` 48,648; `forceCommit` and
+`forceReveal` about 73k-75k (about 171k the first time an address uses one: its once-per-round slot is
+new); `forceClaim` with a 4 KB witness 281,496.
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
