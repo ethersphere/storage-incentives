@@ -44,13 +44,14 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   of batches no longer changes the cost (section 2, "The batch tree"; section 5).
 - **Round ring.** Round state is kept in 256 reused entries, so anchors and forced messages write only
   used storage slots (section 2, "Round storage").
-- **Sepolia (2026-11-05, with all review fixes).** Settlement
-  `0x9C90E8ABa4B172F2E929DDB40eee2C62269D95d1`, PostageStampZK
-  `0xeC680D0241B4Dc01822BaCA5e6dBE105BE0d2679`, PriceOracleZK `0xA0f2367A9CA0c72cBEEf56fBE3Df1084264D26bf`,
-  StakeRegistry `0xBA69c8A4bF2D2F1833E5Fe3B411902795cD0f6Ba`, sBZZ
+- **Sepolia (2026-11-05, with the O(1) no-skip check and the price change keyed to the game round).**
+  Settlement `0x9dC237bEeB7fa2E5EBBa0F68e0BD4DEe963Cc448`, PostageStampZK
+  `0xeC680D0241B4Dc01822BaCA5e6dBE105BE0d2679`, PriceOracleZK `0x1Ff1C2FFdb2f584132211FF341B5B49e0aEcFAe8`,
+  StakeRegistry `0x6E4F110B0D10fBF18Cae9d7d49f1DfCbe6457212`, sBZZ
   `0x1e96D92aEF6ceA3cE35D1697F6C35877BadD7232`; SP1's verifier gateway; program key
-  `0x0027935554b533c1957b7a2b8b5471239bd82a634f160457b60a367724314669`. Source verified on Etherscan and
-  Sourcify. Run: section 5, "Sepolia run after the review fixes".
+  `0x0027935554b533c1957b7a2b8b5471239bd82a634f160457b60a367724314669`. The roles of the previous
+  Settlement and PriceOracleZK on PostageStampZK are revoked (`scripts/zk/revoke-old.ts`). Source verified
+  on Etherscan and Sourcify. Run: section 5, "Sepolia run after the gas fixes".
 - **Data layer.** The anchored lists are Merkle roots (a node checks its own entry with a proof). The
   prover uploads the lists and a daily postage snapshot to Swarm, and rebuilds the postage state from
   the chain (or a snapshot) when its file is missing. Uploads are off until a postage batch is bought
@@ -830,6 +831,22 @@ the same calldata (2,180 bytes). The differences:
    `adjustPriceForRound(round, redundancy)` uses the game round (the oracle's rounds are also 64 blocks).
    Regression test: "adjusts the price for each game round, also when a settlement lands in the next
    round".
+
+**Sepolia run after the gas fixes** (2026-11-05; Settlement `0x9dC237bEeB7fa2E5EBBa0F68e0BD4DEe963Cc448`,
+PriceOracleZK `0x1Ff1C2FFdb2f584132211FF341B5B49e0aEcFAe8`; network proofs). The prover ran in attacker
+mode (`CENSOR_COMMITS`, `CENSOR_REVEALS`, `WITHHOLD_CLAIMS`), with 4 simulated nodes.
+
+| Round | What happened | Cycles | Proof | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 188622 | The prover left out 2 commits and 2 reveals; the nodes forced them. The prover withheld the claim; at block 58 node 0 called `forceClaim`. **4 participants, redundancy 3, 1 freeze, winner paid, price changed** | 1,153,060 | 35 s | 1,094,134 (first settlement of this deployment: new storage) |
+| 188623 | The same attacks, the same defences. **Winner paid, price changed** | 737,736 | 43 s | 693,270 |
+| 188624 | The same. **Winner paid, price changed** | 738,138 | 95 s | 693,270 |
+| 188625 | The same. **Winner paid, price changed** | 737,061 | 87 s | 791,140 |
+| 188626 | No game (node-sim stopped); postage only. No truth, so no price change (as on master) | 204,533 | 56 s | 475,947 |
+
+Each of the 4 rounds with truth emitted `PriceUpdate` from the oracle and no `PriceAdjustmentSkipped`.
+After the run, the oracle's `lastAdjustedRound` was 188625. In the previous run, the price change of
+round 188529 was lost (see above): fix 2 of the gas analysis works on Sepolia.
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
