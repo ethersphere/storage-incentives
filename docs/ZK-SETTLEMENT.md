@@ -807,6 +807,13 @@ Gas on Sepolia in this run: `anchorRound` 49,211; `anchorReveals` 48,648; `force
 `forceReveal` about 73k-75k (about 171k the first time an address uses one: its once-per-round slot is
 new); `forceClaim` with a 4 KB witness 281,496.
 
+**Sepolia run of the liveness fallback** (2026-11-05; the same contracts; network proofs). The prover ran
+with `NO_ANCHOR` (it never anchors, like a prover that stopped) and with an empty data folder.
+
+| Round | What happened | Cycles | Proof | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 188614 | Nobody anchored in blocks 16-19. At block 21, node 0 called `anchorEmpty` (131,658 gas; the ring entry was not warmed). All 4 nodes forced their commits and reveals. The prover rebuilt the postage state from the chain (empty data folder), found the empty-anchored round and settled it from on-chain data: **4 participants, redundancy 4, 0 freezes, winner paid** | 613,962 | 91 s | 1,288,553 (first settlement of this prover's postage state writes) |
+
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
 Hardhat in this section are therefore too low for current Ethereum rules. Use the Sepolia values for cost
