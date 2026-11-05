@@ -38,6 +38,8 @@ interface ISettlementPostage {
 interface ISettlementOracle {
     function adjustPrice(uint16 redundancy) external returns (bool);
 
+    function adjustPriceForRound(uint64 round, uint16 redundancy) external returns (bool);
+
     function currentPrice() external view returns (uint32);
 }
 
@@ -176,11 +178,14 @@ contract Settlement is AccessControl, Pausable {
      */
     struct RoundSlot {
         uint64 round;
-        uint32 commitCount;
-        uint32 revealCount;
-        uint32 forcedCommitCount;
-        uint32 forcedRevealCount;
-        uint32 forcedClaimCount;
+        // The anchored round before this one (set at the anchor). settleRound checks only that round for
+        // "an earlier anchored round can still settle" (the rounds in between are not anchored).
+        uint64 prevAnchored;
+        uint16 commitCount;
+        uint16 revealCount;
+        uint16 forcedCommitCount;
+        uint16 forcedRevealCount;
+        uint16 forcedClaimCount;
         bool anchored;
         bool revealsAnchored;
         bool settled;
@@ -244,6 +249,8 @@ contract Settlement is AccessControl, Pausable {
 
     // Game state carried between rounds. Same meaning as currentClaimRound / winner.depth in Redistribution.
     uint64 public lastSettledRound;
+    // The last round that was anchored (anchorRound or anchorEmpty).
+    uint64 public lastAnchoredRound;
     uint64 public lastClaimRound;
     uint8 public lastWinnerDepth;
 
@@ -398,8 +405,11 @@ contract Settlement is AccessControl, Pausable {
         RoundSlot storage ri = _entry(_round);
         if (ri.anchored) revert AlreadyAnchored();
 
+        if (_commitCount > type(uint16).max) revert TooManyForced();
         ri.anchored = true;
-        ri.commitCount = _commitCount;
+        ri.commitCount = uint16(_commitCount);
+        ri.prevAnchored = lastAnchoredRound;
+        lastAnchoredRound = _round;
         // An empty list leaves the hash slot as it is (it does not count with a zero count).
         if (_commitCount != 0) ri.commitsHash = _commitsHash;
 
@@ -420,6 +430,8 @@ contract Settlement is AccessControl, Pausable {
         RoundSlot storage ri = _entry(_round);
         if (ri.anchored) revert AlreadyAnchored();
         ri.anchored = true;
+        ri.prevAnchored = lastAnchoredRound;
+        lastAnchoredRound = _round;
 
         emit RoundAnchored(_round, anchorBlockHash(_round), bytes32(0), 0, bytes32(0));
     }
@@ -450,8 +462,9 @@ contract Settlement is AccessControl, Pausable {
         if (ri.revealsAnchored) revert AlreadyAnchored();
         if ((_revealCount == 0) != (_revealsHash == bytes32(0))) revert RevealsHashMismatch();
 
+        if (_revealCount > type(uint16).max) revert TooManyForced();
         ri.revealsAnchored = true;
-        ri.revealCount = _revealCount;
+        ri.revealCount = uint16(_revealCount);
         // An empty list leaves the hash slot as it is (it does not count with a zero count).
         if (_revealCount != 0) ri.revealsHash = _revealsHash;
 
@@ -596,7 +609,9 @@ contract Settlement is AccessControl, Pausable {
 
         // try/catch: adjustPrice reverts when the oracle round was already adjusted, which happens when
         // two game rounds settle inside the same oracle round. That must not block settlement.
-        try OracleContract.adjustPrice(out.redundancy) returns (bool ok) {
+        // The game round, not the block of this transaction: a settlement that lands in the next round
+        // must not make the next settlement's price change fail as "already adjusted".
+        try OracleContract.adjustPriceForRound(pin.round, out.redundancy) returns (bool ok) {
             if (!ok) emit PriceAdjustmentSkipped(out.redundancy);
         } catch {
             emit PriceAdjustmentSkipped(out.redundancy);
@@ -866,12 +881,15 @@ contract Settlement is AccessControl, Pausable {
      * blocks). Rounds without an anchor are skipped.
      */
     function _checkNoPendingRound(uint64 _round) internal view {
-        for (uint64 r = _round - 1; r > lastSettledRound && r + RING_SIZE > _round; r--) {
-            // The seed of r (and of every older round) can no longer be read: r can never settle.
-            if (_blockHash(seedBlock(r)) == bytes32(0)) break;
-            RoundSlot storage e = ring[r % RING_SIZE];
-            if (e.round == r && e.anchored) revert RoundPending(r);
-        }
+        // Only the anchored round before this one can be pending: the rounds in between are not anchored,
+        // and if it can no longer settle, no older round can. One check, whatever the gap (a scan over
+        // the gap cost about 8k gas for each round on Sepolia).
+        uint64 p = ring[_round % RING_SIZE].prevAnchored;
+        if (p <= lastSettledRound) return;
+        RoundSlot storage e = ring[p % RING_SIZE];
+        if (e.round != p || !e.anchored) return; // entry reused: more than 256 rounds ago
+        if (_blockHash(seedBlock(p)) == bytes32(0)) return; // its seed is gone: it can never settle
+        revert RoundPending(p);
     }
 
     function _checkPostage(PostageInputs memory pg, uint64 _round) internal view {

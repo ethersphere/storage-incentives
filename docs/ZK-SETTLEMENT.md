@@ -812,7 +812,24 @@ with `NO_ANCHOR` (it never anchors, like a prover that stopped) and with an empt
 
 | Round | What happened | Cycles | Proof | `settleRound` gas |
 | --- | --- | --- | --- | --- |
-| 188614 | Nobody anchored in blocks 16-19. At block 21, node 0 called `anchorEmpty` (131,658 gas; the ring entry was not warmed). All 4 nodes forced their commits and reveals. The prover rebuilt the postage state from the chain (empty data folder), found the empty-anchored round and settled it from on-chain data: **4 participants, redundancy 4, 0 freezes, winner paid** | 613,962 | 91 s | 1,288,553 (more than the 507,201 of round 188529; the cause is not analysed yet) |
+| 188614 | Nobody anchored in blocks 16-19. At block 21, node 0 called `anchorEmpty` (131,658 gas; the ring entry was not warmed). All 4 nodes forced their commits and reveals. The prover rebuilt the postage state from the chain (empty data folder), found the empty-anchored round and settled it from on-chain data: **4 participants, redundancy 4, 0 freezes, winner paid** | 613,962 | 91 s | 1,288,553 (see below) |
+
+**Why round 188614 cost 1,288,553 gas and round 188529 only 507,201** (analysed 2026-11-05). Both have
+the same calldata (2,180 bytes). The differences:
+
+1. **The no-skip check scanned the gap.** 84 rounds without an anchor lay between the last settlement
+   (188530) and 188614. The check of fix 2 read every round in between: on Sepolia, about 7k gas for the
+   EIP-2935 block hash call and about 4k for the cold read of the ring entry, so about 8k-11k gas for
+   each round, about 650k-800k in total. **Fixed:** each anchored round stores the previous anchored
+   round (`prevAnchored`), and `settleRound` checks only that one round (O(1)).
+2. **The price changed in 188614, but not in 188529.** In 188614 the oracle caught up 84 skipped rounds
+   (the maximum increase for each, master's rule): 24,000 to 25,713, plus the price writes and a new
+   postage log entry. In 188529 the price change was lost: the oracle counted rounds by the block of the
+   `adjustPrice` call, and the settlement of 188528 had landed in 188529's blocks (the block-58 backstop
+   plus a 45 s proof), so 188529 found its oracle round "already adjusted". **Fixed:**
+   `adjustPriceForRound(round, redundancy)` uses the game round (the oracle's rounds are also 64 blocks).
+   Regression test: "adjusts the price for each game round, also when a settlement lands in the next
+   round".
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and

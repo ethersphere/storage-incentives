@@ -560,6 +560,35 @@ describe('Settlement', function () {
       await expect(settlement.settleRound(encode(pv), '0x01')).to.be.reverted;
     });
 
+    it('adjusts the price for each game round, also when a settlement lands in the next round', async function () {
+      const owners = await Promise.all(nodes.map((n) => n.getAddress()));
+      const winner = owners[1];
+      const truth = async (round: number) =>
+        publicValues(round, owners, {
+          hasTruth: true,
+          truthHash: keccak256('0x01'),
+          winner,
+          winnerOverlay: await staking.overlayOfAddress(winner),
+          winnerStakeDensity: 1,
+          redundancy: 4,
+        });
+      const r1 = await anchoredRound();
+      const r2 = await mineToOffset(COMMIT_END, r1 + 1);
+      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      // r1 settles late, in r2's blocks (as with the block-58 backstop and a slow proof).
+      await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
+      await expect(settlement.settleRound(encode(await truth(r1)), '0x')).to.not.emit(
+        settlement,
+        'PriceAdjustmentSkipped'
+      );
+      // Before the fix, r2 found its oracle round "already adjusted" and its price change was lost.
+      await expect(settlement.settleRound(encode(await truth(r2)), '0x')).to.not.emit(
+        settlement,
+        'PriceAdjustmentSkipped'
+      );
+      expect(await oracle.lastAdjustedRound()).to.eq(r2);
+    });
+
     it('settles anchored rounds in order, without skipping one that can still settle', async function () {
       const r1 = await anchoredRound();
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);

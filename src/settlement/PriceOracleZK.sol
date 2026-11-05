@@ -104,13 +104,26 @@ contract PriceOracleZK is AccessControl {
     }
 
     function adjustPrice(uint16 redundancy) external returns (bool) {
+        return _adjust(currentRound(), redundancy);
+    }
+
+    /**
+     * @notice Adjust the price for game round `round` (Settlement passes the round it settles). The price
+     * then does not depend on the block in which the settlement lands: a settlement of round N that lands in
+     * round N + 1 must not block the price change of round N + 1. A round cannot be in the future.
+     */
+    function adjustPriceForRound(uint64 round, uint16 redundancy) external returns (bool) {
+        if (round > currentRound()) revert PriceAlreadyAdjusted();
+        return _adjust(round, redundancy);
+    }
+
+    function _adjust(uint64 currentRoundNumber, uint16 redundancy) internal returns (bool) {
         if (isPaused == false) {
             if (!hasRole(PRICE_UPDATER_ROLE, msg.sender)) {
                 revert CallerNotPriceUpdater();
             }
 
             uint16 usedRedundancy = redundancy;
-            uint64 currentRoundNumber = currentRound();
 
             // Price can only be adjusted once per round
             if (currentRoundNumber <= lastAdjustedRound) {
