@@ -75,33 +75,45 @@ describe('PostageStampZK', function () {
     const entries = await logs(stamp);
     expect(entries.map((e) => e.kind)).to.deep.eq([KIND_PRICE, KIND_CREATE, KIND_TOPUP, KIND_DEPTH, KIND_PRICE]);
     let h = ZERO;
-    for (const e of entries) {
-      h = logHash(h, e);
-      expect(await stamp.eventHashAt(e.index)).to.eq(h);
-      expect(await stamp.eventBlockAt(e.index)).to.eq(e.blockNumber);
-    }
+    for (const e of entries) h = logHash(h, e);
+    expect(await stamp.eventHash()).to.eq(h);
     expect(await stamp.eventCount()).to.eq(5);
-    expect(await stamp.eventHashAt(0)).to.eq(ZERO);
-    await expect(stamp.eventHashAt(6)).to.be.revertedWith('EventOutOfRange()');
     // The batch fields are the stored batch.
     const b = await stamp.batches(id);
     expect(entries[3].value).to.eq(b.normalisedBalance.toString());
     expect(entries[3].depth).to.eq(19);
   });
 
-  it('keeps 8192 log entries, so a burst of cheap top-ups cannot push a settlement out of the ring', async function () {
-    expect(await stamp.EVENT_RING()).to.eq(8192);
-    const perChunk = (await stamp.minimumInitialBalancePerChunk()).mul(100);
-    const id = await create(ZERO, perChunk);
-    // 300 top-ups of 1 per chunk: more than the old ring of 256.
-    await network.provider.send('evm_setAutomine', [false]);
-    for (let i = 0; i < 300; i++) await stamp.topUp(id, 1, { gasLimit: 200_000 });
-    for (let b = 0; b < 5; b++) await network.provider.send('evm_mine', []); // more than one block of gas
-    await network.provider.send('evm_setAutomine', [true]);
-    expect(await stamp.eventCount()).to.eq(302);
-    // The first entries can still be checked.
-    expect(await stamp.eventHashAt(1)).to.not.eq(ZERO);
-    expect(await stamp.eventBlockAt(2)).to.be.gt(0);
+  it('keeps the log index and hash at the seed block of each game round (the cut)', async function () {
+    const ROUND = 64;
+    const SEED = 48;
+    const mineTo = async (b: number) => {
+      const now = await ethers.provider.getBlockNumber();
+      if (b > now) await network.provider.send('hardhat_mine', ['0x' + (b - now).toString(16)]);
+    };
+    // Entries before and after the seed block of round r.
+    const r = Math.floor((await ethers.provider.getBlockNumber()) / ROUND) + 2;
+    await mineTo(r * ROUND + SEED - 2);
+    await stamp.setPrice(101); // in block SEED - 1: before the cut
+    await stamp.setPrice(102); // in the seed block itself: still before the cut
+    const atCut = { index: await stamp.eventCount(), hash: await stamp.eventHash() };
+    // No entry after the seed block yet: the cut is the whole log.
+    expect((await stamp.cutOf(r)).index).to.eq(atCut.index);
+    await stamp.setPrice(103); // after the seed block: stores the cut
+    await stamp.setPrice(104);
+    const c = await stamp.cutOf(r);
+    expect(c.index).to.eq(atCut.index);
+    expect(c.hash).to.eq(atCut.hash);
+    expect(await stamp.eventCount()).to.eq(atCut.index.add(2));
+
+    // A cut is kept for CUT_RING rounds that store one; then the round can no longer settle anyway.
+    expect(await stamp.CUT_RING()).to.eq(256);
+    for (let i = 1; i <= 256; i++) {
+      await mineTo((r + i) * ROUND + SEED);
+      await stamp.setPrice(100 + (i % 2));
+    }
+    await expect(stamp.cutOf(r)).to.be.revertedWith('CutNotFound()');
+    expect((await stamp.cutOf(r + 1)).index).to.be.gt(atCut.index);
   });
 
   it('keeps the events Bee follows', async function () {

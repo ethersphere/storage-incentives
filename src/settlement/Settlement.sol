@@ -28,11 +28,7 @@ interface ISettlementPostage {
 
     function bzzToken() external view returns (address);
 
-    function eventCount() external view returns (uint64);
-
-    function eventHashAt(uint64 index) external view returns (bytes32);
-
-    function eventBlockAt(uint64 index) external view returns (uint64);
+    function cutOf(uint64 round) external view returns (uint64 index, bytes32 hash);
 }
 
 interface ISettlementOracle {
@@ -328,6 +324,7 @@ contract Settlement is AccessControl, Pausable {
     // ----------------------------- Errors ------------------------------
 
     error WrongRound();
+    error OutOfGas();
     error NotCommitPhase();
     error NotAnchorPhase();
     error NotRevealPhase();
@@ -611,9 +608,13 @@ contract Settlement is AccessControl, Pausable {
         // two game rounds settle inside the same oracle round. That must not block settlement.
         // The game round, not the block of this transaction: a settlement that lands in the next round
         // must not make the next settlement's price change fail as "already adjusted".
+        uint256 gasBefore = gasleft();
         try OracleContract.adjustPriceForRound(pin.round, out.redundancy) returns (bool ok) {
             if (!ok) emit PriceAdjustmentSkipped(out.redundancy);
         } catch {
+            // Out of gas in the oracle leaves at most 1/64 of the gas. Revert then: else a gas estimate can
+            // pick a limit at which the price change is lost without a sign.
+            if (gasleft() <= gasBefore / 63) revert OutOfGas();
             emit PriceAdjustmentSkipped(out.redundancy);
         }
 
@@ -899,18 +900,11 @@ contract Settlement is AccessControl, Pausable {
             pg.prevEventHash != postageEventHash
         ) revert InputMismatch(11);
         // The cut is the round's seed block, so the pot of a round does not depend on when it settles: a late
-        // settlement cannot move the pot of later rounds to this round's winner.
+        // settlement cannot move the pot of later rounds to this round's winner. PostageStampZK keeps the log
+        // index and hash at each round's seed block: the proof must replay exactly up to there.
         if (pg.cutBlock != seedBlock(_round) || pg.eventIndex < pg.prevEventIndex) revert InputMismatch(11);
-
-        uint64 count = PostageContract.eventCount();
-        if (pg.eventIndex > count) revert InputMismatch(11);
-        if (pg.eventIndex > pg.prevEventIndex && PostageContract.eventHashAt(pg.eventIndex) != pg.eventHash) {
-            revert InputMismatch(11);
-        }
-        // The next entry, if any, must be after the cut: nothing up to the cut is left out.
-        if (pg.eventIndex < count && PostageContract.eventBlockAt(pg.eventIndex + 1) <= pg.cutBlock) {
-            revert InputMismatch(11);
-        }
+        (uint64 index, bytes32 hash) = PostageContract.cutOf(_round);
+        if (pg.eventIndex != index || pg.eventHash != hash) revert InputMismatch(11);
     }
 
     /// Pays out everything accrued since the last payout: the proven pot of this and earlier settlements.

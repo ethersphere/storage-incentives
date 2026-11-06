@@ -96,14 +96,13 @@ describe('Settlement', function () {
     const prevEventIndex = (await settlement.postageEventIndex()).toNumber();
     const prevEventHash = await settlement.postageEventHash();
     const cutBlock = round * ROUND_LENGTH + SEED_OFFSET;
-    let eventIndex = (await postage.eventCount()).toNumber();
-    while (eventIndex > prevEventIndex && (await postage.eventBlockAt(eventIndex)).toNumber() > cutBlock) eventIndex--;
+    const cut = await postage.cutOf(round);
     return {
       prevStateHash: await settlement.postageStateHash(),
       prevEventIndex,
       prevEventHash,
-      eventIndex,
-      eventHash: eventIndex > prevEventIndex ? await postage.eventHashAt(eventIndex) : prevEventHash,
+      eventIndex: cut.index.toNumber(),
+      eventHash: cut.hash,
       cutBlock,
     };
   }
@@ -451,7 +450,6 @@ describe('Settlement', function () {
       // beforeEach logged a price change and a batch: two log entries.
       expect(await postage.eventCount()).to.eq(2);
       const good = await publicValues(round, [], {});
-      const lastEventBlock = (await postage.eventBlockAt(2)).toNumber();
 
       const cases: ((pv: any) => void)[] = [
         (pv) => (pv.inputs.postage.prevEventIndex = 1),
@@ -460,7 +458,7 @@ describe('Settlement', function () {
         (pv) => (pv.inputs.postage.eventHash = keccak256('0x01')),
         // The cut must be the round's seed block: not later, not earlier.
         (pv) => (pv.inputs.postage.cutBlock = pv.inputs.postage.cutBlock + 1),
-        (pv) => (pv.inputs.postage.cutBlock = lastEventBlock),
+        (pv) => (pv.inputs.postage.cutBlock = pv.inputs.postage.cutBlock - ROUND_LENGTH),
         // Stops at entry 1 although entry 2 is before the cut: an entry would be left out.
         (pv) => {
           pv.inputs.postage.eventIndex = 1;
@@ -587,6 +585,17 @@ describe('Settlement', function () {
         'PriceAdjustmentSkipped'
       );
       expect(await oracle.lastAdjustedRound()).to.eq(r2);
+    });
+
+    it('a gas limit too low for the stamp price update reverts, and does not lose the update', async function () {
+      // The oracle calls PostageStampZK.setPrice and ignores a failure. Without a check, a gas estimate
+      // picked a limit at which that inner call ran out of gas: the transaction succeeded, the stamp price
+      // did not change (found with the per-round cut, whose first write costs more).
+      const est = await oracle.estimateGas.setPrice(24001);
+      await expect(oracle.setPrice(24001, { gasLimit: est.sub(15_000) })).to.be.revertedWith('OutOfGas');
+      expect(await postage.lastPrice()).to.eq(24000);
+      await oracle.setPrice(24001);
+      expect(await postage.lastPrice()).to.eq(24001);
     });
 
     it('settles anchored rounds in order, without skipping one that can still settle', async function () {
@@ -765,46 +774,62 @@ describe('Settlement', function () {
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('RoundOutOfOrder');
     });
 
-    it('settles across a wrap of the postage log ring; a cut entry that left the ring stalls the round', async function () {
+    it('settles a round whose cut is more than 8192 postage log entries old', async function () {
+      // With a ring of the log entries themselves, 8192 entries before a settlement made the round
+      // unsettleable (and blocked later rounds). PostageStampZK now keeps the cut of each round.
       this.timeout(600_000);
-      const ring = (await postage.EVENT_RING()).toNumber();
       const me = await deployer.getAddress();
       await postage.grantRole(await postage.PRICE_ORACLE_ROLE(), me);
 
       const r1 = await anchoredRound();
       await mineTo(r1 * ROUND_LENGTH + SEED_OFFSET + 1);
       const pv1 = await publicValues(r1, [], {});
-      const cut1 = pv1.inputs.postage.eventIndex;
 
-      // More than a full ring of log entries before r1 settles. Many in each block, so they take few blocks.
+      // 8195 log entries before r1 settles. Many in each block, so they take few blocks.
       await network.provider.send('evm_setAutomine', [false]);
       let nonce = await deployer.getTransactionCount();
-      for (let i = 0; i < ring + 3; i++) {
+      for (let i = 0; i < 8195; i++) {
         await postage.setPrice(24000 + (i % 2), { gasLimit: 120_000, nonce: nonce++ });
       }
       while ((await deployer.getTransactionCount()) < nonce) await network.provider.send('evm_mine', []);
       await network.provider.send('evm_setAutomine', [true]);
       const count = (await postage.eventCount()).toNumber();
-      expect(count).to.be.greaterThan(ring + cut1);
+      expect(count).to.be.greaterThan(8192 + pv1.inputs.postage.eventIndex);
 
-      // r1's cut entry left the ring: r1 cannot settle, and while its seed can be read, later rounds wait.
-      await expect(postage.eventHashAt(cut1)).to.be.revertedWith('EventOutOfRange');
-      await expect(settlement.settleRound(encode(pv1), '0x')).to.be.revertedWith('EventOutOfRange');
+      // r1's cut did not change, and r1 settles.
+      expect((await postage.cutOf(r1)).index).to.eq(pv1.inputs.postage.eventIndex);
+      await settlement.settleRound(encode(pv1), '0x');
+
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
       await settlement.anchorRound(r2, ZERO, 0, ZERO);
       await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
-      await expect(settlement.settleRound(encode(await publicValues(r2, [], {})), '0x')).to.be.revertedWith(
-        'RoundPending'
-      );
-
-      // When r1's seed is gone, r2 settles, with a cut after the wrap.
-      const history = await ethers.provider.getCode(await settlement.HISTORY_STORAGE());
-      await mineTo(r1 * ROUND_LENGTH + SEED_OFFSET + (history === '0x' ? 256 : 8191));
       const pv2 = await publicValues(r2, [], {});
-      expect(pv2.inputs.postage.eventIndex).to.eq(count);
+      // r1's settlement logged a price change after the entries.
+      expect(pv2.inputs.postage.eventIndex).to.eq((await postage.eventCount()).toNumber());
       await settlement.settleRound(encode(pv2), '0x');
-      expect(await settlement.postageEventIndex()).to.eq(count);
-      expect(await settlement.postageEventHash()).to.eq(await postage.eventHashAt(count));
+      expect(await settlement.postageEventIndex()).to.eq(pv2.inputs.postage.eventIndex);
+      expect(await settlement.postageEventHash()).to.eq(await postage.eventHash());
+    });
+
+    it('rounds with no postage log entry between their seed blocks share a cut', async function () {
+      const me = await deployer.getAddress();
+      await postage.grantRole(await postage.PRICE_ORACLE_ROLE(), me);
+      const r1 = await anchoredRound();
+      const r2 = await mineToOffset(COMMIT_END, r1 + 1);
+      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
+      const before = { index: await postage.eventCount(), hash: await postage.eventHash() };
+      // The first entry after r2's seed block stores the cut of r1 and r2.
+      await postage.setPrice(24001);
+      expect(await postage.lastCutRound()).to.eq(r2);
+      for (const r of [r1, r2]) {
+        const c = await postage.cutOf(r);
+        expect(c.index).to.eq(before.index);
+        expect(c.hash).to.eq(before.hash);
+      }
+      await settlement.settleRound(encode(await publicValues(r1, [], {})), '0x');
+      await settlement.settleRound(encode(await publicValues(r2, [], {})), '0x');
+      expect(await settlement.postageEventIndex()).to.eq(before.index);
     });
 
     it('an empty reveal list has the zero hash, and only an empty list', async function () {

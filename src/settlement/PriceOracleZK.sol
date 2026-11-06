@@ -58,6 +58,7 @@ contract PriceOracleZK is AccessControl {
     error CallerNotPriceUpdater(); // Caller is not a price updater
     error PriceAlreadyAdjusted(); // Price already adjusted in this round
     error UnexpectedZero(); // Redundancy needs to be higher then 0
+    error OutOfGas(); // Not enough gas for the stamp price update
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -92,10 +93,14 @@ contract PriceOracleZK is AccessControl {
         currentPriceUpScaled = _currentPriceUpScaled;
 
         // Check if the setting of price in postagestamp succeded
+        uint256 gasBefore = gasleft();
         (bool success, ) = address(postageStamp).call(
             abi.encodeWithSignature("setPrice(uint256)", uint256(currentPrice()))
         );
         if (!success) {
+            // Out of gas in setPrice leaves at most 1/64 of the gas. Revert then: else a gas estimate can pick a
+            // limit at which the stamp price update fails without a sign.
+            if (gasleft() <= gasBefore / 63) revert OutOfGas();
             emit StampPriceUpdateFailed(currentPrice());
             return false;
         }
@@ -168,10 +173,14 @@ contract PriceOracleZK is AccessControl {
             lastAdjustedRound = currentRoundNumber;
 
             // Check if the price set in postagestamp succeded
+            uint256 gasBefore = gasleft();
             (bool success, ) = address(postageStamp).call(
                 abi.encodeWithSignature("setPrice(uint256)", uint256(currentPrice()))
             );
             if (!success) {
+                // Out of gas in setPrice leaves at most 1/64 of the gas. Revert then: else a gas estimate can pick a
+                // limit at which the stamp price update fails without a sign.
+                if (gasleft() <= gasBefore / 63) revert OutOfGas();
                 emit StampPriceUpdateFailed(currentPrice());
                 return false;
             }

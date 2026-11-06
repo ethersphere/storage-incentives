@@ -60,14 +60,16 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   time, the edges of the rings, and escape hatches under full blocks. They found two faults, and both
   are fixed: a round anchored by a prover that then stopped blocked all settlement for 8191 blocks, and
   a forced transaction that was not mined in its first block stayed stuck until its window closed (an
-  honest node was then frozen). Results: section 5, "Robustness tests".
+  honest node was then frozen). A third fault came from the ring test: about 8,192 postage log entries
+  before a settlement made the round unsettleable. PostageStampZK now keeps the cut of each round. Results:
+  section 5, "Robustness tests".
 - **Review fixes (2026-11-04).** A hard review found nine problems; all nine are fixed, each with tests
   and a local run:
   1. a node could leave a round after it saw the seed, to escape a freeze (now: non-reveal freeze);
   2. the prover could choose who is paid: late cut, skipped rounds, withheld claim (now: cut = seed
      block, no skipping of a round that can still settle, `forceClaim` backstop at block 58);
   3. anybody could take the prover fee by front-running (now: `feeRecipient` in the proof);
-  4. cheap top-ups could block every settlement (now: postage log ring of 8,192);
+  4. cheap top-ups could block every settlement (now: PostageStampZK keeps the cut of each round);
   5. junk could fill the escape-hatch caps (now: staked addresses only, once per round);
   6. a stopped prover stopped the game (now: `anchorEmpty` fallback);
   7. the prover API could be flooded, and node-sim waited forever (now: limits, cache, 5 s timeout);
@@ -236,7 +238,7 @@ of today's contract ([ZK-REDISTRIBUTION.md §6](./ZK-REDISTRIBUTION.md)).
 | `participants`, `stakeDigest` | `StakeRegistry.stakes(owner)` read now, for every participant: overlay, committed and potential stake, height, last update | 8 |
 | `stakePrice` | `PriceOracle.currentPrice()` (the VM computes effective stake from it) | 9 |
 | `forcedClaimsHash` | hash chain built by `forceClaim` | 10 |
-| `postage`: previous state hash, previous and new log position, log hash, cut block | Settlement's stored postage state hash and log position; `PostageStampZK.eventHashAt(index)`; the next log entry, if any, must be after the cut block; the cut block must be the round's seed block | 11 |
+| `postage`: previous state hash, previous and new log position, log hash, cut block | Settlement's stored postage state hash and log position; `PostageStampZK.cutOf(round)` (the log index and hash at the round's seed block); the cut block must be the round's seed block | 11 |
 | `sampleMaxValue` | Settlement state (default: Redistribution's value) | 12 |
 
 Then `verifier.verifyProof(programVKey, publicValues, proof)`. Then it executes the outcome:
@@ -331,11 +333,22 @@ to count.
 
 **The event log.** Each change that affects the pot (batch created or copied, topped up, deepened, price
 changed) appends one entry: `hash_i = keccak256(hash_{i-1}, kind, batchId, owner, depth, bucketDepth,
-value, outpayment, block)`. The contract keeps the hash and block of the last 8,192 entries
-(`eventHashAt`, `eventBlockAt`) and emits `PostageLog` with the same fields. (With 256 entries, about 17M
-gas of cheap top-ups between a round's seed block and its `settleRound` transaction pushed the needed
-entries out and made the settlement revert; found in review, 2026-11-04.) This costs about 15k gas for
-each change.
+value, outpayment, block)`. The contract keeps the hash after the last entry (`eventHash`) and emits
+`PostageLog` with the same fields.
+
+**The cut of a round.** A settlement replays the log up to the seed block of its round. The first log
+entry after a round's seed block stores the log index and hash before it as the round's cut (every
+earlier entry is at or before the seed block). Rounds with no entry between their seed blocks share one
+cut. `cutOf(round)` returns it, and Settlement checks the proof's log position against it. The cuts of
+the last 256 rounds that stored one are kept; an older round cannot settle anyway (its seed block hash is
+gone). Log entries do not push a cut out.
+
+Before 2026-11-06 the contract kept the hash and block of the last log entries in a ring (256 entries,
+then 8,192), and Settlement read the cut entry from it. Enough cheap top-ups between a round's seed block
+and its settlement pushed the cut entry out: the round could never settle, and it blocked later rounds
+until its seed was gone. Each entry also wrote a new storage slot until the ring wrapped. With the cuts,
+an entry writes only the log hash and count, and one entry in a round also writes a cut: `createBatch`
+went from 176,950 to 137,575 gas on Hardhat (two fewer new slots).
 
 **The batch tree.** The live batches are the leaves of a Merkle tree with 2^32 leaves. Settlement
 stores only the hash of the postage header, and the header holds the tree root, the next free leaf, the
@@ -909,8 +922,18 @@ the tips of recent blocks. The failure needs a transaction that was sent into a 
 
 - A pending round blocks later rounds in the last block where its seed hash can still be read, and no
   longer in the next block (8191 blocks with EIP-2935; 256 on Hardhat, which has no EIP-2935 contract).
-- Settlement works across a wrap of the postage log ring (8195 log entries). A round whose cut entry left
-  the ring cannot settle (open item 12).
+- With the ring of 8,192 log entries, a round whose cut entry left the ring could not settle, and it
+  blocked later rounds (open item 12). Fixed: a round settles after 8,195 later log entries.
+
+**A price update lost to a gas estimate** (found while testing the cut, 2026-11-06). PriceOracleZK calls
+`PostageStampZK.setPrice` with a low-level call and ignores a failure, and `settleRound` catches a failed
+`adjustPriceForRound`. A gas estimate only checks that the outer transaction does not revert, so it could
+choose a limit at which the inner call ran out of gas: the transaction succeeded, and the price change
+was lost (the deploy script hit this when the first cut write made `setPrice` cost more). The prover sets
+the `settleRound` gas with an estimate, so a settlement could lose its price change in the same way.
+Fixed: when the inner call failed and at most 1/64 of the gas is left (an out-of-gas), the outer call
+reverts with `OutOfGas`, so an estimate always gives enough gas. Test: "a gas limit too low for the stamp
+price update reverts, and does not lose the update" (it fails without the check).
 
 **Long run on Sepolia** with faults (in progress since 2026-11-06 12:04 UTC; the contracts of "Sepolia
 run after the gas fixes"; network proofs; 50 rounds). Every 25-40 minutes a script does one fault, in
@@ -1138,9 +1161,10 @@ winners collect, a smaller anchor, a Merkle postage state) is in
      goes from 0 to the pot and back to 0 in each settlement, so the transfer to Settlement costs
      127,235 gas; the two other transfers cost 15,315 each. Fix: `withdraw` pays the winner and the
      fee recipient directly (about 110k gas less in each settlement).
-   - `setPrice` adds a postage log entry. Each entry writes a new `eventHashRing` slot until the ring
-     wraps (8192 entries), and one entry in four writes a new `eventBlockRing` slot (4 `uint64` values in
-     a slot). This is why round 188625 cost 97,870 gas more than round 188624.
+   - `setPrice` adds a postage log entry. Each entry wrote a new `eventHashRing` slot until the ring
+     wrapped (8192 entries), and one entry in four a new `eventBlockRing` slot (4 `uint64` values in a
+     slot). This is why round 188625 cost 97,870 gas more than round 188624. **Fixed** (2026-11-06): the
+     rings are replaced by one cut per round (section 2, "The cut of a round").
    To do: PostageStamp against PostageStampZK on Sepolia.
 4. ~~Timelock on `setVerifier`~~ **Done** (`proposeVerifier` / `applyVerifier`, delay fixed at
    deployment). To do: the admin as a multisig, and a mainnet value for `VERIFIER_DELAY`.
@@ -1162,13 +1186,11 @@ winners collect, a smaller anchor, a Merkle postage state) is in
     value of its freeze.
 11. The fee model: at today's prices the costs of a prover (gas, proofs) are higher than the 1% fee
     (ZK-PROVER-OPERATIONS.md, section 4). Without a better fee, only a paid operator runs a prover.
-12. A round whose postage cut entry leaves the postage log ring (more than 8192 log entries between its
-    seed block and its settlement) can never settle, and it blocks later rounds until its seed is gone
-    (8191 blocks). Normal traffic cannot do this. An attacker must write about 8192 log entries
-    (`createBatch` or top-ups) before the round settles. Test: "settles across a wrap of the postage log
-    ring" in `test/Settlement.test.ts`. No fix yet. Options: PostageStampZK writes the log hash of the
-    round's seed block into the round entry with its first log entry after the seed block, or a larger
-    ring (each new ring slot costs about 100k gas on Sepolia).
+12. ~~A round whose postage cut entry left the postage log ring could never settle~~ **Fixed**
+    (2026-11-06): PostageStampZK keeps the cut of each round (section 2, "The cut of a round"). Tests:
+    "settles a round whose cut is more than 8192 postage log entries old" and "rounds with no postage log
+    entry between their seed blocks share a cut" in `test/Settlement.test.ts`. Not yet on Sepolia: it
+    needs a new PostageStampZK.
 13. Two provers race for `anchorRound` and `settleRound`. The loser of `anchorRound` pays for a
     reverted transaction (30,067 gas on anvil). The loser of `settleRound` pays nothing on chain (the gas
     estimate fails), but it has already paid for its proof. A turn order (for example by round number)

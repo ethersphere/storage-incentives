@@ -40,16 +40,32 @@ contract PostageStampZK is AccessControl, Pausable {
     uint64 public minimumValidityBlocks = 17280;
     uint64 public lastUpdatedBlock;
 
-    // Event log for the settlement proof. Entry i (1-based) is hashed into eventHash(i); the last
-    // EVENT_RING entries keep their hash and block so Settlement can check a prefix of the log. A settlement
-    // needs the entries from its cut block (the seed block of its round) to its own transaction to still be
-    // in the ring. With 256 entries, about 17M gas of cheap top-ups in a minute pushed them out and made
-    // settleRound revert; 8192 entries need about 550M. Each log entry still writes one hash slot (and a
-    // quarter of a block slot): the slots are reused, so the larger ring costs gas only on first use.
-    uint256 public constant EVENT_RING = 8192;
+    // Event log for the settlement proof. The entries form a hash chain; `eventHash` is the hash after the
+    // last entry (0 before the first). A settlement replays the log up to the seed block of its game round
+    // (the cut), so Settlement needs the log index and hash at that block. The first entry after a round's
+    // seed block stores them as the round's cut: every earlier entry is at or before the seed block. Rounds
+    // with no entry between their seed blocks share one cut (fromRound..toRound).
+    //
+    // The cuts are kept for the last CUT_RING rounds that stored one. Log entries do not push a cut out, so
+    // no number of top-ups can make a round unsettleable (with a ring of the entries themselves, 8192
+    // entries before a settlement did). A round older than CUT_RING rounds cannot settle anyway: its seed
+    // block hash is gone. Most entries write only `eventHash` and `eventCount`; one entry in a round also
+    // writes a cut.
+    uint256 public constant GAME_ROUND_LENGTH = 64; // Settlement.ROUND_LENGTH
+    uint256 public constant GAME_SEED_OFFSET = 48; // Settlement.SEED_OFFSET
+    uint256 public constant CUT_RING = 256;
+
+    struct Cut {
+        uint64 fromRound;
+        uint64 toRound;
+        uint64 index;
+        bytes32 hash;
+    }
+
     uint64 public eventCount;
-    bytes32[8192] private eventHashRing;
-    uint64[8192] private eventBlockRing;
+    uint64 public lastCutRound; // in eventCount's slot
+    bytes32 public eventHash;
+    Cut[256] private cuts;
 
     uint8 public constant KIND_CREATE = 1;
     uint8 public constant KIND_TOPUP = 2;
@@ -129,7 +145,7 @@ contract PostageStampZK is AccessControl, Pausable {
     error PriceOracleOnly();
     error OnlyPauser();
     error OnlyRedistributor();
-    error EventOutOfRange();
+    error CutNotFound();
 
     // ----------------------------- CONSTRUCTOR ------------------------------
 
@@ -387,17 +403,20 @@ contract PostageStampZK is AccessControl, Pausable {
         return batch.owner != address(0) && batch.normalisedBalance > currentTotalOutPayment();
     }
 
-    /// @notice Hash of the event log after `index` entries. 0 for index 0. Only the last EVENT_RING are kept.
-    function eventHashAt(uint64 index) external view returns (bytes32) {
-        if (index == 0) return bytes32(0);
-        if (index > eventCount || eventCount - index >= EVENT_RING) revert EventOutOfRange();
-        return eventHashRing[index % EVENT_RING];
-    }
-
-    /// @notice Block of log entry `index` (1-based). Only the last EVENT_RING are kept.
-    function eventBlockAt(uint64 index) external view returns (uint64) {
-        if (index == 0 || index > eventCount || eventCount - index >= EVENT_RING) revert EventOutOfRange();
-        return eventBlockRing[index % EVENT_RING];
+    /// @notice The log index and hash at the seed block of game round `round`: the cut of its settlement.
+    /// Call it only after the seed block. Reverts when the round's cut is no longer kept.
+    function cutOf(uint64 round) external view returns (uint64 index, bytes32 hash) {
+        // No entry since the round's seed block: the cut is the whole log.
+        if (round > lastCutRound) return (eventCount, eventHash);
+        // The round's cut is the first one stored after its seed block: its own, or a later shared one.
+        for (uint64 r = round; r <= lastCutRound && r < round + CUT_RING; r++) {
+            Cut storage c = cuts[r % CUT_RING];
+            if (c.toRound == r) {
+                if (c.fromRound > round) break; // the cut that covered `round` was overwritten
+                return (c.index, c.hash);
+            }
+        }
+        revert CutNotFound();
     }
 
     function batchOwner(bytes32 _batchId) public view returns (address) {
@@ -456,13 +475,23 @@ contract PostageStampZK is AccessControl, Pausable {
     }
 
     function _log(uint8 kind, bytes32 batchId, address owner, uint8 depth, uint8 bucketDepth, uint256 value) internal {
-        uint64 index = eventCount + 1;
+        bytes32 prev = eventHash;
+        uint64 count = eventCount;
+        // The first entry after the seed block of the latest game round whose seed block has passed: store
+        // that round's cut (and the cut of the rounds before it that had no entry after their seed block).
+        if (block.number > GAME_SEED_OFFSET) {
+            uint64 round = uint64((block.number - GAME_SEED_OFFSET - 1) / GAME_ROUND_LENGTH);
+            uint64 last = lastCutRound;
+            if (round > last) {
+                cuts[round % CUT_RING] = Cut({fromRound: last + 1, toRound: round, index: count, hash: prev});
+                lastCutRound = round;
+            }
+        }
+        uint64 index = count + 1;
         uint256 outpayment = currentTotalOutPayment();
-        bytes32 prev = index == 1 ? bytes32(0) : eventHashRing[(index - 1) % EVENT_RING];
-        eventHashRing[index % EVENT_RING] = keccak256(
+        eventHash = keccak256(
             abi.encodePacked(prev, kind, batchId, owner, depth, bucketDepth, value, outpayment, uint64(block.number))
         );
-        eventBlockRing[index % EVENT_RING] = uint64(block.number);
         eventCount = index;
         emit PostageLog(index, kind, batchId, owner, depth, bucketDepth, value, outpayment, uint64(block.number));
     }
