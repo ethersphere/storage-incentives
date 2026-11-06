@@ -56,6 +56,11 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   prover uploads the lists and a daily postage snapshot to Swarm, and rebuilds the postage state from
   the chain (or a snapshot) when its file is missing. Uploads are off until a postage batch is bought
   (`swarm-prover stamp buy`). Prover keys, actions and costs: [ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md).
+- **Robustness tests (2026-11-06).** Shadow mode against real Gnosis rounds, two provers at the same
+  time, the edges of the rings, and escape hatches under full blocks. They found two faults, and both
+  are fixed: a round anchored by a prover that then stopped blocked all settlement for 8191 blocks, and
+  a forced transaction that was not mined in its first block stayed stuck until its window closed (an
+  honest node was then frozen). Results: section 5, "Robustness tests".
 - **Review fixes (2026-11-04).** A hard review found nine problems; all nine are fixed, each with tests
   and a local run:
   1. a node could leave a round after it saw the seed, to escape a freeze (now: non-reveal freeze);
@@ -848,6 +853,71 @@ Each of the 4 rounds with truth emitted `PriceUpdate` from the oracle and no `Pr
 After the run, the oracle's `lastAdjustedRound` was 188625. In the previous run, the price change of
 round 188529 was lost (see above): fix 2 of the gas analysis works on Sepolia.
 
+### Robustness tests (2026-11-06)
+
+**Shadow mode (phase 2).** `gnosis-shadow` replays real Gnosis Chain rounds of Redistribution
+`0x5069cdfB3D9E56d23B1cAeE83CE6109A7E4fd62d` through the VM and compares the outcome with the
+`TruthSelected`, `WinnerSelected` and `StakeFrozen` events of the claim transaction:
+
+- The commits (`Committed` events and the `commit` calldata, in chain order) and the reveals become forced
+  commits and forced reveals. The stake of each node is the effective stake from the `Revealed` event.
+- Redistribution's randomness replaces the VM's: the `CurrentRevealAnchor` anchor, the seed after the
+  first reveal (`keccak256(abi.encode(seed, prevrandao))`, with `prevrandao` from the block header), and
+  `prevrandao % 100` of the claim block. The replay checks the seed chain itself: the anchor of each round
+  must follow from the seed after the round before.
+- The overrides are in `swarm_vm::shadow`. They are not compiled for the zkVM (`target_os = "zkvm"`), so
+  the program key does not change (checked after a rebuild).
+
+Result (2026-11-06, Gnosis rounds 320284-323283, about 5.3 days): **2,880 of 2,880 rounds equal, 0
+differ.** They include 46 rounds where a node did not reveal, 18 rounds where a node revealed another
+hash or depth, 63 rounds with freezes (86 freezes), and rounds at winner depth 9 and 10, so the minimum
+depth rule is checked too. 110 rounds had reveals but no claim on Gnosis, so there was nothing to
+compare. The first round is skipped: its seed before the first reveal is unknown.
+
+A negative control (`--wrong-seed`) gives the VM a wrong seed: then 13 of 28 rounds differ. Not
+replayed: the claim's storage proofs (the replay takes the claim result from Gnosis), and the freeze
+lottery (Gnosis has `penaltyRandomFactor` 100, so a disagreeing node is always frozen).
+
+**Two provers at the same time** (anvil, mock proofs). Two provers with `ANCHOR_ROLE` get the same node
+messages through a fan-out proxy. After 3 rounds, prover B is killed right after it anchors a round.
+
+| | Before the fix | After the fix (`9793ef3`) |
+| --- | --- | --- |
+| Round that B anchored, then B stopped | Prover A: "this prover will not settle it". It cannot build the input, and the no-skip rule stops every later round. 2 of 8 rounds settled | Prover A takes B's anchored list (its own messages match the on-chain hash), anchors the reveals itself and settles. 8 of 8 rounds settled |
+| Nodes in that round | A has no anchored list, so it cannot give inclusion proofs. Every node forces its commit and reveal | No forced commits or reveals |
+| Lost `anchorRound` race | Logged as "anchored" (the receipt status was not checked) | Logged as a revert; the prover takes the winner's list |
+
+On Ethereum the stall before the fix lasts 8191 blocks (about 27 hours). When the prover's own messages
+do not match the anchored list, it downloads the `dataRef` document from Swarm (when the data layer is
+on) and checks it against the hash.
+
+**Escape hatches under full blocks** (anvil, fee-ordered transaction pool, block gas limit 1.6M). The
+prover censors node 0's commit and node 1's reveal. A spammer fills the blocks with 50 gwei-tip
+transfers, from the block after the node sends its forced transaction until the window ends (round
+blocks 21-23 and 45-47).
+
+| | node-sim before | node-sim after |
+| --- | --- | --- |
+| Fees of a forced transaction | alloy's estimate (no tip in a quiet block) | Tip: twice the highest of the estimate and the 90th percentile tip of the last 4 blocks (at least 1 gwei); max fee: 4 base fees plus the tip |
+| Not mined after a block | Waits | Replaced (same nonce, fees +30% or more) |
+| Result, 4 rounds | Every forced transaction was mined after its window and reverted. Node 1 was frozen in 3 rounds as a node that did not reveal | Every forced transaction landed in its window (a replacement with a 100 gwei tip). No freezes |
+
+When the spam already runs before the node sends, the old node-sim also gets in: alloy's estimate follows
+the tips of recent blocks. The failure needs a transaction that was sent into a quiet block.
+
+**The edges of the rings** (`test/Settlement.test.ts`, "round ring"):
+
+- A pending round blocks later rounds in the last block where its seed hash can still be read, and no
+  longer in the next block (8191 blocks with EIP-2935; 256 on Hardhat, which has no EIP-2935 contract).
+- Settlement works across a wrap of the postage log ring (8195 log entries). A round whose cut entry left
+  the ring cannot settle (open item 12).
+
+**Long run on Sepolia** with faults (in progress since 2026-11-06 12:04 UTC; the contracts of "Sepolia
+run after the gas fixes"; network proofs; 50 rounds). Every 25-40 minutes a script does one fault, in
+turn: a prover restart, an RPC outage of 3 minutes (a proxy answers 503), a pause of the prover for 4
+minutes (a late proof), a restart with an empty data folder, and a pause of 15 minutes (a round without
+a prover). After the first two faults, 4 of 4 rounds settled. The result follows when the run ends.
+
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
 Hardhat in this section are therefore too low for current Ethereum rules. Use the Sepolia values for cost
@@ -1044,7 +1114,7 @@ Phases are from [ZK-REDISTRIBUTION.md §11](./ZK-REDISTRIBUTION.md).
 | Phase | | State |
 | --- | --- | --- |
 | 1 | Deterministic VM, no EVM dependency | **Done** for master's rules (`crates/vm`) |
-| 2 | Shadow mode: VM against live Gnosis rounds | Not started. Needs a replay tool that turns `Committed`/`Revealed` events into a `RoundInput` |
+| 2 | Shadow mode: VM against live Gnosis rounds | **Done** for the game (`gnosis-shadow`, section 5): truth, winner and freezes equal in every replayed round. The claim's storage proofs are not replayed |
 | 3 | Prove the game logic | **Done** (SP1 program, Settlement, Sepolia setup) |
 | 4 | Prove the storage witnesses | **Done** (`claim.rs`, `forceClaim`, differential vectors) |
 | 4b | Postage accounting in the proof | **Done** (`PostageStampZK`, `postage.rs`, differential vectors, Gnosis replay). Run end to end on Sepolia since 2026-11-04 (section 5) |
@@ -1084,8 +1154,22 @@ winners collect, a smaller anchor, a Merkle postage state) is in
    (blocks 49-63) avoids that, but needs fast proving. If the settlement is late, an honest node can
    commit below the minimum depth, and its reveal then counts as no reveal (a freeze). A fix: take the
    minimum depth for round N from the game state after round N-2 (Settlement keeps the last two states).
-10. The check windows are 4 blocks (48 s). Under a gas spike a forced transaction may not land in time:
-    a node must pay a high priority fee for escape-hatch transactions, and check the receipt (node-sim
-    does both).
+10. The check windows are 4 blocks (48 s). A node must send escape-hatch transactions with a high
+    priority fee, replace a transaction that is not mined after a block (same nonce, higher fees), and
+    check the receipt. node-sim does all three since 2026-11-06 (section 5, "Escape hatches under full
+    blocks"). Bee must do the same. An attacker who raises its own tip in each block can still keep a
+    node out, but it pays for full blocks at a rising price; a node must be ready to pay up to the
+    value of its freeze.
 11. The fee model: at today's prices the costs of a prover (gas, proofs) are higher than the 1% fee
     (ZK-PROVER-OPERATIONS.md, section 4). Without a better fee, only a paid operator runs a prover.
+12. A round whose postage cut entry leaves the postage log ring (more than 8192 log entries between its
+    seed block and its settlement) can never settle, and it blocks later rounds until its seed is gone
+    (8191 blocks). Normal traffic cannot do this. An attacker must write about 8192 log entries
+    (`createBatch` or top-ups) before the round settles. Test: "settles across a wrap of the postage log
+    ring" in `test/Settlement.test.ts`. No fix yet. Options: PostageStampZK writes the log hash of the
+    round's seed block into the round entry with its first log entry after the seed block, or a larger
+    ring (each new ring slot costs about 100k gas on Sepolia).
+13. Two provers race for `anchorRound` and `settleRound`. The loser of `anchorRound` pays for a
+    reverted transaction (30,067 gas on anvil). The loser of `settleRound` pays nothing on chain (the gas
+    estimate fails), but it has already paid for its proof. A turn order (for example by round number)
+    removes the waste.

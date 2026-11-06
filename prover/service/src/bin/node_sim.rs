@@ -28,6 +28,7 @@
 //! Staking itself is done once, with scripts/zk/setup-nodes.ts.
 
 use alloy::{
+    eips::BlockNumberOrTag,
     network::EthereumWallet,
     primitives::{keccak256, Address, Bytes, B256, U256},
     providers::{DynProvider, Provider, ProviderBuilder},
@@ -113,9 +114,103 @@ struct Played {
     /// The reveal is on chain (forced) or was found in the anchored list.
     reveal_safe: bool,
     /// forceCommit / forceReveal sent but not yet confirmed. A failed one is sent again while its
-    /// window is open.
-    commit_tx: Option<B256>,
-    reveal_tx: Option<B256>,
+    /// window is open; one that is not mined after a block is replaced with higher fees.
+    commit_tx: Option<Sent>,
+    reveal_tx: Option<Sent>,
+}
+
+/// An escape-hatch transaction that is not confirmed yet.
+#[derive(Clone, Debug)]
+struct Sent {
+    /// Every version sent with this nonce: a replaced one can still be mined first.
+    hashes: Vec<B256>,
+    nonce: u64,
+    block: u64,
+    tip: u128,
+    max_fee: u128,
+}
+
+/// forceCommit or forceReveal of a node in a round.
+enum Forced {
+    Commit,
+    Reveal,
+}
+
+/// Fees for an escape-hatch transaction. It must land inside a 4-block window, also when somebody fills
+/// the blocks to keep it out. Tip: twice the highest of the node's estimate and the 90th percentile tip of
+/// the last 4 blocks (at least 1 gwei); max fee: 4 base fees plus the tip, enough for more than 4 full
+/// blocks. A replacement raises both by at least 30% (nodes accept a replacement from a 10% raise).
+async fn urgent_fees(read: &DynProvider, prev: Option<&Sent>) -> Result<(u128, u128)> {
+    let base = read
+        .get_block_by_number(BlockNumberOrTag::Latest)
+        .await?
+        .context("latest block")?
+        .header
+        .base_fee_per_gas
+        .unwrap_or(0) as u128;
+    let estimate = read.get_max_priority_fee_per_gas().await.unwrap_or(0);
+    let recent = read
+        .get_fee_history(4, BlockNumberOrTag::Latest, &[90.0])
+        .await
+        .ok()
+        .and_then(|h| h.reward)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| r.first().copied())
+        .max()
+        .unwrap_or(0);
+    let mut tip = estimate.max(recent).max(1_000_000_000) * 2;
+    let mut max_fee = 4 * base + tip;
+    if let Some(p) = prev {
+        tip = tip.max(p.tip * 13 / 10);
+        max_fee = max_fee.max(p.max_fee * 13 / 10).max(base + tip);
+    }
+    Ok((tip, max_fee))
+}
+
+/// Send (or, with `prev`, replace) a node's forceCommit or forceReveal with urgent fees.
+async fn send_forced(
+    args: &Args,
+    n: &Node,
+    read: &DynProvider,
+    round: u64,
+    p: &Played,
+    what: Forced,
+    prev: Option<&Sent>,
+) -> Result<Sent> {
+    let (tip, max_fee) = urgent_fees(read, prev).await?;
+    let nonce = match prev {
+        Some(s) => s.nonce,
+        None => {
+            n.provider
+                .get_transaction_count(n.signer.address())
+                .pending()
+                .await?
+        }
+    };
+    let s = Settlement::new(args.settlement, &n.provider);
+    let req = match what {
+        Forced::Commit => s
+            .forceCommit(round, p.obfuscated)
+            .into_transaction_request(),
+        Forced::Reveal => s
+            .forceReveal(round, n.overlay, p.depth, p.hash, p.nonce)
+            .into_transaction_request(),
+    }
+    .nonce(nonce)
+    .gas_limit(FORCE_GAS)
+    .max_fee_per_gas(max_fee)
+    .max_priority_fee_per_gas(tip);
+    let hash = *n.provider.send_transaction(req).await?.tx_hash();
+    let mut hashes = prev.map(|s| s.hashes.clone()).unwrap_or_default();
+    hashes.push(hash);
+    Ok(Sent {
+        hashes,
+        nonce,
+        block: read.get_block_number().await?,
+        tip,
+        max_fee,
+    })
 }
 
 /// Gas limit of forceCommit and forceReveal. Not estimated: an estimate made against the pending
@@ -235,7 +330,10 @@ async fn main() -> Result<()> {
             bail!("node {idx} ({owner}) is not staked; run scripts/zk/setup-nodes.ts first");
         }
         let height = staking.heightOfAddress(owner).call().await?;
+        // Escape-hatch transactions set their nonce themselves (to replace a stuck one), so the other
+        // transactions must not use a cached nonce.
         let provider = ProviderBuilder::new()
+            .with_simple_nonce_management()
             .wallet(EthereumWallet::from(signer.clone()))
             .connect_http(args.rpc_url.parse()?)
             .erased();
@@ -359,13 +457,21 @@ async fn main() -> Result<()> {
                 let obf = wrap_commit(n.overlay, depth, hash, nonce);
 
                 let res = if args.forced.contains(&n.idx) {
-                    Settlement::new(args.settlement, &n.provider)
-                        .forceCommit(round, obf)
-                        .gas(FORCE_GAS)
-                        .send()
+                    let p = Played {
+                        depth,
+                        hash,
+                        nonce,
+                        obfuscated: obf,
+                        revealed: false,
+                        claimed: false,
+                        commit_safe: true,
+                        reveal_safe: false,
+                        commit_tx: None,
+                        reveal_tx: None,
+                    };
+                    send_forced(&args, n, &read, round, &p, Forced::Commit, None)
                         .await
-                        .map(|tx| ("forceCommit tx".to_string(), Some(*tx.tx_hash())))
-                        .map_err(anyhow::Error::from)
+                        .map(|tx| ("forceCommit tx".to_string(), Some(tx)))
                 } else {
                     let digest = commit_digest(chain_id, args.settlement, round, obf);
                     let sig = n.signer.sign_message_sync(digest.as_slice())?;
@@ -403,11 +509,11 @@ async fn main() -> Result<()> {
             }
         }
 
-        confirm_forced(&read, round, &mut played).await;
+        confirm_forced(&args, &nodes, &read, block, &mut played).await;
 
         // Commit check: the anchor phase is over, forceCommit is still open.
         if (ANCHOR_END..REVEAL_START - 1).contains(&offset) {
-            check_commits(&args, &nodes, &http, &settlement, round, &mut played).await;
+            check_commits(&args, &nodes, &read, &http, &settlement, round, &mut played).await;
         }
 
         // Reveal phase: off-chain reveals until the reveal anchor phase, forceReveal until its end.
@@ -424,13 +530,9 @@ async fn main() -> Result<()> {
                     continue;
                 }
                 let res = if forced {
-                    Settlement::new(args.settlement, &n.provider)
-                        .forceReveal(round, n.overlay, p.depth, p.hash, p.nonce)
-                        .gas(FORCE_GAS)
-                        .send()
+                    send_forced(&args, n, &read, round, &p, Forced::Reveal, None)
                         .await
-                        .map(|tx| ("forceReveal tx".to_string(), Some(*tx.tx_hash())))
-                        .map_err(anyhow::Error::from)
+                        .map(|tx| ("forceReveal tx".to_string(), Some(tx)))
                 } else {
                     let msg = RevealMsg {
                         round,
@@ -458,7 +560,7 @@ async fn main() -> Result<()> {
 
         // Reveal check: the reveal anchor phase is over, forceReveal is still open.
         if (REVEAL_ANCHOR_END..REVEAL_END - 1).contains(&offset) {
-            check_reveals(&args, &nodes, &http, &settlement, round, &mut played).await;
+            check_reveals(&args, &nodes, &read, &http, &settlement, round, &mut played).await;
         }
 
         // Claim phase: the honest winner proves storage for the truth's sample.
@@ -486,30 +588,64 @@ async fn main() -> Result<()> {
 }
 
 /// Check the receipts of forced transactions. A failed one clears the node's state so that it is sent
-/// again while its window is open (by the commit check, the reveal loop or the reveal check).
+/// again while its window is open (by the commit check, the reveal loop or the reveal check). One that is
+/// not mined after a block is replaced with higher fees while its window is open.
 async fn confirm_forced(
+    args: &Args,
+    nodes: &[Node],
     read: &DynProvider,
-    round: u64,
+    block: u64,
     played: &mut HashMap<(u64, usize), Played>,
 ) {
+    let (round, offset) = (round_of(block), offset_of(block));
     for ((r, idx), p) in played.iter_mut().filter(|((r, _), _)| *r == round) {
-        for (what, tx) in [("forceCommit", p.commit_tx), ("forceReveal", p.reveal_tx)] {
-            let Some(hash) = tx else { continue };
-            let Ok(Some(receipt)) = read.get_transaction_receipt(hash).await else {
-                continue; // not mined yet
+        for what in [Forced::Commit, Forced::Reveal] {
+            let (name, sent, window_end) = match what {
+                Forced::Commit => ("forceCommit", p.commit_tx.clone(), REVEAL_START),
+                Forced::Reveal => ("forceReveal", p.reveal_tx.clone(), REVEAL_END),
             };
+            let Some(sent) = sent else { continue };
+            let mut receipt = None;
+            for h in &sent.hashes {
+                if let Ok(Some(rc)) = read.get_transaction_receipt(*h).await {
+                    receipt = Some(rc);
+                    break;
+                }
+            }
+            let Some(receipt) = receipt else {
+                // Not mined. Replace it while it can still land in its window (the next block).
+                if block > sent.block && offset + 1 < window_end {
+                    match send_forced(args, &nodes[*idx], read, round, p, what, Some(&sent)).await {
+                        Ok(new) => {
+                            warn!(
+                                round = r,
+                                node = idx,
+                                tip_gwei = new.tip / 1_000_000_000,
+                                "{name} not mined after a block: replaced with higher fees"
+                            );
+                            match name {
+                                "forceCommit" => p.commit_tx = Some(new),
+                                _ => p.reveal_tx = Some(new),
+                            }
+                        }
+                        Err(e) => warn!(round = r, node = idx, "{name} replacement: {e:#}"),
+                    }
+                }
+                continue;
+            };
+            let hash = receipt.transaction_hash;
             if receipt.status() {
-                info!(round = r, node = idx, %hash, gas = receipt.gas_used, "{what} confirmed");
+                info!(round = r, node = idx, %hash, gas = receipt.gas_used, block = receipt.block_number, "{name} confirmed");
             } else {
-                warn!(round = r, node = idx, %hash, "{what} failed on chain, sending it again");
-                if what == "forceCommit" {
+                warn!(round = r, node = idx, %hash, "{name} failed on chain, sending it again");
+                if name == "forceCommit" {
                     p.commit_safe = false;
                 } else {
                     p.reveal_safe = false;
                     p.revealed = false;
                 }
             }
-            if what == "forceCommit" {
+            if name == "forceCommit" {
                 p.commit_tx = None;
             } else {
                 p.reveal_tx = None;
@@ -564,9 +700,14 @@ async fn claim_backstop(
         node = n.idx,
         "round not settled by block {CLAIM_BACKSTOP}: forceClaim as a backstop"
     );
+    let Ok((tip, max_fee)) = urgent_fees(&n.provider, None).await else {
+        return warn!(round, "forceClaim: no fee estimate");
+    };
     match Settlement::new(args.settlement, &n.provider)
         .forceClaim(round, witness)
         .gas(FORCE_CLAIM_GAS)
+        .max_fee_per_gas(max_fee)
+        .max_priority_fee_per_gas(tip)
         .send()
         .await
     {
@@ -595,6 +736,7 @@ async fn inclusion_proof(http: &reqwest::Client, url: String) -> Option<(usize, 
 async fn check_commits(
     args: &Args,
     nodes: &[Node],
+    read: &DynProvider,
     http: &reqwest::Client,
     settlement: &Settlement::SettlementInstance<&DynProvider>,
     round: u64,
@@ -616,9 +758,14 @@ async fn check_commits(
         // No prover anchored the round: anchor it with an empty list (anchorEmpty, open to anybody from
         // block 20), then every node forces its commit below.
         let n = &nodes[pending[0]];
+        let Ok((tip, max_fee)) = urgent_fees(read, None).await else {
+            return warn!(round, "anchorEmpty: no fee estimate");
+        };
         match Settlement::new(args.settlement, &n.provider)
             .anchorEmpty(round)
             .gas(FORCE_GAS)
+            .max_fee_per_gas(max_fee)
+            .max_priority_fee_per_gas(tip)
             .send()
             .await
         {
@@ -654,16 +801,16 @@ async fn check_commits(
             node = idx,
             "commit missing from the anchored list, forcing it"
         );
-        match Settlement::new(args.settlement, &n.provider)
-            .forceCommit(round, p.obfuscated)
-            .gas(FORCE_GAS)
-            .send()
-            .await
-        {
+        match send_forced(args, n, read, round, p, Forced::Commit, None).await {
             Ok(tx) => {
-                info!(round, node = idx, "forceCommit tx");
+                info!(
+                    round,
+                    node = idx,
+                    tip_gwei = tx.tip / 1_000_000_000,
+                    "forceCommit tx"
+                );
                 p.commit_safe = true;
-                p.commit_tx = Some(*tx.tx_hash());
+                p.commit_tx = Some(tx);
             }
             Err(e) => warn!(round, node = idx, "forceCommit failed: {e:#}"),
         }
@@ -675,6 +822,7 @@ async fn check_commits(
 async fn check_reveals(
     args: &Args,
     nodes: &[Node],
+    read: &DynProvider,
     http: &reqwest::Client,
     settlement: &Settlement::SettlementInstance<&DynProvider>,
     round: u64,
@@ -726,17 +874,17 @@ async fn check_reveals(
             reveals_anchored = ri.revealsAnchored,
             "reveal missing from the anchored list, forcing it"
         );
-        match Settlement::new(args.settlement, &n.provider)
-            .forceReveal(round, n.overlay, p.depth, p.hash, p.nonce)
-            .gas(FORCE_GAS)
-            .send()
-            .await
-        {
+        match send_forced(args, n, read, round, p, Forced::Reveal, None).await {
             Ok(tx) => {
-                info!(round, node = idx, "forceReveal tx");
+                info!(
+                    round,
+                    node = idx,
+                    tip_gwei = tx.tip / 1_000_000_000,
+                    "forceReveal tx"
+                );
                 p.revealed = true;
                 p.reveal_safe = true;
-                p.reveal_tx = Some(*tx.tx_hash());
+                p.reveal_tx = Some(tx);
             }
             Err(e) => warn!(round, node = idx, "forceReveal failed: {e:#}"),
         }
@@ -813,13 +961,18 @@ async fn claim_phase(
                 .encode(),
         );
         let res = if args.forced.contains(&idx) {
-            Settlement::new(args.settlement, &n.provider)
-                .forceClaim(round, witness)
-                .gas(FORCE_CLAIM_GAS)
-                .send()
-                .await
-                .map(|_| "forceClaim tx".to_string())
-                .map_err(anyhow::Error::from)
+            match urgent_fees(&n.provider, None).await {
+                Ok((tip, max_fee)) => Settlement::new(args.settlement, &n.provider)
+                    .forceClaim(round, witness)
+                    .gas(FORCE_CLAIM_GAS)
+                    .max_fee_per_gas(max_fee)
+                    .max_priority_fee_per_gas(tip)
+                    .send()
+                    .await
+                    .map(|_| "forceClaim tx".to_string())
+                    .map_err(anyhow::Error::from),
+                Err(e) => Err(e),
+            }
         } else {
             let msg = ClaimMsg { round, witness };
             post(http, &format!("{}/v1/claim", args.prover_url), &msg)

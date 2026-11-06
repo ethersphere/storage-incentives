@@ -144,6 +144,18 @@ run it anywhere with `SP1_PROVER=network` and `NETWORK_PRIVATE_KEY`.
 The GPU instructions are not yet tested on a real machine. Record the actual steps and times when you
 do the first run, and correct this section.
 
+## Shadow mode: replay Gnosis rounds
+
+`gnosis-shadow` replays real Gnosis Chain Redistribution rounds through the VM and compares truth, winner
+and freezes with what Redistribution did (docs/ZK-SETTLEMENT.md, section 5, "Robustness tests"):
+
+```bash
+GNOSIS_RPC_URL=https://rpc.gnosischain.com ./target/release/gnosis-shadow --rounds 3000
+```
+
+It exits with an error when a round differs. `--wrong-seed` is a negative control: rounds must then
+differ.
+
 ## Run it locally (anvil, mock proofs)
 
 ```bash
