@@ -3,7 +3,6 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ISP1Verifier} from "./ISP1Verifier.sol";
 
 interface ISettlementStakes {
@@ -26,7 +25,6 @@ interface ISettlementStakes {
 interface ISettlementPostage {
     function withdraw(address beneficiary, uint256 amount) external;
 
-    function bzzToken() external view returns (address);
 
     function cutOf(uint64 round) external view returns (uint64 index, bytes32 hash);
 }
@@ -350,7 +348,6 @@ contract Settlement is AccessControl, Pausable {
     error OutputMismatch();
     error NotAdmin();
     error FeeTooHigh();
-    error TransferFailed();
 
     // ----------------------------- Constructor ------------------------------
 
@@ -913,14 +910,13 @@ contract Settlement is AccessControl, Pausable {
         if (amount == 0) return (0, 0);
         accruedPot = 0;
 
-        PostageContract.withdraw(address(this), amount);
-
-        IERC20 token = IERC20(PostageContract.bzzToken());
         fee = feeRecipient == address(0) ? 0 : (amount * proverFeeBps) / 10000;
         payout = amount - fee;
 
-        if (fee > 0 && !token.transfer(feeRecipient, fee)) revert TransferFailed();
-        if (payout > 0 && !token.transfer(winner, payout)) revert TransferFailed();
+        // PostageStampZK pays both directly: a transfer through Settlement writes its balance slot from 0 to
+        // the pot and back to 0 in each settlement, which costs about 110k gas more on Sepolia.
+        if (fee > 0) PostageContract.withdraw(feeRecipient, fee);
+        if (payout > 0) PostageContract.withdraw(winner, payout);
     }
 
     function _blockHash(uint256 n) internal view returns (bytes32 bh) {

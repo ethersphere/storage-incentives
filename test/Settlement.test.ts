@@ -365,6 +365,24 @@ describe('Settlement', function () {
         expect(await token.balanceOf(await copier.getAddress())).to.eq(copierBefore);
       }
       expect(await settlement.accruedPot()).to.eq(0);
+      // PostageStampZK pays the winner and the fee recipient directly; no tokens pass through Settlement.
+      const withdrawn = rc.logs
+        .filter((l: { address: string }) => l.address === postage.address)
+        .map((l: { topics: string[]; data: string }) => postage.interface.parseLog(l))
+        .filter((e: { name: string }) => e.name === 'PotWithdrawn')
+        .map((e: { args: { recipient: string; totalAmount: { toNumber(): number } } }) => [
+          e.args.recipient,
+          e.args.totalAmount.toNumber(),
+        ]);
+      expect(withdrawn).to.deep.eq([
+        [owners[0], 10_000],
+        [winner, 990_000],
+      ]);
+      const transfers = rc.logs
+        .filter((l: { address: string }) => l.address === token.address)
+        .map((l: { topics: string[]; data: string }) => token.interface.parseLog(l));
+      expect(transfers.map((t: { args: { to: string } }) => t.args.to)).to.not.include(settlement.address);
+      expect(await token.balanceOf(settlement.address)).to.eq(0);
       expect(await staking.lastUpdatedBlockNumberOfAddress(frozen)).to.eq(rc.blockNumber + 2 * ROUND_LENGTH * 4);
       expect(await settlement.lastClaimRound()).to.eq(round);
       expect(await settlement.lastWinnerDepth()).to.eq(2);

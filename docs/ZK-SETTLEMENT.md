@@ -245,8 +245,9 @@ Then `verifier.verifyProof(programVKey, publicValues, proof)`. Then it executes 
 
 1. For every round: store the new postage state hash and log position, and add the proven
    `potAmount` to `accruedPot`.
-2. For a round with a valid claim: freezes, `adjustPrice(redundancy)`, then withdraw `accruedPot` from
-   PostageStampZK. Pay `proverFeeBps` (default 1%) to `outcome.feeRecipient` and the rest to the winner.
+2. For a round with a valid claim: freezes, `adjustPrice(redundancy)`, then pay out `accruedPot`.
+   PostageStampZK pays `proverFeeBps` (default 1%) to `outcome.feeRecipient` and the rest to the winner,
+   with two `withdraw` calls. The tokens do not go through Settlement.
    The fee recipient is an output of the proof, not `msg.sender`: before this, a bot could copy a
    `settleRound` transaction from the mempool, send it first and take the fee (found in review,
    2026-11-04).
@@ -1157,10 +1158,11 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 3. Gas on Sepolia: `settleRound` is measured (section 5, "Sepolia run after the gas fixes"). On Sepolia,
    a write to a new storage slot costs about 100k gas more than a write to a used slot. Two places in
    `settleRound` pay for this (analysed 2026-11-06 with Blockscout call traces):
-   - The pot goes PostageStampZK → Settlement → winner and fee recipient. The sBZZ balance of Settlement
-     goes from 0 to the pot and back to 0 in each settlement, so the transfer to Settlement costs
-     127,235 gas; the two other transfers cost 15,315 each. Fix: `withdraw` pays the winner and the
-     fee recipient directly (about 110k gas less in each settlement).
+   - The pot went PostageStampZK → Settlement → winner and fee recipient. The sBZZ balance of Settlement
+     went from 0 to the pot and back to 0 in each settlement, so the transfer to Settlement cost
+     127,235 gas; the two other transfers cost 15,315 each. **Fixed** (2026-11-06): PostageStampZK pays
+     the winner and the fee recipient directly, with two `withdraw` calls (about 110k gas less in each
+     settlement with a payout).
    - `setPrice` adds a postage log entry. Each entry wrote a new `eventHashRing` slot until the ring
      wrapped (8192 entries), and one entry in four a new `eventBlockRing` slot (4 `uint64` values in a
      slot). This is why round 188625 cost 97,870 gas more than round 188624. **Fixed** (2026-11-06): the
