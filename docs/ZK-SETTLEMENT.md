@@ -936,11 +936,36 @@ Fixed: when the inner call failed and at most 1/64 of the gas is left (an out-of
 reverts with `OutOfGas`, so an estimate always gives enough gas. Test: "a gas limit too low for the stamp
 price update reverts, and does not lose the update" (it fails without the check).
 
-**Long run on Sepolia** with faults (in progress since 2026-11-06 12:04 UTC; the contracts of "Sepolia
-run after the gas fixes"; network proofs; 50 rounds). Every 25-40 minutes a script does one fault, in
+**Long run on Sepolia** with faults (2026-11-06, 12:04-23:05 UTC; the contracts of "Sepolia run after
+the gas fixes"; network proofs; rounds 188695-188743). Every 25-40 minutes a script did one fault, in
 turn: a prover restart, an RPC outage of 3 minutes (a proxy answers 503), a pause of the prover for 4
 minutes (a late proof), a restart with an empty data folder, and a pause of 15 minutes (a round without
-a prover). After the first two faults, 4 of 4 rounds settled. The result follows when the run ends.
+a prover). Each fault came 3 times.
+
+**Result: 8 rounds settled (188695-188703), then no more.** The restart, the RPC outage and the late
+proof did no harm. The first restart with an empty data folder (14:20 UTC) stopped all settlement:
+
+1. Round 188704 was anchored (commits and reveals) by the prover before the restart. The new prover
+   had no messages for it, and the Swarm uploads were off, so it could not get the anchored lists. The
+   round cannot settle, and the no-skip rule makes Settlement reject every later round
+   (`RoundPending(188704)`) until the seed block hash of round 188704 is gone: 8191 blocks, about 27
+   hours.
+2. The prover did not see this before it proved. It proved round 188705 29 times, about 0.42 PROVE
+   each time, and each `settleRound` reverted. Then the PROVE balance of the requester key was too low
+   for a proof (0.2465 PROVE), and no more proofs were made.
+3. In 5 rounds (188702, 188708, 188722, 188724, 188739) the prover did not answer in the commit phase.
+   node-sim retried the commit to the prover, then gave up: it did not call `anchorEmpty` and
+   `forceCommit`. These rounds have no anchor, so they are skipped. The rule "no answer means force"
+   (section 3) holds for the commit checks and the claim, but not for a commit that the prover never
+   took.
+
+The nodes kept to the rules: `forceClaim` as a backstop in 37 rounds, and forced reveals in 4 rounds. In
+17 rounds node-sim's reserve was too small for the size estimate (`ReserveCheckFailed`), so those rounds
+can only settle unclaimed; this is a node-sim setting (`--reserve`), not a fault. Fixes, not done yet:
+the prover must not prove a round while an earlier anchored round is pending; a prover must be able to
+get an anchored list back after a data loss (the Swarm uploads, or the nodes send their messages again);
+node-sim (and Bee) must force a commit or reveal that the prover did not take. A design question
+remains: one round that cannot settle stops all settlement for 27 hours.
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
