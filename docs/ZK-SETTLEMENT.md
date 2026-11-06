@@ -1047,7 +1047,7 @@ Phases are from [ZK-REDISTRIBUTION.md §11](./ZK-REDISTRIBUTION.md).
 | 2 | Shadow mode: VM against live Gnosis rounds | Not started. Needs a replay tool that turns `Committed`/`Revealed` events into a `RoundInput` |
 | 3 | Prove the game logic | **Done** (SP1 program, Settlement, Sepolia setup) |
 | 4 | Prove the storage witnesses | **Done** (`claim.rs`, `forceClaim`, differential vectors) |
-| 4b | Postage accounting in the proof | **Done** (`PostageStampZK`, `postage.rs`, differential vectors). Not yet run end to end |
+| 4b | Postage accounting in the proof | **Done** (`PostageStampZK`, `postage.rs`, differential vectors, Gnosis replay). Run end to end on Sepolia since 2026-11-04 (section 5) |
 | 5 | Canonical settlement, retire on-chain phases | This branch's deployment shape |
 | 6 | Recursive aggregation | Not started |
 
@@ -1061,8 +1061,17 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 2. ~~Swarm as the data layer~~ **Built** (2026-11-04): lists and snapshots to Swarm, rebuild of the
    postage state from the chain. To do: buy the batch and turn the uploads on
    ([ZK-PROVER-OPERATIONS.md](./ZK-PROVER-OPERATIONS.md), section 7).
-3. Measure gas on Sepolia (or with the same fork rules locally): PostageStamp against PostageStampZK, and
-   `settleRound`. The anvil values are too low for current Ethereum rules.
+3. Gas on Sepolia: `settleRound` is measured (section 5, "Sepolia run after the gas fixes"). On Sepolia,
+   a write to a new storage slot costs about 100k gas more than a write to a used slot. Two places in
+   `settleRound` pay for this (analysed 2026-11-06 with Blockscout call traces):
+   - The pot goes PostageStampZK → Settlement → winner and fee recipient. The sBZZ balance of Settlement
+     goes from 0 to the pot and back to 0 in each settlement, so the transfer to Settlement costs
+     127,235 gas; the two other transfers cost 15,315 each. Fix: `withdraw` pays the winner and the
+     fee recipient directly (about 110k gas less in each settlement).
+   - `setPrice` adds a postage log entry. Each entry writes a new `eventHashRing` slot until the ring
+     wraps (8192 entries), and one entry in four writes a new `eventBlockRing` slot (4 `uint64` values in
+     a slot). This is why round 188625 cost 97,870 gas more than round 188624.
+   To do: PostageStamp against PostageStampZK on Sepolia.
 4. ~~Timelock on `setVerifier`~~ **Done** (`proposeVerifier` / `applyVerifier`, delay fixed at
    deployment). To do: the admin as a multisig, and a mainnet value for `VERIFIER_DELAY`.
 5. Fee model for provers (section 4).
