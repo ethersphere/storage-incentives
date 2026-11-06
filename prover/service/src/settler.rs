@@ -20,7 +20,7 @@ use swarm_prover::{
 };
 use swarm_vm::{
     canonical_commits, commits_hash, reveals_hash, ForcedCommit, PublicValues, Reveal, RoundInput,
-    StakeRecord,
+    SignedCommit, StakeRecord,
 };
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
@@ -226,6 +226,112 @@ async fn note_empty_anchor(ctx: &Ctx, round: u64) -> Result<()> {
     Ok(())
 }
 
+/// A round that another prover anchored: take its anchored lists, so this prover can settle the round when
+/// the other one stops (else the round blocks every later round until its seed is gone). A list comes from
+/// the messages this prover received itself, or else from the `dataRef` document on Swarm, and is used
+/// only if it matches the hash on chain. Returns true when the stored lists now match the chain.
+async fn adopt_anchor(ctx: &Ctx, round: u64) -> Result<bool> {
+    let ri = Settlement::new(ctx.settlement, &ctx.provider)
+        .rounds(round)
+        .call()
+        .await?;
+    if !ri.anchored {
+        return Ok(false);
+    }
+    let commits_ok = |l: &[SignedCommit]| {
+        l.len() as u32 == ri.commitCount
+            && commits_hash(l.iter().map(|c| (&c.owner, &c.obfuscated_hash))) == ri.commitsHash
+    };
+    let reveals_ok =
+        |l: &[Reveal]| l.len() as u32 == ri.revealCount && reveals_hash(l) == ri.revealsHash;
+
+    let (anchored, reveals_anchored, own_commits, own_reveals) = {
+        let mut store = ctx.store.lock().await;
+        let m = store.get_mut(round);
+        let mut own_reveals = m.reveals.clone();
+        own_reveals.sort_by(|a, b| a.overlay.cmp(&b.overlay));
+        (
+            m.anchored.clone(),
+            m.reveals_anchored.clone(),
+            m.commits.values().cloned().collect::<Vec<_>>(),
+            own_reveals,
+        )
+    };
+
+    let commits = match anchored {
+        Some(l) if commits_ok(&l) => Some(l),
+        _ if commits_ok(&own_commits) => Some(own_commits),
+        _ => anchored_doc(ctx, round, false)
+            .await
+            .and_then(|d| d.commits)
+            .filter(|l| commits_ok(l)),
+    };
+    let reveals = if !ri.revealsAnchored {
+        reveals_anchored
+    } else {
+        match reveals_anchored {
+            Some(l) if reveals_ok(&l) => Some(l),
+            _ if reveals_ok(&own_reveals) => Some(own_reveals),
+            _ => anchored_doc(ctx, round, true)
+                .await
+                .and_then(|d| d.reveals)
+                .filter(|l| reveals_ok(l)),
+        }
+    };
+
+    let ok = commits.is_some() && (!ri.revealsAnchored || reveals.is_some());
+    let mut store = ctx.store.lock().await;
+    let m = store.get_mut(round);
+    if let Some(l) = commits {
+        m.anchored = Some(l);
+    }
+    if ri.revealsAnchored && reveals.is_some() {
+        m.reveals_anchored = reveals;
+    }
+    store.save(round)?;
+    Ok(ok)
+}
+
+/// The `dataRef` document of the round's `RoundAnchored` (or `RevealsAnchored`) event, from Swarm.
+async fn anchored_doc(ctx: &Ctx, round: u64, reveals: bool) -> Option<RoundData> {
+    let bee = ctx.bee.as_ref()?;
+    let start = round * ROUND_LENGTH;
+    let sig = if reveals {
+        Settlement::RevealsAnchored::SIGNATURE_HASH
+    } else {
+        Settlement::RoundAnchored::SIGNATURE_HASH
+    };
+    let logs = logs_in(ctx, ctx.settlement, sig, start, start + ROUND_LENGTH - 1)
+        .await
+        .ok()?;
+    for log in logs {
+        let (r, data_ref) = if reveals {
+            let e = log
+                .log_decode::<Settlement::RevealsAnchored>()
+                .ok()?
+                .inner
+                .data;
+            (e.round, e.dataRef)
+        } else {
+            let e = log
+                .log_decode::<Settlement::RoundAnchored>()
+                .ok()?
+                .inner
+                .data;
+            (e.round, e.dataRef)
+        };
+        if r != round {
+            continue;
+        }
+        match bee.fetch::<RoundData>(data_ref).await {
+            Ok(doc) if doc.round == round && doc.settlement == ctx.settlement => return Some(doc),
+            Ok(_) => warn!(round, %data_ref, "dataRef document is for another round"),
+            Err(e) => warn!(round, %data_ref, "dataRef document not found on Swarm: {e:#}"),
+        }
+    }
+    None
+}
+
 /// Fix the round's off-chain commit list on chain (anchorRound).
 async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
     if ctx.store.lock().await.get_mut(round).anchored.is_some() {
@@ -234,8 +340,21 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
 
     let s = Settlement::new(ctx.settlement, &ctx.provider);
     if s.rounds(round).call().await?.anchored {
-        warn!("round {round} was anchored by someone else; this prover will not settle it");
-        ctx.store.lock().await.get_mut(round).anchored = Some(vec![]);
+        if adopt_anchor(ctx, round).await? {
+            info!(round, "anchored by another prover; this prover has the anchored list, so it can settle the round too");
+        } else {
+            // Wait: settle_tick tries again to get the list.
+            warn!(
+                round,
+                "anchored by another prover with a list this prover does not have"
+            );
+            ctx.store
+                .lock()
+                .await
+                .get_mut(round)
+                .anchored
+                .get_or_insert_with(Vec::new);
+        }
         return Ok(());
     }
 
@@ -282,6 +401,16 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
         .with_timeout(Some(TX_TIMEOUT))
         .get_receipt()
         .await?;
+    if !receipt.status() {
+        // Another prover anchored first (AlreadyAnchored), in the same block or the one before.
+        let tx = receipt.transaction_hash;
+        if adopt_anchor(ctx, round).await? {
+            warn!(round, %tx, "anchorRound reverted: another prover anchored the same list");
+        } else {
+            warn!(round, %tx, "anchorRound reverted: another prover anchored a list this prover does not have");
+        }
+        return Ok(());
+    }
     info!(round, commits = list.len(), %data_ref, uploaded, tx = %receipt.transaction_hash, "anchored");
     Ok(())
 }
@@ -340,6 +469,11 @@ async fn anchor_reveals(ctx: &Ctx, round: u64) -> Result<()> {
         .with_timeout(Some(TX_TIMEOUT))
         .get_receipt()
         .await?;
+    if !receipt.status() {
+        // Another prover anchored the reveals first; settle_tick takes its list (adopt_anchor).
+        warn!(round, tx = %receipt.transaction_hash, "anchorReveals reverted: another prover anchored the reveals");
+        return Ok(());
+    }
     info!(round, reveals = list.len(), %data_ref, uploaded, tx = %receipt.transaction_hash, "reveals anchored");
     Ok(())
 }
@@ -402,7 +536,12 @@ async fn settle_tick(ctx: &Ctx) -> Result<()> {
         let input = match build_input(ctx, round, block, None).await {
             Ok(i) => i,
             Err(e) => {
-                warn!(round, "cannot build the round input yet: {e:#}");
+                // Another prover may have anchored lists that differ from the stored ones.
+                if adopt_anchor(ctx, round).await.unwrap_or(false) {
+                    info!(round, "took the anchored lists of another prover");
+                } else {
+                    warn!(round, "cannot build the round input yet: {e:#}");
+                }
                 break;
             }
         };

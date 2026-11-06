@@ -347,6 +347,8 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         &input.seed_header,
     )
     .ok_or(VmError::Randomness)?;
+    #[cfg(not(target_os = "zkvm"))]
+    let rnd = shadow::get().map_or(rnd, shadow::randomness);
     if rnd.round_anchor != input.round_anchor || rnd.selection_seed != input.selection_seed {
         return Err(VmError::Randomness);
     }
@@ -474,6 +476,10 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         .checked_mul(freeze_unit)
         .ok_or(VmError::Overflow)?;
     let freeze_lottery = freeze_random(seed) < U256::from(input.penalty_random_factor);
+    #[cfg(not(target_os = "zkvm"))]
+    let freeze_lottery = shadow::get().map_or(freeze_lottery, |o| {
+        o.freeze_random < input.penalty_random_factor
+    });
 
     let mut sum = U256::ZERO;
     let mut redundancy: u64 = 0;
@@ -521,7 +527,10 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
         batches: &batches,
         sample_max_value: input.sample_max_value,
     };
-    if claim_candidates(input).any(|w| claim::verify_claim(&w, &ctx).is_ok()) {
+    let claimed = claim_candidates(input).any(|w| claim::verify_claim(&w, &ctx).is_ok());
+    #[cfg(not(target_os = "zkvm"))]
+    let claimed = shadow::get().map_or(claimed, |o| o.claim_ok);
+    if claimed {
         out.hasTruth = true;
     } else {
         out.unclaimed = true;
@@ -622,6 +631,54 @@ fn freeze_random(seed: B256) -> U256 {
     buf[..32].copy_from_slice(seed.as_slice());
     buf[32] = b'2';
     U256::from_be_bytes(keccak256(buf).0) % U256::from(100u8)
+}
+
+/// Replay of Gnosis rounds (`gnosis-shadow`): Redistribution.sol's randomness, freeze lottery and claim
+/// result replace the VM's, so the rest of the game can be compared with what happened on Gnosis. Not in
+/// the zkVM program, and off unless `shadow::run` sets it.
+#[cfg(not(target_os = "zkvm"))]
+pub mod shadow {
+    use super::*;
+    use std::cell::Cell;
+
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct Overrides {
+        /// `currentRevealRoundAnchor` (the `CurrentRevealAnchor` event).
+        pub round_anchor: B256,
+        /// Redistribution's `seed` after the round's first reveal.
+        pub selection_seed: B256,
+        /// `block.prevrandao % 100` of the claim block.
+        pub freeze_random: u8,
+        /// Whether `claim` succeeded on Gnosis.
+        pub claim_ok: bool,
+    }
+
+    std::thread_local! {
+        static CURRENT: Cell<Option<Overrides>> = const { Cell::new(None) };
+    }
+
+    pub(crate) fn get() -> Option<Overrides> {
+        CURRENT.with(|c| c.get())
+    }
+
+    pub(crate) fn randomness(o: Overrides) -> randomness::Randomness {
+        randomness::Randomness {
+            anchor_block_hash: B256::ZERO,
+            seed_block_hash: B256::ZERO,
+            round_anchor: o.round_anchor,
+            selection_seed: o.selection_seed,
+        }
+    }
+
+    /// `run` with Gnosis's randomness and claim result. The input needs headers with the round's block
+    /// numbers (`randomness::synthetic_header`), and `round_anchor` and `selection_seed` equal to the
+    /// overrides.
+    pub fn run(input: &RoundInput, o: Overrides) -> Result<PublicValues, VmError> {
+        CURRENT.with(|c| c.set(Some(o)));
+        let out = super::run(input);
+        CURRENT.with(|c| c.set(None));
+        out
+    }
 }
 
 #[cfg(test)]
