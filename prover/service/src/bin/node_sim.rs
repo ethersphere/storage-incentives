@@ -395,7 +395,15 @@ async fn main() -> Result<()> {
     let mut backstop_done: std::collections::HashSet<u64> = Default::default();
 
     loop {
-        let block = read.get_block_number().await?;
+        // An RPC error is temporary: try again, do not leave the rounds that are in progress.
+        let block = match read.get_block_number().await {
+            Ok(b) => b,
+            Err(e) => {
+                warn!("cannot read the block number, will try again: {e:#}");
+                tokio::time::sleep(Duration::from_secs(2)).await;
+                continue;
+            }
+        };
         let (round, offset) = (round_of(block), offset_of(block));
         let first = *first_round.get_or_insert(round);
         // Run until the claim phase of the last round is over.
@@ -406,7 +414,14 @@ async fn main() -> Result<()> {
 
         // Commit phase. Leave two blocks of margin so the message or tx lands in time.
         if offset + 2 < COMMIT_END && (args.rounds == 0 || round < first + args.rounds) {
-            let (anchor, _) = swarm_prover::round_anchor(&read, round).await?;
+            let anchor = match swarm_prover::round_anchor(&read, round).await {
+                Ok((a, _)) => a,
+                Err(e) => {
+                    warn!(round, "cannot read the round anchor, will try again: {e:#}");
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                    continue;
+                }
+            };
             if !samples.contains_key(&round) {
                 let started = std::time::Instant::now();
                 let (r, depth) = (reserve.clone(), args.depth);

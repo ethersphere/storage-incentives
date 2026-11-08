@@ -195,6 +195,10 @@ async fn anchor_tick(ctx: &Ctx) -> Result<()> {
     if offset >= ANCHOR_END {
         note_empty_anchor(ctx, round).await?;
     }
+    // A prover that was down until the end of a round did not see its empty anchor in the round itself.
+    if round > 0 {
+        note_empty_anchor(ctx, round - 1).await?;
+    }
     if ctx.no_anchor {
         return Ok(());
     }
@@ -261,9 +265,12 @@ async fn adopt_anchor(ctx: &Ctx, round: u64) -> Result<bool> {
         )
     };
 
+    // An empty list (anchorEmpty, when no prover anchored the round) matches even when this prover holds
+    // commits that it never anchored: the round then settles from the forced entries.
     let commits = match anchored {
         Some(l) if commits_ok(&l) => Some(l),
         _ if commits_ok(&own_commits) => Some(own_commits),
+        _ if commits_ok(&[]) => Some(vec![]),
         _ => anchored_doc(ctx, round, false)
             .await
             .and_then(|d| d.commits)
@@ -275,6 +282,7 @@ async fn adopt_anchor(ctx: &Ctx, round: u64) -> Result<bool> {
         match reveals_anchored {
             Some(l) if reveals_ok(&l) => Some(l),
             _ if reveals_ok(&own_reveals) => Some(own_reveals),
+            _ if reveals_ok(&[]) => Some(vec![]),
             _ => anchored_doc(ctx, round, true)
                 .await
                 .and_then(|d| d.reveals)

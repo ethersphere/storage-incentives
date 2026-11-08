@@ -996,6 +996,26 @@ At block 58 a node called `forceClaim` as a backstop, because the round was not 
 claims hash changed, and `settleRound` reverted (`InputMismatch(10)`). The prover proved the round again
 and settled it. The cost is one proof, in a rare case.
 
+**Sepolia run with faults on the 2026-11-08 contracts** (first try, 10:43-14:25 UTC, rounds
+188908-188922). The faults were the same as in the long run. Rounds 188908-188919 settled, also after a
+prover restart, an RPC outage, a late proof and an empty data folder. Then two faults stopped the run:
+
+1. **A round without a prover did not settle.** The prover took the 3 commits of round 188920 and then
+   was paused for 15 minutes, past the end of the round. The nodes called `anchorEmpty`, and forced
+   their commits, reveals and claim. When the prover came back, it compared the empty list on chain with
+   its own 3 commits. They did not match, so `adopt_anchor` did not take the round, and the round did
+   not settle. Round 188921 then waited for `PENDING_ROUNDS`. Fix: `adopt_anchor` accepts the empty list
+   when the hash on chain is the hash of an empty list. The prover also checks the previous round for an
+   empty anchor, because a prover that comes back after the end of a round did not see the anchor in
+   the round itself.
+2. **node-sim stopped on one RPC error** ("connection reset by peer"), after 15 of 40 rounds. Fix: in
+   its main loop, node-sim logs a failed read of the block number or the round anchor, and tries again.
+
+Local test of fault 1 (anvil, mock proofs; `scratchpad` script `wipe/run2.sh`): the prover takes the
+commits of round 10, and is paused from block 6 of round 10 to block 22 of round 11. With the old prover,
+round 10 did not settle, and round 11 waited 3 rounds. With the fix, round 10 settled when the prover came
+back, and rounds 8-16 all settled.
+
 **Gas of `settleRound` on the 2026-11-08 contracts** (Sepolia, rounds 188910-188913: 779,185-840,986).
 Call trace of round 188911 (755,249 gas): proof check about 227k; `adjustPrice` with the stamp
 `setPrice` 345,695; the two direct `withdraw` calls 38,822 and 17,922 (no transfer to Settlement any
