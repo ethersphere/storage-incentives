@@ -44,14 +44,14 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   of batches no longer changes the cost (section 2, "The batch tree"; section 5).
 - **Round ring.** Round state is kept in 256 reused entries, so anchors and forced messages write only
   used storage slots (section 2, "Round storage").
-- **Sepolia (2026-11-05, with the O(1) no-skip check and the price change keyed to the game round).**
-  Settlement `0x9dC237bEeB7fa2E5EBBa0F68e0BD4DEe963Cc448`, PostageStampZK
-  `0xeC680D0241B4Dc01822BaCA5e6dBE105BE0d2679`, PriceOracleZK `0x1Ff1C2FFdb2f584132211FF341B5B49e0aEcFAe8`,
-  StakeRegistry `0x6E4F110B0D10fBF18Cae9d7d49f1DfCbe6457212`, sBZZ
+- **Sepolia (2026-11-08, with the cut of each round, the direct payout, the `OutOfGas` guard and
+  `PENDING_ROUNDS`).** Settlement `0x187383d796982750b7F9c111f62B239675aC6116`, PostageStampZK
+  `0xe3eeD32e9D8b67372d0E9BB8B6936084E1f54482`, PriceOracleZK `0x0C95D4439e3A80E9F20b7E3Ff68a340563048428`,
+  StakeRegistry `0x8Ff0bE93D1edB72c58A9d51C42D9c11e726a55ae`, sBZZ
   `0x1e96D92aEF6ceA3cE35D1697F6C35877BadD7232`; SP1's verifier gateway; program key
-  `0x0027935554b533c1957b7a2b8b5471239bd82a634f160457b60a367724314669`. The roles of the previous
-  Settlement and PriceOracleZK on PostageStampZK are revoked (`scripts/zk/revoke-old.ts`). Source verified
-  on Etherscan and Sourcify. Run: section 5, "Sepolia run after the gas fixes".
+  `0x0027935554b533c1957b7a2b8b5471239bd82a634f160457b60a367724314669`. Source verified on Etherscan and
+  Sourcify. The contracts of 2026-11-05 (Settlement `0x9dC237bEeB7fa2E5EBBa0F68e0BD4DEe963Cc448`) are
+  no longer used. Run: section 5, "Long run on Sepolia".
 - **Data layer.** The anchored lists are Merkle roots (a node checks its own entry with a proof). The
   prover uploads the lists and a daily postage snapshot to Swarm, and rebuilds the postage state from
   the chain (or a snapshot) when its file is missing. Uploads are off until a postage batch is bought
