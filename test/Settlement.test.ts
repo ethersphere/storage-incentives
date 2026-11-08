@@ -770,26 +770,43 @@ describe('Settlement', function () {
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('NotAnchored');
     });
 
-    it('a pending round blocks later rounds only while its seed block hash can be read', async function () {
-      // EIP-2935 serves 8191 block hashes; without it BLOCKHASH serves 256.
-      const history = await ethers.provider.getCode(await settlement.HISTORY_STORAGE());
-      const window = history === '0x' ? 256 : 8191;
+    it('a pending round blocks later rounds for PENDING_ROUNDS rounds after its end', async function () {
+      // Before, a pending round blocked until its seed was gone (8191 blocks on Ethereum). A round whose
+      // anchored lists were lost then stopped all settlement for about 27 hours.
+      const pending = (await settlement.PENDING_ROUNDS()).toNumber();
       const r1 = await anchoredRound(); // never settled
       const r2 = await mineToOffset(COMMIT_END, r1 + 2);
       await settlement.anchorRound(r2, ZERO, 0, ZERO);
-      const seed1 = r1 * ROUND_LENGTH + SEED_OFFSET;
+      const limit = (r1 + 1 + pending) * ROUND_LENGTH;
+      // The limit comes before the seed of r1 is gone, also without EIP-2935 (256 blocks).
+      expect(limit).to.be.lessThan(r1 * ROUND_LENGTH + SEED_OFFSET + 256);
 
-      // The last block in which r1's seed can be read: r1 can still settle, so r2 must wait.
-      await mineTo(seed1 + window - 1);
+      // A transaction lands in the block after mineTo. In the last block before the limit, r2 must wait.
+      await mineTo(limit - 2);
+      await settlement.seedBlockHash(r1);
       const pv = await publicValues(r2, [], {});
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('RoundPending');
-      // One block later r1 can never settle, and r2 settles.
-      await mineTo(seed1 + window);
+      // At the limit r2 settles, and r1 can no longer settle.
+      await mineTo(limit - 1);
       await settlement.settleRound(encode(pv), '0x');
       expect(await settlement.lastSettledRound()).to.eq(r2);
-      await expect(settlement.seedBlockHash(r1)).to.be.revertedWith('SeedNotAvailable');
       pv.inputs.round = r1;
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('RoundOutOfOrder');
+    });
+
+    it('a pending round settles within PENDING_ROUNDS, and then later rounds follow', async function () {
+      const pending = (await settlement.PENDING_ROUNDS()).toNumber();
+      const r1 = await anchoredRound();
+      const r2 = await mineToOffset(COMMIT_END, r1 + 1);
+      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      // One round after r1 ended (on Hardhat the anchor block hash of r1 runs out before the limit).
+      await mineTo((r1 + 2) * ROUND_LENGTH);
+      expect(r1 + 2).to.be.lessThan(r1 + 1 + pending);
+      const pv2 = await publicValues(r2, [], {});
+      await expect(settlement.settleRound(encode(pv2), '0x')).to.be.revertedWith('RoundPending');
+      await settlement.settleRound(encode(await publicValues(r1, [], {})), '0x');
+      await settlement.settleRound(encode(await publicValues(r2, [], {})), '0x');
+      expect(await settlement.lastSettledRound()).to.eq(r2);
     });
 
     it('settles a round whose cut is more than 8192 postage log entries old', async function () {

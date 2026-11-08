@@ -93,6 +93,8 @@ most about 0.40 PROVE (docs/ZK-SETTLEMENT.md, section 5).
    ```
 
    The log shows the request id and an Explorer link.
+5. Check the balance of the requester key at any time: `./target/release/swarm-prover balance`. A proof
+   costs about 0.40 PROVE.
 
 ## Run the prover on a rented GPU
 

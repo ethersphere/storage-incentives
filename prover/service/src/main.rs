@@ -6,6 +6,7 @@
 //!   vkey     print the program verification key Settlement must be deployed with
 //!   execute  run a saved round input through the zkVM (no proof) and report cycles; --prove to prove
 //!   stamp    status, buy or top up the mutable postage batch for Swarm uploads (through the Bee node)
+//!   balance  the PROVE balance of the Succinct requester key (NETWORK_PRIVATE_KEY)
 //!
 //! See docs/ZK-SETTLEMENT.md for the protocol and prover/README.md for how to run it.
 
@@ -30,6 +31,8 @@ struct Cli {
 enum Cmd {
     Serve(settler::Config),
     Vkey,
+    /// The PROVE balance of the Succinct requester key (NETWORK_PRIVATE_KEY). A proof costs about 0.40.
+    Balance,
     Execute {
         /// A round input saved by `serve` (data/rounds/<n>/input.json).
         input: PathBuf,
@@ -118,6 +121,12 @@ async fn main() -> Result<()> {
 
     match Cli::parse().cmd {
         Cmd::Serve(cfg) => settler::serve(cfg).await,
+        Cmd::Balance => {
+            let client = sp1_sdk::ProverClient::builder().network().build().await;
+            let wei = client.get_balance().await?;
+            println!("{:.4} PROVE", f64::from(wei) / 1e18);
+            Ok(())
+        }
         Cmd::Vkey => {
             // The blocking SP1 SDK must not run on the async runtime's thread.
             println!("{}", tokio::task::spawn_blocking(prover::vkey).await?);

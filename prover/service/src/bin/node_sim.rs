@@ -504,6 +504,31 @@ async fn main() -> Result<()> {
                             },
                         );
                     }
+                    // The prover did not take the commit: keep it, so the commit check forces it
+                    // (anchorEmpty first if no prover anchored the round). Before this, node-sim retried
+                    // until the commit phase ended and then left the round.
+                    Err(e) if !args.forced.contains(&n.idx) => {
+                        warn!(
+                            round,
+                            node = n.idx,
+                            "commit to the prover failed, will force it: {e:#}"
+                        );
+                        played.insert(
+                            (round, n.idx),
+                            Played {
+                                depth,
+                                hash,
+                                nonce,
+                                obfuscated: obf,
+                                revealed: false,
+                                claimed: false,
+                                commit_safe: false,
+                                reveal_safe: false,
+                                commit_tx: None,
+                                reveal_tx: None,
+                            },
+                        );
+                    }
                     Err(e) => warn!(round, node = n.idx, "commit failed: {e:#}"),
                 }
             }

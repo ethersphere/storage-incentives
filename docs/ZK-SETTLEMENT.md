@@ -961,11 +961,27 @@ proof did no harm. The first restart with an empty data folder (14:20 UTC) stopp
 
 The nodes kept to the rules: `forceClaim` as a backstop in 37 rounds, and forced reveals in 4 rounds. In
 17 rounds node-sim's reserve was too small for the size estimate (`ReserveCheckFailed`), so those rounds
-can only settle unclaimed; this is a node-sim setting (`--reserve`), not a fault. Fixes, not done yet:
-the prover must not prove a round while an earlier anchored round is pending; a prover must be able to
-get an anchored list back after a data loss (the Swarm uploads, or the nodes send their messages again);
-node-sim (and Bee) must force a commit or reveal that the prover did not take. A design question
-remains: one round that cannot settle stops all settlement for 27 hours.
+can only settle unclaimed; this is a node-sim setting (`--reserve`), not a fault. Fixes (2026-11-08):
+
+- **The prover checks before it pays for a proof.** It simulates `settleRound` with an empty proof
+  (`eth_call`, free). If Settlement rejects the round (`RoundPending`, `InputMismatch` and the other
+  errors before the verifier), the prover does not prove; for `RoundPending` it tries to take the
+  anchored lists of the pending round, and waits. It also reuses a stored proof of the same public
+  values. `swarm-prover balance` shows the PROVE balance of the requester key.
+- **node-sim forces a commit that the prover did not take.** It keeps the commit, and the commit check
+  calls `anchorEmpty` (if no prover anchored the round) and `forceCommit`. The reveal check already
+  forced every reveal that is not in the anchored list.
+
+Local test of both faults (anvil, mock proofs; `scratchpad` script `wipe/run.sh`): the prover was killed
+right after it anchored the reveals of round 10, and started again with an empty data folder. Round 10
+could not settle. The prover did not prove round 11 while round 10 blocked it, and it settled rounds 11-15
+as soon as the seed of round 10 was gone (256 blocks on anvil, which has no EIP-2935 contract). Then the
+prover was paused for 20 blocks from the start of round 15. The nodes called `anchorEmpty`,
+`forceCommit` and `forceReveal`, and round 15 settled. All rounds 8-20 except round 10 settled.
+
+Still open: a prover must be able to get an anchored list back after a data loss (the Swarm uploads, or
+the nodes send their messages again), and one round that cannot settle still stops all settlement for
+27 hours on Ethereum (open item 14).
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
@@ -1222,3 +1238,9 @@ winners collect, a smaller anchor, a Merkle postage state) is in
     reverted transaction (30,067 gas on anvil). The loser of `settleRound` pays nothing on chain (the gas
     estimate fails), but it has already paid for its proof. A turn order (for example by round number)
     removes the waste.
+14. One anchored round that cannot settle (its lists are lost) blocks all later rounds until its seed
+    block hash is gone: 8191 blocks, about 27 hours (long Sepolia run, section 5). Options: the Swarm
+    uploads, so that any prover can get the lists; nodes that send their messages again; or a shorter
+    skip time for an anchored round, for example 4 rounds. A shorter skip time gives back part of the
+    prover's power to skip a round (section 3, "The prover's power over the payouts"), so it needs a
+    decision.

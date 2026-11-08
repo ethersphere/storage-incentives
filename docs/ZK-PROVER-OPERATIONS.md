@@ -240,5 +240,5 @@ dependency. Then work on items 2 and 3 above, which decentralize the role, not o
    Without `SWARM_API` and `SWARM_BATCH_ID`, the prover uploads nothing, and `dataRef` is the keccak256
    of each document. Everything else works the same.
 
-5. Watch: the prover key's ETH, the requester's PROVE, the batch (`swarm-prover stamp status`), and the
+5. Watch: the prover key's ETH, the requester's PROVE (`swarm-prover balance`), the batch (`swarm-prover stamp status`), and the
    log lines `anchored`, `settled` and `postage snapshot uploaded`.

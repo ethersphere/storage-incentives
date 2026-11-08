@@ -15,7 +15,7 @@ use std::{path::PathBuf, sync::Arc, time::Duration};
 use swarm_prover::swarm::{Bee, PostageSnapshot, RoundData, SnapshotRef, DATA_VERSION};
 use swarm_prover::{
     offset_of, round_of, seed_block, PostageStamp, PriceOracle, Settlement, StakeRegistry,
-    ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, REVEAL_ANCHOR_END,
+    ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, PENDING_ROUNDS, REVEAL_ANCHOR_END,
     REVEAL_ANCHOR_START, REVEAL_END, ROUND_LENGTH, SEED_OFFSET,
 };
 use swarm_vm::{
@@ -106,6 +106,8 @@ pub struct Ctx {
     pub store: Mutex<Store>,
     /// Serialises transactions from the one prover key.
     pub tx_lock: Mutex<()>,
+    /// The earlier anchored round that blocked the last settlement attempt (logged once, not each poll).
+    pub pending: Mutex<Option<u64>>,
 }
 
 pub async fn serve(cfg: Config) -> Result<()> {
@@ -159,6 +161,7 @@ pub async fn serve(cfg: Config) -> Result<()> {
         snapshot_every: cfg.snapshot_every.max(1),
         store: Mutex::new(Store::open(cfg.data_dir.clone())?),
         tx_lock: Mutex::new(()),
+        pending: Mutex::new(None),
     });
     match ctx.bee.as_ref().map(|b| b.batch().is_some()) {
         Some(true) => {
@@ -539,6 +542,15 @@ async fn settle_tick(ctx: &Ctx) -> Result<()> {
                 // Another prover may have anchored lists that differ from the stored ones.
                 if adopt_anchor(ctx, round).await.unwrap_or(false) {
                     info!(round, "took the anchored lists of another prover");
+                } else if block >= (round + 1 + PENDING_ROUNDS) * ROUND_LENGTH {
+                    // Settlement lets later rounds pass this one now (PENDING_ROUNDS).
+                    mark_failed(
+                        ctx,
+                        round,
+                        &format!("no round input after {PENDING_ROUNDS} rounds: {e:#}"),
+                    )
+                    .await?;
+                    continue;
                 } else {
                     warn!(round, "cannot build the round input yet: {e:#}");
                 }
@@ -1072,6 +1084,61 @@ async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
         (state, r.event_index, r.event_hash)
     };
     let native = swarm_vm::run(&input).map_err(|e| anyhow!("vm: {e:?}"))?;
+    let public_values = PublicValues::abi_encode(&native);
+
+    // A free check before a paid proof: simulate settleRound with an empty proof. Only the verifier may
+    // reject the call. A Settlement error (an earlier anchored round still pending, an input that does not
+    // match the chain) means the proof would be wasted. In the long Sepolia run a prover that lost its data
+    // proved a blocked round 29 times.
+    if let Err(e) = Settlement::new(ctx.settlement, &ctx.provider)
+        .settleRound(public_values.clone().into(), Bytes::new())
+        .from(ctx.from)
+        .call()
+        .await
+    {
+        if let Some(err) = e.as_decoded_interface_error::<Settlement::SettlementErrors>() {
+            if let Settlement::SettlementErrors::RoundPending(p) = &err {
+                // Logged once for each blocking round, not at every poll.
+                if ctx.pending.lock().await.replace(p.round) != Some(p.round) {
+                    warn!(
+                        round,
+                        pending = p.round,
+                        "not proving: an earlier anchored round can still settle and blocks this one"
+                    );
+                }
+                if adopt_anchor(ctx, p.round).await.unwrap_or(false) {
+                    info!(
+                        round = p.round,
+                        "took the anchored lists of the pending round"
+                    );
+                }
+                return Ok(());
+            }
+            anyhow::bail!("not proving: settleRound would revert with {err:?}");
+        }
+    }
+
+    // A proof of the same public values from an earlier attempt (for example a settleRound that failed to
+    // send) is reused, not paid for again.
+    let cached = {
+        let store = ctx.store.lock().await;
+        std::fs::read(store.round_dir(round).join("proof.json")).ok()
+    }
+    .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+    .and_then(|v| {
+        let pv: Bytes = v["publicValues"].as_str()?.parse().ok()?;
+        let proof: Bytes = v["proof"].as_str()?.parse().ok()?;
+        (pv.as_ref() == public_values.as_slice()).then(|| prover::SettlementProof {
+            public_values: pv.to_vec(),
+            proof: proof.to_vec(),
+            cycles: v["cycles"].as_u64().unwrap_or(0),
+        })
+    });
+    if let Some(p) = cached {
+        info!(round, "reusing the stored proof of this round");
+        return send_settlement(ctx, round, p, &new_postage, event_index, event_hash).await;
+    }
+
     info!(
         round,
         participants = native.inputs.participants.len(),
@@ -1085,7 +1152,7 @@ async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
     let started = std::time::Instant::now();
     let p = tokio::task::spawn_blocking(move || prover::prove(&input)).await??;
     info!(round, cycles = p.cycles, elapsed = ?started.elapsed(), proof_bytes = p.proof.len(), "proved");
-    debug_assert_eq!(p.public_values, PublicValues::abi_encode(&native));
+    debug_assert_eq!(p.public_values, public_values);
     {
         let store = ctx.store.lock().await;
         store.write_file(
@@ -1099,7 +1166,17 @@ async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
             }))?,
         )?;
     }
+    send_settlement(ctx, round, p, &new_postage, event_index, event_hash).await
+}
 
+async fn send_settlement(
+    ctx: &Ctx,
+    round: u64,
+    p: prover::SettlementProof,
+    new_postage: &swarm_vm::postage::PostageState,
+    event_index: u64,
+    event_hash: B256,
+) -> Result<()> {
     let s = Settlement::new(ctx.settlement, &ctx.provider);
     let _g = ctx.tx_lock.lock().await;
     let nonce = ctx
@@ -1124,7 +1201,7 @@ async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
         store.get_mut(round).settle_tx = Some(receipt.transaction_hash.to_string());
         store.save(round)?;
     }
-    if let Err(e) = maybe_snapshot(ctx, round, &new_postage, event_index, event_hash).await {
+    if let Err(e) = maybe_snapshot(ctx, round, new_postage, event_index, event_hash).await {
         warn!(round, "postage snapshot: {e:#}");
     }
     Ok(())

@@ -218,6 +218,11 @@ contract Settlement is AccessControl, Pausable {
     address public constant HISTORY_STORAGE = 0x0000F90827F1C53a10cb7A02335B175320002935;
     uint256 public constant HISTORY_SERVE_WINDOW = 8191;
 
+    // An anchored round that does not settle blocks later rounds for this many rounds after it ends, then
+    // later rounds can pass it. Without a limit, a round whose anchored lists were lost blocked all
+    // settlement until its seed was gone (8191 blocks, about 27 hours; long Sepolia run, 2026-11-06).
+    uint256 public constant PENDING_ROUNDS = 3;
+
     bytes32 public constant ANCHOR_ROLE = keccak256("ANCHOR_ROLE");
     bytes32 public constant COMMIT_TYPEHASH =
         keccak256("SwarmSettlementCommit(uint256 chainId,address settlement,uint64 round,bytes32 obfuscatedHash)");
@@ -875,8 +880,9 @@ contract Settlement is AccessControl, Pausable {
     /**
      * @dev A round cannot be skipped while it can still settle: settling a later round would make it
      * unsettleable, and a prover could so choose which winners are paid (the pot carries over). An anchored,
-     * unsettled earlier round blocks until its seed block hash can no longer be read (EIP-2935: 8191
-     * blocks). Rounds without an anchor are skipped.
+     * unsettled earlier round blocks for PENDING_ROUNDS rounds after its end, or until its seed block hash
+     * can no longer be read, whichever comes first. In that time any prover with its lists can settle it.
+     * Rounds without an anchor are skipped.
      */
     function _checkNoPendingRound(uint64 _round) internal view {
         // Only the anchored round before this one can be pending: the rounds in between are not anchored,
@@ -886,6 +892,7 @@ contract Settlement is AccessControl, Pausable {
         if (p <= lastSettledRound) return;
         RoundSlot storage e = ring[p % RING_SIZE];
         if (e.round != p || !e.anchored) return; // entry reused: more than 256 rounds ago
+        if (block.number >= (uint256(p) + 1 + PENDING_ROUNDS) * ROUND_LENGTH) return; // waited long enough
         if (_blockHash(seedBlock(p)) == bytes32(0)) return; // its seed is gone: it can never settle
         revert RoundPending(p);
     }

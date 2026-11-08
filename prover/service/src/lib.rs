@@ -23,6 +23,9 @@ pub use swarm_vm::SEED_OFFSET;
 pub const CLAIM_START: u64 = 49;
 /// EIP-2935 serves this many past block hashes; after that a round's seed is gone for good.
 pub const HISTORY_SERVE_WINDOW: u64 = 8191;
+/// Settlement.PENDING_ROUNDS: an anchored round that does not settle blocks later rounds for this many
+/// rounds after its end.
+pub const PENDING_ROUNDS: u64 = 3;
 
 /// The RLP header of block `number`, checked against the block hash the node reports.
 pub async fn header_rlp<P: alloy::providers::Provider>(
@@ -77,7 +80,7 @@ pub fn seed_block(round: u64) -> u64 {
 }
 
 alloy::sol! {
-    #[sol(rpc)]
+    #[sol(rpc, all_derives)]
     contract Settlement {
         function anchorRound(uint64 _round, bytes32 _commitsHash, uint32 _commitCount, bytes32 _dataRef) external;
         function anchorEmpty(uint64 _round) external;
@@ -122,6 +125,15 @@ alloy::sol! {
         function postageEventIndex() external view returns (uint64);
         function postageEventHash() external view returns (bytes32);
         function accruedPot() external view returns (uint256);
+
+        // What settleRound can revert with before it calls the verifier.
+        error NotAnchored();
+        error AlreadySettled();
+        error RoundOutOfOrder();
+        error RoundPending(uint64 round);
+        error SeedNotAvailable();
+        error ClaimWindowOpen();
+        error InputMismatch(uint8 which);
 
         event RoundAnchored(uint64 indexed round, bytes32 anchorBlockHash, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
         event PostageSettled(uint64 indexed round, uint64 eventIndex, uint64 cutBlock, uint256 potAmount, uint256 accruedPot);
