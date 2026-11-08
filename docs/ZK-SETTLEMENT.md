@@ -996,6 +996,14 @@ At block 58 a node called `forceClaim` as a backstop, because the round was not 
 claims hash changed, and `settleRound` reverted (`InputMismatch(10)`). The prover proved the round again
 and settled it. The cost is one proof, in a rare case.
 
+**Gas of `settleRound` on the 2026-11-08 contracts** (Sepolia, rounds 188910-188913: 779,185-840,986).
+Call trace of round 188911 (755,249 gas): proof check about 227k; `adjustPrice` with the stamp
+`setPrice` 345,695; the two direct `withdraw` calls 38,822 and 17,922 (no transfer to Settlement any
+more). The price change is high because the first postage log entry of each round writes a new
+`cuts[round % 256]` entry: two new storage slots, about 100k gas each on Sepolia. After 256 rounds (about
+2.3 days) the entries are reused, and a settlement costs about 200k less. Warming the entries in advance
+would only move that cost to the deployment.
+
 ### Tests before a testnet (2026-11-08)
 
 **Real Gnosis claims through the Rust claim checks** (phase 2 for the claim). `gnosis-shadow` now takes
