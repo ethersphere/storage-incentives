@@ -485,7 +485,9 @@ the attack.
 paid, and how much: (1) settle a round late with a late cut block, so that its winner gets the pot of the
 later rounds as well; (2) settle round N + 1 first, so that round N (and its winner) is skipped and its pot
 carries over; (3) withhold the winner's claim witness. Now: (1) the cut block must be the round's seed
-block; (2) `settleRound` reverts with `RoundPending` while an earlier anchored round can still settle;
+block; (2) `settleRound` reverts with `RoundPending` while an earlier anchored round can still settle, for at
+most 3 rounds after that round's end (`PENDING_ROUNDS`, added 2026-11-08: before, a round with lost lists
+stopped all settlement for 27 hours);
 (3) the `forceClaim` backstop above.
 
 **Prover API under load (fixed 2026-11-04).** `/outcome` and `/claim` build a whole round input (dozens
@@ -503,7 +505,8 @@ the nodes force their commits and reveals, and any prover can settle the round f
 chain (node-sim does this; the prover option `NO_ANCHOR`, test only, runs a prover that stopped
 anchoring). Before this fallback (found in review, 2026-11-04), a stopped prover made every round
 unsettleable, and forced entries counted for nothing. Rounds settle in increasing order. An anchored round
-cannot be skipped while it can still settle; a round without an anchor is skipped. Section 4 tells who
+cannot be skipped while it can still settle, for at most `PENDING_ROUNDS` (3) rounds after its end; a round
+without an anchor is skipped. Section 4 tells who
 settles and who pays.
 
 **Upgrade authority (timelock added 2026-11-04).** A new verifier or program key takes two steps:
@@ -979,9 +982,54 @@ as soon as the seed of round 10 was gone (256 blocks on anvil, which has no EIP-
 prover was paused for 20 blocks from the start of round 15. The nodes called `anchorEmpty`,
 `forceCommit` and `forceReveal`, and round 15 settled. All rounds 8-20 except round 10 settled.
 
-Still open: a prover must be able to get an anchored list back after a data loss (the Swarm uploads, or
-the nodes send their messages again), and one round that cannot settle still stops all settlement for
-27 hours on Ethereum (open item 14).
+**A lost round no longer stops settlement for 27 hours** (2026-11-08). Settlement's `PENDING_ROUNDS` (3):
+an anchored round that does not settle blocks later rounds only for 3 rounds after its end (about 38
+minutes on Ethereum), or until its seed is gone, whichever comes first. In that time any prover with the
+lists can settle it. The prover skips its own round with lost lists after the same time. Test: "a pending
+round blocks later rounds for PENDING_ROUNDS rounds after its end" (it fails without the change). Still
+open: a prover must be able to get an anchored list back after a data loss (the Swarm uploads, or the
+nodes send their messages again); without that, the round is lost, and its pot goes to the next winner.
+
+**A race between a slow proof and `forceClaim`** (Sepolia, 2026-11-08). After a prover restart in the claim
+phase, the prover started the proof of round 188909 at block 52 of the round, and the proof took 103 s.
+At block 58 a node called `forceClaim` as a backstop, because the round was not settled. The forced
+claims hash changed, and `settleRound` reverted (`InputMismatch(10)`). The prover proved the round again
+and settled it. The cost is one proof, in a rare case.
+
+### Tests before a testnet (2026-11-08)
+
+**Real Gnosis claims through the Rust claim checks** (phase 2 for the claim). `gnosis-shadow` now takes
+the storage proofs from each Gnosis claim transaction, reads the three batches as they were in the block
+before the claim, and reads `sampleMaxValue` from storage. Then it runs `swarm_vm::claim::verify_claim`
+with Redistribution's anchor, seed and truth. Result over Gnosis rounds 320284-323283: **2,880 of 2,880
+claims accepted**, with 1,260 single-owner-chunk (SOC) witnesses. Two negative controls for each claim
+(one changed byte in a stamp signature, a wrong seed): **5,760 of 5,760 rejected**.
+
+**Batch migration rehearsal** (anvil, mock proofs; `gnosis-postage --export-batches`,
+`scripts/zk/copy-batches.ts`):
+
+- The 8,011 live Gnosis batches (cut block 49,095,553) were copied into PostageStampZK with
+  `copyBatchBulk`, 100 for each transaction: 654,024,913 gas, 81,640 for each batch on anvil (more on
+  Ethereum, where a new storage slot costs more). The contract got the remaining balance of all batches:
+  93,983.9 BZZ.
+- **Fault found and fixed:** the first try copied nothing. `copyBatchBulk` calls `copyBatch` through
+  `this`, and `copyBatch` rejected the contract itself as not the admin, so each batch failed with
+  `CopyBatchFailed`. Master's PostageStamp has the same code. `copyBatch` now accepts `address(this)`
+  (test: "copies batches in bulk (migration), only for the admin, and logs each copy"). The
+  PostageStampZK on Sepolia of 2026-11-08 does not have this fix yet.
+- The first settlement after the copy replays the 8,011 new batches: **2,292,836,874 cycles**. The
+  Succinct Prover Network proved it (Groth16) in **133 s**, for about 1.8 PROVE (maximum 3.74 PROVE:
+  4.2 billion PGU). The four rounds after it settled with normal cycle counts (0.6M-0.7M).
+- Thus a migration of all Gnosis batches fits in one settlement. It can also be split over several
+  rounds, so that no single proof is large.
+
+**A stock Bee node against PostageStampZK** (Sepolia). Bee 2.7.1 (the binary of Swarm Desktop, with its
+own data folder) ran as a full node with `--postage-stamp-address` and the other contract addresses of
+the 2026-11-08 deployment, storage incentives off. Through the normal Bee API it bought a batch
+(`createBatch`, 656,160 gas), topped it up, increased its depth (dilute), uploaded a 300 KB file with it
+and downloaded it again. Bee showed the correct depth, amount and TTL (239,880 s = 20,000 blocks of
+12 s). The first dilute failed with `InsufficientBalance`, the same rule as master's PostageStamp; after
+a larger top-up it worked. So current Bee versions work with PostageStampZK with no change.
 
 **Gas on Sepolia is higher than on anvil.** Sepolia runs a newer Ethereum version (Geth 1.17). The same
 `createBatch` costs 633,420 gas on Sepolia and 177,236 on anvil. The gas values measured on anvil and
@@ -1179,7 +1227,7 @@ Phases are from [ZK-REDISTRIBUTION.md §11](./ZK-REDISTRIBUTION.md).
 | Phase | | State |
 | --- | --- | --- |
 | 1 | Deterministic VM, no EVM dependency | **Done** for master's rules (`crates/vm`) |
-| 2 | Shadow mode: VM against live Gnosis rounds | **Done** for the game (`gnosis-shadow`, section 5): truth, winner and freezes equal in every replayed round. The claim's storage proofs are not replayed |
+| 2 | Shadow mode: VM against live Gnosis rounds | **Done** (`gnosis-shadow`, section 5): truth, winner and freezes equal in 2,880 of 2,880 replayed rounds, and the Rust claim checks accept 2,880 of 2,880 real claims |
 | 3 | Prove the game logic | **Done** (SP1 program, Settlement, Sepolia setup) |
 | 4 | Prove the storage witnesses | **Done** (`claim.rs`, `forceClaim`, differential vectors) |
 | 4b | Postage accounting in the proof | **Done** (`PostageStampZK`, `postage.rs`, differential vectors, Gnosis replay). Run end to end on Sepolia since 2026-11-04 (section 5) |
@@ -1212,8 +1260,10 @@ winners collect, a smaller anchor, a Merkle postage state) is in
 4. ~~Timelock on `setVerifier`~~ **Done** (`proposeVerifier` / `applyVerifier`, delay fixed at
    deployment). To do: the admin as a multisig, and a mainnet value for `VERIFIER_DELAY`.
 5. Fee model for provers (section 4).
-6. Batch migration from Gnosis PostageStamp to PostageStampZK (`copyBatchBulk`), and a check with the Bee
-   team that no Bee version reads `pot` or `validChunkCount`.
+6. Batch migration from Gnosis PostageStamp to PostageStampZK (`copyBatchBulk`): rehearsed on anvil with
+   all 8,011 live batches, and one fault fixed (section 5, "Tests before a testnet"). To do: the
+   immutable flag of each batch (the export copies all as mutable), and a check with the Bee team that
+   no Bee version reads `pot` or `validChunkCount` (a stock Bee 2.7.1 worked with PostageStampZK).
 7. Forced-inclusion scoping across several rounds (§7.1c of the proposal).
 8. Bee integration: the commit, reveal and claim messages, the HTTP API (or Swarm feeds), and when to
    fall back to `forceCommit`/`forceReveal`/`forceClaim`.
@@ -1238,9 +1288,8 @@ winners collect, a smaller anchor, a Merkle postage state) is in
     reverted transaction (30,067 gas on anvil). The loser of `settleRound` pays nothing on chain (the gas
     estimate fails), but it has already paid for its proof. A turn order (for example by round number)
     removes the waste.
-14. One anchored round that cannot settle (its lists are lost) blocks all later rounds until its seed
-    block hash is gone: 8191 blocks, about 27 hours (long Sepolia run, section 5). Options: the Swarm
-    uploads, so that any prover can get the lists; nodes that send their messages again; or a shorter
-    skip time for an anchored round, for example 4 rounds. A shorter skip time gives back part of the
-    prover's power to skip a round (section 3, "The prover's power over the payouts"), so it needs a
-    decision.
+14. ~~One anchored round that cannot settle blocks all later rounds for 27 hours~~ **Fixed**
+    (2026-11-08): `PENDING_ROUNDS` = 3 (section 5). The cost: a prover that holds back a round for 3
+    rounds, while no other prover has its lists, can skip it and move its pot to the next winner. The
+    Swarm uploads remove that case. To do: the uploads, or nodes that send their messages again, so that
+    a lost round can still settle.
