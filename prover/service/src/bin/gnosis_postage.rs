@@ -10,6 +10,10 @@
 //!    with `swarm-prover execute <out>/input.json` for the cycle count of one steady-state settlement,
 //!    or add `--prove`.
 //!
+//! 5. With `--export-batches <file>`: write the live batches after the last settlement in the format of
+//!    `PostageStampZK.copyBatchBulk` (remaining balance per chunk at the last cut), for a migration
+//!    rehearsal (`scripts/zk/copy-batches.ts`).
+//!
 //!   GNOSIS_RPC_URL=... ./target/release/gnosis-postage --out data/gnosis
 
 use alloy::{
@@ -55,6 +59,9 @@ struct Args {
     settle_every: u64,
     #[arg(long, default_value = "data/gnosis")]
     out: PathBuf,
+    /// Write the live batches as `copyBatchBulk` input (JSON) to this file.
+    #[arg(long)]
+    export_batches: Option<PathBuf>,
 }
 
 /// A master event, decoded, in chain order.
@@ -315,6 +322,37 @@ async fn main() -> Result<()> {
         f64::from(last.pot) / 1e16,
         last.valid_chunk_count
     );
+    if let Some(path) = &args.export_batches {
+        let out = state
+            .header
+            .outpayment_at(last_cut)
+            .map_err(|e| anyhow::anyhow!("{e:?}"))?;
+        // Gnosis does not log the immutable flag in a form this replay keeps; the rehearsal copies all
+        // batches as mutable.
+        let list: Vec<serde_json::Value> = state
+            .batches()
+            .iter()
+            .map(|l| {
+                serde_json::json!({
+                    "batchId": l.id,
+                    "owner": l.owner,
+                    "depth": l.depth,
+                    "bucketDepth": l.bucket_depth,
+                    "immutableFlag": false,
+                    "remainingBalance": (l.balance - out).to_string(),
+                })
+            })
+            .collect();
+        std::fs::write(
+            path,
+            serde_json::to_vec_pretty(&serde_json::json!({
+                "cutBlock": last_cut,
+                "validChunkCount": last.valid_chunk_count.to_string(),
+                "batches": list,
+            }))?,
+        )?;
+        println!("wrote {} live batches to {}", list.len(), path.display());
+    }
     let snapshot = serde_json::to_vec(&state)?;
     let back: PostageState = serde_json::from_slice(&snapshot)?;
     if back.hash() != state.hash() || back.batches() != state.batches() {

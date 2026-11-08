@@ -209,7 +209,10 @@ contract PostageStampZK is AccessControl, Pausable {
         bytes32 _batchId,
         bool _immutable
     ) public whenNotPaused {
-        if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+        // copyBatchBulk calls this through `this` (so that one bad batch does not revert the others), and
+        // checks the admin role itself. Without the address(this) case every bulk copy failed, as in
+        // master's PostageStamp (found in the migration rehearsal, 2026-11-08).
+        if (msg.sender != address(this) && !hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
             revert AdministratorOnly();
         }
         if (_owner == address(0)) {

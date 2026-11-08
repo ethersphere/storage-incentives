@@ -159,6 +159,40 @@ describe('PostageStampZK', function () {
     expect(await token.balanceOf(to)).to.eq(12345);
   });
 
+  it('copies batches in bulk (migration), only for the admin, and logs each copy', async function () {
+    // Regression: copyBatchBulk calls copyBatch through `this`, and copyBatch rejected the contract itself
+    // as not the admin, so every batch failed (CopyBatchFailed). Master's PostageStamp has the same code.
+    const id = (i: number) => ethers.utils.keccak256(ethers.utils.toUtf8Bytes(`copy-${i}`));
+    const owner = await other.getAddress();
+    const balance = (await stamp.minimumInitialBalancePerChunk()).mul(3);
+    const list = [0, 1, 2].map((i) => ({
+      batchId: id(i),
+      owner,
+      depth: 20,
+      bucketDepth: 16,
+      immutableFlag: i === 1,
+      remainingBalance: balance,
+    }));
+    list.push({ ...list[0] }); // a copy that exists already fails alone
+    await expect(stamp.connect(other).copyBatchBulk(list)).to.be.revertedWith('AdministratorOnly()');
+    const before = (await stamp.eventCount()).toNumber();
+    const rc = await (await stamp.copyBatchBulk(list)).wait();
+    const failed = rc.logs.filter(
+      (l: { topics: string[] }) => l.topics[0] === stamp.interface.getEventTopic('CopyBatchFailed')
+    );
+    expect(failed.length).to.eq(1);
+    for (const i of [0, 1, 2]) {
+      const b = await stamp.batches(id(i));
+      expect(b.owner).to.eq(owner);
+      expect(b.immutableFlag).to.eq(i === 1);
+    }
+    expect((await stamp.eventCount()).toNumber()).to.eq(before + 3);
+    // A direct copyBatch call still needs the admin.
+    await expect(stamp.connect(other).copyBatch(owner, balance, 20, 16, id(9), false)).to.be.revertedWith(
+      'AdministratorOnly()'
+    );
+  });
+
   it('buys a batch for less gas than PostageStamp', async function () {
     const master = await (await ethers.getContractFactory('PostageStamp')).deploy(token.address, 16);
     await master.grantRole(await master.PRICE_ORACLE_ROLE(), await deployer.getAddress());

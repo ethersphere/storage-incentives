@@ -10,10 +10,14 @@
 //! 3. Redistribution's randomness replaces the VM's (`swarm_vm::shadow`): the round anchor
 //!    (`CurrentRevealAnchor`), the seed after the first reveal (`keccak256(abi.encode(seed, prevrandao))`,
 //!    from the header of the first-reveal block), the freeze lottery (`prevrandao % 100` of the claim
-//!    block) and whether `claim` succeeded. The claim's storage proofs are not checked here.
+//!    block) and whether `claim` succeeded.
 //! 4. Compare the truth, the winner and the freezes with `TruthSelected`, `WinnerSelected` and
 //!    `StakeFrozen` of the claim transaction. Freeze durations are compared in rounds (Gnosis rounds
 //!    are 152 blocks, the VM's 64).
+//! 5. The claim: the storage proofs of the claim transaction go through the Rust claim checks
+//!    (`swarm_vm::claim::verify_claim`) with Redistribution's anchor, seed and truth, the three batches as
+//!    they were in the block before the claim, and `sampleMaxValue` from storage. Each must pass. Two
+//!    negative controls must fail: one changed byte in a stamp signature, and a wrong seed.
 //!
 //!   GNOSIS_RPC_URL=https://rpc.gnosischain.com ./target/release/gnosis-shadow --rounds 200
 
@@ -29,8 +33,9 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 use std::collections::{BTreeMap, HashMap};
 use swarm_vm::{
-    postage::PostageState, randomness, shadow, ForcedCommit, Reveal, RoundInput, StakeRecord,
-    ROUND_LENGTH, SEED_OFFSET,
+    claim::{verify_claim, BatchRecord, ChunkInclusionProof, ClaimContext, ClaimWitness},
+    postage::PostageState,
+    randomness, shadow, ForcedCommit, Reveal, RoundInput, StakeRecord, ROUND_LENGTH, SEED_OFFSET,
 };
 
 sol! {
@@ -43,10 +48,14 @@ sol! {
     event StakeFrozen(address frozen, bytes32 overlay, uint256 time);
     function commit(bytes32 _obfuscatedHash, uint64 _roundNumber);
     function reveal(uint8 _depth, bytes32 _hash, bytes32 _revealNonce);
+    function batches(bytes32 id) returns (address owner, uint8 depth, uint8 bucketDepth, bool immutableFlag, uint256 normalisedBalance, uint256 lastUpdatedBlockNumber);
 }
 
 const REDISTRIBUTION: Address = address!("5069cdfB3D9E56d23B1cAeE83CE6109A7E4fd62d");
 const STAKE_REGISTRY: Address = address!("da2a16EE889E7F04980A8d597b48c8D51B9518F4");
+const POSTAGE_STAMP: Address = address!("45a1502382541Cd610CC9068e88727426b696293");
+/// Storage slot of Redistribution's private `sampleMaxValue` (deployment storage layout).
+const SAMPLE_MAX_SLOT: u8 = 9;
 /// Redistribution.sol's ROUND_LENGTH on Gnosis.
 const G_ROUND: u64 = 152;
 /// Rounds to look back for the last claim before the range (minimum depth state).
@@ -88,6 +97,10 @@ struct Tally {
     no_claim: u64,
     skipped: u64,
     differ: Vec<String>,
+    claims_ok: u64,
+    soc_witnesses: u64,
+    claims_bad: Vec<String>,
+    controls_rejected: u64,
 }
 
 #[tokio::main]
@@ -304,6 +317,30 @@ async fn main() -> Result<()> {
         if v_frozen != g_frozen {
             diffs.push(format!("freezes vm {v_frozen:?} gnosis {g_frozen:?}"));
         }
+        if !args.wrong_seed {
+            let tx = tx_input(&p, truth_log).await?;
+            match check_claim(
+                &p,
+                &tx,
+                truth_log.block_number.unwrap(),
+                anchor,
+                seed_after,
+                truth.hash,
+                truth.depth,
+            )
+            .await
+            {
+                Ok((rejected, soc)) => {
+                    t.claims_ok += 1;
+                    t.soc_witnesses += soc;
+                    t.controls_rejected += rejected;
+                }
+                Err(e) => {
+                    diffs.push(format!("claim: {e:#}"));
+                    t.claims_bad.push(format!("round {round}: {e:#}"));
+                }
+            }
+        }
         t.compared += 1;
         if diffs.is_empty() {
             t.equal += 1;
@@ -332,10 +369,101 @@ async fn main() -> Result<()> {
         t.no_claim,
         t.skipped
     );
+    if !args.wrong_seed {
+        println!(
+            "claims: {} accepted by the Rust checks ({} SOC witnesses), {} rejected; negative controls rejected: {} of {}",
+            t.claims_ok,
+            t.soc_witnesses,
+            t.claims_bad.len(),
+            t.controls_rejected,
+            2 * t.claims_ok
+        );
+    }
     if !t.differ.is_empty() {
         bail!("{} rounds differ", t.differ.len());
     }
     Ok(())
+}
+
+/// Run the storage proofs of a Gnosis claim transaction through the Rust claim checks. Returns how many of
+/// the two negative controls were rejected (both must be), and the number of single-owner-chunk witnesses.
+#[allow(clippy::too_many_arguments)]
+async fn check_claim(
+    p: &DynProvider,
+    tx: &[u8],
+    claim_block: u64,
+    anchor: B256,
+    seed: B256,
+    truth_hash: B256,
+    truth_depth: u8,
+) -> Result<(u64, u64)> {
+    let (proof1, proof2, proof_last) = <(
+        ChunkInclusionProof,
+        ChunkInclusionProof,
+        ChunkInclusionProof,
+    ) as alloy::sol_types::SolType>::abi_decode_params(
+        tx.get(4..).context("short claim calldata")?,
+    )
+    .context("claim calldata")?;
+    let w = ClaimWitness {
+        proof1,
+        proof2,
+        proofLast: proof_last,
+    };
+    let at = alloy::eips::BlockId::number(claim_block - 1);
+    let mut batches = vec![];
+    for id in w.batch_ids() {
+        if batches.iter().any(|b: &BatchRecord| b.batch_id == id) {
+            continue;
+        }
+        let r = p
+            .call(
+                alloy::rpc::types::TransactionRequest::default()
+                    .to(POSTAGE_STAMP)
+                    .input(batchesCall { id }.abi_encode().into()),
+            )
+            .block(at)
+            .await?;
+        let b = batchesCall::abi_decode_returns(&r)?;
+        batches.push(BatchRecord {
+            batch_id: id,
+            owner: b.owner,
+            depth: b.depth,
+            bucket_depth: b.bucketDepth,
+        });
+    }
+    let sample_max_value = p
+        .get_storage_at(REDISTRIBUTION, U256::from(SAMPLE_MAX_SLOT))
+        .block_id(at)
+        .await?;
+    let ctx = ClaimContext {
+        anchor,
+        seed,
+        sample_hash: truth_hash,
+        depth: truth_depth,
+        batches: &batches,
+        sample_max_value,
+    };
+    verify_claim(&w, &ctx).map_err(|e| anyhow::anyhow!("rejected: {e:?}"))?;
+
+    // Negative controls.
+    let mut rejected = 0;
+    let mut bad = w.clone();
+    let sig = bad.proof1.postageProof.signature.to_vec();
+    let mut sig = sig;
+    sig[10] ^= 1;
+    bad.proof1.postageProof.signature = sig.into();
+    rejected += verify_claim(&bad, &ctx).is_err() as u64;
+    let wrong = ClaimContext {
+        seed: keccak256(seed),
+        ..ctx
+    };
+    rejected += verify_claim(&w, &wrong).is_err() as u64;
+    let soc = [&w.proof1, &w.proof2, &w.proofLast]
+        .iter()
+        .filter(|p| !p.socProof.is_empty())
+        .count() as u64;
+    Ok((rejected, soc))
 }
 
 /// updateRandomness at the first reveal: keccak256(abi.encode(seed, block.prevrandao)).
