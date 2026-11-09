@@ -1016,6 +1016,24 @@ commits of round 10, and is paused from block 6 of round 10 to block 22 of round
 round 10 did not settle, and round 11 waited 3 rounds. With the fix, round 10 settled when the prover came
 back, and rounds 8-16 all settled.
 
+**Sepolia run with faults, with the fixes** (2026-11-08 15:27 to 2026-11-09 00:39 UTC, rounds
+188929-188968, the same contracts and faults, a new data folder). The test computer went to sleep at
+18:01-19:36 and from 21:04 UTC. In sleep, the prover and node-sim ran only in short wake periods, so most
+rounds in that time had no players. The result below is for the rounds when the computer was awake:
+
+| Rounds | Faults | Result |
+| --- | --- | --- |
+| 188929-188937 | restart, RPC outage, late proof | All settled |
+| 188938 | empty data folder after the anchor | Not settled: the lists are lost (no Swarm uploads) |
+| 188939 | blocked by 188938 | Settled after `PENDING_ROUNDS`, as designed |
+| 188947-188953 | 15 minutes without a prover (188948) | All settled; 188948 from the empty anchor and the forced entries |
+
+The prover made 23 proofs for 21 settlements. The two other proofs are the race with `forceClaim`
+(above): after the late proof (188935), and after the 15-minute pause (188948). Each cost one proof. In
+the wake periods of the sleep, rounds 188941, 188943, 188946 and 188956 also settled. node-sim logged 13
+failed RPC reads and continued. The only round that did not settle is the round with lost lists. That is
+the open item: a prover must be able to get an anchored list back after a data loss.
+
 **Gas of `settleRound` on the 2026-11-08 contracts** (Sepolia, rounds 188910-188913: 779,185-840,986).
 Call trace of round 188911 (755,249 gas): proof check about 227k; `adjustPrice` with the stamp
 `setPrice` 345,695; the two direct `withdraw` calls 38,822 and 17,922 (no transfer to Settlement any
