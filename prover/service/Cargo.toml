@@ -13,19 +13,10 @@ path = "src/main.rs"
 name = "node-sim"
 path = "src/bin/node_sim.rs"
 
-[[bin]]
-name = "gnosis-postage"
-path = "src/bin/gnosis_postage.rs"
-
-[[bin]]
-name = "gnosis-shadow"
-path = "src/bin/gnosis_shadow.rs"
-
 [dependencies]
 swarm-vm = { workspace = true }
 alloy-sol-types = { workspace = true }
 serde = { workspace = true }
-sp1-sdk = { version = "6.0.1", features = ["blocking", "native-gnark", "network"] }
 alloy = { version = "2", features = ["full"] }
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
@@ -40,5 +31,3 @@ rand = "0.8"
 hex = "0.4"
 rayon = "1"
 
-[build-dependencies]
-sp1-build = "6.0.1"

@@ -1,6 +1,6 @@
 //! Synthetic rounds for tests and measurements.
 
-use super::game::{self, Caps, PublicValues, RoundInput, SignedCommit, Stake};
+use super::game::{self, PublicValues, RoundInput, SignedCommit, Stake};
 use super::postage::{self, Event, State, KIND_CREATE, KIND_DEPTH, KIND_PRICE, KIND_TOPUP};
 use super::{game_key, sign};
 use crate::{ForcedCommit, Reveal, ROUND_LENGTH, SEED_OFFSET};
@@ -203,6 +203,7 @@ pub fn synth(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Caps;
 
     #[test]
     fn synthetic_round() {

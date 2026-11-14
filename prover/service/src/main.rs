@@ -1,20 +1,16 @@
-//! swarm-prover: the off-chain half of ZK settlement.
+//! swarm-prover: the off-chain half of the SNARK settlement.
 //!
 //!   serve    collect signed commits and reveals over HTTP, anchor each round's commit set on chain,
-//!            build the round input from chain state, prove the Redistribution VM with SP1 and call
-//!            Settlement.settleRound
-//!   vkey     print the program verification key Settlement must be deployed with
-//!   execute  run a saved round input through the zkVM (no proof) and report cycles; --prove to prove
+//!            build the round input from chain state, get a Groth16 proof of the settlement circuit
+//!            from `snarkd serve` (prover/snark) and call Settlement.settleRound
 //!   stamp    status, buy or top up the mutable postage batch for Swarm uploads (through the Bee node)
-//!   balance  the PROVE balance of the Succinct requester key (NETWORK_PRIVATE_KEY)
 //!
-//! See docs/ZK-SETTLEMENT.md for the protocol and prover/README.md for how to run it.
+//! See docs/SNARK-SETTLEMENT.md for the protocol.
 
 mod prover;
 mod server;
 mod settler;
 mod store;
-mod synth;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -30,26 +26,6 @@ struct Cli {
 #[derive(Subcommand)]
 enum Cmd {
     Serve(settler::Config),
-    Vkey,
-    /// The PROVE balance of the Succinct requester key (NETWORK_PRIVATE_KEY). A proof costs about 0.40.
-    Balance,
-    Execute {
-        /// A round input saved by `serve` (data/rounds/<n>/input.json).
-        input: PathBuf,
-        /// Also generate and verify a Groth16 proof (SP1_PROVER decides where).
-        #[arg(long)]
-        prove: bool,
-    },
-    /// Write a synthetic round input with N signed commits, for cycle and proving-cost measurements.
-    Synth {
-        #[arg(long)]
-        nodes: usize,
-        /// Extra live batches in the carried postage state (mainnet has thousands).
-        #[arg(long, default_value_t = 0)]
-        batches: usize,
-        #[arg(long)]
-        out: PathBuf,
-    },
     /// The mutable postage batch the prover uploads the anchored commit and reveal lists and the postage snapshots with.
     Stamp {
         #[command(subcommand)]
@@ -121,32 +97,6 @@ async fn main() -> Result<()> {
 
     match Cli::parse().cmd {
         Cmd::Serve(cfg) => settler::serve(cfg).await,
-        Cmd::Balance => {
-            let client = sp1_sdk::ProverClient::builder().network().build().await;
-            let wei = client.get_balance().await?;
-            println!("{:.4} PROVE", f64::from(wei) / 1e18);
-            Ok(())
-        }
-        Cmd::Vkey => {
-            // The blocking SP1 SDK must not run on the async runtime's thread.
-            println!("{}", tokio::task::spawn_blocking(prover::vkey).await?);
-            Ok(())
-        }
-        Cmd::Synth {
-            nodes,
-            batches,
-            out,
-        } => {
-            std::fs::write(
-                &out,
-                serde_json::to_vec_pretty(&synth::round(nodes, batches)?)?,
-            )?;
-            println!(
-                "wrote {} ({nodes} nodes, {batches} extra batches)",
-                out.display()
-            );
-            Ok(())
-        }
         Cmd::Stamp {
             cmd,
             swarm_api,
@@ -209,11 +159,6 @@ async fn main() -> Result<()> {
                 }
             }
             Ok(())
-        }
-        Cmd::Execute { input, prove } => {
-            let out = input.with_extension("proof.json");
-            let input: swarm_vm::RoundInput = serde_json::from_slice(&std::fs::read(&input)?)?;
-            tokio::task::spawn_blocking(move || prover::execute_report(&input, prove, &out)).await?
         }
     }
 }

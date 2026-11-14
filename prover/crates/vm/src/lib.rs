@@ -1,87 +1,40 @@
-//! Swarm Redistribution VM.
+//! Swarm Redistribution VM, SNARK version.
 //!
-//! The storage incentives Schelling game of `src/Redistribution.sol` (master) as a pure function:
-//! `run(RoundInput) -> PublicValues`. The same code runs natively in the prover service and inside the
-//! SP1 zkVM (`program/`), and `src/settlement/Settlement.sol` executes its output.
+//! The storage incentives Schelling game of `src/Redistribution.sol` (master) as a pure function. On
+//! this branch a Groth16 circuit (`prover/snark`) proves the game and the postage accounting, and
+//! `src/settlement/Settlement.sol` checks the proof and the claim witness. `snark` is the reference of
+//! the circuit: it computes the result of a round and the circuit witness. See docs/SNARK-SETTLEMENT.md.
 //!
-//! Rules are ported one to one from Redistribution.sol. Where the venue forces a difference (no
-//! transactions, so no `msg.sender` and no transaction order) the replacement rule is documented on the
-//! function and in docs/ZK-SETTLEMENT.md, section "Rule differences".
-//!
-//! `claim`'s storage evidence (chunk inclusion proofs, postage stamps, SOC signatures, reserve size
-//! estimate) is checked in `claim.rs`. A round with a truth but no valid witness is "unclaimed": like a
-//! reverted `claim`, it pays nothing, freezes nobody and leaves the price alone.
+//! `claim` (with `bmt` and `sample`) is the claim check that `ClaimVerifier.sol` does on chain. The
+//! prover runs it to know whether a witness will pass.
 
 pub mod bmt;
 pub mod claim;
-pub mod postage;
 pub mod randomness;
 pub mod sample;
 pub mod snark;
 mod types;
 
+pub use snark::game::{
+    commit_message, run, stake_commitment, witness_json, Caps, PublicValues, RoundInput,
+    SignedCommit, SnarkError, Stake,
+};
+pub use snark::postage;
+pub use snark::{game_key, sign, Point, Sig};
 pub use types::*;
 
-use alloy_primitives::{keccak256, Address, Signature, B256, U256};
+use alloy_primitives::{keccak256, B256, U256};
 
 /// Blocks in a round. 64 x 12 s (Ethereum) is about the 760 s of the Gnosis round (152 x 5 s).
 pub const ROUND_LENGTH: u64 = 64;
 /// The seed block of a round, from its start (Settlement.SEED_OFFSET).
 pub const SEED_OFFSET: u64 = 48;
 
-/// `MAX_H` of Redistribution.sol: the low 128 bits.
-const MAX_H_PLUS_ONE: U256 = U256::from_limbs([0, 0, 1, 0]);
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum VmError {
-    /// Anchored commits are not sorted by owner or contain a duplicate owner.
-    CommitsNotSorted,
-    /// `stakes` does not list exactly the participants, in canonical order.
-    StakesMismatch,
-    /// Arithmetic overflow where Solidity would have reverted.
-    Overflow,
-    /// Postage event replay failed.
-    Postage(postage::PostageError),
-    /// The headers are not valid, or the anchor or seed in the input does not follow from them.
-    Randomness,
-}
-
-/// keccak256("SwarmSettlementCommit(uint256 chainId,address settlement,uint64 round,bytes32 obfuscatedHash)")
-pub fn commit_typehash() -> B256 {
-    keccak256(b"SwarmSettlementCommit(uint256 chainId,address settlement,uint64 round,bytes32 obfuscatedHash)")
-}
-
-/// `Settlement.commitDigest`: abi.encode(TYPEHASH, chainId, settlement, round, obfuscatedHash).
-pub fn commit_digest(
-    chain_id: U256,
-    settlement: Address,
-    round: u64,
-    obfuscated_hash: B256,
-) -> B256 {
-    let mut buf = [0u8; 160];
-    buf[0..32].copy_from_slice(commit_typehash().as_slice());
-    buf[32..64].copy_from_slice(&chain_id.to_be_bytes::<32>());
-    buf[76..96].copy_from_slice(settlement.as_slice());
-    buf[120..128].copy_from_slice(&round.to_be_bytes());
-    buf[128..160].copy_from_slice(obfuscated_hash.as_slice());
-    keccak256(buf)
-}
-
-/// EIP-191 personal_sign hash of a 32-byte digest.
+/// EIP-191 personal_sign hash of a 32-byte digest (postage stamps and single-owner chunks).
 pub fn eth_signed_message_hash(digest: B256) -> B256 {
     let mut buf = [0u8; 60];
     buf[..28].copy_from_slice(b"\x19Ethereum Signed Message:\n32");
     buf[28..].copy_from_slice(digest.as_slice());
-    keccak256(buf)
-}
-
-/// `Redistribution.wrapCommit`: keccak256(abi.encodePacked(overlay, depth, hash, nonce)).
-pub fn wrap_commit(overlay: B256, depth: u8, hash: B256, nonce: B256) -> B256 {
-    let mut buf = [0u8; 97];
-    buf[0..32].copy_from_slice(overlay.as_slice());
-    buf[32] = depth;
-    buf[33..65].copy_from_slice(hash.as_slice());
-    buf[65..97].copy_from_slice(nonce.as_slice());
     keccak256(buf)
 }
 
@@ -92,182 +45,6 @@ pub fn in_proximity(a: B256, b: B256, minimum: u8) -> bool {
     }
     let x = U256::from_be_bytes((a ^ b).0);
     x < (U256::from(1u8) << (256 - minimum as usize))
-}
-
-/// Leaf of the anchored commit list: keccak256(owner, obfuscatedHash).
-pub fn commit_leaf(owner: &Address, obf: &B256) -> B256 {
-    let mut buf = [0u8; 52];
-    buf[..20].copy_from_slice(owner.as_slice());
-    buf[20..].copy_from_slice(obf.as_slice());
-    keccak256(buf)
-}
-
-/// Leaf of the anchored reveal list: keccak256(overlay, depth, hash, nonce).
-pub fn reveal_leaf(r: &Reveal) -> B256 {
-    let mut buf = [0u8; 97];
-    buf[..32].copy_from_slice(r.overlay.as_slice());
-    buf[32] = r.depth;
-    buf[33..65].copy_from_slice(r.hash.as_slice());
-    buf[65..].copy_from_slice(r.nonce.as_slice());
-    keccak256(buf)
-}
-
-/// Merkle root of a list, as `Settlement.anchorRound` and `anchorReveals` take it: the leaves in list
-/// order, padded with zero to a power of two, and each node keccak256(left, right). Zero for an empty
-/// list; the leaf itself for one leaf. The count is anchored with the root, so the padding is not
-/// ambiguous. A node checks its own entry with `list_proof` and `list_verify`: it does not need the list.
-pub fn list_root(leaves: &[B256]) -> B256 {
-    if leaves.is_empty() {
-        return B256::ZERO;
-    }
-    let mut level = leaves.to_vec();
-    level.resize(leaves.len().next_power_of_two(), B256::ZERO);
-    while level.len() > 1 {
-        level = level.chunks(2).map(|p| hash_pair(&p[0], &p[1])).collect();
-    }
-    level[0]
-}
-
-/// Sibling hashes from leaf `index` to the root (leaf level first).
-pub fn list_proof(leaves: &[B256], index: usize) -> Vec<B256> {
-    let mut level = leaves.to_vec();
-    level.resize(leaves.len().next_power_of_two(), B256::ZERO);
-    let mut out = Vec::new();
-    let mut i = index;
-    while level.len() > 1 {
-        out.push(level[i ^ 1]);
-        level = level.chunks(2).map(|p| hash_pair(&p[0], &p[1])).collect();
-        i >>= 1;
-    }
-    out
-}
-
-/// Does `leaf` sit at `index` of a list with `count` entries and this root?
-pub fn list_verify(root: B256, count: u32, index: usize, leaf: B256, proof: &[B256]) -> bool {
-    if index >= count as usize
-        || proof.len() != (count as usize).next_power_of_two().trailing_zeros() as usize
-    {
-        return false;
-    }
-    let mut h = leaf;
-    for (level, s) in proof.iter().enumerate() {
-        h = if (index >> level) & 1 == 0 {
-            hash_pair(&h, s)
-        } else {
-            hash_pair(s, &h)
-        };
-    }
-    h == root
-}
-
-fn hash_pair(l: &B256, r: &B256) -> B256 {
-    let mut buf = [0u8; 64];
-    buf[..32].copy_from_slice(l.as_slice());
-    buf[32..].copy_from_slice(r.as_slice());
-    keccak256(buf)
-}
-
-/// The commit list root (see `list_root`), as passed to `Settlement.anchorRound`.
-pub fn commits_hash<'a>(commits: impl IntoIterator<Item = (&'a Address, &'a B256)>) -> B256 {
-    let leaves: Vec<B256> = commits
-        .into_iter()
-        .map(|(o, h)| commit_leaf(o, h))
-        .collect();
-    list_root(&leaves)
-}
-
-/// The reveal list root (see `list_root`), as passed to `Settlement.anchorReveals`. Zero for an empty
-/// list, which is also what Settlement holds when the prover did not anchor reveals.
-pub fn reveals_hash(reveals: &[Reveal]) -> B256 {
-    let leaves: Vec<B256> = reveals.iter().map(reveal_leaf).collect();
-    list_root(&leaves)
-}
-
-/// The hash chain `Settlement.forceCommit` keeps.
-pub fn forced_commits_hash(forced: &[ForcedCommit]) -> B256 {
-    forced.iter().fold(B256::ZERO, |acc, c| {
-        let mut buf = [0u8; 84];
-        buf[..32].copy_from_slice(acc.as_slice());
-        buf[32..52].copy_from_slice(c.owner.as_slice());
-        buf[52..].copy_from_slice(c.obfuscated_hash.as_slice());
-        keccak256(buf)
-    })
-}
-
-/// The hash chain `Settlement.forceReveal` keeps.
-pub fn forced_reveals_hash(forced: &[Reveal]) -> B256 {
-    forced.iter().fold(B256::ZERO, |acc, r| {
-        let mut buf = [0u8; 129];
-        buf[..32].copy_from_slice(acc.as_slice());
-        buf[32..64].copy_from_slice(r.overlay.as_slice());
-        buf[64] = r.depth;
-        buf[65..97].copy_from_slice(r.hash.as_slice());
-        buf[97..].copy_from_slice(r.nonce.as_slice());
-        keccak256(buf)
-    })
-}
-
-/// The hash chain `Settlement.stakeDigest` computes from StakeRegistry.stakes.
-pub fn stake_digest(stakes: &[StakeRecord]) -> B256 {
-    stakes.iter().fold(B256::ZERO, |acc, s| {
-        let mut buf = [0u8; 32 + 20 + 32 + 32 + 32 + 1 + 32];
-        buf[..32].copy_from_slice(acc.as_slice());
-        buf[32..52].copy_from_slice(s.owner.as_slice());
-        buf[52..84].copy_from_slice(s.overlay.as_slice());
-        buf[84..116].copy_from_slice(&s.committed_stake.to_be_bytes::<32>());
-        buf[116..148].copy_from_slice(&s.potential_stake.to_be_bytes::<32>());
-        buf[148] = s.height;
-        buf[149..].copy_from_slice(&s.last_updated.to_be_bytes::<32>());
-        keccak256(buf)
-    })
-}
-
-/// `StakeRegistry.calculateEffectiveStake`: min(2^height * committedStake * price, potentialStake).
-/// `None` where Solidity would overflow and revert.
-pub fn effective_stake(s: &StakeRecord, price: u32) -> Option<U256> {
-    let committed_bzz = (U256::from(1u8) << s.height as usize)
-        .checked_mul(s.committed_stake)?
-        .checked_mul(U256::from(price))?;
-    Some(committed_bzz.min(s.potential_stake))
-}
-
-/// Recover the signer of an off-chain commit. `None` on a malformed signature.
-pub fn recover_commit_signer(input: &RoundInput, c: &SignedCommit) -> Option<Address> {
-    let sig = Signature::try_from(c.signature.as_ref()).ok()?;
-    let digest = commit_digest(
-        input.chain_id,
-        input.settlement,
-        input.round,
-        c.obfuscated_hash,
-    );
-    sig.recover_address_from_prehash(&eth_signed_message_hash(digest))
-        .ok()
-}
-
-/// The canonical commit list of a round: anchored commits with a valid signature (sorted by owner),
-/// then forced commits in chain order whose owner is not already present.
-///
-/// Replaces transaction order in Redistribution.sol, where `currentCommits` is in inclusion order.
-/// An anchored commit with a bad signature is dropped rather than failing the round, so a prover that
-/// anchored garbage cannot make the round unprovable.
-pub fn canonical_commits(input: &RoundInput) -> Result<Vec<(Address, B256)>, VmError> {
-    for w in input.commits.windows(2) {
-        if w[0].owner >= w[1].owner {
-            return Err(VmError::CommitsNotSorted);
-        }
-    }
-    let mut out: Vec<(Address, B256)> = Vec::new();
-    for c in &input.commits {
-        if recover_commit_signer(input, c) == Some(c.owner) {
-            out.push((c.owner, c.obfuscated_hash));
-        }
-    }
-    for f in &input.forced_commits {
-        if !out.iter().any(|(o, _)| *o == f.owner) {
-            out.push((f.owner, f.obfuscated_hash));
-        }
-    }
-    Ok(out)
 }
 
 /// `Redistribution.currentMinimumDepth`, with currentCommitRound = round and currentClaimRound =
@@ -286,404 +63,72 @@ pub fn minimum_depth(round: u64, last_claim_round: u64, last_winner_depth: u8) -
     }
 }
 
-/// Redistribution.sol's `commit` rejects a node whose stake changed in the last two rounds. Here the
-/// check is against the round start, and against the record read at settlement time, so a stake change
-/// (or a freeze, which moves lastUpdated into the future) after the round started also disqualifies.
-/// `age_rounds` is Settlement.stakeAgeRounds (2 as on master; 0 on test networks: the stake must only
-/// exist before the round starts).
-pub fn is_eligible(stake: &StakeRecord, round: u64, age_rounds: u8) -> bool {
-    let round_start = round * ROUND_LENGTH;
-    let cutoff = age_rounds as u64 * ROUND_LENGTH;
-    !stake.last_updated.is_zero()
-        && round_start >= cutoff
-        && stake.last_updated < U256::from(round_start - cutoff)
+/// The obfuscated commit hash, `Settlement.wrapCommit`: MiMC(overlay, depth, hash, nonce) as 32 bytes.
+pub fn wrap_commit(overlay: B256, depth: u8, hash: B256, nonce: B256) -> B256 {
+    snark::fr_bytes(snark::game::reveal_hash(&Reveal {
+        overlay,
+        depth,
+        hash,
+        nonce,
+    }))
 }
 
-/// keccak256(abi.encodePacked(seed, tag, n)): the random numbers of getCurrentTruth ("0") and
-/// winnerSelection ("1").
-fn draw(seed: B256, tag: u8, n: u64) -> U256 {
-    let mut buf = [0u8; 65];
-    buf[..32].copy_from_slice(seed.as_slice());
-    buf[32] = tag;
-    buf[33..].copy_from_slice(&U256::from(n).to_be_bytes::<32>());
-    let r = U256::from_be_bytes(keccak256(buf).0);
-    r & (MAX_H_PLUS_ONE - U256::from(1u8))
+/// Leaf of the anchored commit list: MiMC(owner, obfuscatedHash, R.x, R.y, S).
+pub fn commit_leaf(c: &SignedCommit) -> B256 {
+    snark::fr_bytes(snark::game::commit_leaf(c))
 }
 
-/// `randomNumberTrunc * sum < stakeDensity * (MAX_H + 1)`, with Solidity's checked arithmetic.
-fn picked(random: U256, sum: U256, density: U256) -> Result<bool, VmError> {
-    let lhs = random.checked_mul(sum).ok_or(VmError::Overflow)?;
-    let rhs = density
-        .checked_mul(MAX_H_PLUS_ONE)
-        .ok_or(VmError::Overflow)?;
-    Ok(lhs < rhs)
+/// Leaf of the anchored reveal list: the obfuscated hash of the reveal.
+pub fn reveal_leaf(r: &Reveal) -> B256 {
+    snark::fr_bytes(snark::game::reveal_hash(r))
 }
 
-struct Entry {
-    owner: Address,
-    overlay: B256,
-    revealed: Option<(u8, B256, U256)>, // depth, hash, stakeDensity
+fn frs(leaves: &[B256]) -> Vec<snark::Fr> {
+    leaves.iter().map(|l| U256::from_be_bytes(l.0)).collect()
 }
 
-/// Run one round.
-pub fn run(input: &RoundInput) -> Result<PublicValues, VmError> {
-    let commits = canonical_commits(input)?;
-
-    if input.stakes.len() != commits.len()
-        || input
-            .stakes
-            .iter()
-            .zip(&commits)
-            .any(|(s, (o, _))| s.owner != *o)
-    {
-        return Err(VmError::StakesMismatch);
+/// Root of a list as `Settlement.anchorRound` and `anchorReveals` take it: a MiMC Merkle tree of depth
+/// 8 with the leaves in list order. Zero for an empty list (the contract stores no root for it).
+pub fn list_root(leaves: &[B256]) -> B256 {
+    if leaves.is_empty() {
+        return B256::ZERO;
     }
-
-    // Randomness from prevrandao in the two headers; their hashes are public inputs Settlement checks.
-    let rnd = randomness::derive(
-        input.round,
-        ROUND_LENGTH,
-        SEED_OFFSET,
-        &input.anchor_header,
-        &input.seed_header,
-    )
-    .ok_or(VmError::Randomness)?;
-    #[cfg(not(target_os = "zkvm"))]
-    let rnd = shadow::get().map_or(rnd, shadow::randomness);
-    if rnd.round_anchor != input.round_anchor || rnd.selection_seed != input.selection_seed {
-        return Err(VmError::Randomness);
-    }
-
-    let min_depth = minimum_depth(input.round, input.last_claim_round, input.last_winner_depth);
-
-    // Postage accounting since the previous settlement: replay the event log, credit the pot, expire.
-    // It also reads the batches the claim witnesses use, with proofs from the batch tree.
-    let seed_block = input.round * ROUND_LENGTH + SEED_OFFSET;
-    let pg = postage::verify(&input.postage, seed_block, &claim_batch_ids(input))
-        .map_err(VmError::Postage)?;
-
-    // Commit + reveal phases. Ineligible nodes are dropped like a reverted `commit`. A node whose stake
-    // record changed after the round started (manageStake, or a freeze) is also dropped, but it is frozen
-    // like a node that did not reveal: otherwise a node could look at the seed and then leave the round to
-    // escape a freeze, or to change the draw. The stake record is read at settlement, not at round start.
-    let mut entries: Vec<Entry> = Vec::new();
-    let mut left: Vec<Address> = Vec::new();
-    let round_start = U256::from(input.round * ROUND_LENGTH);
-    for ((owner, obf), stake) in commits.iter().zip(&input.stakes) {
-        if !is_eligible(stake, input.round, input.stake_age_rounds) {
-            if stake.last_updated >= round_start {
-                left.push(*owner);
-            }
-            continue;
-        }
-        let revealed = input
-            .reveals
-            .iter()
-            .chain(&input.forced_reveals)
-            .filter(|r| r.overlay == stake.overlay)
-            .find_map(|r| valid_reveal(input, stake, *obf, r, min_depth));
-        entries.push(Entry {
-            owner: *owner,
-            overlay: stake.overlay,
-            revealed,
-        });
-    }
-
-    let inputs = PublicInputs {
-        chainId: input.chain_id,
-        settlement: input.settlement,
-        round: input.round,
-        anchorBlockHash: rnd.anchor_block_hash,
-        seedBlockHash: rnd.seed_block_hash,
-        commitsHash: commits_hash(input.commits.iter().map(|c| (&c.owner, &c.obfuscated_hash))),
-        commitCount: input.commits.len() as u32,
-        revealsHash: reveals_hash(&input.reveals),
-        revealCount: input.reveals.len() as u32,
-        forcedCommitsHash: forced_commits_hash(&input.forced_commits),
-        forcedRevealsHash: forced_reveals_hash(&input.forced_reveals),
-        lastClaimRound: input.last_claim_round,
-        lastWinnerDepth: input.last_winner_depth,
-        penaltyMultiplierDisagreement: input.penalty_multiplier_disagreement,
-        penaltyMultiplierNonRevealed: input.penalty_multiplier_non_revealed,
-        penaltyRandomFactor: input.penalty_random_factor,
-        stakeAgeRounds: input.stake_age_rounds,
-        participants: commits.iter().map(|(o, _)| *o).collect(),
-        stakeDigest: stake_digest(&input.stakes),
-        stakePrice: input.stake_price,
-        forcedClaimsHash: claim::forced_claims_hash(&input.forced_claims),
-        sampleMaxValue: input.sample_max_value,
-        postage: PostageInputs {
-            prevStateHash: input.postage.header.hash(),
-            prevEventIndex: input.postage.prev_event_index,
-            prevEventHash: input.postage.prev_event_hash,
-            eventIndex: pg.event_index,
-            eventHash: pg.event_hash,
-            cutBlock: input.postage.cut_block,
-        },
-    };
-    let mut out = Outcome {
-        hasTruth: false,
-        truthHash: B256::ZERO,
-        truthDepth: 0,
-        winner: Address::ZERO,
-        winnerOverlay: B256::ZERO,
-        winnerStakeDensity: U256::ZERO,
-        redundancy: 0,
-        freezeOwners: vec![],
-        freezeDurations: vec![],
-        unclaimed: false,
-        feeRecipient: input.fee_recipient,
-        postage: PostageOutcome {
-            newStateHash: pg.new_header.hash(),
-            potAmount: pg.pot,
-            validChunkCount: pg.valid_chunk_count,
-        },
-    };
-
-    // Redistribution.sol cannot be claimed without reveals; nothing happens.
-    if entries.iter().all(|e| e.revealed.is_none()) {
-        return Ok(PublicValues {
-            inputs,
-            outcome: out,
-        });
-    }
-
-    // getCurrentTruth.
-    let seed = input.selection_seed;
-    let mut sum = U256::ZERO;
-    let (mut truth_hash, mut truth_depth) = (B256::ZERO, 0u8);
-    for (i, e) in entries.iter().enumerate() {
-        if let Some((depth, hash, density)) = e.revealed {
-            sum = sum.checked_add(density).ok_or(VmError::Overflow)?;
-            if picked(draw(seed, b'0', i as u64), sum, density)? {
-                truth_hash = hash;
-                truth_depth = depth;
-            }
-        }
-    }
-
-    // winnerSelection.
-    let freeze_unit = U256::from(ROUND_LENGTH)
-        .checked_mul(
-            U256::from(1u8)
-                .checked_shl(truth_depth as usize)
-                .ok_or(VmError::Overflow)?,
-        )
-        .ok_or(VmError::Overflow)?;
-    let freeze_disagreement = U256::from(input.penalty_multiplier_disagreement)
-        .checked_mul(freeze_unit)
-        .ok_or(VmError::Overflow)?;
-    let freeze_non_revealed = U256::from(input.penalty_multiplier_non_revealed)
-        .checked_mul(freeze_unit)
-        .ok_or(VmError::Overflow)?;
-    let freeze_lottery = freeze_random(seed) < U256::from(input.penalty_random_factor);
-    #[cfg(not(target_os = "zkvm"))]
-    let freeze_lottery = shadow::get().map_or(freeze_lottery, |o| {
-        o.freeze_random < input.penalty_random_factor
-    });
-
-    let mut sum = U256::ZERO;
-    let mut redundancy: u64 = 0;
-    for e in &entries {
-        match e.revealed {
-            Some((depth, hash, density)) if hash == truth_hash && depth == truth_depth => {
-                sum = sum.checked_add(density).ok_or(VmError::Overflow)?;
-                if picked(draw(seed, b'1', redundancy), sum, density)? {
-                    out.winner = e.owner;
-                    out.winnerOverlay = e.overlay;
-                    out.winnerStakeDensity = density;
-                }
-                redundancy += 1;
-            }
-            Some(_) => {
-                if freeze_lottery {
-                    out.freezeOwners.push(e.owner);
-                    out.freezeDurations.push(freeze_disagreement);
-                }
-            }
-            None => {
-                out.freezeOwners.push(e.owner);
-                out.freezeDurations.push(freeze_non_revealed);
-            }
-        }
-    }
-    for owner in &left {
-        out.freezeOwners.push(*owner);
-        out.freezeDurations.push(freeze_non_revealed);
-    }
-
-    out.truthHash = truth_hash;
-    out.truthDepth = truth_depth;
-    out.redundancy = redundancy as u16; // uint16(redundancyCount), truncating like Solidity
-
-    // claim: the storage evidence for the truth's sample. Like a reverted claim, a round without a valid
-    // witness changes nothing on chain. Batches come from the replayed postage state: a batch is alive
-    // when its normalisedBalance is above the outpayment at the seed block.
-    let batches = claim_batches(&pg);
-    let ctx = claim::ClaimContext {
-        anchor: input.round_anchor,
-        seed,
-        sample_hash: truth_hash,
-        depth: truth_depth,
-        batches: &batches,
-        sample_max_value: input.sample_max_value,
-    };
-    let claimed = claim_candidates(input).any(|w| claim::verify_claim(&w, &ctx).is_ok());
-    #[cfg(not(target_os = "zkvm"))]
-    let claimed = shadow::get().map_or(claimed, |o| o.claim_ok);
-    if claimed {
-        out.hasTruth = true;
-    } else {
-        out.unclaimed = true;
-        out.freezeOwners.clear();
-        out.freezeDurations.clear();
-    }
-    Ok(PublicValues {
-        inputs,
-        outcome: out,
-    })
+    snark::fr_bytes(snark::list_root(&frs(leaves)))
 }
 
-/// Claim witnesses in the order they are tried: the off-chain one, then forced ones in chain order.
-/// Bytes that do not decode are skipped. The payout always goes to the selected winner, so any node
-/// that holds the truth's sample can supply the witness.
-pub fn claim_candidates(input: &RoundInput) -> impl Iterator<Item = claim::ClaimWitness> + '_ {
-    input
-        .claim
-        .iter()
-        .chain(&input.forced_claims)
-        .filter_map(|b| claim::ClaimWitness::decode(b))
-}
-
-/// The postage batch ids the candidate witnesses use, each once, in the order they appear. The postage
-/// step reads these batches from the tree; the prover must build the round's postage input for the same
-/// list (`postage::PostageState::settle`).
-pub fn claim_batch_ids(input: &RoundInput) -> Vec<B256> {
-    let mut out: Vec<B256> = Vec::new();
-    for w in claim_candidates(input) {
-        for id in w.batch_ids() {
-            if !out.contains(&id) {
-                out.push(id);
-            }
-        }
-    }
-    out
-}
-
-/// `claim_batches` for callers outside `run` (the prover explains why a witness was rejected).
-pub fn claim_batch_records(input: &RoundInput) -> Result<Vec<claim::BatchRecord>, VmError> {
-    let pg = postage::verify(
-        &input.postage,
-        input.round * ROUND_LENGTH + SEED_OFFSET,
-        &claim_batch_ids(input),
-    )
-    .map_err(VmError::Postage)?;
-    Ok(claim_batches(&pg))
-}
-
-/// The batches the candidate witnesses reference, as the claim checks see them: from the batch tree
-/// after this settlement's events, with owner zero for an expired batch (Redistribution's "batch does
-/// not exist or expired"). The prover cannot hide a batch: a missing batch needs a proof that the id
-/// list has no such id.
-fn claim_batches(pg: &postage::PostageRun) -> Vec<claim::BatchRecord> {
-    pg.claims
-        .iter()
-        .filter_map(|c| {
-            let b = c.leaf.as_ref()?;
-            let alive = b.balance > pg.outpayment_at_probe;
-            Some(claim::BatchRecord {
-                batch_id: c.id,
-                owner: if alive { b.owner } else { Address::ZERO },
-                depth: b.depth,
-                bucket_depth: b.bucket_depth,
-            })
-        })
+/// Sibling hashes from leaf `index` to the root (leaf level first).
+pub fn list_proof(leaves: &[B256], index: usize) -> Vec<B256> {
+    snark::list_proof(&frs(leaves), index)
+        .into_iter()
+        .map(snark::fr_bytes)
         .collect()
 }
 
-/// Checks of `Redistribution.reveal`. Returns (depth, hash, stakeDensity) when the reveal opens the
-/// commit and the node is in proximity of the round anchor.
-fn valid_reveal(
-    input: &RoundInput,
-    stake: &StakeRecord,
-    obf: B256,
-    r: &Reveal,
-    min_depth: u8,
-) -> Option<(u8, B256, U256)> {
-    if r.depth < min_depth || r.depth < stake.height {
-        return None;
-    }
-    if wrap_commit(stake.overlay, r.depth, r.hash, r.nonce) != obf {
-        return None;
-    }
-    let responsibility = r.depth - stake.height;
-    if !in_proximity(stake.overlay, input.round_anchor, responsibility) {
-        return None;
-    }
-    // Eligible nodes are not frozen at round start, so this is nodeEffectiveStake as of the round.
-    let density = effective_stake(stake, input.stake_price)?
-        .checked_mul(U256::from(1u8) << responsibility as usize)?;
-    Some((r.depth, r.hash, density))
+/// Does `leaf` sit at `index` of a list with `count` entries and this root?
+pub fn list_verify(root: B256, count: u32, index: usize, leaf: B256, proof: &[B256]) -> bool {
+    index < count as usize
+        && snark::list_verify(
+            U256::from_be_bytes(root.0),
+            index,
+            U256::from_be_bytes(leaf.0),
+            &frs(proof),
+        )
 }
 
-/// Replaces `block.prevrandao % 100` of the disagreement freeze: keccak256(seed, "2") % 100.
-fn freeze_random(seed: B256) -> U256 {
-    let mut buf = [0u8; 33];
-    buf[..32].copy_from_slice(seed.as_slice());
-    buf[32] = b'2';
-    U256::from_be_bytes(keccak256(buf).0) % U256::from(100u8)
+pub fn commits_hash(commits: &[SignedCommit]) -> B256 {
+    list_root(&commits.iter().map(commit_leaf).collect::<Vec<_>>())
 }
 
-/// Replay of Gnosis rounds (`gnosis-shadow`): Redistribution.sol's randomness, freeze lottery and claim
-/// result replace the VM's, so the rest of the game can be compared with what happened on Gnosis. Not in
-/// the zkVM program, and off unless `shadow::run` sets it.
-#[cfg(not(target_os = "zkvm"))]
-pub mod shadow {
-    use super::*;
-    use std::cell::Cell;
-
-    #[derive(Clone, Copy, Debug, Default)]
-    pub struct Overrides {
-        /// `currentRevealRoundAnchor` (the `CurrentRevealAnchor` event).
-        pub round_anchor: B256,
-        /// Redistribution's `seed` after the round's first reveal.
-        pub selection_seed: B256,
-        /// `block.prevrandao % 100` of the claim block.
-        pub freeze_random: u8,
-        /// Whether `claim` succeeded on Gnosis.
-        pub claim_ok: bool,
-    }
-
-    std::thread_local! {
-        static CURRENT: Cell<Option<Overrides>> = const { Cell::new(None) };
-    }
-
-    pub(crate) fn get() -> Option<Overrides> {
-        CURRENT.with(|c| c.get())
-    }
-
-    pub(crate) fn randomness(o: Overrides) -> randomness::Randomness {
-        randomness::Randomness {
-            anchor_block_hash: B256::ZERO,
-            seed_block_hash: B256::ZERO,
-            round_anchor: o.round_anchor,
-            selection_seed: o.selection_seed,
-        }
-    }
-
-    /// `run` with Gnosis's randomness and claim result. The input needs headers with the round's block
-    /// numbers (`randomness::synthetic_header`), and `round_anchor` and `selection_seed` equal to the
-    /// overrides.
-    pub fn run(input: &RoundInput, o: Overrides) -> Result<PublicValues, VmError> {
-        CURRENT.with(|c| c.set(Some(o)));
-        let out = super::run(input);
-        CURRENT.with(|c| c.set(None));
-        out
-    }
+pub fn reveals_hash(reveals: &[Reveal]) -> B256 {
+    list_root(&reveals.iter().map(reveal_leaf).collect::<Vec<_>>())
 }
 
-#[cfg(test)]
-mod tests;
+/// The hash chain `Settlement.forceCommit` keeps.
+pub fn forced_commits_hash(forced: &[ForcedCommit]) -> B256 {
+    snark::fr_bytes(snark::game::forced_commits_hash(forced))
+}
 
-#[cfg(test)]
-mod postage_tests;
+/// The hash chain `Settlement.forceReveal` keeps.
+pub fn forced_reveals_hash(forced: &[Reveal]) -> B256 {
+    snark::fr_bytes(snark::game::forced_reveals_hash(forced))
+}

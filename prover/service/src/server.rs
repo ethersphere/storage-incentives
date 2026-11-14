@@ -16,9 +16,7 @@ use swarm_prover::{
     offset_of, round_of, seed_block, ClaimMsg, CommitMsg, OutcomeMsg, RevealMsg, COMMIT_END,
     REVEAL_ANCHOR_START, REVEAL_START,
 };
-use swarm_vm::{
-    commits_hash, recover_commit_signer, reveals_hash, Reveal, RoundInput, SignedCommit,
-};
+use swarm_vm::{commits_hash, reveals_hash, Reveal, SignedCommit};
 use tracing::info;
 
 type Reply = (StatusCode, Json<Value>);
@@ -79,42 +77,34 @@ async fn commit(
             format!("not the commit phase of round {}", m.round),
         ));
     }
+    let sig = swarm_prover::sig_from_bytes(&m.signature)
+        .ok_or_else(|| err(StatusCode::BAD_REQUEST, "signature is not 96 bytes"))?;
     let c = SignedCommit {
         owner: m.owner,
-        obfuscated_hash: m.obfuscated_hash,
-        signature: m.signature,
+        obf: alloy::primitives::U256::from_be_bytes(m.obfuscated_hash.0),
+        sig,
     };
-    // Only chain id, settlement and round matter for the signature check.
-    let probe = RoundInput {
-        chain_id: ctx.chain_id,
-        settlement: ctx.settlement,
-        round: m.round,
-        round_anchor: Default::default(),
-        selection_seed: Default::default(),
-        anchor_header: Default::default(),
-        seed_header: Default::default(),
-        commits: vec![],
-        forced_commits: vec![],
-        reveals: vec![],
-        forced_reveals: vec![],
-        stakes: vec![],
-        stake_price: 0,
-        last_claim_round: 0,
-        last_winner_depth: 0,
-        penalty_multiplier_disagreement: 0,
-        penalty_multiplier_non_revealed: 0,
-        penalty_random_factor: 0,
-        stake_age_rounds: 0,
-        claim: None,
-        forced_claims: vec![],
-        sample_max_value: Default::default(),
-        fee_recipient: Default::default(),
-        postage: Default::default(),
-    };
-    if recover_commit_signer(&probe, &c) != Some(c.owner) {
+    // The commit must carry a good EdDSA signature of the owner's game key (GameKeyRegistry). The
+    // circuit drops a commit with a bad signature, and it cannot take a signature that is not well formed.
+    let registry = swarm_prover::Settlement::new(ctx.settlement, &ctx.provider)
+        .GameKeys()
+        .call()
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, e))?;
+    let k = swarm_prover::GameKeyRegistry::new(registry, &ctx.provider)
+        .keys(m.owner)
+        .call()
+        .await
+        .map_err(|e| err(StatusCode::BAD_GATEWAY, e))?;
+    let key = swarm_vm::Point { x: k.x, y: k.y };
+    let msg = swarm_vm::commit_message(ctx.chain_id.to::<u64>(), &ctx.settlement, m.round, c.obf);
+    if key.is_zero()
+        || c.obf >= swarm_vm::snark::P
+        || swarm_vm::snark::verify(&key, msg, &c.sig) != Some(true)
+    {
         return Err(err(
             StatusCode::BAD_REQUEST,
-            "signature does not recover to owner",
+            "signature is not valid for the owner's game key",
         ));
     }
     let mut store = ctx.store.lock().await;
@@ -156,7 +146,7 @@ async fn reveal(
         || msgs
             .anchored
             .as_ref()
-            .is_some_and(|a| a.iter().any(|c| c.obfuscated_hash == obf));
+            .is_some_and(|a| a.iter().any(|c| swarm_vm::snark::fr_bytes(c.obf) == obf));
     if !known {
         return Err(err(
             StatusCode::BAD_REQUEST,
@@ -185,8 +175,8 @@ async fn round(State(ctx): State<Arc<Ctx>>, Path(round): Path<u64>) -> Result<Js
         "round": round,
         "pendingCommits": m.commits.len(),
         "anchored": m.anchored.as_ref().map(|a| json!({
-            "commitsHash": commits_hash(a.iter().map(|c| (&c.owner, &c.obfuscated_hash))),
-            "commits": a.iter().map(|c| json!({ "owner": c.owner, "obfuscatedHash": c.obfuscated_hash })).collect::<Vec<_>>(),
+            "commitsHash": commits_hash(&a),
+            "commits": a.iter().map(|c| json!({ "owner": c.owner, "obfuscatedHash": swarm_vm::snark::fr_bytes(c.obf), "signature": swarm_prover::sig_to_bytes(&c.sig) })).collect::<Vec<_>>(),
         })),
         "reveals": m.reveals.len(),
         "revealsAnchored": m.reveals_anchored.as_ref().map(|a| json!({
@@ -219,14 +209,14 @@ async fn commit_proof(
     })?;
     let leaves: Vec<_> = list
         .iter()
-        .map(|c| swarm_vm::commit_leaf(&c.owner, &c.obfuscated_hash))
+        .map(swarm_vm::commit_leaf)
         .collect();
     Ok(Json(json!({
         "round": round,
         "index": index,
         "count": list.len(),
-        "root": commits_hash(list.iter().map(|c| (&c.owner, &c.obfuscated_hash))),
-        "obfuscatedHash": list[index].obfuscated_hash,
+        "root": commits_hash(&list),
+        "obfuscatedHash": swarm_vm::snark::fr_bytes(list[index].obf),
         "proof": swarm_vm::list_proof(&leaves, index),
     })))
 }
@@ -284,17 +274,18 @@ async fn outcome(
     let input = crate::settler::build_input(&ctx, round, b, None)
         .await
         .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
-    let pv = swarm_vm::run(&input)
-        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:?}")))?;
+    let n = input
+        .run()
+        .map_err(|e| err(StatusCode::INTERNAL_SERVER_ERROR, format!("{e:#}")))?;
     let o = OutcomeMsg {
         round,
-        has_truth: pv.outcome.hasTruth || pv.outcome.unclaimed,
-        truth_hash: pv.outcome.truthHash,
-        truth_depth: pv.outcome.truthDepth,
-        winner: pv.outcome.winner,
-        round_anchor: input.round_anchor,
-        selection_seed: input.selection_seed,
-        claimed: pv.outcome.hasTruth,
+        has_truth: n.pv.has_reveals,
+        truth_hash: n.pv.truth_hash,
+        truth_depth: n.pv.truth_depth,
+        winner: n.pv.winner,
+        round_anchor: input.input.round_anchor,
+        selection_seed: input.input.selection_seed,
+        claimed: n.claimed(),
     };
     ctx.outcomes
         .lock()
@@ -348,22 +339,11 @@ async fn claim(State(ctx): State<Arc<Ctx>>, Json(m): Json<ClaimMsg>) -> Result<J
     let input = crate::settler::build_input(&ctx, m.round, b, Some(m.witness.clone()))
         .await
         .map_err(|e| err(StatusCode::NOT_FOUND, format!("{e:#}")))?;
-    let pv = swarm_vm::run(&input).map_err(|e| err(StatusCode::BAD_REQUEST, format!("{e:?}")))?;
-    if !pv.outcome.hasTruth {
-        let batches = swarm_vm::claim_batch_records(&input).unwrap_or_default();
-        let why = swarm_vm::claim::ClaimWitness::decode(&m.witness)
-            .map(|w| {
-                let ctx2 = swarm_vm::claim::ClaimContext {
-                    anchor: input.round_anchor,
-                    seed: input.selection_seed,
-                    sample_hash: pv.outcome.truthHash,
-                    depth: pv.outcome.truthDepth,
-                    batches: &batches,
-                    sample_max_value: input.sample_max_value,
-                };
-                format!("{:?}", swarm_vm::claim::verify_claim(&w, &ctx2))
-            })
-            .unwrap_or_else(|| "witness does not decode".into());
+    let n = input
+        .run()
+        .map_err(|e| err(StatusCode::BAD_REQUEST, format!("{e:#}")))?;
+    if n.witness.as_ref() != Some(&m.witness) {
+        let why = n.why.unwrap_or_else(|| "the round has no truth".into());
         return Err(err(
             StatusCode::BAD_REQUEST,
             format!("witness rejected: {why}"),

@@ -9,7 +9,6 @@ use alloy::{
     signers::local::PrivateKeySigner,
     sol_types::SolEvent,
 };
-use alloy_sol_types::SolType;
 use anyhow::{anyhow, Context, Result};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use swarm_prover::swarm::{Bee, PostageSnapshot, RoundData, SnapshotRef, DATA_VERSION};
@@ -18,10 +17,8 @@ use swarm_prover::{
     ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, PENDING_ROUNDS, REVEAL_ANCHOR_END,
     REVEAL_ANCHOR_START, REVEAL_END, ROUND_LENGTH, SEED_OFFSET,
 };
-use swarm_vm::{
-    canonical_commits, commits_hash, reveals_hash, ForcedCommit, PublicValues, Reveal, RoundInput,
-    SignedCommit, StakeRecord,
-};
+use swarm_prover::{GameKeyRegistry, Job, Native};
+use swarm_vm::{commits_hash, reveals_hash, ForcedCommit, Reveal, RoundInput, SignedCommit, Stake};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
@@ -38,6 +35,9 @@ pub struct Config {
     pub listen: String,
     #[arg(long, env = "DATA_DIR", default_value = "data")]
     pub data_dir: PathBuf,
+    /// `snarkd serve`: the Groth16 prover of the settlement circuit (prover/snark).
+    #[arg(long, env = "SNARKD_URL", default_value = "http://127.0.0.1:8099")]
+    pub snarkd: String,
     #[arg(long, env = "POLL_SECS", default_value_t = 3)]
     pub poll_secs: u64,
     /// First block to search for PostageLog entries before the first settlement (the deployment block
@@ -92,6 +92,9 @@ pub struct Ctx {
     pub provider: DynProvider,
     pub settlement: Address,
     pub chain_id: U256,
+    pub snarkd: String,
+    /// The size of the circuit that `snarkd` proves.
+    pub caps: swarm_vm::Caps,
     /// The prover key's address, for explicit nonces.
     pub from: Address,
     pub postage_from_block: u64,
@@ -121,15 +124,15 @@ pub async fn serve(cfg: Config) -> Result<()> {
     let chain_id = U256::from(provider.get_chain_id().await?);
 
     let s = Settlement::new(cfg.settlement, &provider);
-    let onchain_vkey = s.programVKey().call().await?;
-    let local_vkey = tokio::task::spawn_blocking(prover::vkey).await?;
-    if format!("{onchain_vkey}") != local_vkey {
-        warn!("program vkey differs: contract {onchain_vkey}, local {local_vkey}. Proofs will be rejected unless the contract uses the mock verifier");
+    let (p, f, e, x) = prover::caps(&cfg.snarkd)
+        .await
+        .with_context(|| format!("snarkd at {} (start `snarkd serve`)", cfg.snarkd))?;
+    let caps = swarm_vm::Caps { p, f, e, x };
+    let (cap, fcap) = (s.capacity().call().await?, s.forcedCapacity().call().await?);
+    if (cap as usize, fcap as usize) != (p, f) {
+        anyhow::bail!("snarkd proves a circuit of size {p}/{f}, the contract expects {cap}/{fcap}");
     }
-    if prover::is_mock() {
-        warn!("SP1_PROVER=mock: proofs are empty and only SP1MockVerifier accepts them");
-    }
-
+    info!(?caps, "circuit size");
     let mut censor_reveals = vec![];
     if cfg.withhold_claims {
         warn!("TEST MODE: claim witnesses are thrown away");
@@ -148,6 +151,8 @@ pub async fn serve(cfg: Config) -> Result<()> {
         provider,
         settlement: cfg.settlement,
         chain_id,
+        snarkd: cfg.snarkd.clone(),
+        caps,
         from,
         postage_from_block: cfg.postage_from_block,
         censor_commits: cfg.censor_commits.clone(),
@@ -247,7 +252,7 @@ async fn adopt_anchor(ctx: &Ctx, round: u64) -> Result<bool> {
     }
     let commits_ok = |l: &[SignedCommit]| {
         l.len() as u32 == ri.commitCount
-            && commits_hash(l.iter().map(|c| (&c.owner, &c.obfuscated_hash))) == ri.commitsHash
+            && commits_hash(&l) == ri.commitsHash
     };
     let reveals_ok =
         |l: &[Reveal]| l.len() as u32 == ri.revealCount && reveals_hash(l) == ri.revealsHash;
@@ -382,7 +387,7 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
         store.save(round)?;
         list
     };
-    let hash = commits_hash(list.iter().map(|c| (&c.owner, &c.obfuscated_hash)));
+    let hash = commits_hash(&list);
     let doc = RoundData {
         version: DATA_VERSION,
         chain_id: ctx.chain_id,
@@ -567,8 +572,8 @@ async fn settle_tick(ctx: &Ctx) -> Result<()> {
         };
         // A truth without a valid witness can only settle once the claim window is closed: the winner
         // (or any truth-teller) can still send it, or call forceClaim.
-        let native = swarm_vm::run(&input).map_err(|e| anyhow!("vm: {e:?}"))?;
-        if native.outcome.unclaimed && block < (round + 1) * ROUND_LENGTH {
+        let native = input.run()?;
+        if native.unclaimed() && block < (round + 1) * ROUND_LENGTH {
             break;
         }
         settle(ctx, round, input).await?;
@@ -592,7 +597,7 @@ pub async fn build_input(
     round: u64,
     block: u64,
     claim: Option<Bytes>,
-) -> Result<RoundInput> {
+) -> Result<Job> {
     let s = Settlement::new(ctx.settlement, &ctx.provider);
     let ri = s.rounds(round).call().await?;
 
@@ -616,7 +621,7 @@ pub async fn build_input(
             m.claim.clone(),
         )
     };
-    if commits_hash(commits.iter().map(|c| (&c.owner, &c.obfuscated_hash))) != ri.commitsHash
+    if commits_hash(&commits) != ri.commitsHash
         || commits.len() as u32 != ri.commitCount
     {
         anyhow::bail!("local commit list does not match the anchored commitsHash");
@@ -641,19 +646,46 @@ pub async fn build_input(
     // Randomness from prevrandao in the two headers (checked against their block hashes).
     let (rnd, anchor_header, seed_header) =
         swarm_prover::round_randomness(&ctx.provider, round).await?;
-    let mut input = RoundInput {
-        chain_id: ctx.chain_id,
+
+    // The stake record and the game key of each entry, as GameKeyRegistry.commitmentOf will read them:
+    // one for each anchored commit, then one for each forced commit.
+    let staking = StakeRegistry::new(s.Stakes().call().await?, &ctx.provider);
+    let keys = GameKeyRegistry::new(s.GameKeys().call().await?, &ctx.provider);
+    let mut stakes = vec![];
+    for owner in commits
+        .iter()
+        .map(|c| c.owner)
+        .chain(forced_commits.iter().map(|c| c.owner))
+    {
+        let r = staking.stakes(owner).call().await?;
+        let k = keys.keys(owner).call().await?;
+        stakes.push(Stake {
+            owner,
+            overlay: r.overlay,
+            committed_stake: r.committedStake,
+            potential_stake: r.potentialStake,
+            height: r.height,
+            last_updated: r.lastUpdatedBlockNumber.saturating_to::<u64>(),
+            key: swarm_vm::Point { x: k.x, y: k.y },
+        });
+    }
+
+    let (mut state, prev_index, prev_hash, events) = postage_events(ctx, seed_block(round)).await?;
+    let (pg, postage) = state
+        .settle(prev_index, prev_hash, events, seed_block(round))
+        .map_err(|e| anyhow!("postage: {e:?}"))?;
+
+    let input = RoundInput {
+        chain_id: ctx.chain_id.to::<u64>(),
         settlement: ctx.settlement,
         round,
         round_anchor: rnd.round_anchor,
         selection_seed: rnd.selection_seed,
-        anchor_header,
-        seed_header,
         commits,
         forced_commits,
         reveals,
         forced_reveals,
-        stakes: vec![],
+        stakes,
         stake_price: PriceOracle::new(s.OracleContract().call().await?, &ctx.provider)
             .currentPrice()
             .call()
@@ -664,46 +696,45 @@ pub async fn build_input(
         penalty_multiplier_non_revealed: s.penaltyMultiplierNonRevealed().call().await?,
         penalty_random_factor: s.penaltyRandomFactor().call().await?,
         stake_age_rounds: s.stakeAgeRounds().call().await?,
-        claim: claim.or(stored_claim),
-        forced_claims,
-        sample_max_value: s.sampleMaxValue().call().await?,
-        // The fee goes to this prover's own address; the proof binds it.
         fee_recipient: ctx.from,
-        postage: Default::default(),
+        postage,
     };
 
-    // Raw stake records exactly as Settlement.stakeDigest will read them.
-    let staking = StakeRegistry::new(s.Stakes().call().await?, &ctx.provider);
-    for (owner, _) in canonical_commits(&input).map_err(|e| anyhow!("{e:?}"))? {
-        let r = staking.stakes(owner).call().await?;
-        input.stakes.push(StakeRecord {
-            owner,
-            overlay: r.overlay,
-            committed_stake: r.committedStake,
-            potential_stake: r.potentialStake,
-            height: r.height,
-            last_updated: r.lastUpdatedBlockNumber,
-        });
+    // The batches of the candidate witnesses, as ClaimVerifier reads them on chain.
+    let claim = claim.or(stored_claim);
+    let stamps = PostageStamp::new(s.PostageContract().call().await?, &ctx.provider);
+    let mut batches: Vec<swarm_vm::claim::BatchRecord> = vec![];
+    for w in claim
+        .iter()
+        .chain(&forced_claims)
+        .filter_map(|b| swarm_vm::claim::ClaimWitness::decode(b))
+    {
+        for id in w.batch_ids() {
+            if batches.iter().any(|b| b.batch_id == id) {
+                continue;
+            }
+            let b = stamps.batches(id).call().await?;
+            let alive = stamps.isBatchAlive(id).call().await?;
+            batches.push(swarm_vm::claim::BatchRecord {
+                batch_id: id,
+                owner: if alive { b.owner } else { Address::ZERO },
+                depth: b.depth,
+                bucket_depth: b.bucketDepth,
+            });
+        }
     }
-
-    // Postage last: its witness covers the batches of the claim candidates, which are known now.
-    // The cut is the seed block (Settlement checks it), whenever the round settles.
-    let (mut state, prev_index, prev_hash, events) = postage_events(ctx, seed_block(round)).await?;
-    let ids = swarm_vm::claim_batch_ids(&input);
-    let (_, postage) = state
-        .settle(
-            prev_index,
-            prev_hash,
-            events,
-            seed_block(round),
-            seed_block(round),
-            &ids,
-            true,
-        )
-        .map_err(|e| anyhow!("postage: {e:?}"))?;
-    input.postage = postage.expect("recorded");
-    Ok(input)
+    Ok(Job {
+        input,
+        pg,
+        anchor_header,
+        seed_header,
+        claim,
+        forced_claims,
+        sample_max_value: s.sampleMaxValue().call().await?,
+        batches,
+    })
 }
+
 
 /// The postage part of a round: the prover's state after the last settlement, its log position, and the
 /// PostageLog entries after it up to `cut` (the current block).
@@ -792,11 +823,8 @@ async fn postage_logs(
             index: e.index,
             kind: e.kind,
             batch_id: e.batchId,
-            owner: e.owner,
             depth: e.depth,
-            bucket_depth: e.bucketDepth,
             value: e.value,
-            outpayment: e.outpayment,
             block: e.blockNumber,
         });
     }
@@ -876,7 +904,7 @@ async fn replay_postage(
         let events = postage_logs(ctx, from, e.cutBlock, index, e.eventIndex).await?;
         // Claim lookups and the probe do not change the state: replay without them.
         let (r, _) = state
-            .settle(index, hash, events, e.cutBlock, e.cutBlock, &[], false)
+            .settle(index, hash, events, e.cutBlock)
             .map_err(|err| anyhow!("replay of round {}: {err:?}", e.round))?;
         (index, hash) = (r.event_index, r.event_hash);
         if state.hash() == target {
@@ -1070,43 +1098,76 @@ async fn forced_inputs(ctx: &Ctx, round: u64) -> Result<(Vec<ForcedCommit>, Vec<
     Ok((commits, reveals))
 }
 
-async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
+/// The arguments of `Settlement.settleRound` for this round.
+fn settlement_args(
+    job: &Job,
+    native: &Native,
+    proof: Bytes,
+) -> (Settlement::Outcome, Settlement::Evidence) {
+    let pv = &native.pv;
+    (
+        Settlement::Outcome {
+            round: pv.round,
+            hasReveals: pv.has_reveals,
+            truthHash: pv.truth_hash,
+            truthDepth: pv.truth_depth,
+            winner: pv.winner,
+            redundancy: pv.redundancy,
+            feeRecipient: pv.fee_recipient,
+            newStateHash: B256::from(pv.new_state_hash),
+            potAmount: pv.pot_amount,
+            validChunkCount: pv.valid_chunk_count,
+            owners: pv.owners.clone(),
+            freeze: pv.freeze.clone().into(),
+        },
+        Settlement::Evidence {
+            proof,
+            anchorHeader: job.anchor_header.clone(),
+            seedHeader: job.seed_header.clone(),
+            claimWitness: native.witness.clone().unwrap_or_default(),
+            // "Unclaimed" must show that every forced claim fails.
+            forcedClaims: if native.unclaimed() {
+                job.forced_claims.clone()
+            } else {
+                vec![]
+            },
+        },
+    )
+}
+
+async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
+    // The state after this settlement, to store once the transaction is in.
     let (new_postage, event_index, event_hash) = {
-        // Keep the postage state this settlement produces: the next one starts from it.
         let store = ctx.store.lock().await;
-        let mut state = store.load_postage(input.postage.header.hash())?;
-        let p = &input.postage;
+        let p = &job.input.postage;
+        let mut state = store.load_postage(B256::from(p.header.hash()))?;
         let (r, _) = state
             .settle(
                 p.prev_event_index,
                 p.prev_event_hash,
                 p.events.clone(),
                 p.cut_block,
-                round * ROUND_LENGTH + SEED_OFFSET,
-                &swarm_vm::claim_batch_ids(&input),
-                false,
             )
             .map_err(|e| anyhow!("postage: {e:?}"))?;
         store.save_postage(&state)?;
-        store.write_file(round, "input.json", &serde_json::to_vec_pretty(&input)?)?;
+        store.write_file(round, "input.json", &serde_json::to_vec_pretty(&job)?)?;
         (state, r.event_index, r.event_hash)
     };
-    let native = swarm_vm::run(&input).map_err(|e| anyhow!("vm: {e:?}"))?;
-    let public_values = PublicValues::abi_encode(&native);
+    let native = job.run()?;
+    let digest = native.pv.digest(&ctx.caps).to_string();
 
-    // A free check before a paid proof: simulate settleRound with an empty proof. Only the verifier may
-    // reject the call. A Settlement error (an earlier anchored round still pending, an input that does not
-    // match the chain) means the proof would be wasted. In the long Sepolia run a prover that lost its data
-    // proved a blocked round 29 times.
+    // A free check before a proof: simulate settleRound with an empty proof. Only the verifier may
+    // revert. Any Settlement error means the round cannot settle now (wrong inputs, or an earlier round
+    // is pending).
+    let (out, ev) = settlement_args(&job, &native, Bytes::new());
     if let Err(e) = Settlement::new(ctx.settlement, &ctx.provider)
-        .settleRound(public_values.clone().into(), Bytes::new())
+        .settleRound(out, ev)
         .from(ctx.from)
         .call()
         .await
     {
         if let Some(err) = e.as_decoded_interface_error::<Settlement::SettlementErrors>() {
             if let Settlement::SettlementErrors::RoundPending(p) = &err {
-                // Logged once for each blocking round, not at every poll.
                 if ctx.pending.lock().await.replace(p.round) != Some(p.round) {
                     warn!(
                         round,
@@ -1126,66 +1187,77 @@ async fn settle(ctx: &Ctx, round: u64, input: RoundInput) -> Result<()> {
         }
     }
 
-    // A proof of the same public values from an earlier attempt (for example a settleRound that failed to
-    // send) is reused, not paid for again.
+    // A proof of the same public values from an earlier attempt (for example a settleRound that failed
+    // to land): use it again.
     let cached = {
         let store = ctx.store.lock().await;
         std::fs::read(store.round_dir(round).join("proof.json")).ok()
     }
     .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
     .and_then(|v| {
-        let pv: Bytes = v["publicValues"].as_str()?.parse().ok()?;
         let proof: Bytes = v["proof"].as_str()?.parse().ok()?;
-        (pv.as_ref() == public_values.as_slice()).then(|| prover::SettlementProof {
-            public_values: pv.to_vec(),
-            proof: proof.to_vec(),
-            cycles: v["cycles"].as_u64().unwrap_or(0),
-        })
+        (v["digest"].as_str()? == digest).then_some(proof)
     });
-    if let Some(p) = cached {
-        info!(round, "reusing the stored proof of this round");
-        return send_settlement(ctx, round, p, &new_postage, event_index, event_hash).await;
-    }
-
-    info!(
-        round,
-        participants = native.inputs.participants.len(),
-        has_truth = native.outcome.hasTruth,
-        winner = %native.outcome.winner,
-        redundancy = native.outcome.redundancy,
-        freezes = native.outcome.freezeOwners.len(),
-        "round computed, proving"
-    );
-
-    let started = std::time::Instant::now();
-    let p = tokio::task::spawn_blocking(move || prover::prove(&input)).await??;
-    info!(round, cycles = p.cycles, elapsed = ?started.elapsed(), proof_bytes = p.proof.len(), "proved");
-    debug_assert_eq!(p.public_values, public_values);
-    {
-        let store = ctx.store.lock().await;
-        store.write_file(
-            round,
-            "proof.json",
-            &serde_json::to_vec_pretty(&serde_json::json!({
-                "publicValues": Bytes::from(p.public_values.clone()),
-                "proof": Bytes::from(p.proof.clone()),
-                "cycles": p.cycles,
-                "proveSeconds": started.elapsed().as_secs(),
-            }))?,
-        )?;
-    }
-    send_settlement(ctx, round, p, &new_postage, event_index, event_hash).await
+    let proof = match cached {
+        Some(p) => {
+            info!(round, "reusing the stored proof of this round");
+            p
+        }
+        None => {
+            info!(
+                round,
+                entries = native.pv.owners.len(),
+                has_reveals = native.pv.has_reveals,
+                claimed = native.claimed(),
+                winner = %native.pv.winner,
+                redundancy = native.pv.redundancy,
+                freezes = native.pv.freeze.iter().filter(|f| **f != 0).count(),
+                events = job.input.postage.events.len(),
+                expiries = job.input.postage.witness.expiries.len(),
+                "round computed, proving"
+            );
+            let witness = swarm_vm::witness_json(&job.input, &native.pv, &ctx.caps)
+                .map_err(|e| anyhow!("witness: {e:?}"))?;
+            let started = std::time::Instant::now();
+            let p = prover::prove(&ctx.snarkd, &witness).await?;
+            info!(
+                round,
+                prove_ms = p.prove_ms,
+                total = ?started.elapsed(),
+                constraints = p.constraints,
+                prover_peak_mb = p.peak_mb,
+                "proved"
+            );
+            let store = ctx.store.lock().await;
+            store.write_file(
+                round,
+                "proof.json",
+                &serde_json::to_vec_pretty(&serde_json::json!({
+                    "digest": digest,
+                    "proof": Bytes::from(p.proof.clone()),
+                    "proveMs": p.prove_ms,
+                    "constraints": p.constraints,
+                    "peakMB": p.peak_mb,
+                }))?,
+            )?;
+            Bytes::from(p.proof)
+        }
+    };
+    let (out, ev) = settlement_args(&job, &native, proof);
+    send_settlement(ctx, round, out, ev, &new_postage, event_index, event_hash).await
 }
 
 async fn send_settlement(
     ctx: &Ctx,
     round: u64,
-    p: prover::SettlementProof,
+    out: Settlement::Outcome,
+    ev: Settlement::Evidence,
     new_postage: &swarm_vm::postage::PostageState,
     event_index: u64,
     event_hash: B256,
 ) -> Result<()> {
     let s = Settlement::new(ctx.settlement, &ctx.provider);
+    // One transaction at a time from this key (see anchor_commits).
     let _g = ctx.tx_lock.lock().await;
     let nonce = ctx
         .provider
@@ -1193,7 +1265,7 @@ async fn send_settlement(
         .pending()
         .await?;
     let receipt = s
-        .settleRound(p.public_values.into(), p.proof.into())
+        .settleRound(out, ev)
         .nonce(nonce)
         .send()
         .await?

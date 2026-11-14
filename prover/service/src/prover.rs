@@ -1,123 +1,42 @@
-//! SP1 side: execute and prove the program in `prover/program`.
+//! The proof of a round: a Groth16 proof of the settlement circuit, made by `snarkd serve`
+//! (prover/snark). The daemon keeps the circuit and the proving key in memory.
 
-use alloy_sol_types::SolType;
 use anyhow::{anyhow, bail, Result};
-use sp1_sdk::{
-    blocking::{MockProver, ProveRequest, Prover, ProverClient},
-    include_elf, Elf, HashableKey, ProvingKey, SP1Stdin,
-};
-use swarm_vm::{PublicValues, RoundInput};
 
-pub const ELF: Elf = include_elf!("swarm-settlement-program");
-
-/// The verification key Settlement is deployed with. Changes whenever the program or the VM changes.
-pub fn vkey() -> String {
-    let pk = MockProver::new().setup(ELF).expect("setup");
-    pk.verifying_key().bytes32().to_string()
-}
-
-pub fn is_mock() -> bool {
-    std::env::var("SP1_PROVER")
-        .map(|m| m == "mock")
-        .unwrap_or(false)
-}
-
-fn stdin(input: &RoundInput) -> SP1Stdin {
-    let mut s = SP1Stdin::new();
-    s.write(input);
-    s
-}
-
-/// A proof ready for `Settlement.settleRound(publicValues, proofBytes)`.
 pub struct SettlementProof {
-    pub public_values: Vec<u8>,
     pub proof: Vec<u8>,
-    pub cycles: u64,
+    pub prove_ms: u64,
+    pub constraints: u64,
+    pub peak_mb: u64,
 }
 
-/// Execute in the zkVM, check the output against the native run, then prove with Groth16.
-/// Blocking; call from a blocking thread.
-pub fn prove(input: &RoundInput) -> Result<SettlementProof> {
-    let expected =
-        PublicValues::abi_encode(&swarm_vm::run(input).map_err(|e| anyhow!("vm: {e:?}"))?);
+/// The size of the circuit that the daemon proves: (events, expiries) for each proof. The other two
+/// sizes are in `Settlement` (capacity, forcedCapacity).
+pub async fn caps(url: &str) -> Result<(usize, usize, usize, usize)> {
+    let v: serde_json::Value = reqwest::get(format!("{url}/caps")).await?.json().await?;
+    let n = |k: &str| v[k].as_u64().map(|x| x as usize).ok_or_else(|| anyhow!("caps.{k}"));
+    Ok((n("p")?, n("f")?, n("e")?, n("x")?))
+}
 
-    let client = ProverClient::from_env();
-    let (out, report) = client
-        .execute(ELF, stdin(input))
-        .run()
-        .map_err(|e| anyhow!("execute: {e}"))?;
-    if out.as_slice() != expected.as_slice() {
-        bail!("zkVM output differs from native VM output");
+/// Prove the round with this witness (`swarm_vm::witness_json`).
+pub async fn prove(url: &str, witness: &serde_json::Value) -> Result<SettlementProof> {
+    let res = reqwest::Client::new()
+        .post(format!("{url}/prove"))
+        .json(witness)
+        .send()
+        .await?;
+    if !res.status().is_success() {
+        bail!("snarkd: {}", res.text().await.unwrap_or_default());
     }
-    let cycles = report.total_instruction_count();
-
-    let pk = client.setup(ELF).map_err(|e| anyhow!("setup: {e}"))?;
-    let proof = client
-        .prove(&pk, stdin(input))
-        .groth16()
-        .run()
-        .map_err(|e| anyhow!("prove: {e}"))?;
-    client
-        .verify(&proof, pk.verifying_key(), None)
-        .map_err(|e| anyhow!("local verify: {e}"))?;
-
-    // SP1MockVerifier only accepts an empty proof.
-    let proof_bytes = if is_mock() { vec![] } else { proof.bytes() };
+    let v: serde_json::Value = res.json().await?;
+    let proof: alloy::primitives::Bytes = v["proof"]
+        .as_str()
+        .ok_or_else(|| anyhow!("no proof"))?
+        .parse()?;
     Ok(SettlementProof {
-        public_values: proof.public_values.to_vec(),
-        proof: proof_bytes,
-        cycles,
+        proof: proof.to_vec(),
+        prove_ms: v["proveMs"].as_u64().unwrap_or(0),
+        constraints: v["constraints"].as_u64().unwrap_or(0),
+        peak_mb: v["peakMB"].as_u64().unwrap_or(0),
     })
-}
-
-pub fn execute_report(
-    input: &RoundInput,
-    also_prove: bool,
-    out_path: &std::path::Path,
-) -> Result<()> {
-    let client = ProverClient::from_env();
-    let started = std::time::Instant::now();
-    let (out, report) = client
-        .execute(ELF, stdin(input))
-        .run()
-        .map_err(|e| anyhow!("execute: {e}"))?;
-    let pv = PublicValues::abi_decode(out.as_slice())?;
-    println!("participants: {}", pv.inputs.participants.len());
-    println!(
-        "truth:        {} (depth {})",
-        pv.outcome.truthHash, pv.outcome.truthDepth
-    );
-    println!("winner:       {}", pv.outcome.winner);
-    println!("redundancy:   {}", pv.outcome.redundancy);
-    println!("freezes:      {}", pv.outcome.freezeOwners.len());
-    println!(
-        "claim:        {}",
-        if pv.outcome.hasTruth {
-            "valid witness"
-        } else if pv.outcome.unclaimed {
-            "unclaimed"
-        } else {
-            "no truth"
-        }
-    );
-    println!("cycles:       {}", report.total_instruction_count());
-    println!("execute time: {:?}", started.elapsed());
-    if also_prove {
-        let started = std::time::Instant::now();
-        let p = prove(input)?;
-        println!("proof bytes:  {}", p.proof.len());
-        println!("prove time:   {:?}", started.elapsed());
-        std::fs::write(
-            out_path,
-            serde_json::to_vec_pretty(&serde_json::json!({
-                "vkey": vkey(),
-                "publicValues": format!("0x{}", hex::encode(&p.public_values)),
-                "proof": format!("0x{}", hex::encode(&p.proof)),
-                "cycles": p.cycles,
-                "proveSeconds": started.elapsed().as_secs(),
-            }))?,
-        )?;
-        println!("written:      {}", out_path.display());
-    }
-    Ok(())
 }

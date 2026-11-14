@@ -76,6 +76,10 @@ impl Header {
         }
     }
 
+    pub fn is_genesis(&self) -> bool {
+        *self == Header::genesis()
+    }
+
     pub fn fields(&self) -> [Fr; 7] {
         [
             self.root,
@@ -163,7 +167,7 @@ pub struct Input {
     pub witness: Witness,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Run {
     pub new_header: Header,
     pub event_index: u64,
@@ -531,8 +535,14 @@ impl Default for State {
 }
 
 impl State {
-    pub fn hash(&self) -> Fr {
-        self.header.hash()
+    /// `Settlement.postageStateHash` of this state.
+    pub fn hash(&self) -> B256 {
+        super::fr_bytes(self.header.hash())
+    }
+
+    /// The live batches.
+    pub fn batches(&self) -> Vec<Leaf> {
+        self.tree.batches()
     }
 
     /// Run a settlement on this state in place, and return the circuit input for it.
@@ -566,3 +576,7 @@ impl State {
         ))
     }
 }
+
+/// The names the prover service uses.
+pub type PostageState = State;
+pub type PostageEvent = Event;

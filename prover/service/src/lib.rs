@@ -88,7 +88,32 @@ alloy::sol! {
         function forceCommit(uint64 _round, bytes32 _obfuscatedHash) external;
         function forceReveal(uint64 _round, bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _nonce) external;
         function forceClaim(uint64 _round, bytes calldata _witness) external;
-        function settleRound(bytes calldata _publicValues, bytes calldata _proofBytes) external;
+        struct Outcome {
+            uint64 round;
+            bool hasReveals;
+            bytes32 truthHash;
+            uint8 truthDepth;
+            address winner;
+            uint16 redundancy;
+            address feeRecipient;
+            bytes32 newStateHash;
+            uint256 potAmount;
+            uint256 validChunkCount;
+            address[] owners;
+            bytes freeze;
+        }
+        struct Evidence {
+            bytes proof;
+            bytes anchorHeader;
+            bytes seedHeader;
+            bytes claimWitness;
+            bytes[] forcedClaims;
+        }
+        function settleRound(Outcome calldata out, Evidence calldata ev) external;
+        function GameKeys() external view returns (address);
+        function commitMessage(uint64 _round, bytes32 _obfuscatedHash) external view returns (uint256);
+        function capacity() external view returns (uint16);
+        function forcedCapacity() external view returns (uint16);
 
         function rounds(uint64) external view returns (
             bytes32 anchorBlockHash,
@@ -108,7 +133,6 @@ alloy::sol! {
         );
         function anchorBlockHash(uint64 _round) external view returns (bytes32);
         function seedBlockHash(uint64 _round) external view returns (bytes32);
-        function commitDigest(uint64 _round, bytes32 _obfuscatedHash) external view returns (bytes32);
         function lastSettledRound() external view returns (uint64);
         function lastClaimRound() external view returns (uint64);
         function lastWinnerDepth() external view returns (uint8);
@@ -116,7 +140,6 @@ alloy::sol! {
         function penaltyMultiplierNonRevealed() external view returns (uint8);
         function penaltyRandomFactor() external view returns (uint8);
         function stakeAgeRounds() external view returns (uint8);
-        function programVKey() external view returns (bytes32);
         function Stakes() external view returns (address);
         function OracleContract() external view returns (address);
         function PostageContract() external view returns (address);
@@ -134,6 +157,7 @@ alloy::sol! {
         error SeedNotAvailable();
         error ClaimWindowOpen();
         error InputMismatch(uint8 which);
+        error ValidForcedClaim();
 
         event RoundAnchored(uint64 indexed round, bytes32 anchorBlockHash, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
         event PostageSettled(uint64 indexed round, uint64 eventIndex, uint64 cutBlock, uint256 potAmount, uint256 accruedPot);
@@ -157,6 +181,7 @@ alloy::sol! {
     #[sol(rpc)]
     contract PostageStamp {
         function eventCount() external view returns (uint64);
+        function isBatchAlive(bytes32 _batchId) external view returns (bool);
         event PostageLog(
             uint64 indexed index,
             uint8 kind,
@@ -178,6 +203,11 @@ alloy::sol! {
         );
     }
 
+    #[sol(rpc)]
+    contract GameKeyRegistry {
+        function keys(address) external view returns (uint256 x, uint256 y);
+        function setKey(uint256 x, uint256 y) external;
+    }
     #[sol(rpc)]
     contract PriceOracle {
         function currentPrice() external view returns (uint32);
@@ -242,4 +272,95 @@ pub struct OutcomeMsg {
     pub selection_seed: B256,
     /// A valid claim witness is already known for this round.
     pub claimed: bool,
+}
+
+/// A commit signature on the wire: R.x, R.y and S of the EdDSA signature, 32 bytes each.
+pub fn sig_to_bytes(sig: &swarm_vm::Sig) -> Bytes {
+    let mut b = Vec::with_capacity(96);
+    b.extend_from_slice(&sig.r.x.to_be_bytes::<32>());
+    b.extend_from_slice(&sig.r.y.to_be_bytes::<32>());
+    b.extend_from_slice(&sig.s.to_be_bytes::<32>());
+    b.into()
+}
+
+pub fn sig_from_bytes(b: &[u8]) -> Option<swarm_vm::Sig> {
+    if b.len() != 96 {
+        return None;
+    }
+    let n = |i: usize| alloy::primitives::U256::from_be_slice(&b[i * 32..(i + 1) * 32]);
+    Some(swarm_vm::Sig {
+        r: swarm_vm::Point { x: n(0), y: n(1) },
+        s: n(2),
+    })
+}
+
+/// Everything needed to settle one round: the circuit input, and what `Settlement` checks on chain.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Job {
+    pub input: swarm_vm::RoundInput,
+    /// Result of the postage settlement in `input.postage`.
+    pub pg: swarm_vm::postage::Run,
+    /// RLP headers of block roundStart - 1 and of the seed block.
+    pub anchor_header: Bytes,
+    pub seed_header: Bytes,
+    /// The claim witness received off chain (ABI-encoded `ClaimWitness`).
+    pub claim: Option<Bytes>,
+    /// `ClaimForced` events of the round, in chain order.
+    pub forced_claims: Vec<Bytes>,
+    pub sample_max_value: alloy::primitives::U256,
+    /// The batches of the candidate witnesses as the chain has them (owner zero when not alive).
+    pub batches: Vec<swarm_vm::claim::BatchRecord>,
+}
+
+/// The result of a round, computed without a proof.
+pub struct Native {
+    pub pv: swarm_vm::PublicValues,
+    /// The first witness that `ClaimVerifier` will accept.
+    pub witness: Option<Bytes>,
+    /// Why the off-chain witness was rejected.
+    pub why: Option<String>,
+}
+
+impl Native {
+    /// A truth with a valid witness: the round pays out.
+    pub fn claimed(&self) -> bool {
+        self.pv.has_reveals && self.witness.is_some()
+    }
+    /// A truth without a valid witness.
+    pub fn unclaimed(&self) -> bool {
+        self.pv.has_reveals && self.witness.is_none()
+    }
+}
+
+impl Job {
+    pub fn run(&self) -> anyhow::Result<Native> {
+        use swarm_vm::claim::{verify_claim, ClaimContext, ClaimWitness};
+        let pv = swarm_vm::run(&self.input, &self.pg).map_err(|e| anyhow::anyhow!("vm: {e:?}"))?;
+        let ctx = ClaimContext {
+            anchor: self.input.round_anchor,
+            seed: self.input.selection_seed,
+            sample_hash: pv.truth_hash,
+            depth: pv.truth_depth,
+            batches: &self.batches,
+            sample_max_value: self.sample_max_value,
+        };
+        let (mut witness, mut why) = (None, None);
+        if pv.has_reveals {
+            for (i, b) in self.claim.iter().chain(&self.forced_claims).enumerate() {
+                let r = match ClaimWitness::decode(b) {
+                    Some(w) => verify_claim(&w, &ctx).map_err(|e| format!("{e:?}")),
+                    None => Err("witness does not decode".to_string()),
+                };
+                match r {
+                    Ok(()) => {
+                        witness = Some(b.clone());
+                        break;
+                    }
+                    Err(e) if i == 0 && self.claim.is_some() => why = Some(e),
+                    Err(_) => {}
+                }
+            }
+        }
+        Ok(Native { pv, witness, why })
+    }
 }

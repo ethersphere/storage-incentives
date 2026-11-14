@@ -41,13 +41,13 @@ use rayon::prelude::*;
 use std::sync::Arc;
 use std::{collections::HashMap, time::Duration};
 use swarm_prover::{
-    offset_of, round_of, ClaimMsg, CommitMsg, OutcomeMsg, PostageStamp, RevealMsg, Settlement,
-    StakeRegistry, ANCHOR_END, CLAIM_START, COMMIT_END, REVEAL_ANCHOR_END, REVEAL_ANCHOR_START,
+    offset_of, round_of, sig_to_bytes, ClaimMsg, CommitMsg, GameKeyRegistry, OutcomeMsg,
+    PostageStamp, RevealMsg, Settlement, StakeRegistry, ANCHOR_END, CLAIM_START, COMMIT_END, REVEAL_ANCHOR_END, REVEAL_ANCHOR_START,
     REVEAL_END, REVEAL_START, ROUND_LENGTH,
 };
 use swarm_vm::{
     claim::{address_to_bucket, PostageProof},
-    commit_digest, in_proximity,
+    commit_message, in_proximity,
     sample::{FastHasher, Sample, SampleEntry, SAMPLE_SIZE},
     wrap_commit,
 };
@@ -99,6 +99,8 @@ struct Node {
     provider: DynProvider,
     overlay: B256,
     height: u8,
+    /// Secret scalar of the game key: signs the off-chain commits (EdDSA).
+    game_sk: U256,
 }
 
 #[derive(Clone)]
@@ -313,13 +315,15 @@ async fn main() -> Result<()> {
     let settlement = Settlement::new(args.settlement, &read);
     let staking = StakeRegistry::new(settlement.Stakes().call().await?, &read);
 
-    // The Rust commit digest must match the contract's, or every off-chain commit is dropped.
-    let probe = keccak256(b"probe");
-    if settlement.commitDigest(1, probe).call().await?
-        != commit_digest(chain_id, args.settlement, 1, probe)
+    // The Rust commit message (MiMC) must match the contract's, or every off-chain commit is dropped.
+    let chain = chain_id.to::<u64>();
+    let probe = swarm_vm::wrap_commit(B256::ZERO, 1, keccak256(b"probe"), B256::ZERO);
+    if settlement.commitMessage(1, probe).call().await?
+        != commit_message(chain, &args.settlement, 1, U256::from_be_bytes(probe.0))
     {
-        bail!("commit digest mismatch between swarm-vm and Settlement.commitDigest");
+        bail!("commit message mismatch between swarm-vm and Settlement.commitMessage");
     }
+    let registry = GameKeyRegistry::new(settlement.GameKeys().call().await?, &read);
 
     let mut nodes = vec![];
     for (idx, key) in args.keys.iter().enumerate() {
@@ -337,6 +341,20 @@ async fn main() -> Result<()> {
             .wallet(EthereumWallet::from(signer.clone()))
             .connect_http(args.rpc_url.parse()?)
             .erased();
+        // The game key: derived from the node key, registered one time in GameKeyRegistry.
+        let (game_sk, game_pk) = swarm_vm::game_key(&keccak256(signer.to_bytes()));
+        let k = registry.keys(owner).call().await?;
+        if k.x.is_zero() && k.y.is_zero() {
+            let receipt = GameKeyRegistry::new(*registry.address(), &provider)
+                .setKey(game_pk.x, game_pk.y)
+                .send()
+                .await?
+                .get_receipt()
+                .await?;
+            info!(idx, gas = receipt.gas_used, "game key registered");
+        } else if (k.x, k.y) != (game_pk.x, game_pk.y) {
+            bail!("node {idx} ({owner}) has another game key on chain");
+        }
         info!(idx, %owner, %overlay, height, "node");
         nodes.push(Node {
             idx,
@@ -344,6 +362,7 @@ async fn main() -> Result<()> {
             provider,
             overlay,
             height,
+            game_sk,
         });
     }
 
@@ -488,13 +507,15 @@ async fn main() -> Result<()> {
                         .await
                         .map(|tx| ("forceCommit tx".to_string(), Some(tx)))
                 } else {
-                    let digest = commit_digest(chain_id, args.settlement, round, obf);
-                    let sig = n.signer.sign_message_sync(digest.as_slice())?;
+                    let sig = swarm_vm::sign(
+                        n.game_sk,
+                        commit_message(chain, &args.settlement, round, U256::from_be_bytes(obf.0)),
+                    );
                     let msg = CommitMsg {
                         round,
                         owner: n.signer.address(),
                         obfuscated_hash: obf,
-                        signature: Bytes::from(sig.as_bytes().to_vec()),
+                        signature: sig_to_bytes(&sig),
                     };
                     post(&http, &format!("{}/v1/commit", args.prover_url), &msg)
                         .await
@@ -828,7 +849,16 @@ async fn check_commits(
             args.prover_url,
             n.signer.address()
         );
-        let leaf = swarm_vm::commit_leaf(&n.signer.address(), &p.obfuscated);
+        // The leaf holds the node's own signature (the signature is deterministic).
+        let Ok(chain) = read.get_chain_id().await else {
+            return warn!(round, "commit check: no chain id");
+        };
+        let obf = U256::from_be_bytes(p.obfuscated.0);
+        let leaf = swarm_vm::commit_leaf(&swarm_vm::SignedCommit {
+            owner: n.signer.address(),
+            obf,
+            sig: swarm_vm::sign(n.game_sk, commit_message(chain, &args.settlement, round, obf)),
+        });
         let included = inclusion_proof(http, url).await.is_some_and(|(i, proof)| {
             swarm_vm::list_verify(ri.commitsHash, ri.commitCount, i, leaf, &proof)
         });
