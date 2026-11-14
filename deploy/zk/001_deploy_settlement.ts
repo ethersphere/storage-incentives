@@ -10,7 +10,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   // ZK_VERIFIER=mock deploys Groth16MockVerifier, which accepts every proof (contract tests only).
   // Otherwise the script deploys the two verifiers that `snarkd setup` wrote (src/settlement/groth16/):
-  // GameVerifier for one game circuit size (SNARK_P and SNARK_F must be its -p and -f) and
+  // GameVerifier<P> for each game circuit size (SNARK_P/SNARK_F and SNARK_P2/SNARK_F2) and
   // PostageVerifier.
   const mode = process.env.ZK_VERIFIER || 'groth16';
   let gameVerifier: string;
@@ -28,7 +28,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
           waitConfirmations,
         })
       ).address;
-    gameVerifier = await verifier('GameVerifier');
+    gameVerifier = await verifier(`GameVerifier${process.env.SNARK_P ?? 16}`);
     postageVerifier = await verifier('PostageVerifier');
   }
   const capacity = Number(process.env.SNARK_P ?? 16);
@@ -40,7 +40,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const claims = await deploy('ClaimVerifier', { from: deployer, log: true, waitConfirmations });
 
   log(`Verifiers ${gameVerifier} (game), ${postageVerifier} (postage), game circuit size ${capacity}/${forcedCapacity}`);
-  await deploy('Settlement', {
+  const settlement = await deploy('Settlement', {
     from: deployer,
     args: [
       staking,
@@ -59,6 +59,21 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     log: true,
     waitConfirmations,
   });
+
+  // A second, smaller game circuit (SNARK_P2, SNARK_F2): a small round then uses a verifier with fewer
+  // public inputs. With VERIFIER_DELAY = 0 the change applies at once.
+  const p2 = Number(process.env.SNARK_P2 ?? 8);
+  if (mode !== 'mock' && p2 > 0 && settlement.newlyDeployed) {
+    const small = await deploy(`GameVerifier${p2}`, {
+      contract: `src/settlement/groth16/GameVerifier${p2}.sol:GameVerifier${p2}`,
+      from: deployer,
+      log: true,
+      waitConfirmations,
+    });
+    const f2 = Number(process.env.SNARK_F2 ?? 2);
+    await deployments.execute('Settlement', { from: deployer, log: true }, 'proposeVerifier', 1, small.address, postageVerifier, p2, f2);
+    await deployments.execute('Settlement', { from: deployer, log: true }, 'applyVerifier');
+  }
 };
 
 export default func;

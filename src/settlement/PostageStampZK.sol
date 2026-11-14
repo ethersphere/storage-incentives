@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import {MiMC} from "./MiMC.sol";
 
 /**
  * @title PostageStampZK
@@ -493,12 +494,29 @@ contract PostageStampZK is AccessControl, Pausable {
         }
         uint64 index = count + 1;
         uint256 outpayment = currentTotalOutPayment();
-        // sha256 over the fields that the settlement circuit needs (90 bytes: two sha256 blocks in the
-        // circuit). The circuit derives the outpayment from the price entries. The values must fit the
-        // circuit: a balance below 2^128, a depth below 64, a batch id that is not zero.
+        // A MiMC hash chain, which the postage circuit computes with few constraints (sha256 was almost
+        // half of that circuit). Each entry adds two field elements: the small fields packed, and the
+        // batch id modulo the field. This costs about 18k gas for each batch change. The circuit derives
+        // the outpayment from the price entries. The values must fit the circuit: a balance below 2^128,
+        // a depth below 64, a batch id that is not zero.
         if (value >> 128 != 0 || depth >= 64 || (kind != KIND_PRICE && batchId == bytes32(0))) revert LogRange();
-        eventHash = sha256(abi.encodePacked(prev, kind, batchId, depth, uint128(value), uint64(block.number)));
+        eventHash = _chain(prev, kind, batchId, depth, value);
         eventCount = index;
         emit PostageLog(index, kind, batchId, owner, depth, bucketDepth, value, outpayment, uint64(block.number));
+    }
+
+    /// @dev One step of the log hash chain.
+    function _chain(
+        bytes32 prev,
+        uint8 kind,
+        bytes32 batchId,
+        uint8 depth,
+        uint256 value
+    ) internal view returns (bytes32) {
+        uint256 packed = (uint256(kind) << 200) |
+            (uint256(depth) << 192) |
+            (uint256(uint64(block.number)) << 128) |
+            value;
+        return bytes32(MiMC.compress(MiMC.compress(uint256(prev), packed), uint256(batchId)));
     }
 }

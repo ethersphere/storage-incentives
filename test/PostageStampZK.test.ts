@@ -23,14 +23,19 @@ async function mine(n: number) {
   if (n > 0) await network.provider.send('hardhat_mine', ['0x' + n.toString(16)]);
 }
 
-// PostageStampZK._log: sha256(prev, kind, batchId, depth, value (16 bytes), block).
-function logHash(prev: string, e: any): string {
-  return ethers.utils.sha256(
-    solidityPack(
-      ['bytes32', 'uint8', 'bytes32', 'uint8', 'uint128', 'uint64'],
-      [prev, e.kind, e.batchId, e.depth, e.value, e.blockNumber]
-    )
-  );
+// PostageStampZK._log: MiMC(MiMC(prev, kind << 200 | depth << 192 | block << 128 | value), batchId).
+// GameKeyRegistry serves the same MiMC as the contract library.
+async function logHash(prev: string, e: any): Promise<string> {
+  const [deployer] = await ethers.getSigners();
+  const mimc = await (await ethers.getContractFactory('GameKeyRegistry')).deploy(deployer.address);
+  const B = ethers.BigNumber;
+  const packed = B.from(e.kind)
+    .shl(200)
+    .or(B.from(e.depth).shl(192))
+    .or(B.from(e.blockNumber).shl(128))
+    .or(B.from(e.value));
+  const h = await mimc.compress(await mimc.compress(prev, packed), e.batchId);
+  return ethers.utils.hexZeroPad(h.toHexString(), 32);
 }
 
 async function logs(stamp: Contract) {
@@ -76,7 +81,7 @@ describe('PostageStampZK', function () {
     const entries = await logs(stamp);
     expect(entries.map((e) => e.kind)).to.deep.eq([KIND_PRICE, KIND_CREATE, KIND_TOPUP, KIND_DEPTH, KIND_PRICE]);
     let h = ZERO;
-    for (const e of entries) h = logHash(h, e);
+    for (const e of entries) h = await logHash(h, e);
     expect(await stamp.eventHash()).to.eq(h);
     expect(await stamp.eventCount()).to.eq(5);
     // The batch fields are the stored batch.

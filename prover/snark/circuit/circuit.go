@@ -2,8 +2,6 @@ package circuit
 
 import (
 	"math/big"
-
-	"github.com/consensys/gnark/std/math/uints"
 )
 
 const (
@@ -20,7 +18,7 @@ const (
 	// GamePublic is the number of public inputs of the game circuit before the stake commitments.
 	GamePublic = 12
 	// PostagePublic is the number of public inputs of the postage circuit.
-	PostagePublic = 9
+	PostagePublic = 7
 )
 
 // Caps is the size of the circuits. Game: P anchored commits and reveals, F forced commits and
@@ -47,5 +45,3 @@ type Expiry struct{ Head, Target Write }
 func commitDomain() *big.Int { return new(big.Int).SetBytes([]byte("SwarmCommit")) }
 
 func shl(n uint) *big.Int { return new(big.Int).Lsh(big.NewInt(1), n) }
-
-var _ = uints.NewU8

@@ -10,8 +10,6 @@ import (
 	"github.com/consensys/gnark-crypto/ecc/bn254/fr/mimc"
 	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/hash/sha2"
-	"github.com/consensys/gnark/std/math/uints"
 	"github.com/consensys/gnark/std/rangecheck"
 )
 
@@ -30,16 +28,11 @@ func divModHint(_ *big.Int, in []*big.Int, out []*big.Int) error {
 type ctx struct {
 	api    frontend.API
 	consts []big.Int
-	by     *uints.Bytes
 	rc     frontend.Rangechecker
 }
 
 func newCtx(api frontend.API) (*ctx, error) {
-	by, err := uints.NewBytes(api)
-	if err != nil {
-		return nil, err
-	}
-	return &ctx{api: api, consts: mimc.GetConstants(), by: by, rc: rangecheck.New(api)}, nil
+	return &ctx{api: api, consts: mimc.GetConstants(), rc: rangecheck.New(api)}, nil
 }
 
 // enc is the MiMC block cipher of gnark-crypto: 110 rounds of (m + k + c)^5, then + k.
@@ -119,43 +112,6 @@ func (c *ctx) pow2(bits []V) V {
 // low is the value of the n low bits of a field element.
 func (c *ctx) low(v V, n int) V {
 	return c.api.FromBinary(c.bits(v, 254)[:n]...)
-}
-
-// be returns the big-endian bytes of the number with these bits (least significant first), padded
-// with zero bytes to nbytes.
-func (c *ctx) be(bits []V, nbytes int) []uints.U8 {
-	out := make([]uints.U8, nbytes)
-	for j := 0; j < nbytes; j++ {
-		lo := 8 * (nbytes - 1 - j)
-		if lo >= len(bits) {
-			out[j] = uints.NewU8(0)
-			continue
-		}
-		b := make([]V, 8)
-		for i := range b {
-			if lo+i < len(bits) {
-				b[i] = bits[lo+i]
-			} else {
-				b[i] = 0
-			}
-		}
-		out[j] = c.by.FromBits(b...)
-	}
-	return out
-}
-
-// beNum is the big-endian bytes of v, which must be below 2^nbits.
-func (c *ctx) beNum(v V, nbits, nbytes int) []uints.U8 {
-	return c.be(c.bits(v, nbits), nbytes)
-}
-
-func (c *ctx) sha256(data []uints.U8) []uints.U8 {
-	h, err := sha2.New(c.api)
-	if err != nil {
-		panic(err)
-	}
-	h.Write(data)
-	return h.Sum()
 }
 
 // path is the root of the tree that has `leaf` at the index with these bits.

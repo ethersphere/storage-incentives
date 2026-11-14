@@ -103,6 +103,7 @@ alloy::sol! {
             bytes freeze;
         }
         struct Evidence {
+            uint8 gameCircuit;
             bytes proof;
             bytes postageProof;
             bytes anchorHeader;
@@ -114,9 +115,7 @@ alloy::sol! {
         function GameKeys() external view returns (address);
         function lastPostageRound() external view returns (uint64);
         error ProofInvalid();
-        function commitMessage(uint64 _round, bytes32 _obfuscatedHash) external view returns (uint256);
-        function capacity() external view returns (uint16);
-        function forcedCapacity() external view returns (uint16);
+        function gameCircuits(uint256) external view returns (address verifier, uint16 capacity, uint16 forcedCapacity, bytes4 selector);
 
         function rounds(uint64) external view returns (
             bytes32 anchorBlockHash,
@@ -210,6 +209,7 @@ alloy::sol! {
     contract GameKeyRegistry {
         function keys(address) external view returns (uint256 x, uint256 y);
         function setKey(uint256 x, uint256 y) external;
+        function commitMessage(address settlement, uint64 round, bytes32 obfuscatedHash) external view returns (uint256);
     }
     #[sol(rpc)]
     contract PriceOracle {

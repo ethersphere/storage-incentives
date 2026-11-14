@@ -170,16 +170,18 @@ pub fn forced_reveals_hash(forced: &[Reveal]) -> Fr {
         .fold(U256::ZERO, |acc, r| compress(acc, reveal_hash(r)))
 }
 
-/// `GameKeyRegistry.commitmentOf`.
+/// `GameKeyRegistry.commitmentOf`. The element that a freeze changes is the last one, so the contract
+/// computes only one compression again after a freeze.
 pub fn stake_commitment(s: &Stake) -> Fr {
     let (oh, ol) = halves(&s.overlay);
     mimc(&[
-        (addr(&s.owner) << 72) | (U256::from(s.height) << 64) | U256::from(s.last_updated),
+        addr(&s.owner),
         oh,
         ol,
-        (s.committed_stake << STAKE_BITS) | s.potential_stake,
         s.key.x,
         s.key.y,
+        (s.committed_stake << STAKE_BITS) | s.potential_stake,
+        (U256::from(s.height) << 64) | U256::from(s.last_updated),
     ])
 }
 
@@ -459,16 +461,12 @@ impl PublicValues {
 
     /// The public inputs of the postage circuit (see `PostageCircuit`).
     pub fn postage_inputs(&self) -> Vec<Fr> {
-        let (ph, pl) = halves(&self.prev_event_hash);
-        let (eh, el) = halves(&self.event_hash);
         vec![
             self.prev_state_hash,
             self.new_state_hash,
             (u(self.prev_event_index) << 128) | (u(self.event_index) << 64) | u(self.cut_block),
-            ph,
-            pl,
-            eh,
-            el,
+            U256::from_be_bytes(self.prev_event_hash.0),
+            U256::from_be_bytes(self.event_hash.0),
             self.pot_amount,
             self.valid_chunk_count,
         ]
@@ -610,7 +608,6 @@ pub fn postage_witness_json(pg: &postage::Input, pv: &PublicValues, caps: &Caps)
             None => json!({"head": write_json(&pg.witness.final_head), "target": write_json(&dummy)}),
         })
         .collect();
-    let (ph, pl) = halves(&pg.prev_event_hash);
 
     Ok(json!({
         "kind": "postage",
@@ -618,7 +615,7 @@ pub fn postage_witness_json(pg: &postage::Input, pv: &PublicValues, caps: &Caps)
         "public": pv.postage_inputs().iter().map(|x| d(*x)).collect::<Vec<_>>(),
         "header": pg.header.fields().iter().map(|x| d(*x)).collect::<Vec<_>>(),
         "prevEventIndex": d(u(pg.prev_event_index)),
-        "prevEventHash": [d(ph), d(pl)],
+        "prevEventHash": d(U256::from_be_bytes(pg.prev_event_hash.0)),
         "cutBlock": d(u(pg.cut_block)),
         "events": events,
         "expiries": expiries,

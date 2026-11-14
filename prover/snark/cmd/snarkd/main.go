@@ -77,7 +77,7 @@ func main() {
 	out := fs.String("out", "keys", "output directory (setup) or file (prove)")
 	keys := fs.String("keys", "keys", "directory of setup (prove)")
 	kind := fs.String("kind", "game", "circuit: game or postage")
-	gameKeys := fs.String("game", "", "setup directory of the game circuit (serve)")
+	gameKeys := fs.String("game", "", "setup directories of the game circuits, comma separated (serve)")
 	postageKeys := fs.String("postage", "", "setup directory of the postage circuit (serve)")
 	wfile := fs.String("witness", "", "witness JSON of the Rust reference")
 	listen := fs.String("listen", "127.0.0.1:8099", "address of `snarkd serve`")
@@ -127,7 +127,10 @@ func main() {
 		var sol bytes.Buffer
 		die(vk.ExportSolidity(&sol, solidity.WithPragmaVersion("^0.8.19")))
 		// One contract name for each circuit, so that both verifiers can be in one project.
-		name := map[string]string{"game": "GameVerifier", "postage": "PostageVerifier"}[*kind]
+		name := "PostageVerifier"
+		if *kind == "game" {
+			name = fmt.Sprintf("GameVerifier%d", *p) // one contract for each size
+		}
 		src := strings.Replace(sol.String(), "contract Verifier {", "contract "+name+" {", 1)
 		die(os.WriteFile(filepath.Join(*out, name+".sol"), []byte(src), 0o644))
 		meta, _ := json.Marshal(map[string]any{"kind": *kind, "p": *p, "f": *f, "e": *e, "x": *x, "constraints": ccs.GetNbConstraints()})
@@ -145,7 +148,20 @@ func main() {
 		fmt.Println(string(res))
 
 	case "serve":
-		provers := map[string]*prover{"game": loadProver(*gameKeys), "postage": loadProver(*postageKeys)}
+		// One prover for each game circuit size (-game DIR1,DIR2) and one for the postage circuit.
+		provers := map[string]*prover{"postage": loadProver(*postageKeys)}
+		var games []map[string]any
+		capsOf := func(dir string) map[string]any {
+			var m map[string]any
+			b, _ := os.ReadFile(filepath.Join(dir, "caps.json"))
+			_ = json.Unmarshal(b, &m)
+			return m
+		}
+		for _, dir := range strings.Split(*gameKeys, ",") {
+			m := capsOf(dir)
+			games = append(games, map[string]any{"p": m["p"], "f": m["f"]})
+			provers[fmt.Sprintf("game/%v/%v", m["p"], m["f"])] = loadProver(dir)
+		}
 		http.HandleFunc("/prove", func(w http.ResponseWriter, r *http.Request) {
 			data, err := io.ReadAll(r.Body)
 			if err != nil {
@@ -154,11 +170,16 @@ func main() {
 			}
 			var k struct {
 				Kind string `json:"kind"`
+				Caps struct{ P, F int }
 			}
 			_ = json.Unmarshal(data, &k)
-			pr, ok := provers[k.Kind]
+			key := k.Kind
+			if key == "game" {
+				key = fmt.Sprintf("game/%d/%d", k.Caps.P, k.Caps.F)
+			}
+			pr, ok := provers[key]
 			if !ok {
-				http.Error(w, "unknown circuit kind", http.StatusBadRequest)
+				http.Error(w, "no keys for circuit "+key, http.StatusBadRequest)
 				return
 			}
 			res, err := pr.prove(data)
@@ -170,12 +191,8 @@ func main() {
 			w.Write(res)
 		})
 		http.HandleFunc("/caps", func(w http.ResponseWriter, r *http.Request) {
-			var g, po map[string]any
-			b, _ := os.ReadFile(filepath.Join(*gameKeys, "caps.json"))
-			_ = json.Unmarshal(b, &g)
-			b, _ = os.ReadFile(filepath.Join(*postageKeys, "caps.json"))
-			_ = json.Unmarshal(b, &po)
-			out, _ := json.Marshal(map[string]any{"p": g["p"], "f": g["f"], "e": po["e"], "x": po["x"]})
+			po := capsOf(*postageKeys)
+			out, _ := json.Marshal(map[string]any{"games": games, "e": po["e"], "x": po["x"]})
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(out)
 		})
@@ -252,12 +269,12 @@ func (p *prover) prove(data []byte) ([]byte, error) {
 	}
 	sp := proof.(interface{ MarshalSolidity() []byte }).MarshalSolidity()
 	return json.Marshal(map[string]any{
-		"proof":        "0x" + hex.EncodeToString(sp),
-		"kind":         wj.Kind,
-		"public":       wj.Public,
-		"loadMs":       p.load.Milliseconds(),
-		"proveMs":      took.Milliseconds(),
-		"peakMB":       peakMB(),
-		"constraints":  p.ccs.GetNbConstraints(),
+		"proof":       "0x" + hex.EncodeToString(sp),
+		"kind":        wj.Kind,
+		"public":      wj.Public,
+		"loadMs":      p.load.Milliseconds(),
+		"proveMs":     took.Milliseconds(),
+		"peakMB":      peakMB(),
+		"constraints": p.ccs.GetNbConstraints(),
 	})
 }

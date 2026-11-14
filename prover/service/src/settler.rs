@@ -93,8 +93,10 @@ pub struct Ctx {
     pub settlement: Address,
     pub chain_id: U256,
     pub snarkd: String,
-    /// The size of the circuit that `snarkd` proves.
+    /// The size of the postage circuit that `snarkd` proves (`p` and `f` are not used).
     pub caps: swarm_vm::Caps,
+    /// The game circuits in use: (slot in Settlement.gameCircuits, commits, forced entries).
+    pub games: Vec<(u8, usize, usize)>,
     /// The prover key's address, for explicit nonces.
     pub from: Address,
     pub postage_from_block: u64,
@@ -124,15 +126,24 @@ pub async fn serve(cfg: Config) -> Result<()> {
     let chain_id = U256::from(provider.get_chain_id().await?);
 
     let s = Settlement::new(cfg.settlement, &provider);
-    let (p, f, e, x) = prover::caps(&cfg.snarkd)
+    // The game circuits that both the contract and snarkd have, smallest first.
+    let (have, e, x) = prover::caps(&cfg.snarkd)
         .await
         .with_context(|| format!("snarkd at {} (start `snarkd serve`)", cfg.snarkd))?;
-    let caps = swarm_vm::Caps { p, f, e, x };
-    let (cap, fcap) = (s.capacity().call().await?, s.forcedCapacity().call().await?);
-    if (cap as usize, fcap as usize) != (p, f) {
-        anyhow::bail!("snarkd proves a circuit of size {p}/{f}, the contract expects {cap}/{fcap}");
+    let caps = swarm_vm::Caps { p: 0, f: 0, e, x };
+    let mut games = vec![];
+    for slot in 0..2u8 {
+        let g = s.gameCircuits(U256::from(slot)).call().await?;
+        let size = (g.capacity as usize, g.forcedCapacity as usize);
+        if !g.verifier.is_zero() && have.contains(&size) {
+            games.push((slot, size.0, size.1));
+        }
     }
-    info!(?caps, "circuit size");
+    games.sort_by_key(|g| g.1);
+    if games.is_empty() {
+        anyhow::bail!("snarkd has keys for the game circuits {have:?}; the contract has none of them");
+    }
+    info!(?games, events = e, expiries = x, "circuit sizes");
     let mut censor_reveals = vec![];
     if cfg.withhold_claims {
         warn!("TEST MODE: claim witnesses are thrown away");
@@ -153,6 +164,7 @@ pub async fn serve(cfg: Config) -> Result<()> {
         chain_id,
         snarkd: cfg.snarkd.clone(),
         caps,
+        games,
         from,
         postage_from_block: cfg.postage_from_block,
         censor_commits: cfg.censor_commits.clone(),
@@ -1102,6 +1114,7 @@ async fn forced_inputs(ctx: &Ctx, round: u64) -> Result<(Vec<ForcedCommit>, Vec<
 fn settlement_args(
     job: &Job,
     native: &Native,
+    slot: u8,
     proof: Bytes,
     postage_proof: Bytes,
 ) -> (Settlement::Outcome, Settlement::Evidence) {
@@ -1122,6 +1135,7 @@ fn settlement_args(
             freeze: pv.freeze.clone().into(),
         },
         Settlement::Evidence {
+            gameCircuit: slot,
             proof,
             postageProof: postage_proof,
             anchorHeader: job.anchor_header.clone(),
@@ -1156,11 +1170,24 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
         (state, r.event_index, r.event_hash)
     };
     let native = job.run()?;
+    // The smallest game circuit that holds the round: fewer public inputs cost less gas.
+    let i = &job.input;
+    let (slot, p, f) = *ctx
+        .games
+        .iter()
+        .find(|(_, p, f)| {
+            i.commits.len() <= *p
+                && i.reveals.len() <= *p
+                && i.forced_commits.len() <= *f
+                && i.forced_reveals.len() <= *f
+        })
+        .ok_or_else(|| anyhow!("the round has more entries than the largest game circuit holds"))?;
+    let caps = swarm_vm::Caps { p, f, ..ctx.caps };
     // Identifies the two statements that the proofs are for.
     let digest = alloy::primitives::keccak256(
         native
             .pv
-            .game_inputs(&ctx.caps)
+            .game_inputs(&caps)
             .iter()
             .chain(&native.pv.postage_inputs())
             .flat_map(|x| x.to_be_bytes::<32>())
@@ -1171,7 +1198,7 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
     // A free check before a proof: simulate settleRound with an empty proof. Only the verifier may
     // revert. Any Settlement error means the round cannot settle now (wrong inputs, or an earlier round
     // is pending).
-    let (out, ev) = settlement_args(&job, &native, Bytes::new(), Bytes::new());
+    let (out, ev) = settlement_args(&job, &native, slot, Bytes::new(), Bytes::new());
     if let Err(e) = Settlement::new(ctx.settlement, &ctx.provider)
         .settleRound(out, ev)
         .from(ctx.from)
@@ -1230,13 +1257,14 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
                 "round computed, proving"
             );
             // The game proof: small, the proof that a Bee node makes.
-            let witness = swarm_vm::game_witness_json(&job.input, &native.pv, &ctx.caps)
+            let witness = swarm_vm::game_witness_json(&job.input, &native.pv, &caps)
                 .map_err(|e| anyhow!("witness: {e:?}"))?;
             let g = prover::prove(&ctx.snarkd, &witness).await?;
             info!(
                 round,
                 prove_ms = g.prove_ms,
                 constraints = g.constraints,
+                commits = p,
                 "game proof"
             );
             // The postage proof, unless settlePostage already ran for this round.
@@ -1275,7 +1303,7 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
             (Bytes::from(g.proof), Bytes::from(postage))
         }
     };
-    let (out, ev) = settlement_args(&job, &native, proof, postage_proof);
+    let (out, ev) = settlement_args(&job, &native, slot, proof, postage_proof);
     send_settlement(ctx, round, out, ev, &new_postage, event_index, event_hash).await
 }
 

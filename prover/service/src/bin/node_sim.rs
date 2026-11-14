@@ -318,12 +318,12 @@ async fn main() -> Result<()> {
     // The Rust commit message (MiMC) must match the contract's, or every off-chain commit is dropped.
     let chain = chain_id.to::<u64>();
     let probe = swarm_vm::wrap_commit(B256::ZERO, 1, keccak256(b"probe"), B256::ZERO);
-    if settlement.commitMessage(1, probe).call().await?
+    let registry = GameKeyRegistry::new(settlement.GameKeys().call().await?, &read);
+    if registry.commitMessage(args.settlement, 1, probe).call().await?
         != commit_message(chain, &args.settlement, 1, U256::from_be_bytes(probe.0))
     {
-        bail!("commit message mismatch between swarm-vm and Settlement.commitMessage");
+        bail!("commit message mismatch between swarm-vm and GameKeyRegistry.commitMessage");
     }
-    let registry = GameKeyRegistry::new(settlement.GameKeys().call().await?, &read);
 
     let mut nodes = vec![];
     for (idx, key) in args.keys.iter().enumerate() {

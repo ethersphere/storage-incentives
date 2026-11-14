@@ -2,7 +2,6 @@ package circuit
 
 import (
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/std/math/uints"
 )
 
 // PostageCircuit proves the postage accounting between two settlements: the replay of the event log
@@ -12,15 +11,14 @@ import (
 //
 //	0 prevStateHash    1 newStateHash
 //	2 prevEventIndex << 128 | eventIndex << 64 | cutBlock
-//	3 prevEventHash, high half    4 prevEventHash, low half
-//	5 eventHash, high half        6 eventHash, low half
-//	7 potAmount    8 validChunkCount
+//	3 prevEventHash    4 eventHash    (the MiMC hash chain of the event log)
+//	5 potAmount    6 validChunkCount
 type PostageCircuit struct {
 	Pub [PostagePublic]V `gnark:",public"`
 
 	Header         [7]V // root, nextFree, liveChunks, lastCutBlock, priceBlock, priceOutpayment, price
 	PrevEventIndex V
-	PrevEventHash  [2]V
+	PrevEventHash  V
 	CutBlock       V
 	Events         []Event
 	Expiries       []Expiry
@@ -55,7 +53,7 @@ func (ci *PostageCircuit) Define(api frontend.API) error {
 	c.rng(api.Sub(ci.CutBlock, lastCut), 64)
 	c.rng(ci.PrevEventIndex, 64)
 
-	evHash := append(c.beNum(ci.PrevEventHash[0], 128, 16), c.beNum(ci.PrevEventHash[1], 128, 16)...)
+	evHash := ci.PrevEventHash
 	var pot, nEvents V = 0, 0
 	var prevEn V = 1
 
@@ -79,11 +77,12 @@ func (ci *PostageCircuit) Define(api frontend.API) error {
 		prevEn = en
 		tree := api.Add(isCreate, isChange)
 
-		kindBits := c.bits(kind, 8)
-		idHiBits, idLoBits := c.bits(idHi, 128), c.bits(idLo, 128)
+		c.rng(kind, 8)
+		c.rng(idHi, 128)
+		c.rng(idLo, 128)
 		depthBits := c.bits(depth, 8)
-		valueBits := c.bits(value, 128)
-		blockBits := c.bits(block, 64)
+		c.rng(value, 128)
+		c.rng(block, 64)
 		c.zeroIf(tree, api.Add(depthBits[6], depthBits[7]))
 		c.rng(api.Mul(en, api.Sub(ci.CutBlock, block)), 64)
 		c.rng(api.Mul(en, api.Sub(block, h[3])), 64)
@@ -135,18 +134,9 @@ func (ci *PostageCircuit) Define(api frontend.API) error {
 		nEvents = api.Add(nEvents, en)
 
 		// the log hash chain of PostageStampZK
-		var pre []uints.U8
-		pre = append(pre, evHash...)
-		pre = append(pre, c.be(kindBits, 1)...)
-		pre = append(pre, c.be(idHiBits, 16)...)
-		pre = append(pre, c.be(idLoBits, 16)...)
-		pre = append(pre, c.be(depthBits, 1)...)
-		pre = append(pre, c.be(valueBits, 16)...)
-		pre = append(pre, c.be(blockBits, 8)...)
-		next := c.sha256(pre)
-		for i := range evHash {
-			evHash[i] = c.by.ValueOf(api.Select(en, next[i].Val, evHash[i].Val))
-		}
+		e1 := api.Add(api.Mul(kind, shl(200)), api.Mul(depth, shl(192)), api.Mul(block, shl(128)), value)
+		id := api.Add(api.Mul(idHi, shl(128)), idLo) // the batch id modulo the field
+		evHash = api.Select(en, c.compress(c.compress(evHash, e1), id), evHash)
 	}
 
 	// the cut
@@ -183,22 +173,13 @@ func (ci *PostageCircuit) Define(api frontend.API) error {
 	c.rng(eventIndex, 64)
 	c.rng(pot, 200)
 	c.rng(live, 72)
-	half := func(b []uints.U8) V { // 16 big-endian bytes as a number
-		var bits []V
-		for i := 15; i >= 0; i-- {
-			bits = append(bits, c.by.ToBits(b[i])...)
-		}
-		return api.FromBinary(bits...)
-	}
 	eq := api.AssertIsEqual
 	eq(ci.Pub[0], prevStateHash)
 	eq(ci.Pub[1], newStateHash)
 	eq(ci.Pub[2], api.Add(api.Mul(ci.PrevEventIndex, shl(128)), api.Mul(eventIndex, shl(64)), ci.CutBlock))
-	eq(ci.Pub[3], ci.PrevEventHash[0])
-	eq(ci.Pub[4], ci.PrevEventHash[1])
-	eq(ci.Pub[5], half(evHash[:16]))
-	eq(ci.Pub[6], half(evHash[16:]))
-	eq(ci.Pub[7], pot)
-	eq(ci.Pub[8], live)
+	eq(ci.Pub[3], ci.PrevEventHash)
+	eq(ci.Pub[4], evHash)
+	eq(ci.Pub[5], pot)
+	eq(ci.Pub[6], live)
 	return nil
 }

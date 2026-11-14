@@ -183,10 +183,9 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 		heightBits := c.bits(st.Height, 8)
 		c.rng(st.LastUpdated, 64)
 		commitments[k] = c.hash(
-			api.Add(api.Mul(owners[k], shl(72)), api.Mul(st.Height, shl(64)), st.LastUpdated),
-			st.OvHi, st.OvLo,
+			owners[k], st.OvHi, st.OvLo, st.KeyX, st.KeyY,
 			api.Add(api.Mul(st.Committed, shl(StakeBits)), st.Potential),
-			st.KeyX, st.KeyY)
+			api.Add(api.Mul(st.Height, shl(64)), st.LastUpdated))
 
 		nz := c.not(api.IsZero(st.LastUpdated))
 		eligible := api.And(api.And(nz, startOK), c.less(st.LastUpdated, threshold, 72))

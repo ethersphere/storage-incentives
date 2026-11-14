@@ -219,7 +219,7 @@ mod tests {
         assert_eq!(w["commits"].as_array().unwrap().len(), 32);
         assert_eq!(w["public"].as_array().unwrap().len(), 12 + 36);
         let w = game::postage_witness_json(&input.postage, &pv, &caps).unwrap();
-        assert_eq!(w["public"].as_array().unwrap().len(), 9);
+        assert_eq!(w["public"].as_array().unwrap().len(), 7);
     }
 }
 

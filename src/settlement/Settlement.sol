@@ -8,7 +8,7 @@ import {ClaimVerifier, IClaimPostage} from "./ClaimVerifier.sol";
 /// The Groth16 verifier of the postage circuit, as gnark exports it. The game verifier has the same
 /// function with a number of inputs that depends on the circuit size (see `_verifyGame`).
 interface IPostageVerifier {
-    function verifyProof(bytes calldata proof, uint256[9] calldata input) external view;
+    function verifyProof(bytes calldata proof, uint256[7] calldata input) external view;
 }
 
 interface IGameKeys {
@@ -18,6 +18,8 @@ interface IGameKeys {
     function compress(uint256 left, uint256 right) external pure returns (uint256);
 
     function mimc(uint256[] calldata xs) external pure returns (uint256);
+
+    function wrapCommit(bytes32 overlay, uint8 depth, bytes32 hash, bytes32 nonce) external pure returns (bytes32);
 }
 
 interface ISettlementStakes {
@@ -91,6 +93,8 @@ contract Settlement is AccessControl, Pausable {
     /// @dev The three structs below must match prover/crates/vm/src/types.rs field for field.
     /// The proof of a round, and the data that this contract checks itself.
     struct Evidence {
+        // Which game circuit the proof is for (index in `gameCircuits`).
+        uint8 gameCircuit;
         // The Groth16 proof of the game circuit (gnark, `MarshalSolidity`).
         bytes proof;
         // The Groth16 proof of the postage circuit. Empty when `settlePostage` already ran for the round.
@@ -219,11 +223,16 @@ contract Settlement is AccessControl, Pausable {
 
     // The verifiers of the game circuit and of the postage circuit, and the size of the game circuit:
     // anchored commits and reveals, and forced commits and reveals, that one proof can hold.
-    address public gameVerifier;
+    struct GameCircuit {
+        address verifier;
+        uint16 capacity; // anchored commits and reveals
+        uint16 forcedCapacity; // forced commits and reveals
+        bytes4 selector; // of verifyProof(bytes,uint256[12 + capacity + forcedCapacity])
+    }
+    // Two sizes of the game circuit: a prover uses the smallest one that holds the round, because each
+    // public input of a verifier costs gas. An entry with a zero verifier is not in use.
+    GameCircuit[2] public gameCircuits;
     IPostageVerifier public postageVerifier;
-    uint16 public capacity;
-    uint16 public forcedCapacity;
-    bytes4 internal gameSelector;
     // The round whose seed block is the cut of the last postage settlement.
     uint64 public lastPostageRound;
 
@@ -231,6 +240,7 @@ contract Settlement is AccessControl, Pausable {
     // networks; on mainnet long enough for nodes to react (for example 7 days).
     uint64 public immutable verifierDelay;
     struct PendingVerifier {
+        uint8 slot;
         address gameVerifier;
         address postageVerifier;
         uint16 capacity;
@@ -316,8 +326,15 @@ contract Settlement is AccessControl, Pausable {
         uint256 proverFee
     );
     event PriceAdjustmentSkipped(uint16 redundancyCount);
-    event VerifierChanged(address gameVerifier, address postageVerifier, uint16 capacity, uint16 forcedCapacity);
+    event VerifierChanged(
+        uint8 slot,
+        address gameVerifier,
+        address postageVerifier,
+        uint16 capacity,
+        uint16 forcedCapacity
+    );
     event VerifierProposed(
+        uint8 slot,
         address gameVerifier,
         address postageVerifier,
         uint16 capacity,
@@ -374,9 +391,7 @@ contract Settlement is AccessControl, Pausable {
         IGameKeys gk = IGameKeys(gameKeys);
         GameKeys = gk;
         Claims = ClaimVerifier(claimVerifier);
-        capacity = _capacity;
-        forcedCapacity = _forcedCapacity;
-        gameSelector = _selector(12 + uint256(_capacity) + _forcedCapacity);
+        _setGameCircuit(0, _gameVerifier, _capacity, _forcedCapacity);
 
         uint256 z;
         for (uint256 i = 0; i < 8; ++i) z = gk.compress(z, z);
@@ -396,7 +411,6 @@ contract Settlement is AccessControl, Pausable {
         Stakes = ISettlementStakes(staking);
         PostageContract = ISettlementPostage(postageContract);
         OracleContract = ISettlementOracle(oracleContract);
-        gameVerifier = _gameVerifier;
         postageVerifier = IPostageVerifier(_postageVerifier);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(ANCHOR_ROLE, msg.sender);
@@ -549,7 +563,7 @@ contract Settlement is AccessControl, Pausable {
 
         bytes32 prev = ri.forcedRevealCount == 0 ? bytes32(0) : ri.forcedRevealsHash;
         ri.forcedRevealsHash = bytes32(
-            GameKeys.compress(uint256(prev), uint256(wrapCommit(_overlay, _depth, _hash, _nonce)))
+            GameKeys.compress(uint256(prev), uint256(GameKeys.wrapCommit(_overlay, _depth, _hash, _nonce)))
         );
         ri.forcedRevealCount++;
 
@@ -720,6 +734,7 @@ contract Settlement is AccessControl, Pausable {
      * pending one and starts the delay again.
      */
     function proposeVerifier(
+        uint8 _slot,
         address _gameVerifier,
         address _postageVerifier,
         uint16 _capacity,
@@ -727,8 +742,8 @@ contract Settlement is AccessControl, Pausable {
     ) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         uint64 eta = uint64(block.timestamp) + verifierDelay;
-        pendingVerifier = PendingVerifier(_gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
-        emit VerifierProposed(_gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
+        pendingVerifier = PendingVerifier(_slot, _gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
+        emit VerifierProposed(_slot, _gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
     }
 
     /// @notice Make the pending verifier change take effect, once its delay has passed. Anybody can call it.
@@ -737,18 +752,15 @@ contract Settlement is AccessControl, Pausable {
         if (p.eta == 0) revert NoPendingVerifier();
         if (block.timestamp < p.eta) revert VerifierDelayNotOver();
         delete pendingVerifier;
-        gameVerifier = p.gameVerifier;
+        _setGameCircuit(p.slot, p.gameVerifier, p.capacity, p.forcedCapacity);
         postageVerifier = IPostageVerifier(p.postageVerifier);
-        capacity = p.capacity;
-        forcedCapacity = p.forcedCapacity;
-        gameSelector = _selector(12 + uint256(p.capacity) + p.forcedCapacity);
-        emit VerifierChanged(p.gameVerifier, p.postageVerifier, p.capacity, p.forcedCapacity);
+        emit VerifierChanged(p.slot, p.gameVerifier, p.postageVerifier, p.capacity, p.forcedCapacity);
     }
 
     function cancelVerifier() external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         delete pendingVerifier;
-        emit VerifierProposed(address(0), address(0), 0, 0, 0);
+        emit VerifierProposed(0, address(0), address(0), 0, 0, 0);
     }
 
     function setStakeAgeRounds(uint8 _rounds) external {
@@ -821,38 +833,6 @@ contract Settlement is AccessControl, Pausable {
         bytes32 bh = _blockHash(sb);
         if (bh == bytes32(0)) revert SeedNotAvailable();
         return bh;
-    }
-
-    /**
-     * @notice The message a node signs with its game key (EdDSA) for an off-chain commit. Binds the commit
-     * to this chain, this contract and this round.
-     */
-    function commitMessage(uint64 _round, bytes32 _obfuscatedHash) public view returns (uint256) {
-        uint256[] memory x = new uint256[](5);
-        x[0] = uint256(uint88(bytes11("SwarmCommit")));
-        x[1] = block.chainid;
-        x[2] = uint256(uint160(address(this)));
-        x[3] = _round;
-        x[4] = uint256(_obfuscatedHash);
-        return GameKeys.mimc(x);
-    }
-
-    /// @notice The obfuscated commit hash: MiMC(overlay, depth, hash, nonce), 256-bit values as two halves.
-    function wrapCommit(
-        bytes32 _overlay,
-        uint8 _depth,
-        bytes32 _hash,
-        bytes32 _revealNonce
-    ) public view returns (bytes32) {
-        uint256[] memory x = new uint256[](7);
-        x[0] = uint256(_overlay) >> 128;
-        x[1] = uint256(uint128(uint256(_overlay)));
-        x[2] = _depth;
-        x[3] = uint256(_hash) >> 128;
-        x[4] = uint256(uint128(uint256(_hash)));
-        x[5] = uint256(_revealNonce) >> 128;
-        x[6] = uint256(uint128(uint256(_revealNonce)));
-        return bytes32(GameKeys.mimc(x));
     }
 
     /**
@@ -955,7 +935,7 @@ contract Settlement is AccessControl, Pausable {
         if (lastPostageRound != out.round) {
             _settlePostage(out.round, out.newStateHash, out.potAmount, out.validChunkCount, ev.postageProof);
         }
-        _verifyGame(ev.proof, _gameInputs(out, ri, roundAnchor, seed));
+        _verifyGame(ev.proof, _gameInputs(out, ri, roundAnchor, seed, ev.gameCircuit), ev.gameCircuit);
         ri.settled = true;
         lastSettledRound = out.round;
     }
@@ -975,16 +955,14 @@ contract Settlement is AccessControl, Pausable {
         if (_round <= lastPostageRound) revert RoundOutOfOrder();
         (uint64 eventIndex, bytes32 eventHash) = PostageContract.cutOf(_round);
         if (eventIndex < postageEventIndex) revert InputMismatch(11);
-        uint256[9] memory input;
+        uint256[7] memory input;
         input[0] = uint256(postageStateHash);
         input[1] = uint256(newStateHash);
         input[2] = (uint256(postageEventIndex) << 128) | (uint256(eventIndex) << 64) | seedBlock(_round);
-        input[3] = uint256(postageEventHash) >> 128;
-        input[4] = uint256(uint128(uint256(postageEventHash)));
-        input[5] = uint256(eventHash) >> 128;
-        input[6] = uint256(uint128(uint256(eventHash)));
-        input[7] = potAmount;
-        input[8] = _validChunkCount;
+        input[3] = uint256(postageEventHash);
+        input[4] = uint256(eventHash);
+        input[5] = potAmount;
+        input[6] = _validChunkCount;
         postageVerifier.verifyProof(proof, input);
 
         lastPostageRound = _round;
@@ -1007,41 +985,51 @@ contract Settlement is AccessControl, Pausable {
         Outcome calldata out,
         RoundSlot storage s,
         bytes32 roundAnchor,
-        bytes32 seed
+        bytes32 seed,
+        uint8 circuit
     ) internal returns (uint256[] memory input) {
         RoundInfo memory ri = _info(out.round, s);
-        uint256 cap = capacity;
-        uint256 nc = ri.commitCount;
-        uint256 nf = ri.forcedCommitCount;
-        if (
-            out.owners.length != nc + nf ||
-            out.freeze.length != nc + nf ||
-            nc > cap ||
-            nf > forcedCapacity ||
-            ri.revealCount > cap ||
-            ri.forcedRevealCount > forcedCapacity
-        ) revert InputMismatch(8);
+        GameCircuit memory gc = gameCircuits[circuit];
+        if (ri.revealCount > gc.capacity || ri.forcedRevealCount > gc.forcedCapacity) revert InputMismatch(8);
 
-        input = new uint256[](12 + cap + forcedCapacity);
+        input = new uint256[](12 + uint256(gc.capacity) + gc.forcedCapacity);
         input[0] = (block.chainid << 160) | uint256(uint160(address(this)));
-        input[1] =
-            (uint256(out.round) << 160) |
-            (uint256(lastClaimRound) << 96) |
-            (nc << 80) |
-            (uint256(ri.revealCount) << 64) |
-            (nf << 48) |
-            (uint256(ri.forcedRevealCount) << 32) |
-            OracleContract.currentPrice();
+        input[1] = _packCounts(out.round, ri);
         input[2] = _packParams() | _packOutcome(out);
         input[3] = uint256(seed) & ((1 << 253) - 1);
         input[4] = ((uint256(roundAnchor) >> 192) << 160) | uint256(uint160(out.feeRecipient));
-        input[5] = uint256(nc == 0 ? EMPTY_LIST_ROOT : ri.commitsHash);
+        input[5] = uint256(ri.commitCount == 0 ? EMPTY_LIST_ROOT : ri.commitsHash);
         input[6] = uint256(ri.revealCount == 0 ? EMPTY_LIST_ROOT : ri.revealsHash);
         input[7] = uint256(ri.forcedCommitsHash);
         input[8] = uint256(ri.forcedRevealsHash);
         input[9] = uint256(out.truthHash) >> 128;
         input[10] = uint256(uint128(uint256(out.truthHash)));
-        uint256 freeze;
+        input[11] = _stakeInputs(input, out, ri.commitCount, ri.forcedCommitCount, gc.capacity, gc.forcedCapacity);
+    }
+
+    function _packCounts(uint64 _round, RoundInfo memory ri) internal view returns (uint256) {
+        return
+            (uint256(_round) << 160) |
+            (uint256(lastClaimRound) << 96) |
+            (uint256(ri.commitCount) << 80) |
+            (uint256(ri.revealCount) << 64) |
+            (uint256(ri.forcedCommitCount) << 48) |
+            (uint256(ri.forcedRevealCount) << 32) |
+            OracleContract.currentPrice();
+    }
+
+    /// @dev Writes the stake commitment of each entry into `input` and returns the packed freeze codes.
+    function _stakeInputs(
+        uint256[] memory input,
+        Outcome calldata out,
+        uint256 nc,
+        uint256 nf,
+        uint256 cap,
+        uint256 fcap
+    ) internal returns (uint256 freeze) {
+        if (out.owners.length != nc + nf || out.freeze.length != nc + nf || nc > cap || nf > fcap) {
+            revert InputMismatch(8);
+        }
         for (uint256 k = 0; k < nc + nf; ) {
             uint256 slot = k < nc ? k : cap + (k - nc);
             input[12 + slot] = GameKeys.commitmentOf(out.owners[k]);
@@ -1050,7 +1038,6 @@ contract Settlement is AccessControl, Pausable {
                 ++k;
             }
         }
-        input[11] = freeze;
     }
 
     function _packParams() internal view returns (uint256) {
@@ -1072,10 +1059,11 @@ contract Settlement is AccessControl, Pausable {
 
     /// @dev Call `verifyProof(bytes,uint256[N])` of the game verifier. N depends on the circuit size, so
     /// the call is encoded here: the offset of the proof, the N inputs, the proof.
-    function _verifyGame(bytes calldata proof, uint256[] memory input) internal view {
-        (bool ok, ) = gameVerifier.staticcall(
+    function _verifyGame(bytes calldata proof, uint256[] memory input, uint8 circuit) internal view {
+        GameCircuit memory gc = gameCircuits[circuit];
+        (bool ok, ) = gc.verifier.staticcall(
             abi.encodePacked(
-                gameSelector,
+                gc.selector,
                 uint256(32 * (input.length + 1)),
                 input,
                 proof.length,
@@ -1083,7 +1071,16 @@ contract Settlement is AccessControl, Pausable {
                 new bytes((32 - (proof.length % 32)) % 32)
             )
         );
-        if (!ok) revert ProofInvalid();
+        if (!ok || gc.verifier == address(0)) revert ProofInvalid();
+    }
+
+    function _setGameCircuit(uint8 slot, address _verifier, uint16 _capacity, uint16 _forcedCapacity) internal {
+        gameCircuits[slot] = GameCircuit(
+            _verifier,
+            _capacity,
+            _forcedCapacity,
+            _selector(12 + uint256(_capacity) + _forcedCapacity)
+        );
     }
 
     /// @dev The selector of `verifyProof(bytes,uint256[n])`.

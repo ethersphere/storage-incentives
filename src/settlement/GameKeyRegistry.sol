@@ -24,7 +24,7 @@ interface IGameStakes {
  * of BN254 (the curve of gnark-crypto), which the settlement circuit checks with few constraints.
  *
  * The circuit reads a node's stake record and game key as one MiMC hash, the stake commitment.
- * `commitmentOf` computes it (about 60k gas) and keeps it. It computes it again only after the record
+ * `commitmentOf` computes it and keeps it. It computes it again only after the record
  * changed, so a settlement usually pays one storage read for each node. See docs/SNARK-SETTLEMENT.md.
  */
 contract GameKeyRegistry {
@@ -36,9 +36,13 @@ contract GameKeyRegistry {
         uint256 y;
     }
 
+    // The commitment is a MiMC hash chain of 7 elements. The first 6 change seldom (owner, overlay, game
+    // key, stake amounts): their hash is `mid`. The last element (height and lastUpdated) changes at each
+    // freeze, and then only one more compression is necessary.
     struct Cached {
-        // keccak256 of the record and the key the commitment was computed from.
-        bytes32 tag;
+        bytes32 midTag; // keccak256 of the data behind `mid`
+        uint256 mid;
+        bytes32 tag; // keccak256 of the data behind `commitment`
         uint256 commitment;
     }
 
@@ -74,19 +78,75 @@ contract GameKeyRegistry {
 
     /// @notice The stake commitment of `owner` as of now. Stores it when the record changed.
     function commitmentOf(address owner) external returns (uint256 commitment) {
-        (bytes32 tag, uint256[] memory fields) = _fields(owner);
+        (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last) = _fields(owner);
         Cached storage c = cache[owner];
         if (c.tag == tag) return c.commitment;
-        commitment = MiMC.hash(fields);
+        uint256 mid = c.mid;
+        if (c.midTag != midTag) {
+            mid = MiMC.hash(f);
+            c.midTag = midTag;
+            c.mid = mid;
+        }
+        commitment = MiMC.compress(mid, last);
         c.tag = tag;
         c.commitment = commitment;
     }
 
     /// @notice The same value, without the storage write.
     function peekCommitment(address owner) external view returns (uint256) {
-        (bytes32 tag, uint256[] memory fields) = _fields(owner);
+        (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last) = _fields(owner);
         Cached storage c = cache[owner];
-        return c.tag == tag ? c.commitment : MiMC.hash(fields);
+        if (c.tag == tag) return c.commitment;
+        return MiMC.compress(c.midTag == midTag ? c.mid : MiMC.hash(f), last);
+    }
+
+    /// @dev MiMC(owner, overlay high, overlay low, key.x, key.y, committed << 96 | potential,
+    /// height << 64 | lastUpdated): the first 6 elements in `f`, the last in `last`.
+    function _fields(
+        address owner
+    ) internal view returns (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last) {
+        (bytes32 overlay, uint256 committed, uint256 potential, uint256 lastUpdated, uint8 height) = Stakes.stakes(
+            owner
+        );
+        if (committed >> 96 != 0 || potential >> 96 != 0 || lastUpdated >> 64 != 0) revert OutOfRange();
+        Key memory k = keys[owner];
+        midTag = keccak256(abi.encode(overlay, committed, potential, k.x, k.y));
+        last = (uint256(height) << 64) | lastUpdated;
+        tag = keccak256(abi.encode(midTag, last));
+        f = new uint256[](6);
+        f[0] = uint256(uint160(owner));
+        f[1] = uint256(overlay) >> 128;
+        f[2] = uint256(uint128(uint256(overlay)));
+        f[3] = k.x;
+        f[4] = k.y;
+        f[5] = (committed << 96) | potential;
+    }
+
+    /**
+     * @notice The message a node signs with its game key (EdDSA) for an off-chain commit. Binds the commit
+     * to this chain, the Settlement contract and the round.
+     */
+    function commitMessage(address settlement, uint64 round, bytes32 obfuscatedHash) external view returns (uint256) {
+        uint256[] memory x = new uint256[](5);
+        x[0] = uint256(uint88(bytes11("SwarmCommit")));
+        x[1] = block.chainid;
+        x[2] = uint256(uint160(settlement));
+        x[3] = round;
+        x[4] = uint256(obfuscatedHash);
+        return MiMC.hash(x);
+    }
+
+    /// @notice The obfuscated commit hash: MiMC(overlay, depth, hash, nonce), 256-bit values as two halves.
+    function wrapCommit(bytes32 overlay, uint8 depth, bytes32 hash, bytes32 nonce) external pure returns (bytes32) {
+        uint256[] memory x = new uint256[](7);
+        x[0] = uint256(overlay) >> 128;
+        x[1] = uint256(uint128(uint256(overlay)));
+        x[2] = depth;
+        x[3] = uint256(hash) >> 128;
+        x[4] = uint256(uint128(uint256(hash)));
+        x[5] = uint256(nonce) >> 128;
+        x[6] = uint256(uint128(uint256(nonce)));
+        return bytes32(MiMC.hash(x));
     }
 
     /// @notice MiMC compression, for contracts that do not hold the constants themselves.
@@ -99,19 +159,4 @@ contract GameKeyRegistry {
         return MiMC.hash(xs);
     }
 
-    function _fields(address owner) internal view returns (bytes32 tag, uint256[] memory f) {
-        (bytes32 overlay, uint256 committed, uint256 potential, uint256 lastUpdated, uint8 height) = Stakes.stakes(
-            owner
-        );
-        if (committed >> 96 != 0 || potential >> 96 != 0 || lastUpdated >> 64 != 0) revert OutOfRange();
-        Key memory k = keys[owner];
-        tag = keccak256(abi.encode(overlay, committed, potential, lastUpdated, height, k.x, k.y));
-        f = new uint256[](6);
-        f[0] = (uint256(uint160(owner)) << 72) | (uint256(height) << 64) | lastUpdated;
-        f[1] = uint256(overlay) >> 128;
-        f[2] = uint256(uint128(uint256(overlay)));
-        f[3] = (committed << 96) | potential;
-        f[4] = k.x;
-        f[5] = k.y;
-    }
 }

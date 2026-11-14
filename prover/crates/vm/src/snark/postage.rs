@@ -117,16 +117,18 @@ pub struct Event {
     pub block: u64,
 }
 
-/// `PostageStampZK._log`: sha256(prev, kind, batchId, depth, value (16 bytes), block (8 bytes)).
+/// `PostageStampZK._log`: a MiMC hash chain. Each entry adds two elements: the small fields packed
+/// (kind << 200 | depth << 192 | block << 128 | value), and the batch id modulo the field.
 pub fn event_hash(prev: B256, e: &Event) -> B256 {
-    let mut buf = Vec::with_capacity(90);
-    buf.extend_from_slice(prev.as_slice());
-    buf.push(e.kind);
-    buf.extend_from_slice(e.batch_id.as_slice());
-    buf.push(e.depth);
-    buf.extend_from_slice(&e.value.to_be_bytes::<32>()[16..]);
-    buf.extend_from_slice(&e.block.to_be_bytes());
-    super::sha256(&buf)
+    let e1 = (U256::from(e.kind) << 200)
+        | (U256::from(e.depth) << 192)
+        | (U256::from(e.block) << 128)
+        | e.value;
+    let id = U256::from_be_bytes(e.batch_id.0) % super::P;
+    super::fr_bytes(compress(
+        compress(U256::from_be_bytes(prev.0), e1),
+        id,
+    ))
 }
 
 /// One leaf write as the circuit checks it: the leaf before the write and its path.

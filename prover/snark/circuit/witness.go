@@ -28,7 +28,7 @@ type WitnessJSON struct {
 
 	Header         []string `json:"header"`
 	PrevEventIndex string   `json:"prevEventIndex"`
-	PrevEventHash  []string `json:"prevEventHash"`
+	PrevEventHash  string   `json:"prevEventHash"`
 	CutBlock       string   `json:"cutBlock"`
 	Events         []struct {
 		E []string   `json:"e"`
@@ -127,7 +127,7 @@ func Assignment(data []byte) (frontend.Circuit, string, Caps, error) {
 			c.Header[i] = num(w.Header[i])
 		}
 		c.PrevEventIndex = num(w.PrevEventIndex)
-		c.PrevEventHash = [2]V{num(w.PrevEventHash[0]), num(w.PrevEventHash[1])}
+		c.PrevEventHash = num(w.PrevEventHash)
 		c.CutBlock = num(w.CutBlock)
 		for i, e := range w.Events {
 			for j := range c.Events[i].E {
