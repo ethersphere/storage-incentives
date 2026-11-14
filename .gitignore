@@ -47,3 +47,6 @@ crytic-export/
 
 # Cursor
 .cursor/rules/audit-code.mdc
+# SNARK settlement: built binary and local keys
+prover/snark/snarkd
+prover/snark/keys*/

@@ -1,0 +1,620 @@
+//! One round of the game as the circuit proves it (docs/SNARK-SETTLEMENT.md).
+//!
+//! The rules are those of `crate::run`, with the differences of section 4 of the document. The claim
+//! witness is not here: `Settlement` checks it on chain.
+
+use super::postage;
+use super::{
+    addr, base, compress, digest, fr_bytes, halves, list_root, mimc, u, verify, Fr, Point, Sig, P,
+};
+use crate::{in_proximity, minimum_depth, ForcedCommit, Reveal, ROUND_LENGTH};
+use alloy_primitives::{Address, B256, U256};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
+/// The size of the circuit: anchored commits and reveals (`p`), forced commits and reveals (`f`),
+/// postage events (`e`) and batch expiries (`x`) in one proof.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Caps {
+    pub p: usize,
+    pub f: usize,
+    pub e: usize,
+    pub x: usize,
+}
+
+/// Bits of a random draw.
+pub const DRAW_BITS: usize = 80;
+/// A stake amount must be below 2^96, and `depth - height` of a reveal at most 64.
+pub const STAKE_BITS: usize = 96;
+pub const MAX_RESPONSIBILITY: u8 = 64;
+pub const MAX_HEIGHT: u8 = 63;
+
+/// "SwarmCommit" as a number: the first element of the signed commit message.
+pub fn commit_domain() -> Fr {
+    U256::from_be_slice(b"SwarmCommit")
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignedCommit {
+    pub owner: Address,
+    /// MiMC(overlay, depth, hash, nonce): a field element.
+    pub obf: Fr,
+    pub sig: Sig,
+}
+
+/// A node's StakeRegistry record and its game key, as `GameKeyRegistry` commits to them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stake {
+    pub owner: Address,
+    pub overlay: B256,
+    pub committed_stake: U256,
+    pub potential_stake: U256,
+    pub height: u8,
+    pub last_updated: u64,
+    pub key: Point,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoundInput {
+    pub chain_id: u64,
+    pub settlement: Address,
+    pub round: u64,
+    pub round_anchor: B256,
+    pub selection_seed: B256,
+    /// Anchored commits, sorted by owner.
+    pub commits: Vec<SignedCommit>,
+    pub forced_commits: Vec<ForcedCommit>,
+    pub reveals: Vec<Reveal>,
+    pub forced_reveals: Vec<Reveal>,
+    /// One record for each anchored commit, then one for each forced commit, in list order.
+    pub stakes: Vec<Stake>,
+    pub stake_price: u32,
+    pub last_claim_round: u64,
+    pub last_winner_depth: u8,
+    pub penalty_multiplier_disagreement: u8,
+    pub penalty_multiplier_non_revealed: u8,
+    pub penalty_random_factor: u8,
+    pub stake_age_rounds: u8,
+    pub fee_recipient: Address,
+    pub postage: postage::Input,
+}
+
+/// What the proof commits to, with the inputs that `Settlement` compares with the chain.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicValues {
+    pub chain_id: u64,
+    pub settlement: Address,
+    pub round: u64,
+    pub round_anchor: B256,
+    pub selection_seed: B256,
+    pub commits_root: Fr,
+    pub commit_count: u32,
+    pub reveals_root: Fr,
+    pub reveal_count: u32,
+    pub forced_commits_hash: Fr,
+    pub forced_commit_count: u32,
+    pub forced_reveals_hash: Fr,
+    pub forced_reveal_count: u32,
+    pub last_claim_round: u64,
+    pub last_winner_depth: u8,
+    pub penalty_multiplier_disagreement: u8,
+    pub penalty_multiplier_non_revealed: u8,
+    pub penalty_random_factor: u8,
+    pub stake_age_rounds: u8,
+    pub stake_price: u32,
+    pub prev_state_hash: Fr,
+    pub prev_event_index: u64,
+    pub prev_event_hash: B256,
+    pub event_index: u64,
+    pub event_hash: B256,
+    pub cut_block: u64,
+    pub has_reveals: bool,
+    pub truth_hash: B256,
+    pub truth_depth: u8,
+    pub winner: Address,
+    pub redundancy: u16,
+    pub fee_recipient: Address,
+    pub new_state_hash: Fr,
+    pub pot_amount: U256,
+    pub valid_chunk_count: U256,
+    /// Owners of the anchored commits, then of the forced commits.
+    pub owners: Vec<Address>,
+    pub stake_commitments: Vec<Fr>,
+    /// For each owner: 0 no freeze, 1 disagreement, 2 no reveal or the stake changed in the round.
+    pub freeze: Vec<u8>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SnarkError {
+    CommitsNotSorted,
+    StakesMismatch,
+    /// More entries than the circuit has room for.
+    Capacity,
+    /// A value outside the range the circuit supports.
+    Range,
+    /// A signature the circuit cannot take (see `super::verify`).
+    BadSignature,
+    Postage(postage::PostageError),
+}
+
+pub fn reveal_hash(r: &Reveal) -> Fr {
+    let (oh, ol) = halves(&r.overlay);
+    let (hh, hl) = halves(&r.hash);
+    let (nh, nl) = halves(&r.nonce);
+    mimc(&[oh, ol, u(r.depth as u64), hh, hl, nh, nl])
+}
+
+/// The message a node signs with its game key for a commit.
+pub fn commit_message(chain_id: u64, settlement: &Address, round: u64, obf: Fr) -> Fr {
+    mimc(&[commit_domain(), u(chain_id), addr(settlement), u(round), obf])
+}
+
+pub fn commit_leaf(c: &SignedCommit) -> Fr {
+    mimc(&[addr(&c.owner), c.obf, c.sig.r.x, c.sig.r.y, c.sig.s])
+}
+
+/// The hash chain of `Settlement.forceCommit`.
+pub fn forced_commits_hash(forced: &[ForcedCommit]) -> Fr {
+    forced.iter().fold(U256::ZERO, |acc, c| {
+        compress(
+            acc,
+            compress(addr(&c.owner), U256::from_be_bytes(c.obfuscated_hash.0)),
+        )
+    })
+}
+
+/// The hash chain of `Settlement.forceReveal`.
+pub fn forced_reveals_hash(forced: &[Reveal]) -> Fr {
+    forced
+        .iter()
+        .fold(U256::ZERO, |acc, r| compress(acc, reveal_hash(r)))
+}
+
+/// `GameKeyRegistry.commitmentOf`.
+pub fn stake_commitment(s: &Stake) -> Fr {
+    let (oh, ol) = halves(&s.overlay);
+    mimc(&[
+        (addr(&s.owner) << 72) | (U256::from(s.height) << 64) | U256::from(s.last_updated),
+        oh,
+        ol,
+        (s.committed_stake << STAKE_BITS) | s.potential_stake,
+        s.key.x,
+        s.key.y,
+    ])
+}
+
+fn low_bits(x: Fr, n: usize) -> U256 {
+    x & ((U256::from(1u8) << n) - U256::from(1u8))
+}
+
+fn draw(seed: &B256, tag: u64, n: u64) -> U256 {
+    let (sh, sl) = halves(seed);
+    low_bits(mimc(&[sh, sl, u(tag), u(n)]), DRAW_BITS)
+}
+
+fn picked(random: U256, sum: U256, density: U256) -> bool {
+    random * sum < (density << DRAW_BITS)
+}
+
+fn is_eligible(s: &Stake, round: u64, age_rounds: u8) -> bool {
+    let round_start = round * ROUND_LENGTH;
+    let cutoff = age_rounds as u64 * ROUND_LENGTH;
+    s.last_updated != 0 && round_start >= cutoff && s.last_updated < round_start - cutoff
+}
+
+fn valid_reveal(
+    input: &RoundInput,
+    s: &Stake,
+    obf: Fr,
+    r: &Reveal,
+    min_depth: u8,
+) -> Option<(u8, B256, U256)> {
+    if r.depth < min_depth || r.depth < s.height || s.height > MAX_HEIGHT {
+        return None;
+    }
+    let responsibility = r.depth - s.height;
+    if responsibility > MAX_RESPONSIBILITY || reveal_hash(r) != obf {
+        return None;
+    }
+    if !in_proximity(s.overlay, input.round_anchor, responsibility) {
+        return None;
+    }
+    let committed =
+        (U256::from(1u8) << s.height as usize) * s.committed_stake * U256::from(input.stake_price);
+    let density = committed.min(s.potential_stake) << responsibility as usize;
+    Some((r.depth, r.hash, density))
+}
+
+struct Entry {
+    slot: usize,
+    revealed: Option<(u8, B256, U256)>,
+}
+
+/// Run one round. `postage_run` is the result of the postage settlement of `input.postage`.
+pub fn run(input: &RoundInput, pg: &postage::Run) -> Result<PublicValues, SnarkError> {
+    let (nc, nf) = (input.commits.len(), input.forced_commits.len());
+    for w in input.commits.windows(2) {
+        if w[0].owner >= w[1].owner {
+            return Err(SnarkError::CommitsNotSorted);
+        }
+    }
+    let owners: Vec<Address> = input
+        .commits
+        .iter()
+        .map(|c| c.owner)
+        .chain(input.forced_commits.iter().map(|c| c.owner))
+        .collect();
+    if input.stakes.len() != nc + nf || input.stakes.iter().zip(&owners).any(|(s, o)| s.owner != *o)
+    {
+        return Err(SnarkError::StakesMismatch);
+    }
+    let max_stake = U256::from(1u8) << STAKE_BITS;
+    for s in &input.stakes {
+        if s.committed_stake >= max_stake || s.potential_stake >= max_stake {
+            return Err(SnarkError::Range);
+        }
+    }
+
+    // Which entries play: an anchored commit with a good signature; a forced commit whose owner does
+    // not play already.
+    let mut active = vec![false; nc + nf];
+    let mut obfs = vec![U256::ZERO; nc + nf];
+    for (i, c) in input.commits.iter().enumerate() {
+        let key = input.stakes[i].key;
+        let msg = commit_message(input.chain_id, &input.settlement, input.round, c.obf);
+        active[i] = if key.is_zero() {
+            // No game key: the circuit checks the signature with the base point as the key.
+            verify(&base(), msg, &c.sig).ok_or(SnarkError::BadSignature)?;
+            false
+        } else {
+            verify(&key, msg, &c.sig).ok_or(SnarkError::BadSignature)?
+        };
+        if c.obf >= P {
+            return Err(SnarkError::Range);
+        }
+        obfs[i] = c.obf;
+    }
+    for (j, f) in input.forced_commits.iter().enumerate() {
+        let k = nc + j;
+        active[k] = !(0..k).any(|q| active[q] && owners[q] == f.owner);
+        obfs[k] = U256::from_be_bytes(f.obfuscated_hash.0);
+        if obfs[k] >= P {
+            return Err(SnarkError::Range);
+        }
+    }
+
+    let min_depth = minimum_depth(input.round, input.last_claim_round, input.last_winner_depth);
+    let round_start = input.round * ROUND_LENGTH;
+    let mut entries: Vec<Entry> = Vec::new();
+    let mut freeze = vec![0u8; nc + nf];
+    let mut left: Vec<usize> = Vec::new();
+    for k in 0..nc + nf {
+        if !active[k] {
+            continue;
+        }
+        let s = &input.stakes[k];
+        if !is_eligible(s, input.round, input.stake_age_rounds) {
+            if s.last_updated >= round_start {
+                left.push(k);
+            }
+            continue;
+        }
+        let revealed = input
+            .reveals
+            .iter()
+            .chain(&input.forced_reveals)
+            .filter(|r| r.overlay == s.overlay)
+            .find_map(|r| valid_reveal(input, s, obfs[k], r, min_depth));
+        entries.push(Entry { slot: k, revealed });
+    }
+
+    let mut pv = PublicValues {
+        chain_id: input.chain_id,
+        settlement: input.settlement,
+        round: input.round,
+        round_anchor: input.round_anchor,
+        selection_seed: input.selection_seed,
+        commits_root: list_root(&input.commits.iter().map(commit_leaf).collect::<Vec<_>>()),
+        commit_count: nc as u32,
+        reveals_root: list_root(&input.reveals.iter().map(reveal_hash).collect::<Vec<_>>()),
+        reveal_count: input.reveals.len() as u32,
+        forced_commits_hash: forced_commits_hash(&input.forced_commits),
+        forced_commit_count: nf as u32,
+        forced_reveals_hash: forced_reveals_hash(&input.forced_reveals),
+        forced_reveal_count: input.forced_reveals.len() as u32,
+        last_claim_round: input.last_claim_round,
+        last_winner_depth: input.last_winner_depth,
+        penalty_multiplier_disagreement: input.penalty_multiplier_disagreement,
+        penalty_multiplier_non_revealed: input.penalty_multiplier_non_revealed,
+        penalty_random_factor: input.penalty_random_factor,
+        stake_age_rounds: input.stake_age_rounds,
+        stake_price: input.stake_price,
+        prev_state_hash: input.postage.header.hash(),
+        prev_event_index: input.postage.prev_event_index,
+        prev_event_hash: input.postage.prev_event_hash,
+        event_index: pg.event_index,
+        event_hash: pg.event_hash,
+        cut_block: input.postage.cut_block,
+        has_reveals: false,
+        truth_hash: B256::ZERO,
+        truth_depth: 0,
+        winner: Address::ZERO,
+        redundancy: 0,
+        fee_recipient: input.fee_recipient,
+        new_state_hash: pg.new_header.hash(),
+        pot_amount: pg.pot,
+        valid_chunk_count: pg.valid_chunk_count,
+        owners,
+        stake_commitments: input.stakes.iter().map(stake_commitment).collect(),
+        freeze: vec![0u8; nc + nf],
+    };
+    if entries.iter().all(|e| e.revealed.is_none()) {
+        return Ok(pv);
+    }
+    pv.has_reveals = true;
+
+    // getCurrentTruth
+    let seed = &input.selection_seed;
+    let mut sum = U256::ZERO;
+    let (mut truth_hash, mut truth_depth) = (B256::ZERO, 0u8);
+    for (i, e) in entries.iter().enumerate() {
+        if let Some((depth, hash, density)) = e.revealed {
+            sum += density;
+            if picked(draw(seed, 0, i as u64), sum, density) {
+                truth_hash = hash;
+                truth_depth = depth;
+            }
+        }
+    }
+
+    // winnerSelection
+    let (sh, sl) = halves(seed);
+    let lottery = low_bits(mimc(&[sh, sl, u(2)]), 64) % U256::from(100u8)
+        < U256::from(input.penalty_random_factor);
+    let mut sum = U256::ZERO;
+    let mut redundancy: u64 = 0;
+    for e in &entries {
+        match e.revealed {
+            Some((depth, hash, density)) if hash == truth_hash && depth == truth_depth => {
+                sum += density;
+                if picked(draw(seed, 1, redundancy), sum, density) {
+                    pv.winner = pv.owners[e.slot];
+                }
+                redundancy += 1;
+            }
+            Some(_) => {
+                if lottery {
+                    freeze[e.slot] = 1;
+                }
+            }
+            None => freeze[e.slot] = 2,
+        }
+    }
+    for k in left {
+        freeze[k] = 2;
+    }
+    pv.truth_hash = truth_hash;
+    pv.truth_depth = truth_depth;
+    pv.redundancy = redundancy as u16;
+    pv.freeze = freeze;
+    Ok(pv)
+}
+
+impl PublicValues {
+    /// The bytes that the circuit and `Settlement` hash (section 5 of the document).
+    pub fn pack(&self, caps: &Caps) -> Vec<u8> {
+        let mut b = Vec::with_capacity(577 + 33 * (caps.p + caps.f));
+        let fr = |b: &mut Vec<u8>, x: Fr| b.extend_from_slice(&x.to_be_bytes::<32>());
+        fr(&mut b, u(self.chain_id));
+        b.extend_from_slice(self.settlement.as_slice());
+        b.extend_from_slice(&self.round.to_be_bytes());
+        b.extend_from_slice(self.round_anchor.as_slice());
+        b.extend_from_slice(self.selection_seed.as_slice());
+        fr(&mut b, self.commits_root);
+        b.extend_from_slice(&self.commit_count.to_be_bytes());
+        fr(&mut b, self.reveals_root);
+        b.extend_from_slice(&self.reveal_count.to_be_bytes());
+        fr(&mut b, self.forced_commits_hash);
+        b.extend_from_slice(&self.forced_commit_count.to_be_bytes());
+        fr(&mut b, self.forced_reveals_hash);
+        b.extend_from_slice(&self.forced_reveal_count.to_be_bytes());
+        b.extend_from_slice(&self.last_claim_round.to_be_bytes());
+        b.push(self.last_winner_depth);
+        b.push(self.penalty_multiplier_disagreement);
+        b.push(self.penalty_multiplier_non_revealed);
+        b.push(self.penalty_random_factor);
+        b.push(self.stake_age_rounds);
+        b.extend_from_slice(&self.stake_price.to_be_bytes());
+        fr(&mut b, self.prev_state_hash);
+        b.extend_from_slice(&self.prev_event_index.to_be_bytes());
+        b.extend_from_slice(self.prev_event_hash.as_slice());
+        b.extend_from_slice(&self.event_index.to_be_bytes());
+        b.extend_from_slice(self.event_hash.as_slice());
+        b.extend_from_slice(&self.cut_block.to_be_bytes());
+        b.push(self.has_reveals as u8);
+        b.extend_from_slice(self.truth_hash.as_slice());
+        b.push(self.truth_depth);
+        b.extend_from_slice(self.winner.as_slice());
+        b.extend_from_slice(&self.redundancy.to_be_bytes());
+        b.extend_from_slice(self.fee_recipient.as_slice());
+        fr(&mut b, self.new_state_hash);
+        fr(&mut b, self.pot_amount);
+        fr(&mut b, self.valid_chunk_count);
+        let nc = self.commit_count as usize;
+        let slot = |b: &mut Vec<u8>, k: Option<usize>| match k {
+            Some(k) => {
+                // The commitment includes the owner.
+                fr(b, self.stake_commitments[k]);
+                b.push(self.freeze[k]);
+            }
+            None => b.extend_from_slice(&[0u8; 33]),
+        };
+        for i in 0..caps.p {
+            slot(&mut b, (i < nc).then_some(i));
+        }
+        for j in 0..caps.f {
+            slot(&mut b, (j < self.forced_commit_count as usize).then_some(nc + j));
+        }
+        b
+    }
+
+    /// The public input of the circuit.
+    pub fn digest(&self, caps: &Caps) -> Fr {
+        digest(&self.pack(caps))
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// The circuit witness, as JSON for `snarkd prove`
+// ---------------------------------------------------------------------------------------------------
+
+fn d(x: Fr) -> Value {
+    Value::String(x.to_string())
+}
+
+fn write_json(w: &postage::Write) -> Value {
+    let mut v: Vec<Value> = vec![d(u(w.index))];
+    v.extend(w.leaf.fields().iter().map(|x| d(*x)));
+    v.extend(w.siblings.iter().map(|x| d(*x)));
+    Value::Array(v)
+}
+
+fn reveal_json(r: Option<&Reveal>) -> Value {
+    match r {
+        Some(r) => {
+            let (oh, ol) = halves(&r.overlay);
+            let (hh, hl) = halves(&r.hash);
+            let (nh, nl) = halves(&r.nonce);
+            json!([d(oh), d(ol), d(u(r.depth as u64)), d(hh), d(hl), d(nh), d(nl)])
+        }
+        None => json!(["0", "0", "0", "0", "0", "0", "0"]),
+    }
+}
+
+/// The inputs of the circuit for this round, padded to `caps`.
+pub fn witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> Result<Value, SnarkError> {
+    let (nc, nf) = (input.commits.len(), input.forced_commits.len());
+    let pg = &input.postage;
+    if nc > caps.p
+        || input.reveals.len() > caps.p
+        || nf > caps.f
+        || input.forced_reveals.len() > caps.f
+        || pg.events.len() > caps.e
+        || pg.witness.expiries.len() > caps.x
+    {
+        return Err(SnarkError::Capacity);
+    }
+    let (ah, al) = halves(&input.round_anchor);
+    let (sh, sl) = halves(&input.selection_seed);
+    let g: Vec<Value> = [
+        u(input.chain_id),
+        addr(&input.settlement),
+        u(input.round),
+        ah,
+        al,
+        sh,
+        sl,
+        u(nc as u64),
+        u(input.reveals.len() as u64),
+        u(nf as u64),
+        u(input.forced_reveals.len() as u64),
+        u(input.last_claim_round),
+        u(input.last_winner_depth as u64),
+        u(input.penalty_multiplier_disagreement as u64),
+        u(input.penalty_multiplier_non_revealed as u64),
+        u(input.penalty_random_factor as u64),
+        u(input.stake_age_rounds as u64),
+        u(input.stake_price as u64),
+        addr(&input.fee_recipient),
+    ]
+    .iter()
+    .map(|x| d(*x))
+    .collect();
+
+    let commits: Vec<Value> = (0..caps.p)
+        .map(|i| match input.commits.get(i) {
+            Some(c) => json!([d(addr(&c.owner)), d(c.obf), d(c.sig.r.x), d(c.sig.r.y), d(c.sig.s)]),
+            None => json!(["0", "0", d(base().x), d(base().y), "1"]),
+        })
+        .collect();
+    let forced: Vec<Value> = (0..caps.f)
+        .map(|j| match input.forced_commits.get(j) {
+            Some(c) => json!([d(addr(&c.owner)), d(U256::from_be_bytes(c.obfuscated_hash.0))]),
+            None => json!(["0", "0"]),
+        })
+        .collect();
+    let stake = |k: Option<usize>| match k {
+        Some(k) => {
+            let s = &input.stakes[k];
+            let (oh, ol) = halves(&s.overlay);
+            json!([
+                d(oh),
+                d(ol),
+                d(s.committed_stake),
+                d(s.potential_stake),
+                d(u(s.height as u64)),
+                d(u(s.last_updated)),
+                d(s.key.x),
+                d(s.key.y)
+            ])
+        }
+        None => json!(["0", "0", "0", "0", "0", "0", "0", "0"]),
+    };
+    let stakes: Vec<Value> = (0..caps.p)
+        .map(|i| stake((i < nc).then_some(i)))
+        .chain((0..caps.f).map(|j| stake((j < nf).then_some(nc + j))))
+        .collect();
+    let reveals: Vec<Value> = (0..caps.p).map(|i| reveal_json(input.reveals.get(i))).collect();
+    let forced_reveals: Vec<Value> = (0..caps.f)
+        .map(|i| reveal_json(input.forced_reveals.get(i)))
+        .collect();
+
+    let dummy = postage::Write::dummy();
+    let events: Vec<Value> = (0..caps.e)
+        .map(|i| match pg.events.get(i) {
+            Some(e) => {
+                let (ih, il) = halves(&e.batch_id);
+                let w = &pg.witness.events[i];
+                json!({
+                    "e": [d(u(e.kind as u64)), d(ih), d(il), d(u(e.depth as u64)), d(e.value), d(u(e.block))],
+                    "w": [write_json(&w[0]), write_json(&w[1]), write_json(&w[2])],
+                })
+            }
+            None => json!({
+                "e": ["0", "0", "0", "0", "0", "0"],
+                "w": [write_json(&dummy), write_json(&dummy), write_json(&dummy)],
+            }),
+        })
+        .collect();
+    let expiries: Vec<Value> = (0..caps.x)
+        .map(|i| match pg.witness.expiries.get(i) {
+            Some((h, t)) => json!({"head": write_json(h), "target": write_json(t)}),
+            None => json!({"head": write_json(&pg.witness.final_head), "target": write_json(&dummy)}),
+        })
+        .collect();
+    let (ph, pl) = halves(&pg.prev_event_hash);
+
+    Ok(json!({
+        "caps": {"p": caps.p, "f": caps.f, "e": caps.e, "x": caps.x},
+        "digest": d(pv.digest(caps)),
+        "g": g,
+        "commits": commits,
+        "forcedCommits": forced,
+        "stakes": stakes,
+        "reveals": reveals,
+        "forcedReveals": forced_reveals,
+        "header": pg.header.fields().iter().map(|x| d(*x)).collect::<Vec<_>>(),
+        "prevEventIndex": d(u(pg.prev_event_index)),
+        "prevEventHash": [d(ph), d(pl)],
+        "cutBlock": d(u(pg.cut_block)),
+        "events": events,
+        "expiries": expiries,
+        "finalHead": write_json(&pg.witness.final_head),
+        "publicValues": format!("0x{}", alloy_primitives::hex::encode(pv.pack(caps))),
+    }))
+}
+
+/// Obfuscated hash of a reveal as the 32 bytes that `forceCommit` takes.
+pub fn obfuscated_bytes(r: &Reveal) -> B256 {
+    fr_bytes(reveal_hash(r))
+}

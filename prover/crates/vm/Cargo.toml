@@ -8,6 +8,8 @@ description = "Swarm Redistribution VM: the storage incentives Schelling game as
 alloy-primitives = { workspace = true }
 alloy-sol-types = { workspace = true }
 serde = { workspace = true }
+serde_json = "1"
+sha2 = "0.10"
 
 [dev-dependencies]
 alloy-signer = "2"

@@ -17,6 +17,7 @@ pub mod claim;
 pub mod postage;
 pub mod randomness;
 pub mod sample;
+pub mod snark;
 mod types;
 
 pub use types::*;
