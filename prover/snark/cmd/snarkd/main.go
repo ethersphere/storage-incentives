@@ -2,9 +2,10 @@
 //
 //	snarkd vectors                                   MiMC test vector for the Rust reference
 //	snarkd check   -witness w.json                   solve the circuit without a proof (debugging)
-//	snarkd setup   -p 32 -f 4 -e 16 -x 8 -out DIR    compile, trusted setup (local, for tests), Verifier.sol
+//	snarkd setup   -kind game -p 16 -f 4 -out DIR    compile, trusted setup (local, for tests), verifier contract
+//	snarkd setup   -kind postage -e 8 -x 4 -out DIR
 //	snarkd prove   -keys DIR -witness w.json         make and verify a Groth16 proof
-//	snarkd serve   -keys DIR -listen ADDR            keep the keys in memory; POST /prove with a witness
+//	snarkd serve   -game DIR -postage DIR            keep the keys in memory; POST /prove with a witness
 package main
 
 import (
@@ -19,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,12 +43,18 @@ func die(err error) {
 	}
 }
 
-func compile(caps circuit.Caps) constraint.ConstraintSystem {
+func compile(kind string, caps circuit.Caps) constraint.ConstraintSystem {
 	t := time.Now()
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit.New(caps))
+	empty, err := circuit.Empty(kind, caps)
 	die(err)
-	fmt.Fprintf(os.Stderr, "circuit P=%d F=%d E=%d X=%d: %d constraints (compiled in %s)\n",
-		caps.P, caps.F, caps.E, caps.X, ccs.GetNbConstraints(), time.Since(t).Round(time.Millisecond))
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, empty)
+	die(err)
+	size := fmt.Sprintf("P=%d F=%d", caps.P, caps.F)
+	if kind == "postage" {
+		size = fmt.Sprintf("E=%d X=%d", caps.E, caps.X)
+	}
+	fmt.Fprintf(os.Stderr, "%s circuit %s: %d constraints (compiled in %s)\n",
+		kind, size, ccs.GetNbConstraints(), time.Since(t).Round(time.Millisecond))
 	return ccs
 }
 
@@ -67,7 +75,10 @@ func main() {
 	e := fs.Int("e", 16, "postage events")
 	x := fs.Int("x", 8, "batch expiries")
 	out := fs.String("out", "keys", "output directory (setup) or file (prove)")
-	keys := fs.String("keys", "keys", "directory of setup")
+	keys := fs.String("keys", "keys", "directory of setup (prove)")
+	kind := fs.String("kind", "game", "circuit: game or postage")
+	gameKeys := fs.String("game", "", "setup directory of the game circuit (serve)")
+	postageKeys := fs.String("postage", "", "setup directory of the postage circuit (serve)")
 	wfile := fs.String("witness", "", "witness JSON of the Rust reference")
 	listen := fs.String("listen", "127.0.0.1:8099", "address of `snarkd serve`")
 	die(fs.Parse(os.Args[2:]))
@@ -80,18 +91,20 @@ func main() {
 		mimcSol()
 
 	case "size":
-		compile(circuit.Caps{P: *p, F: *f, E: *e, X: *x})
+		compile(*kind, circuit.Caps{P: *p, F: *f, E: *e, X: *x})
 
 	case "check":
 		data, err := os.ReadFile(*wfile)
 		die(err)
-		a, caps, err := circuit.Assignment(data)
+		a, k, caps, err := circuit.Assignment(data)
 		die(err)
-		die(test.IsSolved(circuit.New(caps), a, ecc.BN254.ScalarField()))
+		empty, err := circuit.Empty(k, caps)
+		die(err)
+		die(test.IsSolved(empty, a, ecc.BN254.ScalarField()))
 		fmt.Println("ok: the witness satisfies the circuit")
 
 	case "setup":
-		ccs := compile(circuit.Caps{P: *p, F: *f, E: *e, X: *x})
+		ccs := compile(*kind, circuit.Caps{P: *p, F: *f, E: *e, X: *x})
 		t := time.Now()
 		pk, vk, err := groth16.Setup(ccs)
 		die(err)
@@ -113,8 +126,11 @@ func main() {
 		die(fh.Close())
 		var sol bytes.Buffer
 		die(vk.ExportSolidity(&sol, solidity.WithPragmaVersion("^0.8.19")))
-		die(os.WriteFile(filepath.Join(*out, "Verifier.sol"), sol.Bytes(), 0o644))
-		meta, _ := json.Marshal(map[string]int{"p": *p, "f": *f, "e": *e, "x": *x, "constraints": ccs.GetNbConstraints()})
+		// One contract name for each circuit, so that both verifiers can be in one project.
+		name := map[string]string{"game": "GameVerifier", "postage": "PostageVerifier"}[*kind]
+		src := strings.Replace(sol.String(), "contract Verifier {", "contract "+name+" {", 1)
+		die(os.WriteFile(filepath.Join(*out, name+".sol"), []byte(src), 0o644))
+		meta, _ := json.Marshal(map[string]any{"kind": *kind, "p": *p, "f": *f, "e": *e, "x": *x, "constraints": ccs.GetNbConstraints()})
 		die(os.WriteFile(filepath.Join(*out, "caps.json"), meta, 0o644))
 
 	case "prove":
@@ -129,11 +145,20 @@ func main() {
 		fmt.Println(string(res))
 
 	case "serve":
-		pr := loadProver(*keys)
+		provers := map[string]*prover{"game": loadProver(*gameKeys), "postage": loadProver(*postageKeys)}
 		http.HandleFunc("/prove", func(w http.ResponseWriter, r *http.Request) {
 			data, err := io.ReadAll(r.Body)
 			if err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			var k struct {
+				Kind string `json:"kind"`
+			}
+			_ = json.Unmarshal(data, &k)
+			pr, ok := provers[k.Kind]
+			if !ok {
+				http.Error(w, "unknown circuit kind", http.StatusBadRequest)
 				return
 			}
 			res, err := pr.prove(data)
@@ -145,9 +170,14 @@ func main() {
 			w.Write(res)
 		})
 		http.HandleFunc("/caps", func(w http.ResponseWriter, r *http.Request) {
-			b, _ := os.ReadFile(filepath.Join(*keys, "caps.json"))
+			var g, po map[string]any
+			b, _ := os.ReadFile(filepath.Join(*gameKeys, "caps.json"))
+			_ = json.Unmarshal(b, &g)
+			b, _ = os.ReadFile(filepath.Join(*postageKeys, "caps.json"))
+			_ = json.Unmarshal(b, &po)
+			out, _ := json.Marshal(map[string]any{"p": g["p"], "f": g["f"], "e": po["e"], "x": po["x"]})
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(b)
+			w.Write(out)
 		})
 		fmt.Fprintf(os.Stderr, "snarkd: listening on %s\n", *listen)
 		die(http.ListenAndServe(*listen, nil))
@@ -195,7 +225,7 @@ func loadProver(dir string) *prover {
 func (p *prover) prove(data []byte) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	a, _, err := circuit.Assignment(data)
+	a, _, _, err := circuit.Assignment(data)
 	if err != nil {
 		return nil, err
 	}
@@ -223,8 +253,8 @@ func (p *prover) prove(data []byte) ([]byte, error) {
 	sp := proof.(interface{ MarshalSolidity() []byte }).MarshalSolidity()
 	return json.Marshal(map[string]any{
 		"proof":        "0x" + hex.EncodeToString(sp),
-		"digest":       wj.Digest,
-		"publicValues": wj.PublicValues,
+		"kind":         wj.Kind,
+		"public":       wj.Public,
 		"loadMs":       p.load.Milliseconds(),
 		"proveMs":      took.Milliseconds(),
 		"peakMB":       peakMB(),

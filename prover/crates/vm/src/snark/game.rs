@@ -5,7 +5,7 @@
 
 use super::postage;
 use super::{
-    addr, base, compress, digest, fr_bytes, halves, list_root, mimc, u, verify, Fr, Point, Sig, P,
+    addr, base, compress, fr_bytes, halves, list_root, mimc, u, verify, Fr, Point, Sig, P,
 };
 use crate::{in_proximity, minimum_depth, ForcedCommit, Reveal, ROUND_LENGTH};
 use alloy_primitives::{Address, B256, U256};
@@ -187,9 +187,18 @@ fn low_bits(x: Fr, n: usize) -> U256 {
     x & ((U256::from(1u8) << n) - U256::from(1u8))
 }
 
+/// The selection seed as a field element: its low 253 bits.
+pub fn seed_field(seed: &B256) -> Fr {
+    low_bits(U256::from_be_bytes(seed.0), 253)
+}
+
+/// The top 64 bits of the round anchor: what the proximity check of the circuit reads.
+pub fn anchor64(anchor: &B256) -> Fr {
+    U256::from_be_bytes(anchor.0) >> 192
+}
+
 fn draw(seed: &B256, tag: u64, n: u64) -> U256 {
-    let (sh, sl) = halves(seed);
-    low_bits(mimc(&[sh, sl, u(tag), u(n)]), DRAW_BITS)
+    low_bits(mimc(&[seed_field(seed), u(tag), u(n)]), DRAW_BITS)
 }
 
 fn picked(random: U256, sum: U256, density: U256) -> bool {
@@ -368,8 +377,7 @@ pub fn run(input: &RoundInput, pg: &postage::Run) -> Result<PublicValues, SnarkE
     }
 
     // winnerSelection
-    let (sh, sl) = halves(seed);
-    let lottery = low_bits(mimc(&[sh, sl, u(2)]), 64) % U256::from(100u8)
+    let lottery = low_bits(mimc(&[seed_field(seed), u(2)]), 64) % U256::from(100u8)
         < U256::from(input.penalty_random_factor);
     let mut sum = U256::ZERO;
     let mut redundancy: u64 = 0;
@@ -401,66 +409,69 @@ pub fn run(input: &RoundInput, pg: &postage::Run) -> Result<PublicValues, SnarkE
 }
 
 impl PublicValues {
-    /// The bytes that the circuit and `Settlement` hash (section 5 of the document).
-    pub fn pack(&self, caps: &Caps) -> Vec<u8> {
-        let mut b = Vec::with_capacity(577 + 33 * (caps.p + caps.f));
-        let fr = |b: &mut Vec<u8>, x: Fr| b.extend_from_slice(&x.to_be_bytes::<32>());
-        fr(&mut b, u(self.chain_id));
-        b.extend_from_slice(self.settlement.as_slice());
-        b.extend_from_slice(&self.round.to_be_bytes());
-        b.extend_from_slice(self.round_anchor.as_slice());
-        b.extend_from_slice(self.selection_seed.as_slice());
-        fr(&mut b, self.commits_root);
-        b.extend_from_slice(&self.commit_count.to_be_bytes());
-        fr(&mut b, self.reveals_root);
-        b.extend_from_slice(&self.reveal_count.to_be_bytes());
-        fr(&mut b, self.forced_commits_hash);
-        b.extend_from_slice(&self.forced_commit_count.to_be_bytes());
-        fr(&mut b, self.forced_reveals_hash);
-        b.extend_from_slice(&self.forced_reveal_count.to_be_bytes());
-        b.extend_from_slice(&self.last_claim_round.to_be_bytes());
-        b.push(self.last_winner_depth);
-        b.push(self.penalty_multiplier_disagreement);
-        b.push(self.penalty_multiplier_non_revealed);
-        b.push(self.penalty_random_factor);
-        b.push(self.stake_age_rounds);
-        b.extend_from_slice(&self.stake_price.to_be_bytes());
-        fr(&mut b, self.prev_state_hash);
-        b.extend_from_slice(&self.prev_event_index.to_be_bytes());
-        b.extend_from_slice(self.prev_event_hash.as_slice());
-        b.extend_from_slice(&self.event_index.to_be_bytes());
-        b.extend_from_slice(self.event_hash.as_slice());
-        b.extend_from_slice(&self.cut_block.to_be_bytes());
-        b.push(self.has_reveals as u8);
-        b.extend_from_slice(self.truth_hash.as_slice());
-        b.push(self.truth_depth);
-        b.extend_from_slice(self.winner.as_slice());
-        b.extend_from_slice(&self.redundancy.to_be_bytes());
-        b.extend_from_slice(self.fee_recipient.as_slice());
-        fr(&mut b, self.new_state_hash);
-        fr(&mut b, self.pot_amount);
-        fr(&mut b, self.valid_chunk_count);
-        let nc = self.commit_count as usize;
-        let slot = |b: &mut Vec<u8>, k: Option<usize>| match k {
-            Some(k) => {
-                // The commitment includes the owner.
-                fr(b, self.stake_commitments[k]);
-                b.push(self.freeze[k]);
+    /// The public inputs of the game circuit, as `Settlement._gameInputs` builds them (see
+    /// `GameCircuit` in prover/snark/circuit/game.go).
+    pub fn game_inputs(&self, caps: &Caps) -> Vec<Fr> {
+        let (nc, nf) = (self.commit_count as usize, self.forced_commit_count as usize);
+        let sh = |x: U256, n: usize| x << n;
+        let mut v = vec![
+            sh(u(self.chain_id), 160) | addr(&self.settlement),
+            sh(u(self.round), 160)
+                | sh(u(self.last_claim_round), 96)
+                | sh(u(self.commit_count as u64), 80)
+                | sh(u(self.reveal_count as u64), 64)
+                | sh(u(self.forced_commit_count as u64), 48)
+                | sh(u(self.forced_reveal_count as u64), 32)
+                | u(self.stake_price as u64),
+            sh(u(self.last_winner_depth as u64), 217)
+                | sh(u(self.penalty_multiplier_disagreement as u64), 209)
+                | sh(u(self.penalty_multiplier_non_revealed as u64), 201)
+                | sh(u(self.penalty_random_factor as u64), 193)
+                | sh(u(self.stake_age_rounds as u64), 185)
+                | sh(u(self.has_reveals as u64), 184)
+                | sh(u(self.truth_depth as u64), 176)
+                | sh(u(self.redundancy as u64), 160)
+                | addr(&self.winner),
+            seed_field(&self.selection_seed),
+            sh(anchor64(&self.round_anchor), 160) | addr(&self.fee_recipient),
+            self.commits_root,
+            self.reveals_root,
+            self.forced_commits_hash,
+            self.forced_reveals_hash,
+        ];
+        let (th, tl) = halves(&self.truth_hash);
+        v.push(th);
+        v.push(tl);
+        // Entry k of the circuit: anchored commit k, or forced commit k - P.
+        let slot = |k: usize| if k < caps.p { (k < nc).then_some(k) } else { (k - caps.p < nf).then_some(nc + k - caps.p) };
+        let mut freeze = U256::ZERO;
+        for k in 0..caps.p + caps.f {
+            if let Some(i) = slot(k) {
+                freeze |= sh(u(self.freeze[i] as u64), 2 * k);
             }
-            None => b.extend_from_slice(&[0u8; 33]),
-        };
-        for i in 0..caps.p {
-            slot(&mut b, (i < nc).then_some(i));
         }
-        for j in 0..caps.f {
-            slot(&mut b, (j < self.forced_commit_count as usize).then_some(nc + j));
+        v.push(freeze);
+        for k in 0..caps.p + caps.f {
+            v.push(slot(k).map_or(U256::ZERO, |i| self.stake_commitments[i]));
         }
-        b
+        v
     }
 
-    /// The public input of the circuit.
-    pub fn digest(&self, caps: &Caps) -> Fr {
-        digest(&self.pack(caps))
+    /// The public inputs of the postage circuit (see `PostageCircuit`).
+    pub fn postage_inputs(&self) -> Vec<Fr> {
+        let (ph, pl) = halves(&self.prev_event_hash);
+        let (eh, el) = halves(&self.event_hash);
+        vec![
+            self.prev_state_hash,
+            self.new_state_hash,
+            (u(self.prev_event_index) << 128) | (u(self.event_index) << 64) | u(self.cut_block),
+            ph,
+            pl,
+            eh,
+            el,
+            self.pot_amount,
+            self.valid_chunk_count,
+        ]
     }
 }
 
@@ -491,29 +502,16 @@ fn reveal_json(r: Option<&Reveal>) -> Value {
     }
 }
 
-/// The inputs of the circuit for this round, padded to `caps`.
-pub fn witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> Result<Value, SnarkError> {
+/// The inputs of the game circuit for this round, padded to `caps`.
+pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> Result<Value, SnarkError> {
     let (nc, nf) = (input.commits.len(), input.forced_commits.len());
-    let pg = &input.postage;
-    if nc > caps.p
-        || input.reveals.len() > caps.p
-        || nf > caps.f
-        || input.forced_reveals.len() > caps.f
-        || pg.events.len() > caps.e
-        || pg.witness.expiries.len() > caps.x
-    {
+    if nc > caps.p || input.reveals.len() > caps.p || nf > caps.f || input.forced_reveals.len() > caps.f {
         return Err(SnarkError::Capacity);
     }
-    let (ah, al) = halves(&input.round_anchor);
-    let (sh, sl) = halves(&input.selection_seed);
     let g: Vec<Value> = [
         u(input.chain_id),
         addr(&input.settlement),
         u(input.round),
-        ah,
-        al,
-        sh,
-        sl,
         u(nc as u64),
         u(input.reveals.len() as u64),
         u(nf as u64),
@@ -569,6 +567,26 @@ pub fn witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> Resul
         .map(|i| reveal_json(input.forced_reveals.get(i)))
         .collect();
 
+    Ok(json!({
+        "kind": "game",
+        "caps": {"p": caps.p, "f": caps.f, "e": 0, "x": 0},
+        "public": pv.game_inputs(caps).iter().map(|x| d(*x)).collect::<Vec<_>>(),
+        "g": g,
+        "seed": d(seed_field(&input.selection_seed)),
+        "anchor64": d(anchor64(&input.round_anchor)),
+        "commits": commits,
+        "forcedCommits": forced,
+        "stakes": stakes,
+        "reveals": reveals,
+        "forcedReveals": forced_reveals,
+    }))
+}
+
+/// The inputs of the postage circuit for this settlement, padded to `caps`.
+pub fn postage_witness_json(pg: &postage::Input, pv: &PublicValues, caps: &Caps) -> Result<Value, SnarkError> {
+    if pg.events.len() > caps.e || pg.witness.expiries.len() > caps.x {
+        return Err(SnarkError::Capacity);
+    }
     let dummy = postage::Write::dummy();
     let events: Vec<Value> = (0..caps.e)
         .map(|i| match pg.events.get(i) {
@@ -595,14 +613,9 @@ pub fn witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> Resul
     let (ph, pl) = halves(&pg.prev_event_hash);
 
     Ok(json!({
-        "caps": {"p": caps.p, "f": caps.f, "e": caps.e, "x": caps.x},
-        "digest": d(pv.digest(caps)),
-        "g": g,
-        "commits": commits,
-        "forcedCommits": forced,
-        "stakes": stakes,
-        "reveals": reveals,
-        "forcedReveals": forced_reveals,
+        "kind": "postage",
+        "caps": {"p": 0, "f": 0, "e": caps.e, "x": caps.x},
+        "public": pv.postage_inputs().iter().map(|x| d(*x)).collect::<Vec<_>>(),
         "header": pg.header.fields().iter().map(|x| d(*x)).collect::<Vec<_>>(),
         "prevEventIndex": d(u(pg.prev_event_index)),
         "prevEventHash": [d(ph), d(pl)],
@@ -610,7 +623,6 @@ pub fn witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> Resul
         "events": events,
         "expiries": expiries,
         "finalHead": write_json(&pg.witness.final_head),
-        "publicValues": format!("0x{}", alloy_primitives::hex::encode(pv.pack(caps))),
     }))
 }
 

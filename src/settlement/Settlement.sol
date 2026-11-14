@@ -5,9 +5,10 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import {ClaimVerifier, IClaimPostage} from "./ClaimVerifier.sol";
 
-/// The Groth16 verifier of the settlement circuit, as gnark exports it.
-interface IGroth16Verifier {
-    function verifyProof(bytes calldata proof, uint256[1] calldata input) external view;
+/// The Groth16 verifier of the postage circuit, as gnark exports it. The game verifier has the same
+/// function with a number of inputs that depends on the circuit size (see `_verifyGame`).
+interface IPostageVerifier {
+    function verifyProof(bytes calldata proof, uint256[9] calldata input) external view;
 }
 
 interface IGameKeys {
@@ -90,8 +91,10 @@ contract Settlement is AccessControl, Pausable {
     /// @dev The three structs below must match prover/crates/vm/src/types.rs field for field.
     /// The proof of a round, and the data that this contract checks itself.
     struct Evidence {
-        // The Groth16 proof (gnark, `MarshalSolidity`).
+        // The Groth16 proof of the game circuit (gnark, `MarshalSolidity`).
         bytes proof;
+        // The Groth16 proof of the postage circuit. Empty when `settlePostage` already ran for the round.
+        bytes postageProof;
         // RLP headers of block roundStart - 1 and of the seed block.
         bytes anchorHeader;
         bytes seedHeader;
@@ -214,17 +217,22 @@ contract Settlement is AccessControl, Pausable {
     // Root of an anchored list with no entries (MiMC tree of depth 8 over zero leaves).
     bytes32 public immutable EMPTY_LIST_ROOT;
 
-    // The verifier of the circuit, and the size of that circuit: anchored commits and reveals, and
-    // forced commits and reveals, that one proof can hold.
-    IGroth16Verifier public verifier;
+    // The verifiers of the game circuit and of the postage circuit, and the size of the game circuit:
+    // anchored commits and reveals, and forced commits and reveals, that one proof can hold.
+    address public gameVerifier;
+    IPostageVerifier public postageVerifier;
     uint16 public capacity;
     uint16 public forcedCapacity;
+    bytes4 internal gameSelector;
+    // The round whose seed block is the cut of the last postage settlement.
+    uint64 public lastPostageRound;
 
     // Seconds between proposeVerifier and the earliest applyVerifier. Fixed at deployment: 0 on test
     // networks; on mainnet long enough for nodes to react (for example 7 days).
     uint64 public immutable verifierDelay;
     struct PendingVerifier {
-        address verifier;
+        address gameVerifier;
+        address postageVerifier;
         uint16 capacity;
         uint16 forcedCapacity;
         uint64 eta;
@@ -308,8 +316,14 @@ contract Settlement is AccessControl, Pausable {
         uint256 proverFee
     );
     event PriceAdjustmentSkipped(uint16 redundancyCount);
-    event VerifierChanged(address verifier, uint16 capacity, uint16 forcedCapacity);
-    event VerifierProposed(address verifier, uint16 capacity, uint16 forcedCapacity, uint64 eta);
+    event VerifierChanged(address gameVerifier, address postageVerifier, uint16 capacity, uint16 forcedCapacity);
+    event VerifierProposed(
+        address gameVerifier,
+        address postageVerifier,
+        uint16 capacity,
+        uint16 forcedCapacity,
+        uint64 eta
+    );
 
     // ----------------------------- Errors ------------------------------
 
@@ -339,6 +353,7 @@ contract Settlement is AccessControl, Pausable {
     error InputMismatch(uint8 which);
     error OutputMismatch();
     error ValidForcedClaim();
+    error ProofInvalid();
     error NotAdmin();
     error FeeTooHigh();
 
@@ -350,7 +365,8 @@ contract Settlement is AccessControl, Pausable {
         address oracleContract,
         address gameKeys,
         address claimVerifier,
-        address _verifier,
+        address _gameVerifier,
+        address _postageVerifier,
         uint16 _capacity,
         uint16 _forcedCapacity,
         uint64 _verifierDelay
@@ -360,6 +376,7 @@ contract Settlement is AccessControl, Pausable {
         Claims = ClaimVerifier(claimVerifier);
         capacity = _capacity;
         forcedCapacity = _forcedCapacity;
+        gameSelector = _selector(12 + uint256(_capacity) + _forcedCapacity);
 
         uint256 z;
         for (uint256 i = 0; i < 8; ++i) z = gk.compress(z, z);
@@ -379,7 +396,8 @@ contract Settlement is AccessControl, Pausable {
         Stakes = ISettlementStakes(staking);
         PostageContract = ISettlementPostage(postageContract);
         OracleContract = ISettlementOracle(oracleContract);
-        verifier = IGroth16Verifier(_verifier);
+        gameVerifier = _gameVerifier;
+        postageVerifier = IPostageVerifier(_postageVerifier);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(ANCHOR_ROLE, msg.sender);
     }
@@ -673,6 +691,26 @@ contract Settlement is AccessControl, Pausable {
         );
     }
 
+    /**
+     * @notice The postage accounting of a round as its own transaction: any node can send it, so the node
+     * that proves the game does not need to make the larger postage proof. Allowed only for the round
+     * that can settle next. `settleRound` of that round then needs only the game proof.
+     */
+    function settlePostage(
+        uint64 _round,
+        bytes32 newStateHash,
+        uint256 potAmount,
+        uint256 _validChunkCount,
+        bytes calldata proof
+    ) external whenNotPaused {
+        RoundSlot storage ri = ring[_round % RING_SIZE];
+        if (ri.round != _round || !ri.anchored) revert NotAnchored();
+        if (ri.settled) revert AlreadySettled();
+        if (_round <= lastSettledRound) revert RoundOutOfOrder();
+        _checkNoPendingRound(_round);
+        _settlePostage(_round, newStateHash, potAmount, _validChunkCount, proof);
+    }
+
     // ----------------------------- Admin ------------------------------
 
     /**
@@ -681,11 +719,16 @@ contract Settlement is AccessControl, Pausable {
      * after the proposal (`applyVerifier`), and everybody can see it coming. A new proposal replaces the
      * pending one and starts the delay again.
      */
-    function proposeVerifier(address _verifier, uint16 _capacity, uint16 _forcedCapacity) external {
+    function proposeVerifier(
+        address _gameVerifier,
+        address _postageVerifier,
+        uint16 _capacity,
+        uint16 _forcedCapacity
+    ) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         uint64 eta = uint64(block.timestamp) + verifierDelay;
-        pendingVerifier = PendingVerifier(_verifier, _capacity, _forcedCapacity, eta);
-        emit VerifierProposed(_verifier, _capacity, _forcedCapacity, eta);
+        pendingVerifier = PendingVerifier(_gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
+        emit VerifierProposed(_gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
     }
 
     /// @notice Make the pending verifier change take effect, once its delay has passed. Anybody can call it.
@@ -694,16 +737,18 @@ contract Settlement is AccessControl, Pausable {
         if (p.eta == 0) revert NoPendingVerifier();
         if (block.timestamp < p.eta) revert VerifierDelayNotOver();
         delete pendingVerifier;
-        verifier = IGroth16Verifier(p.verifier);
+        gameVerifier = p.gameVerifier;
+        postageVerifier = IPostageVerifier(p.postageVerifier);
         capacity = p.capacity;
         forcedCapacity = p.forcedCapacity;
-        emit VerifierChanged(p.verifier, p.capacity, p.forcedCapacity);
+        gameSelector = _selector(12 + uint256(p.capacity) + p.forcedCapacity);
+        emit VerifierChanged(p.gameVerifier, p.postageVerifier, p.capacity, p.forcedCapacity);
     }
 
     function cancelVerifier() external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         delete pendingVerifier;
-        emit VerifierProposed(address(0), 0, 0, 0);
+        emit VerifierProposed(address(0), address(0), 0, 0, 0);
     }
 
     function setStakeAgeRounds(uint8 _rounds) external {
@@ -821,8 +866,8 @@ contract Settlement is AccessControl, Pausable {
     ) public view returns (bytes32 roundAnchor, bytes32 seed) {
         if (keccak256(_anchorHeader) != anchorBlockHash(_round)) revert InputMismatch(1);
         if (keccak256(_seedHeader) != seedBlockHash(_round)) revert InputMismatch(2);
-        roundAnchor = keccak256(abi.encode(_mixHash(_anchorHeader), _round));
-        seed = keccak256(abi.encode(roundAnchor, _mixHash(_seedHeader)));
+        roundAnchor = keccak256(abi.encode(Claims.mixHash(_anchorHeader), _round));
+        seed = keccak256(abi.encode(roundAnchor, Claims.mixHash(_seedHeader)));
     }
 
     /// @notice The state of a round, or all zero if nothing happened in it (or its ring entry was reused).
@@ -898,138 +943,157 @@ contract Settlement is AccessControl, Pausable {
         if (e.forcedClaimCount != 0) ri.forcedClaimsHash = e.forcedClaimsHash;
     }
 
-    /// @dev Check the proof against the chain, then record the settlement and its postage accounting.
+    /// @dev Check the proofs against the chain, then record the settlement.
     function _verifyProof(
         Outcome calldata out,
         RoundSlot storage ri,
         Evidence calldata ev
     ) internal returns (bytes32 roundAnchor, bytes32 seed) {
         (roundAnchor, seed) = randomness(out.round, ev.anchorHeader, ev.seedHeader);
-        (uint64 eventIndex, bytes32 eventHash) = PostageContract.cutOf(out.round);
-        // The stake commitments are read here, before any freeze of this settlement.
-        bytes memory packed = bytes.concat(
-            _packInputs(out.round, ri, roundAnchor, seed, eventIndex, eventHash),
-            _packOutcome(out),
-            _packStakes(out, ri)
-        );
-        uint256[1] memory input = [uint256(sha256(packed)) & ((1 << 253) - 1)];
-        verifier.verifyProof(ev.proof, input);
-
+        // The postage accounting up to this round's cut: in this transaction, or already done by
+        // `settlePostage`.
+        if (lastPostageRound != out.round) {
+            _settlePostage(out.round, out.newStateHash, out.potAmount, out.validChunkCount, ev.postageProof);
+        }
+        _verifyGame(ev.proof, _gameInputs(out, ri, roundAnchor, seed));
         ri.settled = true;
         lastSettledRound = out.round;
-        _recordPostage(out, eventIndex, eventHash);
     }
 
-    /// @dev Postage accounting applies to every round, with or without a payout.
-    function _recordPostage(Outcome calldata out, uint64 eventIndex, bytes32 eventHash) internal {
-        postageStateHash = out.newStateHash;
+    /**
+     * @dev The postage proof replays the event log of PostageStampZK from where the last settlement
+     * stopped to the round's seed block (the cut), so the pot of a round does not depend on when it
+     * settles. The public inputs are those of `PostageCircuit` (prover/snark/circuit/postage.go).
+     */
+    function _settlePostage(
+        uint64 _round,
+        bytes32 newStateHash,
+        uint256 potAmount,
+        uint256 _validChunkCount,
+        bytes calldata proof
+    ) internal {
+        if (_round <= lastPostageRound) revert RoundOutOfOrder();
+        (uint64 eventIndex, bytes32 eventHash) = PostageContract.cutOf(_round);
+        if (eventIndex < postageEventIndex) revert InputMismatch(11);
+        uint256[9] memory input;
+        input[0] = uint256(postageStateHash);
+        input[1] = uint256(newStateHash);
+        input[2] = (uint256(postageEventIndex) << 128) | (uint256(eventIndex) << 64) | seedBlock(_round);
+        input[3] = uint256(postageEventHash) >> 128;
+        input[4] = uint256(uint128(uint256(postageEventHash)));
+        input[5] = uint256(eventHash) >> 128;
+        input[6] = uint256(uint128(uint256(eventHash)));
+        input[7] = potAmount;
+        input[8] = _validChunkCount;
+        postageVerifier.verifyProof(proof, input);
+
+        lastPostageRound = _round;
+        postageStateHash = newStateHash;
         postageEventIndex = eventIndex;
         postageEventHash = eventHash;
-        accruedPot += out.potAmount;
-        validChunkCount = out.validChunkCount;
-        emit PostageSettled(out.round, eventIndex, uint64(seedBlock(out.round)), out.potAmount, accruedPot);
+        accruedPot += potAmount;
+        validChunkCount = _validChunkCount;
+        emit PostageSettled(_round, eventIndex, uint64(seedBlock(_round)), potAmount, accruedPot);
     }
 
     /**
-     * @dev The inputs of the circuit that this contract knows: the round, its randomness, its anchors and
-     * forced entries, the game state and parameters, and the postage log positions. The proof replays the
-     * event log of PostageStampZK from where the last settlement stopped to the round's seed block (the
-     * cut), so the pot of a round does not depend on when it settles.
+     * @dev The public inputs of the game circuit (`GameCircuit`, prover/snark/circuit/game.go): the round,
+     * its randomness, its anchors and forced entries, the game state and parameters, the outcome, and for
+     * each entry the stake commitment of its owner (GameKeyRegistry) and its freeze code. The entries are
+     * the anchored commits, then the forced commits. A commitment includes the owner, the stake record
+     * and the game key, as they are before any freeze of this settlement.
      */
-    function _packInputs(
-        uint64 _round,
+    function _gameInputs(
+        Outcome calldata out,
         RoundSlot storage s,
         bytes32 roundAnchor,
-        bytes32 seed,
-        uint64 eventIndex,
-        bytes32 eventHash
-    ) internal view returns (bytes memory) {
-        if (eventIndex < postageEventIndex) revert InputMismatch(11);
-        return
-            bytes.concat(
-                abi.encodePacked(block.chainid, address(this), _round, roundAnchor, seed),
-                _packLists(_info(_round, s)),
-                _packState(),
-                abi.encodePacked(eventIndex, eventHash, uint64(seedBlock(_round)))
-            );
-    }
-
-    function _packLists(RoundInfo memory ri) internal view returns (bytes memory) {
-        return
-            abi.encodePacked(
-                ri.commitCount == 0 ? EMPTY_LIST_ROOT : ri.commitsHash,
-                ri.commitCount,
-                ri.revealCount == 0 ? EMPTY_LIST_ROOT : ri.revealsHash,
-                ri.revealCount,
-                ri.forcedCommitsHash,
-                ri.forcedCommitCount,
-                ri.forcedRevealsHash,
-                ri.forcedRevealCount
-            );
-    }
-
-    function _packState() internal view returns (bytes memory) {
-        return
-            abi.encodePacked(
-                lastClaimRound,
-                lastWinnerDepth,
-                penaltyMultiplierDisagreement,
-                penaltyMultiplierNonRevealed,
-                penaltyRandomFactor,
-                stakeAgeRounds,
-                OracleContract.currentPrice(),
-                postageStateHash,
-                postageEventIndex,
-                postageEventHash
-            );
-    }
-
-    function _packOutcome(Outcome calldata out) internal pure returns (bytes memory) {
-        return
-            abi.encodePacked(
-                out.hasReveals,
-                out.truthHash,
-                out.truthDepth,
-                out.winner,
-                out.redundancy,
-                out.feeRecipient,
-                out.newStateHash,
-                out.potAmount,
-                out.validChunkCount
-            );
-    }
-
-    /**
-     * @dev One entry for each anchored commit, then one for each forced commit: the stake commitment of
-     * its owner (GameKeyRegistry) and its freeze code. The commitment includes the owner, the stake record
-     * and the game key, as they are before any freeze of this settlement. Unused entries are zero.
-     */
-    function _packStakes(Outcome calldata out, RoundSlot storage s) internal returns (bytes memory b) {
-        uint256 nc = s.commitCount;
-        uint256 nf = s.forcedCommitCount;
+        bytes32 seed
+    ) internal returns (uint256[] memory input) {
+        RoundInfo memory ri = _info(out.round, s);
         uint256 cap = capacity;
+        uint256 nc = ri.commitCount;
+        uint256 nf = ri.forcedCommitCount;
         if (
             out.owners.length != nc + nf ||
             out.freeze.length != nc + nf ||
             nc > cap ||
             nf > forcedCapacity ||
-            s.revealCount > cap ||
-            s.forcedRevealCount > forcedCapacity
+            ri.revealCount > cap ||
+            ri.forcedRevealCount > forcedCapacity
         ) revert InputMismatch(8);
-        b = new bytes(33 * (cap + forcedCapacity));
+
+        input = new uint256[](12 + cap + forcedCapacity);
+        input[0] = (block.chainid << 160) | uint256(uint160(address(this)));
+        input[1] =
+            (uint256(out.round) << 160) |
+            (uint256(lastClaimRound) << 96) |
+            (nc << 80) |
+            (uint256(ri.revealCount) << 64) |
+            (nf << 48) |
+            (uint256(ri.forcedRevealCount) << 32) |
+            OracleContract.currentPrice();
+        input[2] = _packParams() | _packOutcome(out);
+        input[3] = uint256(seed) & ((1 << 253) - 1);
+        input[4] = ((uint256(roundAnchor) >> 192) << 160) | uint256(uint160(out.feeRecipient));
+        input[5] = uint256(nc == 0 ? EMPTY_LIST_ROOT : ri.commitsHash);
+        input[6] = uint256(ri.revealCount == 0 ? EMPTY_LIST_ROOT : ri.revealsHash);
+        input[7] = uint256(ri.forcedCommitsHash);
+        input[8] = uint256(ri.forcedRevealsHash);
+        input[9] = uint256(out.truthHash) >> 128;
+        input[10] = uint256(uint128(uint256(out.truthHash)));
+        uint256 freeze;
         for (uint256 k = 0; k < nc + nf; ) {
             uint256 slot = k < nc ? k : cap + (k - nc);
-            uint256 c = GameKeys.commitmentOf(out.owners[k]);
-            uint8 f = uint8(out.freeze[k]);
-            assembly ("memory-safe") {
-                let ptr := add(add(b, 32), mul(slot, 33))
-                mstore(ptr, c)
-                mstore8(add(ptr, 32), f)
-            }
+            input[12 + slot] = GameKeys.commitmentOf(out.owners[k]);
+            freeze |= uint256(uint8(out.freeze[k])) << (2 * slot);
             unchecked {
                 ++k;
             }
         }
+        input[11] = freeze;
+    }
+
+    function _packParams() internal view returns (uint256) {
+        return
+            (uint256(lastWinnerDepth) << 217) |
+            (uint256(penaltyMultiplierDisagreement) << 209) |
+            (uint256(penaltyMultiplierNonRevealed) << 201) |
+            (uint256(penaltyRandomFactor) << 193) |
+            (uint256(stakeAgeRounds) << 185);
+    }
+
+    function _packOutcome(Outcome calldata out) internal pure returns (uint256) {
+        return
+            (uint256(out.hasReveals ? 1 : 0) << 184) |
+            (uint256(out.truthDepth) << 176) |
+            (uint256(out.redundancy) << 160) |
+            uint256(uint160(out.winner));
+    }
+
+    /// @dev Call `verifyProof(bytes,uint256[N])` of the game verifier. N depends on the circuit size, so
+    /// the call is encoded here: the offset of the proof, the N inputs, the proof.
+    function _verifyGame(bytes calldata proof, uint256[] memory input) internal view {
+        (bool ok, ) = gameVerifier.staticcall(
+            abi.encodePacked(
+                gameSelector,
+                uint256(32 * (input.length + 1)),
+                input,
+                proof.length,
+                proof,
+                new bytes((32 - (proof.length % 32)) % 32)
+            )
+        );
+        if (!ok) revert ProofInvalid();
+    }
+
+    /// @dev The selector of `verifyProof(bytes,uint256[n])`.
+    function _selector(uint256 n) internal pure returns (bytes4) {
+        bytes memory digits;
+        while (n != 0) {
+            digits = abi.encodePacked(uint8(48 + (n % 10)), digits);
+            n /= 10;
+        }
+        return bytes4(keccak256(abi.encodePacked("verifyProof(bytes,uint256[", digits, "])")));
     }
 
     function _claimOk(bytes calldata witness, ClaimVerifier.Context memory ctx) internal view returns (bool) {
@@ -1040,25 +1104,6 @@ contract Settlement is AccessControl, Pausable {
             return false;
         }
     }
-
-    /// @dev `prevrandao` (the field mixHash, the 14th) of an RLP block header.
-    function _mixHash(bytes calldata h) internal pure returns (bytes32 mix) {
-        uint256 at = 1 + (uint8(h[0]) - 0xf7);
-        for (uint256 i = 0; i < 13; ++i) {
-            uint8 b = uint8(h[at]);
-            if (b < 0x80) at += 1;
-            else if (b <= 0xb7) at += 1 + (b - 0x80);
-            else if (b <= 0xbf) {
-                uint256 n = b - 0xb7;
-                uint256 len;
-                for (uint256 j = 0; j < n; ++j) len = (len << 8) | uint8(h[at + 1 + j]);
-                at += 1 + n + len;
-            } else revert InputMismatch(1);
-        }
-        if (uint8(h[at]) != 0xa0) revert InputMismatch(1);
-        mix = bytes32(h[at + 1:at + 33]);
-    }
-
 
     /**
      * @dev A round cannot be skipped while it can still settle: settling a later round would make it

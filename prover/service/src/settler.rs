@@ -1103,6 +1103,7 @@ fn settlement_args(
     job: &Job,
     native: &Native,
     proof: Bytes,
+    postage_proof: Bytes,
 ) -> (Settlement::Outcome, Settlement::Evidence) {
     let pv = &native.pv;
     (
@@ -1122,6 +1123,7 @@ fn settlement_args(
         },
         Settlement::Evidence {
             proof,
+            postageProof: postage_proof,
             anchorHeader: job.anchor_header.clone(),
             seedHeader: job.seed_header.clone(),
             claimWitness: native.witness.clone().unwrap_or_default(),
@@ -1154,12 +1156,22 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
         (state, r.event_index, r.event_hash)
     };
     let native = job.run()?;
-    let digest = native.pv.digest(&ctx.caps).to_string();
+    // Identifies the two statements that the proofs are for.
+    let digest = alloy::primitives::keccak256(
+        native
+            .pv
+            .game_inputs(&ctx.caps)
+            .iter()
+            .chain(&native.pv.postage_inputs())
+            .flat_map(|x| x.to_be_bytes::<32>())
+            .collect::<Vec<u8>>(),
+    )
+    .to_string();
 
     // A free check before a proof: simulate settleRound with an empty proof. Only the verifier may
     // revert. Any Settlement error means the round cannot settle now (wrong inputs, or an earlier round
     // is pending).
-    let (out, ev) = settlement_args(&job, &native, Bytes::new());
+    let (out, ev) = settlement_args(&job, &native, Bytes::new(), Bytes::new());
     if let Err(e) = Settlement::new(ctx.settlement, &ctx.provider)
         .settleRound(out, ev)
         .from(ctx.from)
@@ -1196,11 +1208,12 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
     .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
     .and_then(|v| {
         let proof: Bytes = v["proof"].as_str()?.parse().ok()?;
-        (v["digest"].as_str()? == digest).then_some(proof)
+        let postage: Bytes = v["postageProof"].as_str()?.parse().ok()?;
+        (v["digest"].as_str()? == digest).then_some((proof, postage))
     });
-    let proof = match cached {
+    let (proof, postage_proof) = match cached {
         Some(p) => {
-            info!(round, "reusing the stored proof of this round");
+            info!(round, "reusing the stored proofs of this round");
             p
         }
         None => {
@@ -1216,34 +1229,53 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
                 expiries = job.input.postage.witness.expiries.len(),
                 "round computed, proving"
             );
-            let witness = swarm_vm::witness_json(&job.input, &native.pv, &ctx.caps)
+            // The game proof: small, the proof that a Bee node makes.
+            let witness = swarm_vm::game_witness_json(&job.input, &native.pv, &ctx.caps)
                 .map_err(|e| anyhow!("witness: {e:?}"))?;
-            let started = std::time::Instant::now();
-            let p = prover::prove(&ctx.snarkd, &witness).await?;
+            let g = prover::prove(&ctx.snarkd, &witness).await?;
             info!(
                 round,
-                prove_ms = p.prove_ms,
-                total = ?started.elapsed(),
-                constraints = p.constraints,
-                prover_peak_mb = p.peak_mb,
-                "proved"
+                prove_ms = g.prove_ms,
+                constraints = g.constraints,
+                "game proof"
             );
+            // The postage proof, unless settlePostage already ran for this round.
+            let done = Settlement::new(ctx.settlement, &ctx.provider)
+                .lastPostageRound()
+                .call()
+                .await?
+                == round;
+            let postage = if done {
+                vec![]
+            } else {
+                let witness =
+                    swarm_vm::postage_witness_json(&job.input.postage, &native.pv, &ctx.caps)
+                        .map_err(|e| anyhow!("witness: {e:?}"))?;
+                let p = prover::prove(&ctx.snarkd, &witness).await?;
+                info!(
+                    round,
+                    prove_ms = p.prove_ms,
+                    constraints = p.constraints,
+                    "postage proof"
+                );
+                p.proof
+            };
             let store = ctx.store.lock().await;
             store.write_file(
                 round,
                 "proof.json",
                 &serde_json::to_vec_pretty(&serde_json::json!({
                     "digest": digest,
-                    "proof": Bytes::from(p.proof.clone()),
-                    "proveMs": p.prove_ms,
-                    "constraints": p.constraints,
-                    "peakMB": p.peak_mb,
+                    "proof": Bytes::from(g.proof.clone()),
+                    "postageProof": Bytes::from(postage.clone()),
+                    "gameProveMs": g.prove_ms,
+                    "gameConstraints": g.constraints,
                 }))?,
             )?;
-            Bytes::from(p.proof)
+            (Bytes::from(g.proof), Bytes::from(postage))
         }
     };
-    let (out, ev) = settlement_args(&job, &native, proof);
+    let (out, ev) = settlement_args(&job, &native, proof, postage_proof);
     send_settlement(ctx, round, out, ev, &new_postage, event_index, event_hash).await
 }
 

@@ -63,7 +63,7 @@ Chunk addresses, postage stamps, batch ids and the reserve sample do not change.
 
 | Contract | Change |
 | --- | --- |
-| `Settlement` | The verifier is the Groth16 verifier of the circuit, with one public input: `sha256(packed public values)` with the top 3 bits cleared. The contract holds the size of the circuit (`capacity`, `forcedCapacity`). |
+| `Settlement` | Two Groth16 verifiers: one for the game circuit and one for the postage circuit (section 5). The contract holds the size of the game circuit (`capacity`, `forcedCapacity`). |
 | | `settleRound` takes the two block headers. It checks their hashes and reads `prevrandao`. |
 | | `settleRound` takes the claim witness and checks it on chain (`ClaimVerifier`). A round with reveals and without a valid witness is "unclaimed", as before. |
 | | The forced-entry hash chains (`forceCommit`, `forceReveal`) use MiMC. A forced entry costs about 16k to 60k gas more. The circuit then has room for many forced entries at a low cost. |
@@ -94,37 +94,59 @@ Chunk addresses, postage stamps, batch ids and the reserve sample do not change.
 | Claim batch check | Alive at the seed block, in the proof | Alive at the settlement, on chain (`isBatchAlive`) | The contract has the batch records |
 | Capacity | No limit | Fixed: P participants, F forced entries, E postage events, X expiries for each proof | A circuit has a fixed size |
 
-## 5. Circuit interface
+## 5. Two circuits and their public inputs
 
-The circuit has one public input: the sha256 hash of the packed public values, with the top 3 bits
-cleared (so it fits in the field). `Settlement` builds the same bytes and computes the same hash.
+There are two circuits, so that a node with little memory can prove the game:
 
-Packed public values (all integers big-endian):
+- The **game circuit** proves the commits, the reveals, the truth, the winner and the freezes. It has
+  no sha256. A node in the round can make this proof.
+- The **postage circuit** proves the replay of the postage event log, the pot and the batches that
+  expired. It is larger. Any node can make this proof, and it does not depend on who plays.
+
+`settleRound` takes both proofs. A node can also send the postage proof alone with `settlePostage`,
+for the round that can settle next. Then `settleRound` of that round needs only the game proof.
+
+The public inputs are field elements that `Settlement` builds from its own state and from the outcome
+(`_gameInputs`, `_settlePostage`). Small values are packed into one element.
+
+Game circuit, 12 + P + F inputs:
 
 ```
-chainId (32) | settlement (20) | round (8)
-roundAnchor (32) | selectionSeed (32)
-commitsRoot (32) | commitCount (4) | revealsRoot (32) | revealCount (4)
-forcedCommitsHash (32) | forcedCommitCount (4) | forcedRevealsHash (32) | forcedRevealCount (4)
-lastClaimRound (8) | lastWinnerDepth (1)
-penaltyDisagreement (1) | penaltyNonRevealed (1) | penaltyRandomFactor (1) | stakeAgeRounds (1)
-stakePrice (4)
-postage: prevStateHash (32) | prevEventIndex (8) | prevEventHash (32) | eventIndex (8) | eventHash (32) | cutBlock (8)
-outcome: hasReveals (1) | truthHash (32) | truthDepth (1) | winner (20) | redundancy (2)
-feeRecipient (20)
-postage outcome: newStateHash (32) | potAmount (32) | validChunkCount (32)
-(P + F) x [ stakeCommitment (32) | freeze (1) ]      (zero for unused entries)
+0   chainId << 160 | settlement
+1   round << 160 | lastClaimRound << 96 | commitCount << 80 | revealCount << 64 |
+    forcedCommitCount << 48 | forcedRevealCount << 32 | stakePrice
+2   lastWinnerDepth << 217 | penaltyDisagreement << 209 | penaltyNonRevealed << 201 |
+    penaltyRandomFactor << 193 | stakeAgeRounds << 185 | hasReveals << 184 | truthDepth << 176 |
+    redundancy << 160 | winner
+3   selectionSeed, low 253 bits
+4   (top 64 bits of roundAnchor) << 160 | feeRecipient
+5   commitsRoot      6  revealsRoot      7  forcedCommitsHash      8  forcedRevealsHash
+9   truthHash, high half      10  truthHash, low half
+11  freeze codes: 2 bits for each entry, entry k at bit 2k
+12+ the stake commitment of each entry: P anchored commits, then F forced commits (zero if unused)
 ```
 
-The first P entries are for the anchored commits. The next F entries are for the forced commits. The
-stake commitment includes the owner, so the list of owners is not in the hash: the contract computes
+Postage circuit, 9 inputs:
+
+```
+0  prevStateHash      1  newStateHash
+2  prevEventIndex << 128 | eventIndex << 64 | cutBlock
+3  prevEventHash, high half      4  prevEventHash, low half
+5  eventHash, high half          6  eventHash, low half
+7  potAmount      8  validChunkCount
+```
+
+A freeze code is 0 (no freeze), 1 (disagreement) or 2 (no reveal, or the stake changed in the round).
+The contract computes the duration from `truthDepth` and the penalty parameters.
+
+The stake commitment includes the owner, so the list of owners is not an input: the contract computes
 each commitment from the owner that the transaction gives.
 
-`freeze` is 0 (no freeze), 1 (disagreement) or 2 (no reveal, or the stake changed in the round). The
-contract computes the duration from `truthDepth` and the penalty parameters.
-
 The root of an empty list is the root of a tree of zero leaves (`Settlement.EMPTY_LIST_ROOT`). The
-contract stores zero for an empty list and puts this root in the hash.
+contract stores zero for an empty list and uses this root as the input.
+
+The random draws use the low 253 bits of the selection seed as one field element. The proximity check
+reads only the top 64 bits of the round anchor, because `depth - height` is at most 64.
 
 Stake commitment of a node, computed by `GameKeyRegistry`:
 
@@ -157,8 +179,9 @@ You need Go, Rust, Foundry (`anvil`, `cast`) and the Node.js packages of this re
    ceremony with more than one party.
 
    ```bash
-   ./snark/snarkd setup -p 16 -f 4 -e 8 -x 4 -out keys-16
-   cp keys-16/Verifier.sol ../src/settlement/groth16/Verifier.sol
+   ./snark/snarkd setup -kind game -p 16 -f 4 -out keys-game
+   ./snark/snarkd setup -kind postage -e 8 -x 4 -out keys-postage
+   cp keys-game/GameVerifier.sol keys-postage/PostageVerifier.sol ../src/settlement/groth16/
    ```
 
 3. Start a local chain, deploy the contracts and stake the nodes (repository root):
@@ -173,20 +196,25 @@ You need Go, Rust, Foundry (`anvil`, `cast`) and the Node.js packages of this re
 4. Start the proof daemon, the prover and the node simulator (`prover/`):
 
    ```bash
-   ./snark/snarkd serve -keys keys-16
+   ./snark/snarkd serve -game keys-game -postage keys-postage
    export RPC_URL=http://127.0.0.1:8545
    export SETTLEMENT_ADDRESS=$(jq -r .address ../deployments/zklocal/Settlement.json)
    PROVER_PRIVATE_KEY=<key of anvil account 0> ./target/release/swarm-prover serve
    BATCH_OWNER_KEY=<key of anvil account 0> ./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2 --rounds 6
    ```
 
-`snarkd` has more commands: `size` prints the number of constraints of a circuit size, and
-`check -witness w.json` solves the circuit for one witness without a proof (the fast test loop).
-`snark_synth` (in `prover/crates/vm`) writes the witness of a synthetic round.
+`snarkd` has more commands: `size -kind game -p 16 -f 4` prints the number of constraints of a
+circuit, and `check -witness w.json` solves a circuit for one witness without a proof (the fast test
+loop). `snark_synth` (in `prover/crates/vm`) writes the witnesses of a synthetic round: line 1 for the
+game circuit, line 2 for the postage circuit.
 
 ## 8. Results
 
 All numbers are from one machine: Apple M4 Max, 14 cores, 36 GB, on 2026-11-14.
+
+Sections 8.1 to 8.3 are the first version: one circuit for the game and the postage accounting, with a
+sha256 hash of all public values as the only public input. Section 8.4 is the current version with two
+circuits.
 
 ### 8.1 Circuit size
 
@@ -272,12 +300,69 @@ Other transactions:
 
 The escape hatches cost more gas than before, because the contract computes MiMC for them.
 
+### 8.4 Two circuits (current version)
+
+Circuit sizes:
+
+| Circuit | Constraints | Proving key | Local setup |
+| --- | --- | --- | --- |
+| Game, 8 commits and 2 forced entries | 189,897 | 66 MB | 4 s |
+| Game, 16 commits and 4 forced entries | 383,068 | 133 MB | 8 s |
+| Postage, 4 events and 2 expiries | 751,751 | — | — |
+| Postage, 8 events and 4 expiries | 1,346,512 | 599 MB | 54 s |
+
+Proof time and peak memory of one proof (the whole process, with the keys):
+
+| Circuit | Cores used | Proof time | Peak memory |
+| --- | --- | --- | --- |
+| Game, 8 commits | 4 | 0.8 s | 0.36 GB |
+| Game, 8 commits | 1 | 2.9 s | 0.38 GB |
+| Game, 16 commits | 14 | 0.6 s | 0.68 GB |
+| Game, 16 commits | 4 | 1.4 s | 0.68 GB |
+| Game, 16 commits | 2 | 2.7 s | 0.70 GB |
+| Game, 16 commits | 1 | 5.6 s | 0.73 GB |
+| Postage, 8 events | 14 | 2.9 s | 3.15 GB |
+| Postage, 8 events | 4 | 6.2 s | 3.15 GB |
+
+The game proof fits a small node: about 0.4 GB for 8 commits and about 0.7 GB for 16 commits, with one
+CPU core in a few seconds. The postage proof is the heavy part. It needs a node with about 4 GB.
+
+Local run (the same setup as section 8.3, game circuit 16/4, postage circuit 8/4, both proofs in one
+`settleRound`):
+
+| Round | What happened | Game proof | Postage proof | `settleRound` gas |
+| --- | --- | --- | --- | --- |
+| 9 | The draw selected the hash of node 4 as the truth; no valid claim witness ("unclaimed") | 0.57 s | 2.97 s | 2,038,595 |
+| 10 | Truth and winner; 2 freezes | 0.62 s | 2.80 s | 1,491,306 |
+| 11 | Same | 0.69 s | 2.76 s | 1,676,115 |
+| 12 | Same | 0.63 s | 2.68 s | 1,656,819 |
+| 13 | Same | 0.57 s | 2.73 s | 1,656,844 |
+| 14 | No commits | 0.59 s | 2.64 s | 1,053,105 |
+
+All 6 rounds settled.
+
+The gas is higher than in section 8.3, because the contract checks two proofs, and the game verifier
+has 32 public inputs. Each public input costs about 6,500 gas. Gas of round 12 (1,656,819):
+
+| Part | Gas | In section 8.3 |
+| --- | --- | --- |
+| Game verifier (32 inputs) | 511,671 | 309,629 (one verifier for all) |
+| Postage verifier (9 inputs) | 361,826 | — |
+| Stake commitments | 324,811 | 324,811 |
+| Claim checks | 89,854 | 89,757 |
+| Price change, payouts, freezes, other | about 369,000 | about 350,000 |
+
+Ways to decrease the gas: a game circuit with 8 commits has 22 inputs (about 65,000 gas less); a
+postage proof for several rounds together; one MiMC hash of the stake commitments in place of one
+input for each entry.
+
 ## 9. Open items
 
 - **Trusted setup.** Groth16 needs a setup ceremony for each circuit version. The keys in this
   prototype come from a local setup, which is not safe for a real network.
 - **Circuit review.** Nobody has audited the circuit. The only test is that the circuit and the Rust
   reference give the same hash of the public values, on synthetic rounds and on the local run.
+- **Gas.** `settleRound` with two proofs costs about 1.66M gas for a claimed round (section 8.4).
 - **Fixed size.** A round with more entries than the circuit size cannot settle. The same applies to a
   round with more than E postage events or X expiries since the last settlement. Possible solutions:
   several circuit sizes with one verifier each, and a proof that only moves the postage state forward.

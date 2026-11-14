@@ -87,6 +87,7 @@ contract ClaimVerifier {
     error RandomElementCheckFailed();
     error LastElementCheckFailed();
     error ReserveCheckFailed();
+    error BadHeader();
 
     function verify(bytes calldata witness, Context calldata ctx) external view {
         ClaimWitness memory w = abi.decode(witness, (ClaimWitness));
@@ -113,6 +114,24 @@ contract ClaimVerifier {
             if (uint256(tr1) >= uint256(trLast)) revert LastElementCheckFailed();
         }
         if (uint256(trLast) >= ctx.sampleMaxValue) revert ReserveCheckFailed();
+    }
+
+    /// @notice `prevrandao` (the field mixHash, the 14th) of an RLP block header.
+    function mixHash(bytes calldata h) external pure returns (bytes32 mix) {
+        uint256 at = 1 + (uint8(h[0]) - 0xf7);
+        for (uint256 i = 0; i < 13; ++i) {
+            uint8 b = uint8(h[at]);
+            if (b < 0x80) at += 1;
+            else if (b <= 0xb7) at += 1 + (b - 0x80);
+            else if (b <= 0xbf) {
+                uint256 n = b - 0xb7;
+                uint256 len;
+                for (uint256 j = 0; j < n; ++j) len = (len << 8) | uint8(h[at + 1 + j]);
+                at += 1 + n + len;
+            } else revert BadHeader();
+        }
+        if (uint8(h[at]) != 0xa0) revert BadHeader();
+        mix = bytes32(h[at + 1:at + 33]);
     }
 
     function inProximity(bytes32 a, bytes32 b, uint8 minimum) public pure returns (bool) {

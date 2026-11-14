@@ -215,9 +215,11 @@ mod tests {
         assert_eq!(pv.freeze.iter().filter(|f| **f == 1).count(), 2);
         assert_eq!(input.postage.witness.expiries.len(), 2);
         let caps = Caps { p: 32, f: 4, e: 8, x: 4 };
-        let w = game::witness_json(&input, &pv, &caps).unwrap();
+        let w = game::game_witness_json(&input, &pv, &caps).unwrap();
         assert_eq!(w["commits"].as_array().unwrap().len(), 32);
-        assert_eq!(pv.pack(&caps).len(), 577 + 33 * 36);
+        assert_eq!(w["public"].as_array().unwrap().len(), 12 + 36);
+        let w = game::postage_witness_json(&input.postage, &pv, &caps).unwrap();
+        assert_eq!(w["public"].as_array().unwrap().len(), 9);
     }
 }
 

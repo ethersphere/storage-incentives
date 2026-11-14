@@ -9,24 +9,27 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const waitConfirmations = networkConfig[network.name]?.blockConfirmations || 1;
 
   // ZK_VERIFIER=mock deploys Groth16MockVerifier, which accepts every proof (contract tests only).
-  // ZK_VERIFIER=<address> uses that verifier. Otherwise the script deploys src/settlement/groth16/Verifier.sol:
-  // the verifier that `snarkd setup` wrote for one circuit size and one setup. SNARK_P and SNARK_F must
-  // be the -p and -f of that setup.
+  // Otherwise the script deploys the two verifiers that `snarkd setup` wrote (src/settlement/groth16/):
+  // GameVerifier for one game circuit size (SNARK_P and SNARK_F must be its -p and -f) and
+  // PostageVerifier.
   const mode = process.env.ZK_VERIFIER || 'groth16';
-  let verifier: string;
-  if (ethers.utils.isAddress(mode)) {
-    verifier = mode;
-  } else if (mode === 'mock') {
-    verifier = (await deploy('Groth16MockVerifier', { from: deployer, log: true, waitConfirmations })).address;
+  let gameVerifier: string;
+  let postageVerifier: string;
+  if (mode === 'mock') {
+    gameVerifier = (await deploy('Groth16MockVerifier', { from: deployer, log: true, waitConfirmations })).address;
+    postageVerifier = gameVerifier;
   } else {
-    verifier = (
-      await deploy('Verifier', {
-        contract: 'src/settlement/groth16/Verifier.sol:Verifier',
-        from: deployer,
-        log: true,
-        waitConfirmations,
-      })
-    ).address;
+    const verifier = async (name: string) =>
+      (
+        await deploy(name, {
+          contract: `src/settlement/groth16/${name}.sol:${name}`,
+          from: deployer,
+          log: true,
+          waitConfirmations,
+        })
+      ).address;
+    gameVerifier = await verifier('GameVerifier');
+    postageVerifier = await verifier('PostageVerifier');
   }
   const capacity = Number(process.env.SNARK_P ?? 16);
   const forcedCapacity = Number(process.env.SNARK_F ?? 4);
@@ -36,7 +39,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const gameKeys = await deploy('GameKeyRegistry', { from: deployer, args: [staking], log: true, waitConfirmations });
   const claims = await deploy('ClaimVerifier', { from: deployer, log: true, waitConfirmations });
 
-  log(`Verifier ${verifier} (${mode}), circuit size ${capacity}/${forcedCapacity}`);
+  log(`Verifiers ${gameVerifier} (game), ${postageVerifier} (postage), game circuit size ${capacity}/${forcedCapacity}`);
   await deploy('Settlement', {
     from: deployer,
     args: [
@@ -45,7 +48,8 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       (await get('PriceOracle')).address,
       gameKeys.address,
       claims.address,
-      verifier,
+      gameVerifier,
+      postageVerifier,
       capacity,
       forcedCapacity,
       // VERIFIER_DELAY seconds between proposeVerifier and applyVerifier: 0 on test networks, for

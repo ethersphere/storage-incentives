@@ -16,7 +16,7 @@ pub mod snark;
 mod types;
 
 pub use snark::game::{
-    commit_message, run, stake_commitment, witness_json, Caps, PublicValues, RoundInput,
+    commit_message, game_witness_json, postage_witness_json, run, stake_commitment, Caps, PublicValues, RoundInput,
     SignedCommit, SnarkError, Stake,
 };
 pub use snark::postage;

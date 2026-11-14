@@ -104,6 +104,7 @@ alloy::sol! {
         }
         struct Evidence {
             bytes proof;
+            bytes postageProof;
             bytes anchorHeader;
             bytes seedHeader;
             bytes claimWitness;
@@ -111,6 +112,8 @@ alloy::sol! {
         }
         function settleRound(Outcome calldata out, Evidence calldata ev) external;
         function GameKeys() external view returns (address);
+        function lastPostageRound() external view returns (uint64);
+        error ProofInvalid();
         function commitMessage(uint64 _round, bytes32 _obfuscatedHash) external view returns (uint256);
         function capacity() external view returns (uint16);
         function forcedCapacity() external view returns (uint16);
