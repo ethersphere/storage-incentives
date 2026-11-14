@@ -200,8 +200,8 @@ The cost of each part (from `snarkd size` with different sizes):
 | Part | Constraints |
 | --- | --- |
 | Fixed part | about 540,000 |
-| One anchored commit with its reveal | about 45,000 |
-| One forced commit with its reveal | about 35,000 |
+| One anchored commit with its reveal | about 42,000 |
+| One forced commit with its reveal | about 30,000 |
 | One postage event | about 130,000 |
 | One batch expiry | about 38,000 |
 
@@ -260,7 +260,7 @@ Gas of one claimed round (round 12, 1,073,915 gas):
 
 A stake commitment costs about 22,000 gas from the cache and about 128,000 gas when the contract
 computes it again. A freeze changes the stake record, so the next settlement computes the commitment
-of that node again. Without freezes, a claimed round costs about 820,000 gas.
+of that node again. Without freezes, a claimed round costs about 850,000 gas.
 
 Other transactions:
 
