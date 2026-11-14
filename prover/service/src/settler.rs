@@ -1264,9 +1264,13 @@ async fn send_settlement(
         .get_transaction_count(ctx.from)
         .pending()
         .await?;
-    let receipt = s
-        .settleRound(out, ev)
-        .nonce(nonce)
+    // A margin on the gas estimate: the gas can be higher in the block that includes the transaction
+    // than in the estimate. The price change inside settleRound appends a postage log entry, and the
+    // first entry after a seed block also stores a cut (one more storage slot).
+    let call = s.settleRound(out, ev).nonce(nonce);
+    let gas = call.estimate_gas().await? * 13 / 10 + 100_000;
+    let receipt = call
+        .gas(gas)
         .send()
         .await?
         .with_timeout(Some(TX_TIMEOUT))

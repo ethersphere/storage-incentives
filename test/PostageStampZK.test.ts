@@ -23,11 +23,12 @@ async function mine(n: number) {
   if (n > 0) await network.provider.send('hardhat_mine', ['0x' + n.toString(16)]);
 }
 
+// PostageStampZK._log: sha256(prev, kind, batchId, depth, value (16 bytes), block).
 function logHash(prev: string, e: any): string {
-  return keccak256(
+  return ethers.utils.sha256(
     solidityPack(
-      ['bytes32', 'uint8', 'bytes32', 'address', 'uint8', 'uint8', 'uint256', 'uint256', 'uint64'],
-      [prev, e.kind, e.batchId, e.owner, e.depth, e.bucketDepth, e.value, e.outpayment, e.blockNumber]
+      ['bytes32', 'uint8', 'bytes32', 'uint8', 'uint128', 'uint64'],
+      [prev, e.kind, e.batchId, e.depth, e.value, e.blockNumber]
     )
   );
 }
