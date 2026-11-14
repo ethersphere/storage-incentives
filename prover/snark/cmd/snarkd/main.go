@@ -71,6 +71,9 @@ func main() {
 	case "vectors":
 		vectors()
 
+	case "mimc-sol":
+		mimcSol()
+
 	case "size":
 		compile(circuit.Caps{P: *p, F: *f, E: *e, X: *x})
 

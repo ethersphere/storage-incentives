@@ -131,6 +131,7 @@ contract PostageStampZK is AccessControl, Pausable {
     // ----------------------------- Errors ------------------------------
 
     error ZeroAddress();
+    error LogRange();
     error InvalidDepth();
     error BatchExists();
     error InsufficientBalance();
@@ -492,9 +493,11 @@ contract PostageStampZK is AccessControl, Pausable {
         }
         uint64 index = count + 1;
         uint256 outpayment = currentTotalOutPayment();
-        eventHash = keccak256(
-            abi.encodePacked(prev, kind, batchId, owner, depth, bucketDepth, value, outpayment, uint64(block.number))
-        );
+        // sha256 over the fields that the settlement circuit needs (90 bytes: two sha256 blocks in the
+        // circuit). The circuit derives the outpayment from the price entries. The values must fit the
+        // circuit: a balance below 2^128, a depth below 64, a batch id that is not zero.
+        if (value >> 128 != 0 || depth >= 64 || (kind != KIND_PRICE && batchId == bytes32(0))) revert LogRange();
+        eventHash = sha256(abi.encodePacked(prev, kind, batchId, depth, uint128(value), uint64(block.number)));
         eventCount = index;
         emit PostageLog(index, kind, batchId, owner, depth, bucketDepth, value, outpayment, uint64(block.number));
     }

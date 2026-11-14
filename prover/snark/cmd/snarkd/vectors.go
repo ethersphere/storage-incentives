@@ -18,3 +18,11 @@ func vectors() {
 	d := h.SumDigest()
 	fmt.Println(d.String())
 }
+
+// mimcSol prints the 110 round constants of MiMC as one hex string, for src/settlement/MiMC.sol.
+func mimcSol() {
+	for _, c := range mimc.GetConstants() {
+		fmt.Printf("%064x", &c)
+	}
+	fmt.Println()
+}
