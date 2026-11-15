@@ -567,14 +567,13 @@ for 32 and 8 (1.3 to 1.45 GB, 10.8 s on one core).
 
 - **Memory and proof time increase faster than the size.** The circuit compares each entry with each
   reveal, to find the first valid reveal of each node. So the number of constraints increases with
-  (P + F) x (P + F). This part costs about 130 constraints for each pair. When you double the slots,
-  the constraints become about 2 to 2.5 times more.
+  P x P. When you double the slots, the constraints become about 2 times more.
 - **A node with little memory can prove only small sizes.** A Bee node class machine (about 1 GB free)
-  can prove 16 / 4. The size 64 / 16 needs about 3 GB.
+  can prove 16 slots. 64 slots needs about 3 GB (estimate).
 - **Gas increases with the size of the verifier, not with the size of the round.** Each slot is one
-  public input of the verifier, and each public input costs about 6,500 gas. The verifier for 8 / 2
-  (22 inputs) costs about 447,000 gas. A verifier for 64 / 16 (92 inputs) costs about 900,000 gas
-  (estimate). The prover always uses the smallest size that holds the round, so a small round does
+  public input of the verifier, and each public input costs about 6,500 gas. The verifier for 8 slots
+  has 20 inputs, and for 16 slots 28 inputs. A verifier for 64 slots (76 inputs) costs about 800,000
+  gas (estimate). The prover always uses the smallest size that holds the round, so a small round does
   not pay for a large circuit.
 - **Each size needs its own trusted setup** and its own verifier contract.
 
