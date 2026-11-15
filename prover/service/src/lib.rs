@@ -10,7 +10,7 @@ pub mod swarm;
 
 /// Round layout of Settlement.sol, in blocks from the round start.
 pub const COMMIT_END: u64 = 16;
-/// anchorRound is accepted in [COMMIT_END, ANCHOR_END); forceCommit until REVEAL_START.
+/// anchorCommits is accepted in [COMMIT_END, ANCHOR_END); forceCommit until REVEAL_START.
 pub const ANCHOR_END: u64 = 20;
 pub const REVEAL_START: u64 = 24;
 /// Off-chain reveals are accepted until REVEAL_ANCHOR_START; anchorReveals in [REVEAL_ANCHOR_START,
@@ -82,8 +82,8 @@ pub fn seed_block(round: u64) -> u64 {
 alloy::sol! {
     #[sol(rpc, all_derives)]
     contract Settlement {
-        function anchorRound(uint64 _round, bytes32 _commitsHash, uint32 _commitCount, bytes32 _dataRef) external;
-        function anchorEmpty(uint64 _round) external;
+        function anchorCommits(uint64 _round, bytes32 _commitsHash, uint32 _commitCount, bytes32 _dataRef) external;
+        function anchorEmptyCommits(uint64 _round) external;
         function anchorReveals(uint64 _round, bytes32 _revealsHash, uint32 _revealCount, bytes32 _dataRef) external;
         function forceCommit(uint64 _round, bytes32 _obfuscatedHash) external;
         function forceReveal(uint64 _round, bytes32 _overlay, uint8 _depth, bytes32 _hash, bytes32 _nonce) external;
@@ -153,7 +153,7 @@ alloy::sol! {
         error InputMismatch(uint8 which);
         error ValidForcedClaim();
 
-        event RoundAnchored(uint64 indexed round, bytes32 anchorBlockHash, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
+        event CommitsAnchored(uint64 indexed round, bytes32 anchorBlockHash, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
         event RevealsAnchored(uint64 indexed round, bytes32 revealsHash, uint32 revealCount, bytes32 dataRef);
         event CommitForced(uint64 indexed round, address indexed owner, bytes32 obfuscatedHash);
         event RevealForced(uint64 indexed round, bytes32 indexed overlay, uint8 depth, bytes32 hash, bytes32 nonce);

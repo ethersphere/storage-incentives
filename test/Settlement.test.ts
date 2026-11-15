@@ -162,19 +162,19 @@ describe.skip('Settlement', function () {
 
   async function anchoredRound(commitsHash = ZERO, count = 0) {
     const round = await mineToOffset(COMMIT_END);
-    await settlement.anchorRound(round, commitsHash, count, ZERO);
+    await settlement.anchorCommits(round, commitsHash, count, ZERO);
     return round;
   }
 
   describe('phases', function () {
     it('only anchors in the anchor phase, once, with ANCHOR_ROLE', async function () {
       let round = await mineToOffset(COMMIT_END - 1);
-      await expect(settlement.anchorRound(round, ZERO, 0, ZERO)).to.be.revertedWith('NotAnchorPhase');
+      await expect(settlement.anchorCommits(round, ZERO, 0, ZERO)).to.be.revertedWith('NotAnchorPhase');
       round = await mineToOffset(COMMIT_END);
-      await expect(settlement.connect(nodes[0]).anchorRound(round, ZERO, 0, ZERO)).to.be.revertedWith('NotAdmin');
-      await expect(settlement.anchorRound(round + 1, ZERO, 0, ZERO)).to.be.revertedWith('WrongRound');
-      await settlement.anchorRound(round, ZERO, 0, ZERO);
-      await expect(settlement.anchorRound(round, ZERO, 0, ZERO)).to.be.revertedWith('AlreadyAnchored');
+      await expect(settlement.connect(nodes[0]).anchorCommits(round, ZERO, 0, ZERO)).to.be.revertedWith('NotAdmin');
+      await expect(settlement.anchorCommits(round + 1, ZERO, 0, ZERO)).to.be.revertedWith('WrongRound');
+      await settlement.anchorCommits(round, ZERO, 0, ZERO);
+      await expect(settlement.anchorCommits(round, ZERO, 0, ZERO)).to.be.revertedWith('AlreadyAnchored');
       const ri = await settlement.rounds(round);
       expect(ri.anchored).to.be.true;
       expect(ri.anchorBlockHash).to.eq(await settlement.anchorBlockHash(round));
@@ -249,10 +249,10 @@ describe.skip('Settlement', function () {
       const outsider = (await ethers.getSigners())[15];
       // No prover anchored: not before block 20, then anybody, once.
       const round = await mineToOffset(ANCHOR_END - 1);
-      await expect(settlement.connect(outsider).anchorEmpty(round)).to.be.revertedWith('NotAnchorPhase');
+      await expect(settlement.connect(outsider).anchorEmptyCommits(round)).to.be.revertedWith('NotAnchorPhase');
       await settlement.connect(nodes[0]).forceCommit(round, keccak256('0x01'));
-      await settlement.connect(outsider).anchorEmpty(round);
-      await expect(settlement.connect(outsider).anchorEmpty(round)).to.be.revertedWith('AlreadyAnchored');
+      await settlement.connect(outsider).anchorEmptyCommits(round);
+      await expect(settlement.connect(outsider).anchorEmptyCommits(round)).to.be.revertedWith('AlreadyAnchored');
       const ri = await settlement.rounds(round);
       expect(ri.anchored).to.be.true;
       expect(ri.commitCount).to.eq(0);
@@ -265,17 +265,17 @@ describe.skip('Settlement', function () {
       const owners = [await nodes[0].getAddress(), await nodes[1].getAddress()];
       await settlement.settleRound(encode(await publicValues(round, owners, {})), '0x');
       expect(await settlement.lastSettledRound()).to.eq(round);
-      // An empty list needs the zero hash in anchorRound too.
+      // An empty list needs the zero hash in anchorCommits too.
       const next = await mineToOffset(COMMIT_END, round + 1);
-      await expect(settlement.anchorRound(next, keccak256('0x'), 0, ZERO)).to.be.revertedWith('RevealsHashMismatch');
+      await expect(settlement.anchorCommits(next, keccak256('0x'), 0, ZERO)).to.be.revertedWith('RevealsHashMismatch');
     });
 
     it('anchors commits only before the commit check blocks', async function () {
       const round = await mineToOffset(ANCHOR_END);
-      await expect(settlement.anchorRound(round, ZERO, 0, ZERO)).to.be.revertedWith('NotAnchorPhase');
+      await expect(settlement.anchorCommits(round, ZERO, 0, ZERO)).to.be.revertedWith('NotAnchorPhase');
     });
 
-    it('anchors reveals once, in the reveal anchor phase, after anchorRound, with ANCHOR_ROLE', async function () {
+    it('anchors reveals once, in the reveal anchor phase, after anchorCommits, with ANCHOR_ROLE', async function () {
       const h = keccak256('0x07');
       let round = await mineToOffset(REVEAL_ANCHOR_START);
       await expect(settlement.anchorReveals(round, h, 2, ZERO)).to.be.revertedWith('NotAnchored');
@@ -414,7 +414,7 @@ describe.skip('Settlement', function () {
       const frozenUntil = (await staking.lastUpdatedBlockNumberOfAddress(owners[3])).toNumber();
 
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       await mineTo(Math.max(r2 * ROUND_LENGTH + SEED_OFFSET + 1, frozenUntil - 1));
       const pv2 = await publicValues(r2, owners, {});
       await mineTo(frozenUntil + 2);
@@ -513,7 +513,7 @@ describe.skip('Settlement', function () {
       expect(await settlement.accruedPot()).to.eq(700);
 
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
       const before = await token.balanceOf(owners[2]);
       await settlement.settleRound(
@@ -592,7 +592,7 @@ describe.skip('Settlement', function () {
         });
       const r1 = await anchoredRound();
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       // r1 settles late, in r2's blocks (as with the block-58 backstop and a slow proof).
       await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
       await expect(settlement.settleRound(encode(await truth(r1)), '0x')).to.not.emit(
@@ -621,10 +621,10 @@ describe.skip('Settlement', function () {
     it('settles anchored rounds in order, without skipping one that can still settle', async function () {
       const r1 = await anchoredRound();
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       // r3 is not anchored: it is skipped without a settlement.
       const r4 = await mineToOffset(COMMIT_END, r2 + 2);
-      await settlement.anchorRound(r4, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r4, ZERO, 0, ZERO);
       await mineTo(r4 * ROUND_LENGTH + SEED_OFFSET + 1);
       // Skipping r1 (and its winner) is not possible while r1 can settle.
       await expect(settlement.settleRound(encode(await publicValues(r2, [], {})), '0x')).to.be.revertedWith(
@@ -648,7 +648,7 @@ describe.skip('Settlement', function () {
       await settlement.settleRound(encode(pv), '0x');
       // Check the seed guard on the next round, before its seed block.
       const next = await mineToOffset(COMMIT_END, round + 1);
-      await settlement.anchorRound(next, ZERO, 0, ZERO);
+      await settlement.anchorCommits(next, ZERO, 0, ZERO);
       pv.inputs.round = next;
       pv.inputs.anchorBlockHash = (await settlement.rounds(next)).anchorBlockHash;
       await expect(settlement.settleRound(encode(pv), '0x')).to.be.revertedWith('SeedNotAvailable');
@@ -695,7 +695,7 @@ describe.skip('Settlement', function () {
       const r1 = await mineToOffset(10);
       await settlement.connect(nodes[0]).forceCommit(r1, keccak256('0x01'));
       await mineToOffset(COMMIT_END, r1);
-      await settlement.anchorRound(r1, keccak256('0x02'), 3, ZERO);
+      await settlement.anchorCommits(r1, keccak256('0x02'), 3, ZERO);
       await mineToOffset(REVEAL_ANCHOR_START, r1);
       await settlement.anchorReveals(r1, keccak256('0x03'), 2, ZERO);
       expect((await settlement.rounds(r1)).forcedCommitCount).to.eq(1);
@@ -722,16 +722,16 @@ describe.skip('Settlement', function () {
 
     it('a reused entry writes no new storage slots', async function () {
       const r1 = await mineToOffset(COMMIT_END);
-      const first = await gasOf(settlement.anchorRound(r1, keccak256('0x01'), 3, ZERO));
+      const first = await gasOf(settlement.anchorCommits(r1, keccak256('0x01'), 3, ZERO));
       await mineToOffset(REVEAL_ANCHOR_START, r1);
       const firstReveals = await gasOf(settlement.anchorReveals(r1, keccak256('0x02'), 2, ZERO));
 
       const r2 = await mineToOffset(COMMIT_END, r1 + RING);
-      const again = await gasOf(settlement.anchorRound(r2, keccak256('0x03'), 3, ZERO));
+      const again = await gasOf(settlement.anchorCommits(r2, keccak256('0x03'), 3, ZERO));
       await mineToOffset(REVEAL_ANCHOR_START, r2);
       const againReveals = await gasOf(settlement.anchorReveals(r2, keccak256('0x04'), 2, ZERO));
       console.log(
-        `      anchorRound ${first} -> ${again}, anchorReveals ${firstReveals} -> ${againReveals} gas (new entry -> reused entry)`
+        `      anchorCommits ${first} -> ${again}, anchorReveals ${firstReveals} -> ${againReveals} gas (new entry -> reused entry)`
       );
       // Each avoided new-slot write saves 15k here (20k vs 5k); on Sepolia about 105k.
       expect(first - again).to.be.greaterThan(25_000);
@@ -743,9 +743,9 @@ describe.skip('Settlement', function () {
       await expect(settlement.connect(nodes[0]).warmRing(0, RING)).to.be.revertedWith('NotAdmin');
       await settlement.warmRing(r % RING, 1);
       await mineToOffset(COMMIT_END, r);
-      const warm = await gasOf(settlement.anchorRound(r, keccak256('0x01'), 3, ZERO));
+      const warm = await gasOf(settlement.anchorCommits(r, keccak256('0x01'), 3, ZERO));
       const cold = await gasOf(
-        settlement.anchorRound(
+        settlement.anchorCommits(
           await (async () => {
             const n = await mineToOffset(COMMIT_END, r + 1);
             return n;
@@ -764,7 +764,7 @@ describe.skip('Settlement', function () {
     it('a round whose entry was reused cannot settle', async function () {
       const r1 = await anchoredRound();
       await mineToOffset(COMMIT_END, r1 + RING);
-      await settlement.anchorRound(r1 + RING, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r1 + RING, ZERO, 0, ZERO);
       await mineTo((r1 + RING) * ROUND_LENGTH + SEED_OFFSET + 1);
       const owners = await Promise.all(nodes.map((n) => n.getAddress()));
       const pv = await publicValues(r1 + RING, owners, {});
@@ -778,7 +778,7 @@ describe.skip('Settlement', function () {
       const pending = (await settlement.PENDING_ROUNDS()).toNumber();
       const r1 = await anchoredRound(); // never settled
       const r2 = await mineToOffset(COMMIT_END, r1 + 2);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       const limit = (r1 + 1 + pending) * ROUND_LENGTH;
       // The limit comes before the seed of r1 is gone, also without EIP-2935 (256 blocks).
       expect(limit).to.be.lessThan(r1 * ROUND_LENGTH + SEED_OFFSET + 256);
@@ -800,7 +800,7 @@ describe.skip('Settlement', function () {
       const pending = (await settlement.PENDING_ROUNDS()).toNumber();
       const r1 = await anchoredRound();
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       // One round after r1 ended (on Hardhat the anchor block hash of r1 runs out before the limit).
       await mineTo((r1 + 2) * ROUND_LENGTH);
       expect(r1 + 2).to.be.lessThan(r1 + 1 + pending);
@@ -838,7 +838,7 @@ describe.skip('Settlement', function () {
       await settlement.settleRound(encode(pv1), '0x');
 
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
       const pv2 = await publicValues(r2, [], {});
       // r1's settlement logged a price change after the entries.
@@ -853,7 +853,7 @@ describe.skip('Settlement', function () {
       await postage.grantRole(await postage.PRICE_ORACLE_ROLE(), me);
       const r1 = await anchoredRound();
       const r2 = await mineToOffset(COMMIT_END, r1 + 1);
-      await settlement.anchorRound(r2, ZERO, 0, ZERO);
+      await settlement.anchorCommits(r2, ZERO, 0, ZERO);
       await mineTo(r2 * ROUND_LENGTH + SEED_OFFSET + 1);
       const before = { index: await postage.eventCount(), hash: await postage.eventHash() };
       // The first entry after r2's seed block stores the cut of r1 and r2.

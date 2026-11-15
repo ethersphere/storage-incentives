@@ -21,7 +21,7 @@ chain stays the same when the rules become more complex, for example with SWIP-4
 | 3 | Settle an epoch of K rounds with one proof | Divides the proof check (about 270k gas) by K | Payouts and on-chain freezes arrive at the epoch end | 1, 4 |
 | 4 | `PriceOracle.adjustPrice` for a list of rounds | Needed for 3 | No | — |
 | 5 | Payouts that winners collect | Removes token transfers from `settleRound` | Winners send one transaction to collect | 3 |
-| 6 | **Done in part (round ring).** Cheaper anchors and forced messages | Writes to used slots only. Hardhat: `anchorRound` 75k → 41k, `anchorReveals` 57k → 40k; Sepolia: see ZK-SETTLEMENT.md | No | — |
+| 6 | **Done in part (round ring).** Cheaper anchors and forced messages | Writes to used slots only. Hardhat: `anchorCommits` 75k → 41k, `anchorReveals` 57k → 40k; Sepolia: see ZK-SETTLEMENT.md | No | — |
 | 7 | Faster proof generation | No gas effect. Less time to finality | No | — |
 | 8 | **Done.** Postage accounting (expiry and pot) in the proof; `PostageStampZK` without the batch tree | `createBatch` 443k → 177k gas (measured, 50 batches); no expiry sweeps for anybody | Batches expire by comparison; nothing is removed on chain | — |
 | 9 | **Done.** A Merkle postage state (indexed Merkle tree) | No gas effect. One settlement with the Gnosis state: 369M → 5.9M cycles; the number of batches no longer changes the cost | No | 8 |
@@ -39,7 +39,7 @@ of about 10 participants. Measure each step on Sepolia before you use the values
 | Configuration | Transactions | Gas for each round |
 | --- | --- | --- |
 | Master today (Redistribution) | About 3 for each participant, 30 for each round | Highest |
-| Branch now: `anchorRound` + `settleRound` with a Groth16 proof | 2 for each round | About 0.6M |
+| Branch now: `anchorCommits` + `settleRound` with a Groth16 proof | 2 for each round | About 0.6M |
 | After 1 (8 is done) | 2 for each round | About 0.45M |
 | After 3 (K = 8), 4 and 5 | 1 anchor for each round + 1 settle for each epoch | About 0.12M |
 | After 6 | Same | About 0.08M |
@@ -217,12 +217,12 @@ for the transfer.
 
 ## 8. A smaller anchor (item 6)
 
-`anchorRound` must stay one transaction for each round. It fixes the commit set before the seed of the
+`anchorCommits` must stay one transaction for each round. It fixes the commit set before the seed of the
 round exists. No other method gives this order without a transaction in the round.
 
 **Done (2026-11-04): the round ring.** Settlement keeps round state in `ring[round % 256]` and never sets
 a hash slot back to zero. Thus every write after the first 256 rounds (or after `warmRing`) is to a used
-slot. See ZK-SETTLEMENT.md, "Round storage: a ring of 256 entries". Measured on Hardhat: `anchorRound`
+slot. See ZK-SETTLEMENT.md, "Round storage: a ring of 256 entries". Measured on Hardhat: `anchorCommits`
 75,023 → 40,823 gas, `anchorReveals` 57,051 → 39,951 gas. On Sepolia, where a new slot costs about 110k
 gas, the saving is larger.
 
@@ -318,7 +318,7 @@ change.
 
 ## 12. Prover economics
 
-Who calls `anchorRound` and `settleRound`, who pays the gas, and how the fee pays it back: see
+Who calls `anchorCommits` and `settleRound`, who pays the gas, and how the fee pays it back: see
 [ZK-SETTLEMENT.md](./ZK-SETTLEMENT.md), section 4. The open points there (fee shape, races between
 provers, transactions without a fee) are also inputs for the epoch design (item 3).
 

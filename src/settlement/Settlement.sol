@@ -68,7 +68,7 @@ interface ISettlementOracle {
  * 12.8 minutes, the same time as the Gnosis round of Redistribution (152 blocks x 5 s).
  *
  *   [ 0, 16)  commit         nodes send signed commits to a prover; or call forceCommit
- *   [16, 20)  anchor         a prover calls anchorRound(commitsHash) once
+ *   [16, 20)  anchor         a prover calls anchorCommits(commitsHash) once
  *   [20, 24)  commit check   nodes check the anchored list; a node left out calls forceCommit
  *   [24, 40)  reveal         nodes send reveals to a prover; or call forceReveal
  *   [40, 44)  reveal anchor  the prover calls anchorReveals(revealsHash) once
@@ -243,7 +243,7 @@ contract Settlement is AccessControl, Pausable {
 
     // Game state carried between rounds. Same meaning as currentClaimRound / winner.depth in Redistribution.
     uint64 public lastSettledRound;
-    // The last round that was anchored (anchorRound or anchorEmpty).
+    // The last round that was anchored (anchorCommits or anchorEmptyCommits).
     uint64 public lastAnchoredRound;
     uint64 public lastClaimRound;
     uint8 public lastWinnerDepth;
@@ -285,7 +285,7 @@ contract Settlement is AccessControl, Pausable {
 
     // ----------------------------- Events ------------------------------
 
-    event RoundAnchored(
+    event CommitsAnchored(
         uint64 indexed round,
         bytes32 anchorBlockHash,
         bytes32 commitsHash,
@@ -401,7 +401,7 @@ contract Settlement is AccessControl, Pausable {
      * @param _dataRef Swarm reference of the round document with the full commit list (or its keccak256 if
      * the prover does not upload). Only emitted.
      */
-    function anchorRound(
+    function anchorCommits(
         uint64 _round,
         bytes32 _commitsHash,
         uint32 _commitCount,
@@ -426,7 +426,7 @@ contract Settlement is AccessControl, Pausable {
         // An empty list leaves the hash slot as it is (it does not count with a zero count).
         if (_commitCount != 0) ri.commitsHash = _commitsHash;
 
-        emit RoundAnchored(_round, anchorBlockHash(_round), _commitsHash, _commitCount, _dataRef);
+        emit CommitsAnchored(_round, anchorBlockHash(_round), _commitsHash, _commitCount, _dataRef);
     }
 
     /**
@@ -435,7 +435,7 @@ contract Settlement is AccessControl, Pausable {
      * any prover can settle the round from data that is all on chain. Without this, a prover that stops
      * makes every round unsettleable, and the forced entries count for nothing.
      */
-    function anchorEmpty(uint64 _round) external whenNotPaused {
+    function anchorEmptyCommits(uint64 _round) external whenNotPaused {
         if (_round != currentRound()) revert WrongRound();
         uint256 offset = block.number % ROUND_LENGTH;
         if (offset < ANCHOR_END || offset >= REVEAL_START) revert NotAnchorPhase();
@@ -448,13 +448,13 @@ contract Settlement is AccessControl, Pausable {
         // The pot at the seed block of the round before: each round gets its own cut.
         PostageContract.checkpoint();
 
-        emit RoundAnchored(_round, anchorBlockHash(_round), bytes32(0), 0, bytes32(0));
+        emit CommitsAnchored(_round, anchorBlockHash(_round), bytes32(0), 0, bytes32(0));
     }
 
     /**
      * @notice Fix the set of off-chain reveals for the current round, so a node can check that its reveal is
      * in it and call forceReveal before the reveal phase ends if not. Called once per round, after
-     * anchorRound, by a prover. A round settles without it; then only forced reveals count.
+     * anchorCommits, by a prover. A round settles without it; then only forced reveals count.
      * @param _revealsHash Merkle root of the reveals in the published order (leaves keccak256(overlay, depth,
      * hash, nonce), built as for `_commitsHash`). bytes32(0) for an empty list, and only for an empty list.
      * @param _revealCount Number of reveals in that list.

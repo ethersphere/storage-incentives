@@ -2,7 +2,7 @@
 //! restarted prover can still settle rounds it anchored.
 //!
 //! This directory is the stand-in for the data availability layer. In the proposal it is Swarm itself:
-//! the anchored list is uploaded and its reference passed as `dataRef` to `anchorRound`.
+//! the anchored list is uploaded and its reference passed as `dataRef` to `anchorCommits`.
 
 use alloy::primitives::Address;
 use anyhow::Result;

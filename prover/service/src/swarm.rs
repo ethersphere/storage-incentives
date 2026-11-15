@@ -1,6 +1,6 @@
 //! Swarm as the data layer of ZK settlement: the prover uploads each round's anchored commit and reveal
 //! lists through its own Bee node. The references go on chain as
-//! `dataRef` of `anchorRound` and `anchorReveals`. Everything uploaded can be checked against a hash on
+//! `dataRef` of `anchorCommits` and `anchorReveals`. Everything uploaded can be checked against a hash on
 //! chain (the list roots, `postageStateHash`), so a reader does not have to trust the prover.
 //!
 //! Uploads use one mutable postage batch of the prover's Bee node: when a bucket is full, the newest chunk
@@ -19,7 +19,7 @@ use swarm_vm::{Reveal, SignedCommit};
 /// Format version of the uploaded documents.
 pub const DATA_VERSION: u8 = 1;
 
-/// The `dataRef` document: what the `dataRef` of `anchorRound` (with the anchored commit list) or of
+/// The `dataRef` document: what the `dataRef` of `anchorCommits` (with the anchored commit list) or of
 /// `anchorReveals` (with the anchored reveal list) refers to.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,7 +28,7 @@ pub struct RoundData {
     pub chain_id: U256,
     pub settlement: Address,
     pub round: u64,
-    /// The anchored commit list (in `anchorRound`'s document), sorted by owner, with signatures.
+    /// The anchored commit list (in `anchorCommits`'s document), sorted by owner, with signatures.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commits: Option<Vec<SignedCommit>>,
     /// The anchored reveal list (in `anchorReveals`'s document), in the anchored order.

@@ -1,5 +1,9 @@
 # ZK settlement: implementation (option 4)
 
+> Names: on branch `feat/snark-settlement` the commit anchor is `anchorCommits` (event `CommitsAnchored`)
+> and the empty anchor is `anchorEmptyCommits`. On `feat/zk-settlement` they are `anchorRound`
+> (`RoundAnchored`) and `anchorEmpty`. This document uses the new names.
+
 Branch `feat/zk-settlement`. This is the working implementation of the proposal in
 [ZK-REDISTRIBUTION.md](./ZK-REDISTRIBUTION.md) ("the game off chain, settlement on chain"), option 4 of
 the Homecoming deck. It is built so it can be run end to end on Sepolia with simulated nodes.
@@ -28,7 +32,7 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
 
 **Latest state (2026-11-04):**
 
-- **Censorship.** The prover anchors both off-chain lists on chain: the commits (`anchorRound`, blocks
+- **Censorship.** The prover anchors both off-chain lists on chain: the commits (`anchorCommits`, blocks
   16-19) and the reveals (`anchorReveals`, blocks 40-43). After each anchor, a node has 4 blocks to see
   that it was left out and to use `forceCommit` or `forceReveal`. A test mode of the prover censors
   chosen nodes. With it, local runs and Sepolia runs with real proofs settled with all censored nodes
@@ -71,7 +75,7 @@ SP1's real Groth16 verifier, and on Sepolia with SP1's verifier gateway (section
   3. anybody could take the prover fee by front-running (now: `feeRecipient` in the proof);
   4. cheap top-ups could block every settlement (now: PostageStampZK keeps the cut of each round);
   5. junk could fill the escape-hatch caps (now: staked addresses only, once per round);
-  6. a stopped prover stopped the game (now: `anchorEmpty` fallback);
+  6. a stopped prover stopped the game (now: `anchorEmptyCommits` fallback);
   7. the prover API could be flooded, and node-sim waited forever (now: limits, cache, 5 s timeout);
   8. block builders could grind the randomness (now: `prevrandao` from the headers);
   9. verifier changes took effect at once (now: timelock).
@@ -146,7 +150,7 @@ docs/ZK-REDISTRIBUTION.md              the proposal (copied from docs/zk-redistr
                                   │                              └───────┬───────┴──────────────┘
   claim proofs ─POST /v1/claim───►│  (after the seed; the winner)
   (censored?) forceCommit / forceReveal / forceClaim ──────────►  Settlement
-                                  │                                ▲ anchorRound(commitsHash)   (1 tx/round)
+                                  │                                ▲ anchorCommits(commitsHash)   (1 tx/round)
                                   │                                │ anchorReveals(revealsHash) (1 tx/round)
                          swarm-prover (service)                    │ settleRound(pv, proof)     (1 tx/round)
                          ├─ store messages ───────────────────────┘
@@ -168,7 +172,7 @@ scaled from the Gnosis layout. Measurements in section 5 before 2026-11-03 used 
 | Blocks in round | Phase | What happens |
 | --- | --- | --- |
 | 0-15 | commit | Nodes sign commits and send them to a prover, or call `forceCommit` |
-| 16-19 | anchor | The prover calls `anchorRound(round, commitsHash, count, dataRef)` once. If it does not, anybody can call `anchorEmpty(round)` in blocks 20-23 |
+| 16-19 | anchor | The prover calls `anchorCommits(round, commitsHash, count, dataRef)` once. If it does not, anybody can call `anchorEmptyCommits(round)` in blocks 20-23 |
 | 20-23 | commit check | Each node compares the anchored list with `commitsHash` on chain. A node that is missing calls `forceCommit` (open until block 23) |
 | 24-39 | reveal | Nodes send reveals to the prover, or call `forceReveal` |
 | 40-43 | reveal anchor | The prover calls `anchorReveals(round, revealsHash, count, dataRef)` once. The prover accepts no more off-chain reveals |
@@ -227,9 +231,9 @@ of today's contract ([ZK-REDISTRIBUTION.md §6](./ZK-REDISTRIBUTION.md)).
 | Input | Checked against | Error code |
 | --- | --- | --- |
 | `chainId`, `settlement` | `block.chainid`, `address(this)` | `InputMismatch(0)` |
-| `roundAnchor` | stored at `anchorRound` | 1 |
+| `roundAnchor` | stored at `anchorCommits` | 1 |
 | `selectionSeed` | recomputed from the seed block hash | 2 |
-| `commitsHash`, `commitCount` | stored at `anchorRound` | 3 |
+| `commitsHash`, `commitCount` | stored at `anchorCommits` | 3 |
 | `revealsHash`, `revealCount` | stored at `anchorReveals`; zero if the prover did not call it | 13 |
 | `forcedCommitsHash` | hash chain built by `forceCommit` | 4 |
 | `forcedRevealsHash` | hash chain built by `forceReveal` | 5 |
@@ -451,7 +455,7 @@ not get in. Now a full cap needs 256 (or 16) staked addresses.
 
 Both off-chain lists are fixed on chain before the escape hatch closes:
 
-- `anchorRound` (blocks 16-19) fixes the commit list. `forceCommit` stays open for 4 more blocks.
+- `anchorCommits` (blocks 16-19) fixes the commit list. `forceCommit` stays open for 4 more blocks.
 - `anchorReveals` (blocks 40-43) fixes the reveal list. `forceReveal` stays open for 4 more blocks.
 
 The anchored hashes are Merkle roots of the lists. A node does not need a list: it asks the prover for a
@@ -465,7 +469,7 @@ node-sim's `--forced` flag skips the prover and uses the escape hatches directly
 proposal (§7.1c): scoping a forced entry so it re-opens the prover's obligation for several rounds,
 not one.
 
-**Ordering.** The commit set is fixed on chain (`anchorRound`) before any reveal is accepted and before
+**Ordering.** The commit set is fixed on chain (`anchorCommits`) before any reveal is accepted and before
 the seed block exists.
 
 **Reveal after the seed is known (fixed).** `anchorReveals` fixes the off-chain reveals at blocks 40-43,
@@ -497,10 +501,10 @@ already has a valid witness; at most 2 such requests run at the same time (other
 junk claims and 100 parallel `/outcome` requests in a claim phase; the rounds still anchored and settled.
 A node must never wait long for the prover: node-sim uses a 5 s timeout, and no answer means "force".
 
-**Prover liveness.** `settleRound` is permissionless. `anchorRound` is limited to `ANCHOR_ROLE` (the
+**Prover liveness.** `settleRound` is permissionless. `anchorCommits` is limited to `ANCHOR_ROLE` (the
 Foundation's prover first, as the proposal says). If nobody settles, the payments stay in PostageStampZK.
-The next settlement replays the log and credits them. If no prover calls `anchorRound` in blocks 16-19,
-anybody can call `anchorEmpty(round)` in blocks 20-23: the round is anchored with an empty commit list,
+The next settlement replays the log and credits them. If no prover calls `anchorCommits` in blocks 16-19,
+anybody can call `anchorEmptyCommits(round)` in blocks 20-23: the round is anchored with an empty commit list,
 the nodes force their commits and reveals, and any prover can settle the round from data that is all on
 chain (node-sim does this; the prover option `NO_ANCHOR`, test only, runs a prover that stopped
 anchoring). Before this fallback (found in review, 2026-11-04), a stopped prover made every round
@@ -524,7 +528,7 @@ round).
 
 | Data | Size | Kept for | Where |
 | --- | --- | --- | --- |
-| Anchored commit list, with signatures | about 117 bytes for each commit | Until the round settles (at most 128 rounds, about 27 h) | Swarm; its reference is `dataRef` of `anchorRound` |
+| Anchored commit list, with signatures | about 117 bytes for each commit | Until the round settles (at most 128 rounds, about 27 h) | Swarm; its reference is `dataRef` of `anchorCommits` |
 | Anchored reveal list | about 97 bytes for each reveal | The same | Swarm; `dataRef` of `anchorReveals` |
 | Postage state snapshot | about 3.4 MB for the Gnosis state (8,013 batches) | Until the next snapshot (one each day, `SNAPSHOT_EVERY`) | Swarm; its reference is in the next commit-list document |
 
@@ -558,7 +562,7 @@ All prover actions, keys, costs and wallet balances, and Succinct against an own
 | `createBatch`, `topUp`, `increaseDepth` | Uploader | Any time | Uploader (only its own batch) | — |
 | Commit, reveal, claim witness | Node, off chain | Each round | Nobody (HTTP) | — |
 | `forceCommit`, `forceReveal`, `forceClaim` | Node | Only if the prover censors it | Node | No |
-| `anchorRound` | Prover with `ANCHOR_ROLE` (the Foundation at the start) | Blocks 16-19 of each round | Prover | No |
+| `anchorCommits` | Prover with `ANCHOR_ROLE` (the Foundation at the start) | Blocks 16-19 of each round | Prover | No |
 | `anchorReveals` | The same prover | Blocks 40-43 of each round | Prover | No |
 | Proof | Prover (own GPU or a proving market) | After block 48 | Prover (off chain) | Through the fee |
 | `settleRound` | Anyone with a valid proof; in practice the prover service | From block 49 (unclaimed: from block 64) | Caller | `proverFeeBps` (1%) of the payout, only in rounds with a payout |
@@ -567,7 +571,7 @@ All prover actions, keys, costs and wallet balances, and Succinct against an own
 (`swarm-prover serve`, `settler.rs`) calls it when the round is ready. Another prover, or the winner,
 can call it with its own proof. The first valid call wins; a second one reverts with `AlreadySettled`.
 
-**At the start.** The Foundation runs the prover. It pays the gas of `anchorRound` (about 97k on anvil),
+**At the start.** The Foundation runs the prover. It pays the gas of `anchorCommits` (about 97k on anvil),
 `anchorReveals` (about 76k on anvil) and `settleRound` (about 0.5M with a real proof), and the cost of
 the proofs. It gets back 1% of the pot in rounds with a payout. The two anchors and rounds without a
 payout give nothing back.
@@ -583,7 +587,7 @@ settle. The fee is the reward.
 2. **Races.** If many provers race for the same round, all but one waste their proof. Possible fixes:
    give each round to one prover (in turn, or by the lowest offer) with a takeover after a deadline, or
    let one party buy proofs on a market (Succinct Prover Network, Boundless).
-3. **Transactions without a fee.** `anchorRound`, and settlements without a payout. A small fee from
+3. **Transactions without a fee.** `anchorCommits`, and settlements without a payout. A small fee from
    `accruedPot` can pay for them, or epochs can decrease their number.
 4. **Expiry sweeps before settlement.** With PostageStamp (master), a prover must send `expireLimited`
    transactions before `settleRound` when many batches expired, as Bee does before a claim. With
@@ -606,7 +610,7 @@ Rounds 4 to 8 were all anchored and settled by the prover with no manual steps:
 | 7 | 5 | 3 | 0 | 244,217 |
 | 8 | 5 | 3 | 1 (silent again, after its freeze expired) | 270,299 |
 
-`anchorRound` costs about 75k gas. The gas above uses `SP1MockVerifier`. A real Groth16 proof of round 4
+`anchorCommits` costs about 75k gas. The gas above uses `SP1MockVerifier`. A real Groth16 proof of round 4
 (below) verified against SP1's v6.1.0 Groth16 verifier deployed on anvil costs **269,345 gas** (estimate
 including the 21k transaction base), and the same proof with one byte of public values changed is
 rejected. So a real settlement for this round is about 0.5M gas for the whole network. Today's game
@@ -769,7 +773,7 @@ hatches (`--forced 2,3`).
 | 188414 | Node 0: `forceCommit`; node 1: `forceReveal`; nodes 2 and 3: `forceCommit` and `forceReveal`. All 6 confirmed. **4 participants, redundancy 4, 0 freezes** | 2,785,744 | 42 s | 872,999 |
 | 188415 | No commits (node-sim stopped); postage only | 285,203 | 26 s | 487,457 |
 
-Gas on Sepolia: `anchorRound` 355,077; `anchorReveals` 246,126; `forceCommit` and `forceReveal` about
+Gas on Sepolia: `anchorCommits` 355,077; `anchorReveals` 246,126; `forceCommit` and `forceReveal` about
 241k for the first one of a round and about 46k for each later one (the first writes new storage
 slots). These values are 3-4 times the anvil values.
 
@@ -800,7 +804,7 @@ commits and node 1's reveals, and nodes 2 and 3 used only the escape hatches.
 
 | Gas on Sepolia | Before (new storage each round) | With the ring (warmed entries) |
 | --- | --- | --- |
-| `anchorRound` | 355,077 | **49,256** |
+| `anchorCommits` | 355,077 | **49,256** |
 | `anchorReveals` | 246,126 | **48,647** |
 | First `forceCommit` of a round | 241,360 | **46,038** |
 | First `forceReveal` of a round | 243,306 | **47,923** |
@@ -826,7 +830,7 @@ hatches.
 | 188529 | The same attacks, the same defences. **4 participants, redundancy 4, 0 freezes, winner paid** | 733,603 | 42 s | 507,201 |
 | 188530 | No game (node-sim stopped); postage only | 199,594 | 39 s | 452,286 |
 
-Gas on Sepolia in this run: `anchorRound` 49,211; `anchorReveals` 48,648; `forceCommit` and
+Gas on Sepolia in this run: `anchorCommits` 49,211; `anchorReveals` 48,648; `forceCommit` and
 `forceReveal` about 73k-75k (about 171k the first time an address uses one: its once-per-round slot is
 new); `forceClaim` with a 4 KB witness 281,496.
 
@@ -835,7 +839,7 @@ with `NO_ANCHOR` (it never anchors, like a prover that stopped) and with an empt
 
 | Round | What happened | Cycles | Proof | `settleRound` gas |
 | --- | --- | --- | --- | --- |
-| 188614 | Nobody anchored in blocks 16-19. At block 21, node 0 called `anchorEmpty` (131,658 gas; the ring entry was not warmed). All 4 nodes forced their commits and reveals. The prover rebuilt the postage state from the chain (empty data folder), found the empty-anchored round and settled it from on-chain data: **4 participants, redundancy 4, 0 freezes, winner paid** | 613,962 | 91 s | 1,288,553 (see below) |
+| 188614 | Nobody anchored in blocks 16-19. At block 21, node 0 called `anchorEmptyCommits` (131,658 gas; the ring entry was not warmed). All 4 nodes forced their commits and reveals. The prover rebuilt the postage state from the chain (empty data folder), found the empty-anchored round and settled it from on-chain data: **4 participants, redundancy 4, 0 freezes, winner paid** | 613,962 | 91 s | 1,288,553 (see below) |
 
 **Why round 188614 cost 1,288,553 gas and round 188529 only 507,201** (analysed 2026-11-05). Both have
 the same calldata (2,180 bytes). The differences:
@@ -902,7 +906,7 @@ messages through a fan-out proxy. After 3 rounds, prover B is killed right after
 | --- | --- | --- |
 | Round that B anchored, then B stopped | Prover A: "this prover will not settle it". It cannot build the input, and the no-skip rule stops every later round. 2 of 8 rounds settled | Prover A takes B's anchored list (its own messages match the on-chain hash), anchors the reveals itself and settles. 8 of 8 rounds settled |
 | Nodes in that round | A has no anchored list, so it cannot give inclusion proofs. Every node forces its commit and reveal | No forced commits or reveals |
-| Lost `anchorRound` race | Logged as "anchored" (the receipt status was not checked) | Logged as a revert; the prover takes the winner's list |
+| Lost `anchorCommits` race | Logged as "anchored" (the receipt status was not checked) | Logged as a revert; the prover takes the winner's list |
 
 On Ethereum the stall before the fix lasts 8191 blocks (about 27 hours). When the prover's own messages
 do not match the anchored list, it downloads the `dataRef` document from Swarm (when the data layer is
@@ -957,7 +961,7 @@ proof did no harm. The first restart with an empty data folder (14:20 UTC) stopp
    each time, and each `settleRound` reverted. Then the PROVE balance of the requester key was too low
    for a proof (0.2465 PROVE), and no more proofs were made.
 3. In 5 rounds (188702, 188708, 188722, 188724, 188739) the prover did not answer in the commit phase.
-   node-sim retried the commit to the prover, then gave up: it did not call `anchorEmpty` and
+   node-sim retried the commit to the prover, then gave up: it did not call `anchorEmptyCommits` and
    `forceCommit`. These rounds have no anchor, so they are skipped. The rule "no answer means force"
    (section 3) holds for the commit checks and the claim, but not for a commit that the prover never
    took.
@@ -972,14 +976,14 @@ can only settle unclaimed; this is a node-sim setting (`--reserve`), not a fault
   anchored lists of the pending round, and waits. It also reuses a stored proof of the same public
   values. `swarm-prover balance` shows the PROVE balance of the requester key.
 - **node-sim forces a commit that the prover did not take.** It keeps the commit, and the commit check
-  calls `anchorEmpty` (if no prover anchored the round) and `forceCommit`. The reveal check already
+  calls `anchorEmptyCommits` (if no prover anchored the round) and `forceCommit`. The reveal check already
   forced every reveal that is not in the anchored list.
 
 Local test of both faults (anvil, mock proofs; `scratchpad` script `wipe/run.sh`): the prover was killed
 right after it anchored the reveals of round 10, and started again with an empty data folder. Round 10
 could not settle. The prover did not prove round 11 while round 10 blocked it, and it settled rounds 11-15
 as soon as the seed of round 10 was gone (256 blocks on anvil, which has no EIP-2935 contract). Then the
-prover was paused for 20 blocks from the start of round 15. The nodes called `anchorEmpty`,
+prover was paused for 20 blocks from the start of round 15. The nodes called `anchorEmptyCommits`,
 `forceCommit` and `forceReveal`, and round 15 settled. All rounds 8-20 except round 10 settled.
 
 **A lost round no longer stops settlement for 27 hours** (2026-11-08). Settlement's `PENDING_ROUNDS` (3):
@@ -1001,7 +1005,7 @@ and settled it. The cost is one proof, in a rare case.
 prover restart, an RPC outage, a late proof and an empty data folder. Then two faults stopped the run:
 
 1. **A round without a prover did not settle.** The prover took the 3 commits of round 188920 and then
-   was paused for 15 minutes, past the end of the round. The nodes called `anchorEmpty`, and forced
+   was paused for 15 minutes, past the end of the round. The nodes called `anchorEmptyCommits`, and forced
    their commits, reveals and claim. When the prover came back, it compared the empty list on chain with
    its own 3 commits. They did not match, so `adopt_anchor` did not take the round, and the round did
    not settle. Round 188921 then waited for `PENDING_ROUNDS`. Fix: `adopt_anchor` accepts the empty list
@@ -1172,7 +1176,7 @@ program cheaper: the game, the claim's BMT proofs and the tree.
 
 | Transaction | New ring entry | Reused (or warmed) entry |
 | --- | --- | --- |
-| `anchorRound` | 75,023 | 40,823 |
+| `anchorCommits` | 75,023 | 40,823 |
 | `anchorReveals` | 57,051 | 39,951 |
 
 On Sepolia a new-slot write costs about 110k gas instead of 20k, so the saving there is larger (see
@@ -1185,7 +1189,7 @@ in memory; the prover censored node 0's commits, node 2 used the escape hatches)
 | --- | --- | --- |
 | Rounds 9-10, uploads on, `SNAPSHOT_EVERY=1` | Each round: commit list and reveal list uploaded, their references in `dataRef`; a postage snapshot after each settlement. Nodes checked their entries with Merkle proofs; node 0 found its commit missing and forced it | Both rounds settled; 5 participants, 0 freezes |
 | Prover restarted with a postage file it could not read (older format), and an old snapshot | Replay from the chain: `PostageSettled` and `PostageLog` events | State rebuilt, equal to `postageStateHash`; round 11 settled |
-| Prover restarted with no postage files, Swarm on | The newest snapshot, found through the `dataRef` document of the last `anchorRound` | State rebuilt; round 12 settled |
+| Prover restarted with no postage files, Swarm on | The newest snapshot, found through the `dataRef` document of the last `anchorCommits` | State rebuilt; round 12 settled |
 | Prover restarted with no postage files, Swarm off | Replay from the chain | State rebuilt; round 13 settled |
 
 The Gnosis postage state as a snapshot: 3,397,514 bytes of JSON (47,365 leaf slots, of which 8,014 are
@@ -1330,7 +1334,7 @@ winners collect, a smaller anchor, a Merkle postage state) is in
     "settles a round whose cut is more than 8192 postage log entries old" and "rounds with no postage log
     entry between their seed blocks share a cut" in `test/Settlement.test.ts`. Not yet on Sepolia: it
     needs a new PostageStampZK.
-13. Two provers race for `anchorRound` and `settleRound`. The loser of `anchorRound` pays for a
+13. Two provers race for `anchorCommits` and `settleRound`. The loser of `anchorCommits` pays for a
     reverted transaction (30,067 gas on anvil). The loser of `settleRound` pays nothing on chain (the gas
     estimate fails), but it has already paid for its proof. A turn order (for example by round number)
     removes the waste.

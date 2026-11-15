@@ -86,7 +86,7 @@ fn frs(leaves: &[B256]) -> Vec<snark::Fr> {
     leaves.iter().map(|l| U256::from_be_bytes(l.0)).collect()
 }
 
-/// Root of a list as `Settlement.anchorRound` and `anchorReveals` take it: a MiMC Merkle tree of depth
+/// Root of a list as `Settlement.anchorCommits` and `anchorReveals` take it: a MiMC Merkle tree of depth
 /// 8 with the leaves in list order. Zero for an empty list (the contract stores no root for it).
 pub fn list_root(leaves: &[B256]) -> B256 {
     if leaves.is_empty() {

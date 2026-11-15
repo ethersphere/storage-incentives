@@ -26,7 +26,7 @@ use tracing::{error, info, warn};
 pub struct Config {
     #[arg(long, env = "RPC_URL")]
     pub rpc_url: String,
-    /// Key that holds ANCHOR_ROLE and pays gas for anchorRound and settleRound.
+    /// Key that holds ANCHOR_ROLE and pays gas for anchorCommits and settleRound.
     #[arg(long, env = "PROVER_PRIVATE_KEY")]
     pub private_key: String,
     #[arg(long, env = "SETTLEMENT_ADDRESS")]
@@ -213,7 +213,7 @@ async fn anchor_tick(ctx: &Ctx) -> Result<()> {
     }
 }
 
-/// A round this prover did not anchor, but somebody anchored with an empty list (`anchorEmpty`, the
+/// A round this prover did not anchor, but somebody anchored with an empty list (`anchorEmptyCommits`, the
 /// liveness fallback): settle it too. Its inputs are all on chain (forced entries).
 async fn note_empty_anchor(ctx: &Ctx, round: u64) -> Result<()> {
     if ctx.store.lock().await.get_mut(round).anchored.is_some() {
@@ -267,7 +267,7 @@ async fn adopt_anchor(ctx: &Ctx, round: u64) -> Result<bool> {
         )
     };
 
-    // An empty list (anchorEmpty, when no prover anchored the round) matches even when this prover holds
+    // An empty list (anchorEmptyCommits, when no prover anchored the round) matches even when this prover holds
     // commits that it never anchored: the round then settles from the forced entries.
     let commits = match anchored {
         Some(l) if commits_ok(&l) => Some(l),
@@ -305,14 +305,14 @@ async fn adopt_anchor(ctx: &Ctx, round: u64) -> Result<bool> {
     Ok(ok)
 }
 
-/// The `dataRef` document of the round's `RoundAnchored` (or `RevealsAnchored`) event, from Swarm.
+/// The `dataRef` document of the round's `CommitsAnchored` (or `RevealsAnchored`) event, from Swarm.
 async fn anchored_doc(ctx: &Ctx, round: u64, reveals: bool) -> Option<RoundData> {
     let bee = ctx.bee.as_ref()?;
     let start = round * ROUND_LENGTH;
     let sig = if reveals {
         Settlement::RevealsAnchored::SIGNATURE_HASH
     } else {
-        Settlement::RoundAnchored::SIGNATURE_HASH
+        Settlement::CommitsAnchored::SIGNATURE_HASH
     };
     let logs = logs_in(ctx, ctx.settlement, sig, start, start + ROUND_LENGTH - 1)
         .await
@@ -327,7 +327,7 @@ async fn anchored_doc(ctx: &Ctx, round: u64, reveals: bool) -> Option<RoundData>
             (e.round, e.dataRef)
         } else {
             let e = log
-                .log_decode::<Settlement::RoundAnchored>()
+                .log_decode::<Settlement::CommitsAnchored>()
                 .ok()?
                 .inner
                 .data;
@@ -345,7 +345,7 @@ async fn anchored_doc(ctx: &Ctx, round: u64, reveals: bool) -> Option<RoundData>
     None
 }
 
-/// Fix the round's off-chain commit list on chain (anchorRound).
+/// Fix the round's off-chain commit list on chain (anchorCommits).
 async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
     if ctx.store.lock().await.get_mut(round).anchored.is_some() {
         return Ok(());
@@ -406,7 +406,7 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
         .pending()
         .await?;
     let receipt = s
-        .anchorRound(round, hash, list.len() as u32, data_ref)
+        .anchorCommits(round, hash, list.len() as u32, data_ref)
         .nonce(nonce)
         .send()
         .await?
@@ -417,9 +417,9 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
         // Another prover anchored first (AlreadyAnchored), in the same block or the one before.
         let tx = receipt.transaction_hash;
         if adopt_anchor(ctx, round).await? {
-            warn!(round, %tx, "anchorRound reverted: another prover anchored the same list");
+            warn!(round, %tx, "anchorCommits reverted: another prover anchored the same list");
         } else {
-            warn!(round, %tx, "anchorRound reverted: another prover anchored a list this prover does not have");
+            warn!(round, %tx, "anchorCommits reverted: another prover anchored a list this prover does not have");
         }
         return Ok(());
     }

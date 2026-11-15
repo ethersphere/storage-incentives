@@ -541,7 +541,7 @@ async fn main() -> Result<()> {
                         );
                     }
                     // The prover did not take the commit: keep it, so the commit check forces it
-                    // (anchorEmpty first if no prover anchored the round). Before this, node-sim retried
+                    // (anchorEmptyCommits first if no prover anchored the round). Before this, node-sim retried
                     // until the commit phase ended and then left the round.
                     Err(e) if !args.forced.contains(&n.idx) => {
                         warn!(
@@ -816,14 +816,14 @@ async fn check_commits(
         Err(e) => return warn!(round, "rounds: {e:#}"),
     };
     if !ri.anchored {
-        // No prover anchored the round: anchor it with an empty list (anchorEmpty, open to anybody from
+        // No prover anchored the round: anchor it with an empty list (anchorEmptyCommits, open to anybody from
         // block 20), then every node forces its commit below.
         let n = &nodes[pending[0]];
         let Ok((tip, max_fee)) = urgent_fees(read, None).await else {
-            return warn!(round, "anchorEmpty: no fee estimate");
+            return warn!(round, "anchorEmptyCommits: no fee estimate");
         };
         match Settlement::new(args.settlement, &n.provider)
-            .anchorEmpty(round)
+            .anchorEmptyCommits(round)
             .gas(FORCE_GAS)
             .max_fee_per_gas(max_fee)
             .max_priority_fee_per_gas(tip)
@@ -834,11 +834,11 @@ async fn check_commits(
                 Ok(r) if r.status() => warn!(
                     round,
                     node = n.idx,
-                    "round not anchored by a prover: anchorEmpty"
+                    "round not anchored by a prover: anchorEmptyCommits"
                 ),
-                _ => return warn!(round, "anchorEmpty failed (another node may have done it)"),
+                _ => return warn!(round, "anchorEmptyCommits failed (another node may have done it)"),
             },
-            Err(e) => return warn!(round, "anchorEmpty: {e:#}"),
+            Err(e) => return warn!(round, "anchorEmptyCommits: {e:#}"),
         }
     }
     for idx in pending {

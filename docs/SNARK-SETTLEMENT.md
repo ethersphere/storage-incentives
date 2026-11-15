@@ -177,7 +177,7 @@ Properties:
 - A new balance must be in a later bucket than the current one. The minimum balance of a batch
   (`minimumValidityBlocks` x price) is more than one bucket, so this is always true.
 - The pot of a game round is fixed at the round's seed block (`potAt(round)`). The first accounting
-  after a seed block stores the pot at that block. `anchorRound` calls `checkpoint()`, so each round
+  after a seed block stores the pot at that block. `anchorCommits` calls `checkpoint()`, so each round
   with an anchor gets its own cut. Rounds without any transaction between their seed blocks share
   one cut.
 - A stamp is valid when `normalisedBalance > currentTotalOutPayment()`, as before. Nothing is removed.
@@ -404,7 +404,7 @@ starts the prover with other options and runs `node-sim` for some rounds. Postag
 | honest | 5 honest nodes | 5 of 5 | 8/2 | 5 truth-tellers in each round with commits; no freeze |
 | faults | Node 2 uses `forceCommit` and `forceReveal`, node 3 does not reveal, node 4 reveals another hash | 7 of 7 | 8/2 | 3 truth-tellers; nodes 3 and 4 get a freeze in each round |
 | censor | The prover leaves the commit of node 0 and the reveal of node 1 out of its lists | 6 of 6 | 8/2 | Both nodes force their entry; nobody gets a freeze |
-| noanchor | The prover does not anchor; 4 nodes | 2 of 2 | 16/4 | A node calls `anchorEmpty`, all 4 nodes force commit and reveal, the round pays out |
+| noanchor | The prover does not anchor; 4 nodes | 2 of 2 | 16/4 | A node calls `anchorEmptyCommits`, all 4 nodes force commit and reveal, the round pays out |
 | withhold | The prover throws the claim witness away | 5 of 5 | 8/2 | A node calls `forceClaim`; the round pays out |
 
 25 rounds settled, with no failed transaction and no error in the prover logs. In these runs a game
