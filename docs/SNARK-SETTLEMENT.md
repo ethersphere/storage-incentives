@@ -529,15 +529,114 @@ The numbers for this design are estimates from the measured parts: 964,000 gas f
 gas more for each node, 65,000 gas more for the larger game circuit, and about 130,000 gas for the two
 anchor transactions. In this design the nodes send no transaction in a normal round.
 
-## 9. Open items
+## 9. Circuit sizes: how to choose them and how to add one
 
-- **Trusted setup.** Groth16 needs a setup ceremony for each circuit version. The keys in this
+Read this section before you change a circuit size, add a size, or change the game rules. It also
+applies when you build the circuits for a real network.
+
+### 9.1 Words
+
+- **Circuit size.** A circuit has a fixed number of slots: P slots for anchored commits (and as many
+  for anchored reveals), and F slots for forced commits (and as many for forced reveals). In the
+  tables, "16 / 4" means P = 16 and F = 4. P must be a power of two.
+- **Proving key.** The file that a prover needs to make a proof for one circuit size. A node that
+  proves keeps it in memory.
+- **Verifier contract.** The Solidity contract (`GameVerifier<P>.sol`) that checks proofs for one
+  circuit size. `snarkd setup` writes it together with the proving key.
+- **Trusted setup.** The step that makes the proving key and the verifier contract. It uses a random
+  secret. Anyone who keeps this secret can make proofs for any result, so the secret must be
+  destroyed. On a real network, many independent parties make the setup together (a ceremony). The
+  result is safe if one of them destroyed their part.
+
+### 9.2 Measured sizes
+
+Apple M4 Max, 2026-11-16. Peak memory is the whole proof process, with the keys.
+
+| Circuit (P / F) | Constraints | Peak memory | 4 cores | 1 core | Proving key | Local setup |
+| --- | --- | --- | --- | --- | --- | --- |
+| 8 / 2 | 193,227 | 0.36 GB | 0.8 s | 2.9 s | 67 MB | 4 s |
+| 16 / 4 | 389,728 | 0.67 GB | 1.4 s | 5.3 s | 135 MB | 8 s |
+| 32 / 8 | 808,423 | 1.3 to 1.45 GB | 2.8 s | 10.8 s | 276 MB | 19 s |
+| 64 / 16 | 1,746,600 | 2.5 to 2.6 GB | 5.4 s | 20.8 s | 583 MB | 39 s |
+| 128 / 16 | 3,655,147 | not measured (about 5 to 6 GB) | — | — | — | — |
+
+### 9.3 What changes with the size
+
+- **Memory and proof time increase faster than the size.** The circuit compares each entry with each
+  reveal, to find the first valid reveal of each node. So the number of constraints increases with
+  (P + F) x (P + F). This part costs about 130 constraints for each pair. When you double the slots,
+  the constraints become about 2 to 2.5 times more.
+- **A node with little memory can prove only small sizes.** A Bee node class machine (about 1 GB free)
+  can prove 16 / 4. The size 64 / 16 needs about 3 GB.
+- **Gas increases with the size of the verifier, not with the size of the round.** Each slot is one
+  public input of the verifier, and each public input costs about 6,500 gas. The verifier for 8 / 2
+  (22 inputs) costs about 447,000 gas. A verifier for 64 / 16 (92 inputs) costs about 900,000 gas
+  (estimate). The prover always uses the smallest size that holds the round, so a small round does
+  not pay for a large circuit.
+- **Each size needs its own trusted setup** and its own verifier contract.
+
+### 9.4 Limits that do not depend on the circuit
+
+- `Settlement.gameCircuits` has 2 entries. To hold more sizes, make the array longer. This is a
+  contract change.
+- The anchored commit and reveal lists are MiMC trees of depth 8 (`ListDepth`, `LIST_DEPTH`). So P
+  cannot be more than 256. A larger P needs a deeper list tree in the circuit, the Rust reference and
+  the prover service at the same time.
+- `Settlement.MAX_FORCED_PER_ROUND` is 256. F cannot usefully be more than that.
+- A round with more entries than the largest size holds cannot settle. Its pot stays in the contract
+  for the next claimed round, and the next rounds settle after `PENDING_ROUNDS`.
+
+### 9.5 How to choose the sizes
+
+1. Find the largest number of nodes that play in one round on the real network, and how often it
+   happens. In the last 20 Gnosis rounds before 2026-11-15, about 3.8 nodes played in each round.
+2. Use a small size that holds almost every round, for example 8 / 2. Small rounds then cost the least
+   gas, and small nodes can prove them.
+3. Use a large size that holds the largest round you expect, with a margin, for example 64 / 16. It is
+   the safety net. At least one prover with enough memory must have its proving key.
+4. If large rounds are frequent, consider the change in section 9.7 first.
+
+### 9.6 How to add or change a size
+
+1. Make the keys and the verifier contract:
+
+   ```bash
+   cd prover
+   ./snark/snarkd setup -p 64 -f 16 -out keys-game64
+   ```
+
+   This is a local setup: use it only for tests. For a real network, make the keys in a ceremony.
+2. Copy `keys-game64/GameVerifier64.sol` to `src/settlement/groth16/` and deploy it.
+3. Register it in a slot of `Settlement.gameCircuits` (`proposeVerifier(slot, verifier, P, F)`). After
+   `verifierDelay` (for example 7 days on mainnet), anybody can call `applyVerifier`.
+4. Start the provers with the keys of every size: `snarkd serve -game keys-game8,keys-game64`. The
+   prover service uses only the sizes that both the contract and `snarkd` have, and picks the
+   smallest one that holds the round.
+
+### 9.7 Every rule change needs new circuits
+
+- A change to the game rules changes the circuit, the Rust reference (`prover/crates/vm/src/snark`)
+  and sometimes the contract. The circuit and the reference must give the same public inputs: test
+  them with `snark_synth` and `snarkd check`, with random rounds and with tampered witnesses (see the
+  scratch tests of 2026-11-16 for the method).
+- After a rule change, every size needs a new trusted setup and a new verifier contract, and the
+  change takes effect only after `verifierDelay`.
+- **Possible change, if large rounds are frequent:** the prover gives, for each node, the position of
+  its first valid reveal, and the circuit checks only that reveal and that no earlier reveal of the
+  node is valid. Then the constraints increase in proportion to the size, not faster. This change must
+  keep the rule "the first valid reveal counts". It is not built.
+
+## 10. Open items
+
+- **Trusted setup.** Groth16 needs a setup ceremony for each circuit version and each size (section
+  9.1). The keys in this
   prototype come from a local setup, which is not safe for a real network.
 - **Circuit review.** Nobody has audited the circuit. The only test is that the circuit and the Rust
   reference give the same hash of the public values, on synthetic rounds and on the local run.
 - **Gas.** `settleRound` costs about 1.0M gas for a claimed round (section 8.6). The verifier is about 450,000 gas of that.
 - **Fixed size.** A round with more entries than the largest game circuit holds cannot settle. The
-  contract holds two sizes now; a real network needs a size for the largest neighbourhood.
+  contract holds two sizes now; a real network needs a size for the largest neighbourhood. See
+  section 9.
 - **Bucket width.** `BUCKET` is a constant. If the price falls so far that the minimum balance of a
   batch is less than one bucket, a purchase with a small balance reverts. The width can become a
   parameter.
