@@ -48,6 +48,10 @@ pub struct Stake {
     pub height: u8,
     pub last_updated: u64,
     pub key: Point,
+    /// The record was last changed by a freeze of Settlement (`Settlement.frozenUntil` equals
+    /// `last_updated`). A frozen node's commit then only does not count, as on master.
+    #[serde(default)]
+    pub frozen: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -108,6 +112,8 @@ pub struct PublicValues {
     pub stake_commitments: Vec<Fr>,
     /// For each owner: 0 no freeze, 1 disagreement, 2 no reveal or the stake changed in the round.
     pub freeze: Vec<u8>,
+    /// For each owner: its stake record was last changed by a freeze of Settlement.
+    pub frozen: Vec<bool>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -290,7 +296,7 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, SnarkError> {
         }
         let s = &input.stakes[k];
         if !is_eligible(s, input.round, input.stake_age_rounds) {
-            if s.last_updated >= round_start {
+            if s.last_updated >= round_start && !s.frozen {
                 left.push(k);
             }
             continue;
@@ -333,6 +339,7 @@ pub fn run(input: &RoundInput) -> Result<PublicValues, SnarkError> {
         fee_recipient: input.fee_recipient,
         owners,
         stake_commitments: input.stakes.iter().map(stake_commitment).collect(),
+        frozen: input.stakes.iter().map(|s| s.frozen).collect(),
         freeze: vec![0u8; nc + nf],
     };
     if entries.iter().all(|e| e.revealed.is_none()) {
@@ -426,6 +433,9 @@ impl PublicValues {
         for k in 0..caps.p + caps.f {
             if let Some(i) = slot(k) {
                 freeze |= sh(u(self.freeze[i] as u64), 2 * k);
+                if self.frozen[i] {
+                    freeze |= sh(u(1), 128 + k);
+                }
             }
         }
         v.push(freeze);
@@ -516,6 +526,11 @@ pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> 
         .map(|i| stake((i < nc).then_some(i)))
         .chain((0..caps.f).map(|j| stake((j < nf).then_some(nc + j))))
         .collect();
+    let frozen_of = |k: Option<usize>| d(u(k.is_some_and(|k| input.stakes[k].frozen) as u64));
+    let frozen: Vec<Value> = (0..caps.p)
+        .map(|i| frozen_of((i < nc).then_some(i)))
+        .chain((0..caps.f).map(|j| frozen_of((j < nf).then_some(nc + j))))
+        .collect();
     let reveals: Vec<Value> = (0..caps.p).map(|i| reveal_json(input.reveals.get(i))).collect();
     let forced_reveals: Vec<Value> = (0..caps.f)
         .map(|i| reveal_json(input.forced_reveals.get(i)))
@@ -531,6 +546,7 @@ pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> 
         "commits": commits,
         "forcedCommits": forced,
         "stakes": stakes,
+        "frozen": frozen,
         "reveals": reveals,
         "forcedReveals": forced_reveals,
     }))

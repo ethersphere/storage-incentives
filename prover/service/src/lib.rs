@@ -109,6 +109,7 @@ alloy::sol! {
         }
         function settleRound(Outcome calldata out, Evidence calldata ev) external;
         function GameKeys() external view returns (address);
+        function frozenUntil(address) external view returns (uint256);
         error ProofInvalid();
         function gameCircuits(uint256) external view returns (address verifier, uint16 capacity, uint16 forcedCapacity, bytes4 selector);
 

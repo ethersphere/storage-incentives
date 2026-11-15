@@ -662,6 +662,9 @@ pub async fn build_input(
             height: r.height,
             last_updated: r.lastUpdatedBlockNumber.saturating_to::<u64>(),
             key: swarm_vm::Point { x: k.x, y: k.y },
+            // As Settlement._stakeInputs decides it.
+            frozen: !r.lastUpdatedBlockNumber.is_zero()
+                && s.frozenUntil(owner).call().await? == r.lastUpdatedBlockNumber,
         });
     }
 

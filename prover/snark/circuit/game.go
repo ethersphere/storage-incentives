@@ -42,7 +42,8 @@ const (
 //	4  (top 64 bits of the round anchor) << 160 | feeRecipient
 //	5  commitsRoot    6  revealsRoot    7  forcedCommitsHash    8  forcedRevealsHash
 //	9  truthHash, high half    10  truthHash, low half
-//	11 freeze codes: 2 bits for each entry, entry k at bit 2k
+//	11 freeze codes: 2 bits for each entry, entry k at bit 2k; and from bit 128, 1 bit for each entry:
+//	   its stake record was last changed by a freeze of Settlement (Settlement.frozenUntil)
 //	12.. the stake commitment of each entry: P anchored, then F forced (zero for unused entries)
 type GameCircuit struct {
 	Pub []V `gnark:",public"`
@@ -53,6 +54,7 @@ type GameCircuit struct {
 	Commits       []Commit
 	Forced        []FCommit
 	Stakes        []Stake // P for the anchored commits, then F for the forced commits
+	Frozen        []V     // for each entry: 1 if Settlement froze the stake record last (public, in Pub[11])
 	Reveals       []Reveal
 	ForcedReveals []Reveal
 }
@@ -64,6 +66,7 @@ func NewGame(c Caps) *GameCircuit {
 		Commits:       make([]Commit, c.P),
 		Forced:        make([]FCommit, c.F),
 		Stakes:        make([]Stake, c.P+c.F),
+		Frozen:        make([]V, c.P+c.F),
 		Reveals:       make([]Reveal, c.P),
 		ForcedReveals: make([]Reveal, c.F),
 	}
@@ -190,7 +193,12 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 		nz := c.not(api.IsZero(st.LastUpdated))
 		eligible := api.And(api.And(nz, startOK), c.less(st.LastUpdated, threshold, 72))
 		infos[k].eligible = eligible
-		infos[k].left = api.And(api.And(active[k], c.not(eligible)), c.not(c.less(st.LastUpdated, roundStart, 72)))
+		// A stake record changed after the round started: the node left the round and gets the no-reveal
+		// freeze, so that it cannot leave after it saw the seed. Not when the change was a freeze of
+		// Settlement: on master a frozen node cannot commit, so its commit only does not count.
+		api.AssertIsBoolean(ci.Frozen[k])
+		changed := api.And(c.not(c.less(st.LastUpdated, roundStart, 72)), c.not(ci.Frozen[k]))
+		infos[k].left = api.And(api.And(active[k], c.not(eligible)), changed)
 		infos[k].heightOK = api.And(c.not(heightBits[6]), c.not(heightBits[7]))
 
 		var prox, all V = 0, 1
@@ -336,7 +344,7 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 	eq(ci.Pub[10], tLo)
 	var freezePack V = 0
 	for k := 0; k < N; k++ {
-		freezePack = api.Add(freezePack, api.Mul(freeze[k], shl(uint(2*k))))
+		freezePack = api.Add(freezePack, api.Mul(freeze[k], shl(uint(2*k))), api.Mul(ci.Frozen[k], shl(uint(128+k))))
 		eq(ci.Pub[GamePublic+k], api.Mul(used[k], commitments[k]))
 	}
 	eq(ci.Pub[11], freezePack)

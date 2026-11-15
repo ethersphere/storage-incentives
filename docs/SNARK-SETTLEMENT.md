@@ -95,6 +95,7 @@ Chunk addresses, postage stamps, batch ids and the reserve sample do not change.
 | Postage accounting | In the proof: a batch tree, the event log replay, the pot | On chain: bucket sums in `PostageStampZK` (section 6) | A second proof costs more gas and memory than the accounting itself |
 | Pot timing | Exact at each cut | Each batch pays exactly its balance; the last part (less than one bucket) arrives late | The contract does not know the batches in expiry order |
 | Claim batch check | Alive at the seed block, in the proof | Alive at the settlement, on chain (`isBatchAlive`) | The contract has the batch records |
+| Stake record changed in the round | Not possible: `commit` reverts for a stake younger than 2 rounds | A commit counts only for an eligible stake. If the owner changed the stake record after the round started, the node gets the no-reveal freeze. If the change was a freeze of `Settlement`, the commit only does not count | A node must not leave the round after it saw the seed. A frozen node cannot commit on master, so it must not get a second freeze here |
 | Capacity | No limit | Fixed: P commits and F forced entries for each proof. No limit for postage changes | A circuit has a fixed size |
 
 ## 5. The game circuit and its public inputs
@@ -121,7 +122,8 @@ Game circuit, 12 + P + F inputs:
 4   (top 64 bits of roundAnchor) << 160 | feeRecipient
 5   commitsRoot      6  revealsRoot      7  forcedCommitsHash      8  forcedRevealsHash
 9   truthHash, high half      10  truthHash, low half
-11  freeze codes: 2 bits for each entry, entry k at bit 2k
+11  freeze codes: 2 bits for each entry, entry k at bit 2k; and from bit 128, one bit for each entry:
+    the stake record was last changed by a freeze of Settlement (`Settlement.frozenUntil`)
 12+ the stake commitment of each entry: P anchored commits, then F forced commits (zero if unused)
 ```
 

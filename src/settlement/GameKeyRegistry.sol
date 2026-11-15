@@ -77,10 +77,13 @@ contract GameKeyRegistry {
     }
 
     /// @notice The stake commitment of `owner` as of now. Stores it when the record changed.
-    function commitmentOf(address owner) external returns (uint256 commitment) {
-        (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last) = _fields(owner);
+    /// @notice The stake commitment of `owner` as of now, and the lastUpdatedBlockNumber of its stake
+    /// record. Stores the commitment when the record changed.
+    function commitmentOf(address owner) external returns (uint256 commitment, uint256 lastUpdated) {
+        (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last, uint256 raw) = _fields(owner);
+        lastUpdated = raw;
         Cached storage c = cache[owner];
-        if (c.tag == tag) return c.commitment;
+        if (c.tag == tag) return (c.commitment, raw);
         uint256 mid = c.mid;
         if (c.midTag != midTag) {
             mid = MiMC.hash(f);
@@ -94,21 +97,25 @@ contract GameKeyRegistry {
 
     /// @notice The same value, without the storage write.
     function peekCommitment(address owner) external view returns (uint256) {
-        (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last) = _fields(owner);
+        (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last, ) = _fields(owner);
         Cached storage c = cache[owner];
         if (c.tag == tag) return c.commitment;
         return MiMC.compress(c.midTag == midTag ? c.mid : MiMC.hash(f), last);
     }
 
     /// @dev MiMC(owner, overlay high, overlay low, key.x, key.y, committed << 96 | potential,
-    /// height << 64 | lastUpdated): the first 6 elements in `f`, the last in `last`.
+    /// height << 64 | lastUpdated): the first 6 elements in `f`, the last in `last`. `raw` is the
+    /// lastUpdatedBlockNumber of the record. In the commitment it is capped at 2^64 - 1: a freeze at a
+    /// very large depth can move it beyond that, and the node is then not eligible either way.
     function _fields(
         address owner
-    ) internal view returns (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last) {
+    ) internal view returns (bytes32 midTag, bytes32 tag, uint256[] memory f, uint256 last, uint256 raw) {
         (bytes32 overlay, uint256 committed, uint256 potential, uint256 lastUpdated, uint8 height) = Stakes.stakes(
             owner
         );
-        if (committed >> 96 != 0 || potential >> 96 != 0 || lastUpdated >> 64 != 0) revert OutOfRange();
+        if (committed >> 96 != 0 || potential >> 96 != 0) revert OutOfRange();
+        raw = lastUpdated;
+        if (lastUpdated > type(uint64).max) lastUpdated = type(uint64).max;
         Key memory k = keys[owner];
         midTag = keccak256(abi.encode(overlay, committed, potential, k.x, k.y));
         last = (uint256(height) << 64) | lastUpdated;

@@ -47,6 +47,7 @@ pub fn synth(nodes: usize, forced: usize) -> (RoundInput, PublicValues) {
                     height: 0,
                     last_updated: 100,
                     key,
+                    frozen: false,
                 },
                 reveal,
             }
@@ -128,5 +129,24 @@ mod tests {
         assert_eq!(w["commits"].as_array().unwrap().len(), 32);
         assert_eq!(w["public"].as_array().unwrap().len(), 12 + 36);
     }
-}
 
+    /// A node whose stake record changed after the round started gets the no-reveal freeze, unless the
+    /// change was a freeze of Settlement: then its commit only does not count (on master a frozen node
+    /// cannot commit).
+    #[test]
+    fn frozen_node_gets_no_second_freeze() {
+        let (mut input, base) = synth(10, 0);
+        let k = 0;
+        input.stakes[k].last_updated = input.round * crate::ROUND_LENGTH + 30;
+        input.stakes[k].frozen = false;
+        let changed = game::run(&input).unwrap();
+        assert_eq!(changed.freeze[k], 2, "own stake change: no-reveal freeze");
+        input.stakes[k].frozen = true;
+        let frozen = game::run(&input).unwrap();
+        assert_eq!(frozen.freeze[k], 0, "frozen by Settlement: no new freeze");
+        assert!(frozen.frozen[k]);
+        // The node does not play: one truth-teller less than in the round where it played honestly.
+        let was_truth_teller = base.freeze[k] == 0;
+        assert_eq!(frozen.redundancy + was_truth_teller as u16, base.redundancy);
+    }
+}

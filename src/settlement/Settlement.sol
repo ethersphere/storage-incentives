@@ -6,7 +6,8 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import {ClaimVerifier, IClaimPostage} from "./ClaimVerifier.sol";
 
 interface IGameKeys {
-    function commitmentOf(address owner) external returns (uint256);
+    /// The stake commitment of `owner`, and the lastUpdatedBlockNumber of its stake record.
+    function commitmentOf(address owner) external returns (uint256 commitment, uint256 lastUpdated);
 
     /// MiMC (gnark-crypto, BN254): the compression function and the hash of a list of field elements.
     function compress(uint256 left, uint256 right) external pure returns (uint256);
@@ -263,6 +264,11 @@ contract Settlement is AccessControl, Pausable {
     // pays the pot at its seed block minus this amount. The pot of a round without a payout stays for
     // the next winner.
     uint256 public potPaid;
+
+    // The lastUpdatedBlockNumber that the last freeze of this contract gave each node. A stake record with
+    // this value was changed by a freeze, not by its owner. On master a frozen node cannot commit; here
+    // its commit is dropped without a new freeze (see `_stakeInputs`).
+    mapping(address => uint256) public frozenUntil;
 
     // Share of the pot paid to whoever submits a valid settlement, in basis points.
     uint16 public proverFeeBps = 100;
@@ -639,8 +645,11 @@ contract Settlement is AccessControl, Pausable {
         uint256 unit = ROUND_LENGTH * (uint256(1) << out.truthDepth);
         for (uint256 i = 0; i < out.owners.length; ) {
             uint8 f = uint8(out.freeze[i]);
-            if (f == 1) Stakes.freezeDeposit(out.owners[i], penaltyMultiplierDisagreement * unit);
-            else if (f == 2) Stakes.freezeDeposit(out.owners[i], penaltyMultiplierNonRevealed * unit);
+            if (f != 0) {
+                uint256 time = (f == 1 ? penaltyMultiplierDisagreement : penaltyMultiplierNonRevealed) * unit;
+                Stakes.freezeDeposit(out.owners[i], time);
+                frozenUntil[out.owners[i]] = block.number + time;
+            }
             unchecked {
                 ++i;
             }
@@ -925,7 +934,9 @@ contract Settlement is AccessControl, Pausable {
             OracleContract.currentPrice();
     }
 
-    /// @dev Writes the stake commitment of each entry into `input` and returns the packed freeze codes.
+    /// @dev Writes the stake commitment of each entry into `input` and returns the packed freeze codes
+    /// (2 bits for each entry from bit 0) and the "frozen by Settlement" flags (1 bit for each entry from
+    /// bit 128).
     function _stakeInputs(
         uint256[] memory input,
         Outcome calldata out,
@@ -939,8 +950,11 @@ contract Settlement is AccessControl, Pausable {
         }
         for (uint256 k = 0; k < nc + nf; ) {
             uint256 slot = k < nc ? k : cap + (k - nc);
-            input[12 + slot] = GameKeys.commitmentOf(out.owners[k]);
+            (uint256 commitment, uint256 lastUpdated) = GameKeys.commitmentOf(out.owners[k]);
+            input[12 + slot] = commitment;
             freeze |= uint256(uint8(out.freeze[k])) << (2 * slot);
+            // Bit 128 + slot: the stake record was last changed by a freeze of this contract.
+            if (lastUpdated != 0 && lastUpdated == frozenUntil[out.owners[k]]) freeze |= uint256(1) << (128 + slot);
             unchecked {
                 ++k;
             }

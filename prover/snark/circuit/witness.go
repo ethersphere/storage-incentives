@@ -21,6 +21,7 @@ type WitnessJSON struct {
 	Commits       [][]string `json:"commits"`
 	ForcedCommits [][]string `json:"forcedCommits"`
 	Stakes        [][]string `json:"stakes"`
+	Frozen        []string   `json:"frozen"`
 	Reveals       [][]string `json:"reveals"`
 	ForcedReveals [][]string `json:"forcedReveals"`
 }
@@ -45,7 +46,7 @@ func Assignment(data []byte) (*GameCircuit, Caps, error) {
 	}
 	caps := Caps{w.Caps.P, w.Caps.F}
 	if len(w.G) != gLen || len(w.Commits) != caps.P || len(w.ForcedCommits) != caps.F ||
-		len(w.Stakes) != caps.P+caps.F || len(w.Reveals) != caps.P || len(w.ForcedReveals) != caps.F ||
+		len(w.Stakes) != caps.P+caps.F || len(w.Frozen) != caps.P+caps.F || len(w.Reveals) != caps.P || len(w.ForcedReveals) != caps.F ||
 		len(w.Public) != GamePublic+caps.P+caps.F {
 		return nil, caps, fmt.Errorf("witness does not match its capacity")
 	}
@@ -65,6 +66,9 @@ func Assignment(data []byte) (*GameCircuit, Caps, error) {
 	}
 	for i, a := range w.Stakes {
 		c.Stakes[i] = Stake{num(a[0]), num(a[1]), num(a[2]), num(a[3]), num(a[4]), num(a[5]), num(a[6]), num(a[7])}
+	}
+	for i, a := range w.Frozen {
+		c.Frozen[i] = num(a)
 	}
 	for i, a := range w.Reveals {
 		c.Reveals[i] = reveal(a)
