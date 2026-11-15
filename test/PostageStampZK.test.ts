@@ -1,56 +1,19 @@
 import { expect } from './util/chai';
 import { ethers, network } from 'hardhat';
 import { BigNumber, Contract, Signer } from 'ethers';
-import fs from 'fs';
-import path from 'path';
 
-// PostageStampZK: PostageStamp without the batch tree. Expiry and the pot are computed in the settlement
-// proof from its event log (prover/crates/vm/src/postage.rs).
+// PostageStampZK: PostageStamp without the batch tree and without the expiry loop. The pot is computed
+// on chain from sums for each bucket of the balance scale (docs/SNARK-SETTLEMENT.md, section 6).
 //
-// The last test compares the accounting with master's PostageStamp. It runs random batch histories on both
-// contracts, in the same blocks, and with DUMP_POSTAGE_VECTORS=1 it writes the ZK log and master's pot at
-// each checkpoint to prover/crates/vm/tests/vectors/postage-*.json. prover/crates/vm/tests/postage_vectors.rs
-// replays the log and must reach the same pot and validChunkCount.
+// The last tests compare the pot with master's PostageStamp. They run random batch histories on both
+// contracts, in the same blocks. The pot of PostageStampZK is never more than master's pot, it is behind
+// by less than one bucket for each live chunk, and it is equal when all batches are expired.
 
 const { keccak256, solidityPack, defaultAbiCoder } = ethers.utils;
 const ZERO = ethers.constants.HashZero;
-const KIND_CREATE = 1;
-const KIND_TOPUP = 2;
-const KIND_DEPTH = 3;
-const KIND_PRICE = 4;
 
 async function mine(n: number) {
   if (n > 0) await network.provider.send('hardhat_mine', ['0x' + n.toString(16)]);
-}
-
-// PostageStampZK._log: MiMC(MiMC(prev, kind << 200 | depth << 192 | block << 128 | value), batchId).
-// GameKeyRegistry serves the same MiMC as the contract library.
-async function logHash(prev: string, e: any): Promise<string> {
-  const [deployer] = await ethers.getSigners();
-  const mimc = await (await ethers.getContractFactory('GameKeyRegistry')).deploy(deployer.address);
-  const B = ethers.BigNumber;
-  const packed = B.from(e.kind)
-    .shl(200)
-    .or(B.from(e.depth).shl(192))
-    .or(B.from(e.blockNumber).shl(128))
-    .or(B.from(e.value));
-  const h = await mimc.compress(await mimc.compress(prev, packed), e.batchId);
-  return ethers.utils.hexZeroPad(h.toHexString(), 32);
-}
-
-async function logs(stamp: Contract) {
-  const evs = await stamp.queryFilter(stamp.filters.PostageLog());
-  return evs.map((e) => ({
-    index: e.args!.index.toNumber(),
-    kind: e.args!.kind,
-    batchId: e.args!.batchId,
-    owner: e.args!.owner,
-    depth: e.args!.depth,
-    bucketDepth: e.args!.bucketDepth,
-    value: e.args!.value.toString(),
-    outpayment: e.args!.outpayment.toString(),
-    blockNumber: e.args!.blockNumber.toNumber(),
-  }));
 }
 
 describe('PostageStampZK', function () {
@@ -71,55 +34,34 @@ describe('PostageStampZK', function () {
     return keccak256(defaultAbiCoder.encode(['address', 'bytes32'], [await deployer.getAddress(), nonce]));
   }
 
-  it('logs every change as a hash chain that matches the documented rule', async function () {
-    const perChunk = (await stamp.minimumInitialBalancePerChunk()).mul(2);
-    const id = await create(ZERO, perChunk);
+  it('fixes the pot of a game round at its seed block (the cut)', async function () {
+    await stamp.setPrice(24000);
+    const perChunk = (await stamp.minimumInitialBalancePerChunk()).mul(4);
+    const id = await create(ZERO, perChunk, 18);
+    const created = (await stamp.batches(id)).normalisedBalance.sub(perChunk); // outpayment at the purchase
+    const size = BigNumber.from(1).shl(18);
+
+    // Go past the seed block of the next round (round * 64 + 48) and account in the round after it.
+    const now = await ethers.provider.getBlockNumber();
+    const round = Math.floor(now / 64) + 1;
+    const seedBlock = round * 64 + 48;
+    await mine(seedBlock + 20 - now);
+    await stamp.checkpoint();
+
+    // The batch paid for each unit of outpayment from its purchase to the seed block.
+    const outpaymentAt = async (block: number) =>
+      (await stamp.currentTotalOutPayment()).sub(BigNumber.from(24000).mul((await ethers.provider.getBlockNumber()) - block));
+    const expected = size.mul((await outpaymentAt(seedBlock)).sub(created));
+    expect(await stamp.callStatic.potAt(round)).to.eq(expected);
+
+    // Later transactions and later rounds do not change it.
+    await mine(200);
     await stamp.topUp(id, perChunk);
-    await stamp.increaseDepth(id, 19);
-    await stamp.setPrice(200);
-
-    const entries = await logs(stamp);
-    expect(entries.map((e) => e.kind)).to.deep.eq([KIND_PRICE, KIND_CREATE, KIND_TOPUP, KIND_DEPTH, KIND_PRICE]);
-    let h = ZERO;
-    for (const e of entries) h = await logHash(h, e);
-    expect(await stamp.eventHash()).to.eq(h);
-    expect(await stamp.eventCount()).to.eq(5);
-    // The batch fields are the stored batch.
-    const b = await stamp.batches(id);
-    expect(entries[3].value).to.eq(b.normalisedBalance.toString());
-    expect(entries[3].depth).to.eq(19);
-  });
-
-  it('keeps the log index and hash at the seed block of each game round (the cut)', async function () {
-    const ROUND = 64;
-    const SEED = 48;
-    const mineTo = async (b: number) => {
-      const now = await ethers.provider.getBlockNumber();
-      if (b > now) await network.provider.send('hardhat_mine', ['0x' + (b - now).toString(16)]);
-    };
-    // Entries before and after the seed block of round r.
-    const r = Math.floor((await ethers.provider.getBlockNumber()) / ROUND) + 2;
-    await mineTo(r * ROUND + SEED - 2);
-    await stamp.setPrice(101); // in block SEED - 1: before the cut
-    await stamp.setPrice(102); // in the seed block itself: still before the cut
-    const atCut = { index: await stamp.eventCount(), hash: await stamp.eventHash() };
-    // No entry after the seed block yet: the cut is the whole log.
-    expect((await stamp.cutOf(r)).index).to.eq(atCut.index);
-    await stamp.setPrice(103); // after the seed block: stores the cut
-    await stamp.setPrice(104);
-    const c = await stamp.cutOf(r);
-    expect(c.index).to.eq(atCut.index);
-    expect(c.hash).to.eq(atCut.hash);
-    expect(await stamp.eventCount()).to.eq(atCut.index.add(2));
-
-    // A cut is kept for CUT_RING rounds that store one; then the round can no longer settle anyway.
-    expect(await stamp.CUT_RING()).to.eq(256);
-    for (let i = 1; i <= 256; i++) {
-      await mineTo((r + i) * ROUND + SEED);
-      await stamp.setPrice(100 + (i % 2));
-    }
-    await expect(stamp.cutOf(r)).to.be.revertedWith('CutNotFound()');
-    expect((await stamp.cutOf(r + 1)).index).to.be.gt(atCut.index);
+    expect(await stamp.callStatic.potAt(round)).to.eq(expected);
+    expect((await stamp.callStatic.potAt(round + 2)).gt(expected)).to.eq(true);
+    // The round whose seed block is not over has no cut yet.
+    const current = Math.floor((await ethers.provider.getBlockNumber()) / 64);
+    await expect(stamp.callStatic.potAt(current + 1)).to.be.revertedWith('CutNotFound()');
   });
 
   it('keeps the events Bee follows', async function () {
@@ -135,10 +77,11 @@ describe('PostageStampZK', function () {
   });
 
   it('expires by comparison, without removing anything', async function () {
-    await stamp.setMinimumValidityBlocks(1);
-    const id = await create(ZERO, 1000); // price 100: 10 blocks
+    // A balance must be in a later bucket than the current one: 3 buckets here (price 100).
+    const balance = (await stamp.BUCKET()).mul(3);
+    const id = await create(ZERO, balance);
     expect(await stamp.isBatchAlive(id)).to.be.true;
-    await mine(20);
+    await mine(balance.div(100).toNumber() + 10);
     expect(await stamp.isBatchAlive(id)).to.be.false;
     expect(await stamp.remainingBalance(id)).to.eq(0);
     expect((await stamp.batches(id)).owner).to.eq(await deployer.getAddress());
@@ -181,7 +124,7 @@ describe('PostageStampZK', function () {
     }));
     list.push({ ...list[0] }); // a copy that exists already fails alone
     await expect(stamp.connect(other).copyBatchBulk(list)).to.be.revertedWith('AdministratorOnly()');
-    const before = (await stamp.eventCount()).toNumber();
+    const before = await stamp.liveSize();
     const rc = await (await stamp.copyBatchBulk(list)).wait();
     const failed = rc.logs.filter(
       (l: { topics: string[] }) => l.topics[0] === stamp.interface.getEventTopic('CopyBatchFailed')
@@ -192,7 +135,8 @@ describe('PostageStampZK', function () {
       expect(b.owner).to.eq(owner);
       expect(b.immutableFlag).to.eq(i === 1);
     }
-    expect((await stamp.eventCount()).toNumber()).to.eq(before + 3);
+    // Each copy is in the pot accounting.
+    expect(await stamp.liveSize()).to.eq(before.add(BigNumber.from(1).shl(20).mul(3)));
     // A direct copyBatch call still needs the admin.
     await expect(stamp.connect(other).copyBatch(owner, balance, 20, 16, id(9), false)).to.be.revertedWith(
       'AdministratorOnly()'
@@ -235,9 +179,11 @@ describe('PostageStampZK', function () {
         const master = await (await ethers.getContractFactory('PostageStamp')).deploy(token.address, 16);
         const zk = await (await ethers.getContractFactory('PostageStampZK')).deploy(token.address, 16);
         const me = await deployer.getAddress();
+        const BUCKET = await zk.BUCKET();
         for (const c of [master, zk]) {
           await c.grantRole(await c.PRICE_ORACLE_ROLE(), me);
-          await c.setMinimumValidityBlocks(5);
+          // The minimum balance (100 blocks of the price) is more than one bucket.
+          await c.setMinimumValidityBlocks(100);
           await token.approve(c.address, ethers.constants.MaxUint256);
         }
 
@@ -249,65 +195,74 @@ describe('PostageStampZK', function () {
           await network.provider.send('evm_mine', []);
           await network.provider.send('evm_setAutomine', [true]);
         };
-        const opts = { gasLimit: 3_000_000 };
+        const opts = { gasLimit: 5_000_000 };
+        // Master: sweep everything, then its pot covers all payments up to this block.
+        const pots = async () => {
+          await network.provider.send('evm_setAutomine', [false]);
+          await master.expireLimited(ethers.constants.MaxUint256, opts);
+          await zk.checkpoint(opts);
+          await network.provider.send('evm_mine', []);
+          await network.provider.send('evm_setAutomine', [true]);
+          return { master: await master.pot(), zk: await zk.cumulativePot(), live: await master.validChunkCount() };
+        };
 
         const r = rng(seed * 7919);
         const ids: { id: string; depth: number }[] = [];
-        let price = 10 + r(50);
+        const newPrice = () => 22000 + r(20000);
+        let price = newPrice();
         await both((c) => c.setPrice(price, opts));
-        const checkpoints: { block: number; pot: string; validChunkCount: string }[] = [];
+        let checks = 0;
+        let maxLag = BigNumber.from(0);
 
-        for (let step = 0; step < 60; step++) {
+        for (let step = 0; step < 80; step++) {
           const op = r(10);
           if (op < 4 || ids.length === 0) {
             const nonce = keccak256(solidityPack(['uint256', 'uint256'], [seed, step]));
             const depth = 17 + r(3);
-            const perChunk = price * (5 + r(200));
+            const perChunk = price * (100 + r(1500));
             await both((c) => c.createBatch(me, perChunk, depth, 16, nonce, false, opts));
             ids.push({ id: keccak256(defaultAbiCoder.encode(['address', 'bytes32'], [me, nonce])), depth });
           } else if (op < 6) {
             const b = ids[r(ids.length)];
             if ((await zk.remainingBalance(b.id)).gt(0)) {
-              const amount = price * (5 + r(100));
+              const amount = price * (100 + r(1000));
               await both((c) => c.topUp(b.id, amount, opts));
             }
           } else if (op < 7) {
             const b = ids[r(ids.length)];
             const rem = await zk.remainingBalance(b.id);
-            if (b.depth < 22 && rem.gt(price * 5 * 2 + 1)) {
+            if (b.depth < 22 && rem.gt(price * 100 * 2 + 1)) {
               await both((c) => c.increaseDepth(b.id, b.depth + 1, opts));
               b.depth += 1;
             }
           } else if (op < 8) {
-            price = 10 + r(50);
+            price = newPrice();
             await both((c) => c.setPrice(price, opts));
           } else {
-            await mine(1 + r(150));
+            await mine(1 + r(400));
           }
 
-          if (step % 10 === 9) {
-            // Master: sweep everything, then its pot covers all payments up to this block.
-            const rc = await (await master.expireLimited(ethers.constants.MaxUint256, opts)).wait();
-            checkpoints.push({
-              block: rc.blockNumber,
-              pot: (await master.pot()).toString(),
-              validChunkCount: (await master.validChunkCount()).toString(),
-            });
+          if (step % 8 === 7) {
+            const p = await pots();
+            // Never more than master, and behind by less than one bucket for each chunk that is alive
+            // or expired in the current bucket.
+            expect(p.zk.lte(p.master), `step ${step}: zk ${p.zk} > master ${p.master}`).to.eq(true);
+            const lag = p.master.sub(p.zk);
+            const bound = BUCKET.mul(BigNumber.from(1).shl(23)); // more than all chunks of the test
+            expect(lag.lte(bound), `step ${step}: lag ${lag}`).to.eq(true);
+            if (lag.gt(maxLag)) maxLag = lag;
+            checks++;
           }
         }
+        expect(checks).to.eq(10);
 
-        const entries = await logs(zk);
-        expect(entries.length).to.be.greaterThan(10);
-        expect(checkpoints.length).to.eq(6);
-
-        if (process.env.DUMP_POSTAGE_VECTORS) {
-          const dir = path.join(__dirname, '..', 'prover', 'crates', 'vm', 'tests', 'vectors');
-          fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(
-            path.join(dir, `postage-${seed}.json`),
-            JSON.stringify({ source: 'test/PostageStampZK.test.ts', seed, events: entries, checkpoints }, null, 2)
-          );
-        }
+        // All batches expire. Then both contracts have the same pot, exactly.
+        await mine(4000);
+        const end = await pots();
+        expect(end.live).to.eq(0);
+        expect(end.zk).to.eq(end.master);
+        expect(await zk.liveSize()).to.eq(0);
+        expect(maxLag.gt(0)).to.eq(true);
       });
     }
   });

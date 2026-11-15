@@ -2,10 +2,9 @@
 //
 //	snarkd vectors                                   MiMC test vector for the Rust reference
 //	snarkd check   -witness w.json                   solve the circuit without a proof (debugging)
-//	snarkd setup   -kind game -p 16 -f 4 -out DIR    compile, trusted setup (local, for tests), verifier contract
-//	snarkd setup   -kind postage -e 8 -x 4 -out DIR
+//	snarkd setup   -p 16 -f 4 -out DIR               compile, trusted setup (local, for tests), verifier contract
 //	snarkd prove   -keys DIR -witness w.json         make and verify a Groth16 proof
-//	snarkd serve   -game DIR -postage DIR            keep the keys in memory; POST /prove with a witness
+//	snarkd serve   -game DIR1,DIR2                   keep the keys in memory; POST /prove with a witness
 package main
 
 import (
@@ -43,18 +42,12 @@ func die(err error) {
 	}
 }
 
-func compile(kind string, caps circuit.Caps) constraint.ConstraintSystem {
+func compile(caps circuit.Caps) constraint.ConstraintSystem {
 	t := time.Now()
-	empty, err := circuit.Empty(kind, caps)
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit.NewGame(caps))
 	die(err)
-	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, empty)
-	die(err)
-	size := fmt.Sprintf("P=%d F=%d", caps.P, caps.F)
-	if kind == "postage" {
-		size = fmt.Sprintf("E=%d X=%d", caps.E, caps.X)
-	}
-	fmt.Fprintf(os.Stderr, "%s circuit %s: %d constraints (compiled in %s)\n",
-		kind, size, ccs.GetNbConstraints(), time.Since(t).Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, "game circuit P=%d F=%d: %d constraints (compiled in %s)\n",
+		caps.P, caps.F, ccs.GetNbConstraints(), time.Since(t).Round(time.Millisecond))
 	return ccs
 }
 
@@ -72,13 +65,9 @@ func main() {
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	p := fs.Int("p", 32, "anchored commits and reveals")
 	f := fs.Int("f", 4, "forced commits and reveals")
-	e := fs.Int("e", 16, "postage events")
-	x := fs.Int("x", 8, "batch expiries")
 	out := fs.String("out", "keys", "output directory (setup) or file (prove)")
 	keys := fs.String("keys", "keys", "directory of setup (prove)")
-	kind := fs.String("kind", "game", "circuit: game or postage")
 	gameKeys := fs.String("game", "", "setup directories of the game circuits, comma separated (serve)")
-	postageKeys := fs.String("postage", "", "setup directory of the postage circuit (serve)")
 	wfile := fs.String("witness", "", "witness JSON of the Rust reference")
 	listen := fs.String("listen", "127.0.0.1:8099", "address of `snarkd serve`")
 	die(fs.Parse(os.Args[2:]))
@@ -91,20 +80,18 @@ func main() {
 		mimcSol()
 
 	case "size":
-		compile(*kind, circuit.Caps{P: *p, F: *f, E: *e, X: *x})
+		compile(circuit.Caps{P: *p, F: *f})
 
 	case "check":
 		data, err := os.ReadFile(*wfile)
 		die(err)
-		a, k, caps, err := circuit.Assignment(data)
+		a, caps, err := circuit.Assignment(data)
 		die(err)
-		empty, err := circuit.Empty(k, caps)
-		die(err)
-		die(test.IsSolved(empty, a, ecc.BN254.ScalarField()))
+		die(test.IsSolved(circuit.NewGame(caps), a, ecc.BN254.ScalarField()))
 		fmt.Println("ok: the witness satisfies the circuit")
 
 	case "setup":
-		ccs := compile(*kind, circuit.Caps{P: *p, F: *f, E: *e, X: *x})
+		ccs := compile(circuit.Caps{P: *p, F: *f})
 		t := time.Now()
 		pk, vk, err := groth16.Setup(ccs)
 		die(err)
@@ -127,13 +114,10 @@ func main() {
 		var sol bytes.Buffer
 		die(vk.ExportSolidity(&sol, solidity.WithPragmaVersion("^0.8.19")))
 		// One contract name for each circuit, so that both verifiers can be in one project.
-		name := "PostageVerifier"
-		if *kind == "game" {
-			name = fmt.Sprintf("GameVerifier%d", *p) // one contract for each size
-		}
+		name := fmt.Sprintf("GameVerifier%d", *p) // one contract for each size
 		src := strings.Replace(sol.String(), "contract Verifier {", "contract "+name+" {", 1)
 		die(os.WriteFile(filepath.Join(*out, name+".sol"), []byte(src), 0o644))
-		meta, _ := json.Marshal(map[string]any{"kind": *kind, "p": *p, "f": *f, "e": *e, "x": *x, "constraints": ccs.GetNbConstraints()})
+		meta, _ := json.Marshal(map[string]any{"p": *p, "f": *f, "constraints": ccs.GetNbConstraints()})
 		die(os.WriteFile(filepath.Join(*out, "caps.json"), meta, 0o644))
 
 	case "prove":
@@ -148,8 +132,8 @@ func main() {
 		fmt.Println(string(res))
 
 	case "serve":
-		// One prover for each game circuit size (-game DIR1,DIR2) and one for the postage circuit.
-		provers := map[string]*prover{"postage": loadProver(*postageKeys)}
+		// One prover for each game circuit size (-game DIR1,DIR2).
+		provers := map[string]*prover{}
 		var games []map[string]any
 		capsOf := func(dir string) map[string]any {
 			var m map[string]any
@@ -169,14 +153,10 @@ func main() {
 				return
 			}
 			var k struct {
-				Kind string `json:"kind"`
 				Caps struct{ P, F int }
 			}
 			_ = json.Unmarshal(data, &k)
-			key := k.Kind
-			if key == "game" {
-				key = fmt.Sprintf("game/%d/%d", k.Caps.P, k.Caps.F)
-			}
+			key := fmt.Sprintf("game/%d/%d", k.Caps.P, k.Caps.F)
 			pr, ok := provers[key]
 			if !ok {
 				http.Error(w, "no keys for circuit "+key, http.StatusBadRequest)
@@ -191,8 +171,7 @@ func main() {
 			w.Write(res)
 		})
 		http.HandleFunc("/caps", func(w http.ResponseWriter, r *http.Request) {
-			po := capsOf(*postageKeys)
-			out, _ := json.Marshal(map[string]any{"games": games, "e": po["e"], "x": po["x"]})
+			out, _ := json.Marshal(map[string]any{"games": games})
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(out)
 		})
@@ -242,7 +221,7 @@ func loadProver(dir string) *prover {
 func (p *prover) prove(data []byte) ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	a, _, _, err := circuit.Assignment(data)
+	a, _, err := circuit.Assignment(data)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +249,6 @@ func (p *prover) prove(data []byte) ([]byte, error) {
 	sp := proof.(interface{ MarshalSolidity() []byte }).MarshalSolidity()
 	return json.Marshal(map[string]any{
 		"proof":       "0x" + hex.EncodeToString(sp),
-		"kind":        wj.Kind,
 		"public":      wj.Public,
 		"loadMs":      p.load.Milliseconds(),
 		"proveMs":     took.Milliseconds(),

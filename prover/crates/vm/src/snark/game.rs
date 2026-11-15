@@ -3,7 +3,6 @@
 //! The rules are those of `crate::run`, with the differences of section 4 of the document. The claim
 //! witness is not here: `Settlement` checks it on chain.
 
-use super::postage;
 use super::{
     addr, base, compress, fr_bytes, halves, list_root, mimc, u, verify, Fr, Point, Sig, P,
 };
@@ -12,14 +11,11 @@ use alloy_primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// The size of the circuit: anchored commits and reveals (`p`), forced commits and reveals (`f`),
-/// postage events (`e`) and batch expiries (`x`) in one proof.
+/// The size of the game circuit: anchored commits and reveals (`p`), forced commits and reveals (`f`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Caps {
     pub p: usize,
     pub f: usize,
-    pub e: usize,
-    pub x: usize,
 }
 
 /// Bits of a random draw.
@@ -76,7 +72,6 @@ pub struct RoundInput {
     pub penalty_random_factor: u8,
     pub stake_age_rounds: u8,
     pub fee_recipient: Address,
-    pub postage: postage::Input,
 }
 
 /// What the proof commits to, with the inputs that `Settlement` compares with the chain.
@@ -102,21 +97,12 @@ pub struct PublicValues {
     pub penalty_random_factor: u8,
     pub stake_age_rounds: u8,
     pub stake_price: u32,
-    pub prev_state_hash: Fr,
-    pub prev_event_index: u64,
-    pub prev_event_hash: B256,
-    pub event_index: u64,
-    pub event_hash: B256,
-    pub cut_block: u64,
     pub has_reveals: bool,
     pub truth_hash: B256,
     pub truth_depth: u8,
     pub winner: Address,
     pub redundancy: u16,
     pub fee_recipient: Address,
-    pub new_state_hash: Fr,
-    pub pot_amount: U256,
-    pub valid_chunk_count: U256,
     /// Owners of the anchored commits, then of the forced commits.
     pub owners: Vec<Address>,
     pub stake_commitments: Vec<Fr>,
@@ -134,7 +120,6 @@ pub enum SnarkError {
     Range,
     /// A signature the circuit cannot take (see `super::verify`).
     BadSignature,
-    Postage(postage::PostageError),
 }
 
 pub fn reveal_hash(r: &Reveal) -> Fr {
@@ -241,8 +226,8 @@ struct Entry {
     revealed: Option<(u8, B256, U256)>,
 }
 
-/// Run one round. `postage_run` is the result of the postage settlement of `input.postage`.
-pub fn run(input: &RoundInput, pg: &postage::Run) -> Result<PublicValues, SnarkError> {
+/// Run one round.
+pub fn run(input: &RoundInput) -> Result<PublicValues, SnarkError> {
     let (nc, nf) = (input.commits.len(), input.forced_commits.len());
     for w in input.commits.windows(2) {
         if w[0].owner >= w[1].owner {
@@ -340,21 +325,12 @@ pub fn run(input: &RoundInput, pg: &postage::Run) -> Result<PublicValues, SnarkE
         penalty_random_factor: input.penalty_random_factor,
         stake_age_rounds: input.stake_age_rounds,
         stake_price: input.stake_price,
-        prev_state_hash: input.postage.header.hash(),
-        prev_event_index: input.postage.prev_event_index,
-        prev_event_hash: input.postage.prev_event_hash,
-        event_index: pg.event_index,
-        event_hash: pg.event_hash,
-        cut_block: input.postage.cut_block,
         has_reveals: false,
         truth_hash: B256::ZERO,
         truth_depth: 0,
         winner: Address::ZERO,
         redundancy: 0,
         fee_recipient: input.fee_recipient,
-        new_state_hash: pg.new_header.hash(),
-        pot_amount: pg.pot,
-        valid_chunk_count: pg.valid_chunk_count,
         owners,
         stake_commitments: input.stakes.iter().map(stake_commitment).collect(),
         freeze: vec![0u8; nc + nf],
@@ -458,19 +434,6 @@ impl PublicValues {
         }
         v
     }
-
-    /// The public inputs of the postage circuit (see `PostageCircuit`).
-    pub fn postage_inputs(&self) -> Vec<Fr> {
-        vec![
-            self.prev_state_hash,
-            self.new_state_hash,
-            (u(self.prev_event_index) << 128) | (u(self.event_index) << 64) | u(self.cut_block),
-            U256::from_be_bytes(self.prev_event_hash.0),
-            U256::from_be_bytes(self.event_hash.0),
-            self.pot_amount,
-            self.valid_chunk_count,
-        ]
-    }
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -479,13 +442,6 @@ impl PublicValues {
 
 fn d(x: Fr) -> Value {
     Value::String(x.to_string())
-}
-
-fn write_json(w: &postage::Write) -> Value {
-    let mut v: Vec<Value> = vec![d(u(w.index))];
-    v.extend(w.leaf.fields().iter().map(|x| d(*x)));
-    v.extend(w.siblings.iter().map(|x| d(*x)));
-    Value::Array(v)
 }
 
 fn reveal_json(r: Option<&Reveal>) -> Value {
@@ -567,7 +523,7 @@ pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> 
 
     Ok(json!({
         "kind": "game",
-        "caps": {"p": caps.p, "f": caps.f, "e": 0, "x": 0},
+        "caps": {"p": caps.p, "f": caps.f},
         "public": pv.game_inputs(caps).iter().map(|x| d(*x)).collect::<Vec<_>>(),
         "g": g,
         "seed": d(seed_field(&input.selection_seed)),
@@ -577,49 +533,6 @@ pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> 
         "stakes": stakes,
         "reveals": reveals,
         "forcedReveals": forced_reveals,
-    }))
-}
-
-/// The inputs of the postage circuit for this settlement, padded to `caps`.
-pub fn postage_witness_json(pg: &postage::Input, pv: &PublicValues, caps: &Caps) -> Result<Value, SnarkError> {
-    if pg.events.len() > caps.e || pg.witness.expiries.len() > caps.x {
-        return Err(SnarkError::Capacity);
-    }
-    let dummy = postage::Write::dummy();
-    let events: Vec<Value> = (0..caps.e)
-        .map(|i| match pg.events.get(i) {
-            Some(e) => {
-                let (ih, il) = halves(&e.batch_id);
-                let w = &pg.witness.events[i];
-                json!({
-                    "e": [d(u(e.kind as u64)), d(ih), d(il), d(u(e.depth as u64)), d(e.value), d(u(e.block))],
-                    "w": [write_json(&w[0]), write_json(&w[1]), write_json(&w[2])],
-                })
-            }
-            None => json!({
-                "e": ["0", "0", "0", "0", "0", "0"],
-                "w": [write_json(&dummy), write_json(&dummy), write_json(&dummy)],
-            }),
-        })
-        .collect();
-    let expiries: Vec<Value> = (0..caps.x)
-        .map(|i| match pg.witness.expiries.get(i) {
-            Some((h, t)) => json!({"head": write_json(h), "target": write_json(t)}),
-            None => json!({"head": write_json(&pg.witness.final_head), "target": write_json(&dummy)}),
-        })
-        .collect();
-
-    Ok(json!({
-        "kind": "postage",
-        "caps": {"p": 0, "f": 0, "e": caps.e, "x": caps.x},
-        "public": pv.postage_inputs().iter().map(|x| d(*x)).collect::<Vec<_>>(),
-        "header": pg.header.fields().iter().map(|x| d(*x)).collect::<Vec<_>>(),
-        "prevEventIndex": d(u(pg.prev_event_index)),
-        "prevEventHash": d(U256::from_be_bytes(pg.prev_event_hash.0)),
-        "cutBlock": d(u(pg.cut_block)),
-        "events": events,
-        "expiries": expiries,
-        "finalHead": write_json(&pg.witness.final_head),
     }))
 }
 

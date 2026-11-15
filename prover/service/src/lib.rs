@@ -96,16 +96,12 @@ alloy::sol! {
             address winner;
             uint16 redundancy;
             address feeRecipient;
-            bytes32 newStateHash;
-            uint256 potAmount;
-            uint256 validChunkCount;
             address[] owners;
             bytes freeze;
         }
         struct Evidence {
             uint8 gameCircuit;
             bytes proof;
-            bytes postageProof;
             bytes anchorHeader;
             bytes seedHeader;
             bytes claimWitness;
@@ -113,7 +109,6 @@ alloy::sol! {
         }
         function settleRound(Outcome calldata out, Evidence calldata ev) external;
         function GameKeys() external view returns (address);
-        function lastPostageRound() external view returns (uint64);
         error ProofInvalid();
         function gameCircuits(uint256) external view returns (address verifier, uint16 capacity, uint16 forcedCapacity, bytes4 selector);
 
@@ -146,10 +141,6 @@ alloy::sol! {
         function OracleContract() external view returns (address);
         function PostageContract() external view returns (address);
         function sampleMaxValue() external view returns (uint256);
-        function postageStateHash() external view returns (bytes32);
-        function postageEventIndex() external view returns (uint64);
-        function postageEventHash() external view returns (bytes32);
-        function accruedPot() external view returns (uint256);
 
         // What settleRound can revert with before it calls the verifier.
         error NotAnchored();
@@ -162,7 +153,6 @@ alloy::sol! {
         error ValidForcedClaim();
 
         event RoundAnchored(uint64 indexed round, bytes32 anchorBlockHash, bytes32 commitsHash, uint32 commitCount, bytes32 dataRef);
-        event PostageSettled(uint64 indexed round, uint64 eventIndex, uint64 cutBlock, uint256 potAmount, uint256 accruedPot);
         event RevealsAnchored(uint64 indexed round, bytes32 revealsHash, uint32 revealCount, bytes32 dataRef);
         event CommitForced(uint64 indexed round, address indexed owner, bytes32 obfuscatedHash);
         event RevealForced(uint64 indexed round, bytes32 indexed overlay, uint8 depth, bytes32 hash, bytes32 nonce);
@@ -182,19 +172,7 @@ alloy::sol! {
 
     #[sol(rpc)]
     contract PostageStamp {
-        function eventCount() external view returns (uint64);
         function isBatchAlive(bytes32 _batchId) external view returns (bool);
-        event PostageLog(
-            uint64 indexed index,
-            uint8 kind,
-            bytes32 batchId,
-            address owner,
-            uint8 depth,
-            uint8 bucketDepth,
-            uint256 value,
-            uint256 outpayment,
-            uint64 blockNumber
-        );
         function batches(bytes32 _batchId) external view returns (
             address owner,
             uint8 depth,
@@ -301,8 +279,6 @@ pub fn sig_from_bytes(b: &[u8]) -> Option<swarm_vm::Sig> {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Job {
     pub input: swarm_vm::RoundInput,
-    /// Result of the postage settlement in `input.postage`.
-    pub pg: swarm_vm::postage::Run,
     /// RLP headers of block roundStart - 1 and of the seed block.
     pub anchor_header: Bytes,
     pub seed_header: Bytes,
@@ -338,7 +314,7 @@ impl Native {
 impl Job {
     pub fn run(&self) -> anyhow::Result<Native> {
         use swarm_vm::claim::{verify_claim, ClaimContext, ClaimWitness};
-        let pv = swarm_vm::run(&self.input, &self.pg).map_err(|e| anyhow::anyhow!("vm: {e:?}"))?;
+        let pv = swarm_vm::run(&self.input).map_err(|e| anyhow::anyhow!("vm: {e:?}"))?;
         let ctx = ClaimContext {
             anchor: self.input.round_anchor,
             seed: self.input.selection_seed,

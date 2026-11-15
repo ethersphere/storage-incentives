@@ -1,5 +1,5 @@
 //! Swarm as the data layer of ZK settlement: the prover uploads each round's anchored commit and reveal
-//! lists, and a snapshot of the postage state, through its own Bee node. The references go on chain as
+//! lists through its own Bee node. The references go on chain as
 //! `dataRef` of `anchorRound` and `anchorReveals`. Everything uploaded can be checked against a hash on
 //! chain (the list roots, `postageStateHash`), so a reader does not have to trust the prover.
 //!
@@ -14,7 +14,7 @@ use alloy::primitives::{keccak256, Address, B256, U256};
 use anyhow::{anyhow, bail, Context, Result};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
-use swarm_vm::{postage::PostageState, Reveal, SignedCommit};
+use swarm_vm::{Reveal, SignedCommit};
 
 /// Format version of the uploaded documents.
 pub const DATA_VERSION: u8 = 1;
@@ -34,32 +34,6 @@ pub struct RoundData {
     /// The anchored reveal list (in `anchorReveals`'s document), in the anchored order.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reveals: Option<Vec<Reveal>>,
-    /// The newest postage snapshot the prover uploaded, so a new prover can find it from the last anchor.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub postage_snapshot: Option<SnapshotRef>,
-}
-
-/// Where a postage snapshot is, and which settlement it belongs to.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SnapshotRef {
-    /// Settlement.postageStateHash after that settlement.
-    pub state_hash: B256,
-    pub reference: B256,
-    pub round: u64,
-    pub cut_block: u64,
-}
-
-/// The document behind a snapshot reference: the full postage state and the log position after the same
-/// settlement. Check: `state.hash() == state_hash` and the position against PostageStampZK's log.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PostageSnapshot {
-    pub version: u8,
-    pub state_hash: B256,
-    pub event_index: u64,
-    pub event_hash: B256,
-    pub state: PostageState,
 }
 
 /// The reference to put on chain for a document: its Swarm reference if it was uploaded, else the
@@ -334,7 +308,6 @@ mod tests {
             round: 7,
             commits: Some(vec![]),
             reveals: None,
-            postage_snapshot: None,
         };
         let (reference, uploaded, bytes) = Bee::publish(Some(&bee), &doc).await;
         assert!(uploaded);

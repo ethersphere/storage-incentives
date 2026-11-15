@@ -114,17 +114,6 @@ func (c *ctx) low(v V, n int) V {
 	return c.api.FromBinary(c.bits(v, 254)[:n]...)
 }
 
-// path is the root of the tree that has `leaf` at the index with these bits.
-func (c *ctx) path(leaf V, idxBits []V, sibs []V) V {
-	h := leaf
-	for l := range sibs {
-		left := c.api.Select(idxBits[l], sibs[l], h)
-		right := c.api.Select(idxBits[l], h, sibs[l])
-		h = c.compress(left, right)
-	}
-	return h
-}
-
 // listRoot is the root of the fixed-depth list tree with these first leaves.
 func (c *ctx) listRoot(leaves []V) V {
 	level := leaves

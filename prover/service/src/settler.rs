@@ -11,7 +11,7 @@ use alloy::{
 };
 use anyhow::{anyhow, Context, Result};
 use std::{path::PathBuf, sync::Arc, time::Duration};
-use swarm_prover::swarm::{Bee, PostageSnapshot, RoundData, SnapshotRef, DATA_VERSION};
+use swarm_prover::swarm::{Bee, RoundData, DATA_VERSION};
 use swarm_prover::{
     offset_of, round_of, seed_block, PostageStamp, PriceOracle, Settlement, StakeRegistry,
     ANCHOR_END, CLAIM_START, COMMIT_END, HISTORY_SERVE_WINDOW, PENDING_ROUNDS, REVEAL_ANCHOR_END,
@@ -40,10 +40,6 @@ pub struct Config {
     pub snarkd: String,
     #[arg(long, env = "POLL_SECS", default_value_t = 3)]
     pub poll_secs: u64,
-    /// First block to search for PostageLog entries before the first settlement (the deployment block
-    /// of PostageStampZK). Later settlements search from their last cut block.
-    #[arg(long, env = "POSTAGE_FROM_BLOCK", default_value_t = 0)]
-    pub postage_from_block: u64,
     /// TEST ONLY: act as a censoring prover. Leave the commits of these staking addresses out of the
     /// anchored commit list.
     #[arg(long, env = "CENSOR_COMMITS", value_delimiter = ',')]
@@ -66,9 +62,6 @@ pub struct Config {
     /// Mutable postage batch for the uploads (`swarm-prover stamp buy`). Without it, nothing is uploaded.
     #[arg(long, env = "SWARM_BATCH_ID")]
     pub swarm_batch: Option<String>,
-    /// Upload a postage snapshot every this many rounds (112 rounds is about one day).
-    #[arg(long, env = "SNAPSHOT_EVERY", default_value_t = 112)]
-    pub snapshot_every: u64,
     /// Warn (or top up, see SWARM_TOPUP_DAYS) when the batch has less than this many days left.
     #[arg(long, env = "SWARM_MIN_TTL_DAYS", default_value_t = 7.0)]
     pub swarm_min_ttl_days: f64,
@@ -93,13 +86,10 @@ pub struct Ctx {
     pub settlement: Address,
     pub chain_id: U256,
     pub snarkd: String,
-    /// The size of the postage circuit that `snarkd` proves (`p` and `f` are not used).
-    pub caps: swarm_vm::Caps,
     /// The game circuits in use: (slot in Settlement.gameCircuits, commits, forced entries).
     pub games: Vec<(u8, usize, usize)>,
     /// The prover key's address, for explicit nonces.
     pub from: Address,
-    pub postage_from_block: u64,
     pub censor_commits: Vec<Address>,
     /// Overlays of `Config::censor_reveals`.
     pub censor_reveals: Vec<B256>,
@@ -107,7 +97,6 @@ pub struct Ctx {
     pub no_anchor: bool,
     /// The prover's Bee node, if configured.
     pub bee: Option<Bee>,
-    pub snapshot_every: u64,
     pub store: Mutex<Store>,
     /// Serialises transactions from the one prover key.
     pub tx_lock: Mutex<()>,
@@ -127,10 +116,9 @@ pub async fn serve(cfg: Config) -> Result<()> {
 
     let s = Settlement::new(cfg.settlement, &provider);
     // The game circuits that both the contract and snarkd have, smallest first.
-    let (have, e, x) = prover::caps(&cfg.snarkd)
+    let have = prover::caps(&cfg.snarkd)
         .await
         .with_context(|| format!("snarkd at {} (start `snarkd serve`)", cfg.snarkd))?;
-    let caps = swarm_vm::Caps { p: 0, f: 0, e, x };
     let mut games = vec![];
     for slot in 0..2u8 {
         let g = s.gameCircuits(U256::from(slot)).call().await?;
@@ -143,7 +131,7 @@ pub async fn serve(cfg: Config) -> Result<()> {
     if games.is_empty() {
         anyhow::bail!("snarkd has keys for the game circuits {have:?}; the contract has none of them");
     }
-    info!(?games, events = e, expiries = x, "circuit sizes");
+    info!(?games, "game circuit sizes");
     let mut censor_reveals = vec![];
     if cfg.withhold_claims {
         warn!("TEST MODE: claim witnesses are thrown away");
@@ -163,10 +151,8 @@ pub async fn serve(cfg: Config) -> Result<()> {
         settlement: cfg.settlement,
         chain_id,
         snarkd: cfg.snarkd.clone(),
-        caps,
         games,
         from,
-        postage_from_block: cfg.postage_from_block,
         censor_commits: cfg.censor_commits.clone(),
         censor_reveals,
         withhold_claims: cfg.withhold_claims,
@@ -175,14 +161,13 @@ pub async fn serve(cfg: Config) -> Result<()> {
             .swarm_api
             .as_deref()
             .map(|api| Bee::new(api, cfg.swarm_batch.clone())),
-        snapshot_every: cfg.snapshot_every.max(1),
         store: Mutex::new(Store::open(cfg.data_dir.clone())?),
         tx_lock: Mutex::new(()),
         pending: Mutex::new(None),
     });
     match ctx.bee.as_ref().map(|b| b.batch().is_some()) {
         Some(true) => {
-            info!("Swarm uploads on: anchored commit and reveal lists, postage snapshots")
+            info!("Swarm uploads on: anchored commit and reveal lists")
         }
         Some(false) => warn!("SWARM_API set without SWARM_BATCH_ID: nothing is uploaded"),
         None => info!("Swarm uploads off: dataRef is the keccak256 of each document"),
@@ -407,7 +392,6 @@ async fn anchor_commits(ctx: &Ctx, round: u64) -> Result<()> {
         round,
         commits: Some(list.clone()),
         reveals: None,
-        postage_snapshot: ctx.store.lock().await.latest_snapshot(),
     };
     let (data_ref, uploaded, bytes) = Bee::publish(ctx.bee.as_ref(), &doc).await;
     ctx.store
@@ -475,7 +459,6 @@ async fn anchor_reveals(ctx: &Ctx, round: u64) -> Result<()> {
         round,
         commits: None,
         reveals: Some(list.clone()),
-        postage_snapshot: None,
     };
     let (data_ref, uploaded, bytes) = Bee::publish(ctx.bee.as_ref(), &doc).await;
     ctx.store
@@ -682,11 +665,6 @@ pub async fn build_input(
         });
     }
 
-    let (mut state, prev_index, prev_hash, events) = postage_events(ctx, seed_block(round)).await?;
-    let (pg, postage) = state
-        .settle(prev_index, prev_hash, events, seed_block(round))
-        .map_err(|e| anyhow!("postage: {e:?}"))?;
-
     let input = RoundInput {
         chain_id: ctx.chain_id.to::<u64>(),
         settlement: ctx.settlement,
@@ -709,7 +687,6 @@ pub async fn build_input(
         penalty_random_factor: s.penaltyRandomFactor().call().await?,
         stake_age_rounds: s.stakeAgeRounds().call().await?,
         fee_recipient: ctx.from,
-        postage,
     };
 
     // The batches of the candidate witnesses, as ClaimVerifier reads them on chain.
@@ -737,7 +714,6 @@ pub async fn build_input(
     }
     Ok(Job {
         input,
-        pg,
         anchor_header,
         seed_header,
         claim,
@@ -748,40 +724,6 @@ pub async fn build_input(
 }
 
 
-/// The postage part of a round: the prover's state after the last settlement, its log position, and the
-/// PostageLog entries after it up to `cut` (the current block).
-async fn postage_events(
-    ctx: &Ctx,
-    cut: u64,
-) -> Result<(
-    swarm_vm::postage::PostageState,
-    u64,
-    B256,
-    Vec<swarm_vm::postage::PostageEvent>,
-)> {
-    let s = Settlement::new(ctx.settlement, &ctx.provider);
-    let prev_hash = s.postageStateHash().call().await?;
-    let prev_event_index = s.postageEventIndex().call().await?;
-    let prev_event_hash = s.postageEventHash().call().await?;
-    let loaded = ctx.store.lock().await.load_postage(prev_hash);
-    let state = match loaded {
-        Ok(s) => s,
-        Err(e) => {
-            warn!("{e:#}; rebuilding the postage state");
-            rebuild_postage(ctx, prev_hash).await?
-        }
-    };
-
-    let from = if state.header.last_cut_block == 0 {
-        ctx.postage_from_block
-    } else {
-        state.header.last_cut_block
-    };
-    let events = postage_logs(ctx, from, cut, prev_event_index, u64::MAX).await?;
-    Ok((state, prev_event_index, prev_event_hash, events))
-}
-
-/// Blocks for each eth_getLogs request (RPC providers limit the range).
 const LOG_CHUNK: u64 = 10_000;
 
 /// Logs of one event of one contract in [from, to], in chunks of LOG_CHUNK blocks.
@@ -805,196 +747,6 @@ async fn logs_in(
         start = end + 1;
     }
     Ok(out)
-}
-
-/// PostageStampZK log entries with index in (after, upto], from blocks [from, to], consecutive.
-async fn postage_logs(
-    ctx: &Ctx,
-    from: u64,
-    to: u64,
-    after: u64,
-    upto: u64,
-) -> Result<Vec<swarm_vm::postage::PostageEvent>> {
-    let s = Settlement::new(ctx.settlement, &ctx.provider);
-    let postage = s.PostageContract().call().await?;
-    let mut events = vec![];
-    for log in logs_in(
-        ctx,
-        postage,
-        PostageStamp::PostageLog::SIGNATURE_HASH,
-        from,
-        to,
-    )
-    .await?
-    {
-        let e = log.log_decode::<PostageStamp::PostageLog>()?.inner.data;
-        if e.index <= after || e.index > upto {
-            continue;
-        }
-        events.push(swarm_vm::postage::PostageEvent {
-            index: e.index,
-            kind: e.kind,
-            batch_id: e.batchId,
-            depth: e.depth,
-            value: e.value,
-            block: e.blockNumber,
-        });
-    }
-    events.sort_by_key(|e| e.index);
-    for (i, e) in events.iter().enumerate() {
-        if e.index != after + 1 + i as u64 {
-            anyhow::bail!(
-                "PostageLog gap at index {} (RPC log range?)",
-                after + 1 + i as u64
-            );
-        }
-    }
-    Ok(events)
-}
-
-/// Rebuild the postage state with hash `target` (Settlement.postageStateHash) when the local file is
-/// missing: start from the newest snapshot on Swarm (if a Bee node is configured), else from genesis, and
-/// replay every settlement after it from the chain: the PostageSettled events give each settlement's
-/// cut block and log position, and the PostageLog entries give the events. The result is checked against
-/// `target`. A new prover can thus continue without the old prover's files.
-pub async fn rebuild_postage(ctx: &Ctx, target: B256) -> Result<swarm_vm::postage::PostageState> {
-    let mut start = None;
-    if ctx.bee.is_some() {
-        match find_snapshot(ctx).await {
-            Ok(Some(snap)) => start = Some(snap),
-            Ok(None) => info!("no postage snapshot found on Swarm"),
-            Err(e) => warn!("postage snapshot lookup failed: {e:#}"),
-        }
-    }
-    let r = match start {
-        Some(snap) => {
-            match replay_postage(ctx, snap.state, snap.event_index, snap.event_hash, target).await {
-                Ok(s) => Ok(s),
-                Err(e) => {
-                    warn!("replay from the snapshot failed ({e:#}); replaying from genesis");
-                    replay_postage(ctx, Default::default(), 0, B256::ZERO, target).await
-                }
-            }
-        }
-        None => replay_postage(ctx, Default::default(), 0, B256::ZERO, target).await,
-    }?;
-    ctx.store.lock().await.save_postage(&r)?;
-    info!(state = %target, batches = r.batches().len(), "postage state rebuilt");
-    Ok(r)
-}
-
-async fn replay_postage(
-    ctx: &Ctx,
-    mut state: swarm_vm::postage::PostageState,
-    mut index: u64,
-    mut hash: B256,
-    target: B256,
-) -> Result<swarm_vm::postage::PostageState> {
-    let head = ctx.provider.get_block_number().await?;
-    let start = state.header.last_cut_block.max(ctx.postage_from_block);
-    let settled = logs_in(
-        ctx,
-        ctx.settlement,
-        Settlement::PostageSettled::SIGNATURE_HASH,
-        start,
-        head,
-    )
-    .await?;
-    if state.hash() == target {
-        return Ok(state);
-    }
-    for log in settled {
-        let e = log.log_decode::<Settlement::PostageSettled>()?.inner.data;
-        if !state.header.is_genesis() && e.cutBlock <= state.header.last_cut_block {
-            continue; // already in the starting state
-        }
-        let from = if state.header.last_cut_block == 0 {
-            ctx.postage_from_block
-        } else {
-            state.header.last_cut_block
-        };
-        let events = postage_logs(ctx, from, e.cutBlock, index, e.eventIndex).await?;
-        // Claim lookups and the probe do not change the state: replay without them.
-        let (r, _) = state
-            .settle(index, hash, events, e.cutBlock)
-            .map_err(|err| anyhow!("replay of round {}: {err:?}", e.round))?;
-        (index, hash) = (r.event_index, r.event_hash);
-        if state.hash() == target {
-            return Ok(state);
-        }
-    }
-    anyhow::bail!("replay ended at state {} instead of {target}", state.hash())
-}
-
-/// The newest postage snapshot referenced by the `dataRef` document (RoundData) of a recent anchorRound, checked against its hash.
-async fn find_snapshot(ctx: &Ctx) -> Result<Option<PostageSnapshot>> {
-    let Some(bee) = ctx.bee.as_ref() else {
-        return Ok(None);
-    };
-    let head = ctx.provider.get_block_number().await?;
-    let from = head.saturating_sub(300 * ROUND_LENGTH);
-    let mut anchors = logs_in(
-        ctx,
-        ctx.settlement,
-        Settlement::RoundAnchored::SIGNATURE_HASH,
-        from,
-        head,
-    )
-    .await?;
-    anchors.reverse();
-    for log in anchors.into_iter().take(50) {
-        let e = log.log_decode::<Settlement::RoundAnchored>()?.inner.data;
-        let Ok(doc) = bee.fetch::<RoundData>(e.dataRef).await else {
-            continue;
-        };
-        let Some(r) = doc.postage_snapshot else {
-            continue;
-        };
-        let snap: PostageSnapshot = bee.fetch(r.reference).await?;
-        if snap.state.hash() != r.state_hash || snap.state_hash != r.state_hash {
-            anyhow::bail!("snapshot {} does not match its state hash", r.reference);
-        }
-        info!(round = r.round, reference = %r.reference, "postage snapshot found");
-        return Ok(Some(snap));
-    }
-    Ok(None)
-}
-
-/// Upload a snapshot of the postage state after `round` when the last one is SNAPSHOT_EVERY rounds old.
-async fn maybe_snapshot(
-    ctx: &Ctx,
-    round: u64,
-    state: &swarm_vm::postage::PostageState,
-    event_index: u64,
-    event_hash: B256,
-) -> Result<()> {
-    let Some(bee) = ctx.bee.as_ref().filter(|b| b.batch().is_some()) else {
-        return Ok(());
-    };
-    if let Some(last) = ctx.store.lock().await.latest_snapshot() {
-        if round < last.round + ctx.snapshot_every {
-            return Ok(());
-        }
-    }
-    let snap = PostageSnapshot {
-        version: DATA_VERSION,
-        state_hash: state.hash(),
-        event_index,
-        event_hash,
-        state: state.clone(),
-    };
-    let bytes = serde_json::to_vec(&snap)?;
-    let size = bytes.len();
-    let reference = bee.upload(bytes).await?;
-    let r = SnapshotRef {
-        state_hash: snap.state_hash,
-        reference,
-        round,
-        cut_block: state.header.last_cut_block,
-    };
-    ctx.store.lock().await.save_snapshot_ref(&r)?;
-    info!(round, %reference, bytes = size, "postage snapshot uploaded");
-    Ok(())
 }
 
 /// Watch the upload batch: warn, or top up, when it has less than SWARM_MIN_TTL_DAYS left.
@@ -1116,7 +868,6 @@ fn settlement_args(
     native: &Native,
     slot: u8,
     proof: Bytes,
-    postage_proof: Bytes,
 ) -> (Settlement::Outcome, Settlement::Evidence) {
     let pv = &native.pv;
     (
@@ -1128,16 +879,12 @@ fn settlement_args(
             winner: pv.winner,
             redundancy: pv.redundancy,
             feeRecipient: pv.fee_recipient,
-            newStateHash: B256::from(pv.new_state_hash),
-            potAmount: pv.pot_amount,
-            validChunkCount: pv.valid_chunk_count,
             owners: pv.owners.clone(),
             freeze: pv.freeze.clone().into(),
         },
         Settlement::Evidence {
             gameCircuit: slot,
             proof,
-            postageProof: postage_proof,
             anchorHeader: job.anchor_header.clone(),
             seedHeader: job.seed_header.clone(),
             claimWitness: native.witness.clone().unwrap_or_default(),
@@ -1152,23 +899,10 @@ fn settlement_args(
 }
 
 async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
-    // The state after this settlement, to store once the transaction is in.
-    let (new_postage, event_index, event_hash) = {
-        let store = ctx.store.lock().await;
-        let p = &job.input.postage;
-        let mut state = store.load_postage(B256::from(p.header.hash()))?;
-        let (r, _) = state
-            .settle(
-                p.prev_event_index,
-                p.prev_event_hash,
-                p.events.clone(),
-                p.cut_block,
-            )
-            .map_err(|e| anyhow!("postage: {e:?}"))?;
-        store.save_postage(&state)?;
-        store.write_file(round, "input.json", &serde_json::to_vec_pretty(&job)?)?;
-        (state, r.event_index, r.event_hash)
-    };
+    ctx.store
+        .lock()
+        .await
+        .write_file(round, "input.json", &serde_json::to_vec_pretty(&job)?)?;
     let native = job.run()?;
     // The smallest game circuit that holds the round: fewer public inputs cost less gas.
     let i = &job.input;
@@ -1182,14 +916,13 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
                 && i.forced_reveals.len() <= *f
         })
         .ok_or_else(|| anyhow!("the round has more entries than the largest game circuit holds"))?;
-    let caps = swarm_vm::Caps { p, f, ..ctx.caps };
-    // Identifies the two statements that the proofs are for.
+    let caps = swarm_vm::Caps { p, f };
+    // Identifies the statement that the proof is for.
     let digest = alloy::primitives::keccak256(
         native
             .pv
             .game_inputs(&caps)
             .iter()
-            .chain(&native.pv.postage_inputs())
             .flat_map(|x| x.to_be_bytes::<32>())
             .collect::<Vec<u8>>(),
     )
@@ -1198,7 +931,7 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
     // A free check before a proof: simulate settleRound with an empty proof. Only the verifier may
     // revert. Any Settlement error means the round cannot settle now (wrong inputs, or an earlier round
     // is pending).
-    let (out, ev) = settlement_args(&job, &native, slot, Bytes::new(), Bytes::new());
+    let (out, ev) = settlement_args(&job, &native, slot, Bytes::new());
     if let Err(e) = Settlement::new(ctx.settlement, &ctx.provider)
         .settleRound(out, ev)
         .from(ctx.from)
@@ -1206,7 +939,11 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
         .await
     {
         if let Some(err) = e.as_decoded_interface_error::<Settlement::SettlementErrors>() {
-            if let Settlement::SettlementErrors::RoundPending(p) = &err {
+            // ProofInvalid is the expected result for the empty proof: every check before the verifier
+            // passed.
+            if matches!(err, Settlement::SettlementErrors::ProofInvalid(_)) {
+                // go on and prove
+            } else if let Settlement::SettlementErrors::RoundPending(p) = &err {
                 if ctx.pending.lock().await.replace(p.round) != Some(p.round) {
                     warn!(
                         round,
@@ -1221,8 +958,9 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
                     );
                 }
                 return Ok(());
+            } else {
+                anyhow::bail!("not proving: settleRound would revert with {err:?}");
             }
-            anyhow::bail!("not proving: settleRound would revert with {err:?}");
         }
     }
 
@@ -1235,12 +973,11 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
     .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
     .and_then(|v| {
         let proof: Bytes = v["proof"].as_str()?.parse().ok()?;
-        let postage: Bytes = v["postageProof"].as_str()?.parse().ok()?;
-        (v["digest"].as_str()? == digest).then_some((proof, postage))
+        (v["digest"].as_str()? == digest).then_some(proof)
     });
-    let (proof, postage_proof) = match cached {
+    let proof = match cached {
         Some(p) => {
-            info!(round, "reusing the stored proofs of this round");
+            info!(round, "reusing the stored proof of this round");
             p
         }
         None => {
@@ -1252,11 +989,8 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
                 winner = %native.pv.winner,
                 redundancy = native.pv.redundancy,
                 freezes = native.pv.freeze.iter().filter(|f| **f != 0).count(),
-                events = job.input.postage.events.len(),
-                expiries = job.input.postage.witness.expiries.len(),
                 "round computed, proving"
             );
-            // The game proof: small, the proof that a Bee node makes.
             let witness = swarm_vm::game_witness_json(&job.input, &native.pv, &caps)
                 .map_err(|e| anyhow!("witness: {e:?}"))?;
             let g = prover::prove(&ctx.snarkd, &witness).await?;
@@ -1267,27 +1001,6 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
                 commits = p,
                 "game proof"
             );
-            // The postage proof, unless settlePostage already ran for this round.
-            let done = Settlement::new(ctx.settlement, &ctx.provider)
-                .lastPostageRound()
-                .call()
-                .await?
-                == round;
-            let postage = if done {
-                vec![]
-            } else {
-                let witness =
-                    swarm_vm::postage_witness_json(&job.input.postage, &native.pv, &ctx.caps)
-                        .map_err(|e| anyhow!("witness: {e:?}"))?;
-                let p = prover::prove(&ctx.snarkd, &witness).await?;
-                info!(
-                    round,
-                    prove_ms = p.prove_ms,
-                    constraints = p.constraints,
-                    "postage proof"
-                );
-                p.proof
-            };
             let store = ctx.store.lock().await;
             store.write_file(
                 round,
@@ -1295,16 +1008,15 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
                 &serde_json::to_vec_pretty(&serde_json::json!({
                     "digest": digest,
                     "proof": Bytes::from(g.proof.clone()),
-                    "postageProof": Bytes::from(postage.clone()),
-                    "gameProveMs": g.prove_ms,
-                    "gameConstraints": g.constraints,
+                    "proveMs": g.prove_ms,
+                    "constraints": g.constraints,
                 }))?,
             )?;
-            (Bytes::from(g.proof), Bytes::from(postage))
+            Bytes::from(g.proof)
         }
     };
-    let (out, ev) = settlement_args(&job, &native, slot, proof, postage_proof);
-    send_settlement(ctx, round, out, ev, &new_postage, event_index, event_hash).await
+    let (out, ev) = settlement_args(&job, &native, slot, proof);
+    send_settlement(ctx, round, out, ev).await
 }
 
 async fn send_settlement(
@@ -1312,9 +1024,6 @@ async fn send_settlement(
     round: u64,
     out: Settlement::Outcome,
     ev: Settlement::Evidence,
-    new_postage: &swarm_vm::postage::PostageState,
-    event_index: u64,
-    event_hash: B256,
 ) -> Result<()> {
     let s = Settlement::new(ctx.settlement, &ctx.provider);
     // One transaction at a time from this key (see anchor_commits).
@@ -1325,8 +1034,8 @@ async fn send_settlement(
         .pending()
         .await?;
     // A margin on the gas estimate: the gas can be higher in the block that includes the transaction
-    // than in the estimate. The price change inside settleRound appends a postage log entry, and the
-    // first entry after a seed block also stores a cut (one more storage slot).
+    // than in the estimate. The pot accounting inside settleRound stores a
+    // cut after a seed block and closes the buckets that the outpayment passed.
     let call = s.settleRound(out, ev).nonce(nonce);
     let gas = call.estimate_gas().await? * 13 / 10 + 100_000;
     let receipt = call
@@ -1344,9 +1053,6 @@ async fn send_settlement(
         let mut store = ctx.store.lock().await;
         store.get_mut(round).settle_tx = Some(receipt.transaction_hash.to_string());
         store.save(round)?;
-    }
-    if let Err(e) = maybe_snapshot(ctx, round, new_postage, event_index, event_hash).await {
-        warn!(round, "postage snapshot: {e:#}");
     }
     Ok(())
 }

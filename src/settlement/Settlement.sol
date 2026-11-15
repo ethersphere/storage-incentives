@@ -5,12 +5,6 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import {ClaimVerifier, IClaimPostage} from "./ClaimVerifier.sol";
 
-/// The Groth16 verifier of the postage circuit, as gnark exports it. The game verifier has the same
-/// function with a number of inputs that depends on the circuit size (see `_verifyGame`).
-interface IPostageVerifier {
-    function verifyProof(bytes calldata proof, uint256[7] calldata input) external view;
-}
-
 interface IGameKeys {
     function commitmentOf(address owner) external returns (uint256);
 
@@ -43,7 +37,11 @@ interface ISettlementPostage {
     function withdraw(address beneficiary, uint256 amount) external;
 
 
-    function cutOf(uint64 round) external view returns (uint64 index, bytes32 hash);
+    /// The pot at the seed block of a game round: everything the batches paid up to that block.
+    function potAt(uint64 round) external returns (uint256);
+
+    /// Bring the pot accounting up to this block (stores the cut of the last round).
+    function checkpoint() external;
 }
 
 interface ISettlementOracle {
@@ -97,8 +95,6 @@ contract Settlement is AccessControl, Pausable {
         uint8 gameCircuit;
         // The Groth16 proof of the game circuit (gnark, `MarshalSolidity`).
         bytes proof;
-        // The Groth16 proof of the postage circuit. Empty when `settlePostage` already ran for the round.
-        bytes postageProof;
         // RLP headers of block roundStart - 1 and of the seed block.
         bytes anchorHeader;
         bytes seedHeader;
@@ -118,9 +114,6 @@ contract Settlement is AccessControl, Pausable {
         address winner;
         uint16 redundancy;
         address feeRecipient;
-        bytes32 newStateHash;
-        uint256 potAmount;
-        uint256 validChunkCount;
         // Owners of the anchored commits (in the anchored order), then of the forced commits.
         address[] owners;
         // One byte for each owner: 0 no freeze, 1 disagreement, 2 no reveal or the stake changed.
@@ -221,7 +214,7 @@ contract Settlement is AccessControl, Pausable {
     // Root of an anchored list with no entries (MiMC tree of depth 8 over zero leaves).
     bytes32 public immutable EMPTY_LIST_ROOT;
 
-    // The verifiers of the game circuit and of the postage circuit, and the size of the game circuit:
+    // The verifiers of the game circuit, and the size of the game circuit:
     // anchored commits and reveals, and forced commits and reveals, that one proof can hold.
     struct GameCircuit {
         address verifier;
@@ -232,9 +225,6 @@ contract Settlement is AccessControl, Pausable {
     // Two sizes of the game circuit: a prover uses the smallest one that holds the round, because each
     // public input of a verifier costs gas. An entry with a zero verifier is not in use.
     GameCircuit[2] public gameCircuits;
-    IPostageVerifier public postageVerifier;
-    // The round whose seed block is the cut of the last postage settlement.
-    uint64 public lastPostageRound;
 
     // Seconds between proposeVerifier and the earliest applyVerifier. Fixed at deployment: 0 on test
     // networks; on mainnet long enough for nodes to react (for example 7 days).
@@ -242,7 +232,6 @@ contract Settlement is AccessControl, Pausable {
     struct PendingVerifier {
         uint8 slot;
         address gameVerifier;
-        address postageVerifier;
         uint16 capacity;
         uint16 forcedCapacity;
         uint64 eta;
@@ -270,15 +259,10 @@ contract Settlement is AccessControl, Pausable {
     // Redistribution's reserve size estimate bound (alpha=0.097612 beta=0.0716570 k=16).
     uint256 public sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
-    // Postage accounting carried between settlements: hash of the proof's postage state, the position in
-    // PostageStampZK's event log, and the pot earned but not yet paid out (rounds without a payout keep
-    // adding to it, as the pot did on master until the next successful claim).
-    bytes32 public postageStateHash;
-    uint64 public postageEventIndex;
-    bytes32 public postageEventHash;
-    uint256 public accruedPot;
-    // Chunks of live batches after the last settlement (PostageStamp.validChunkCount). For readers only.
-    uint256 public validChunkCount;
+    // What was paid out of the pot so far. PostageStampZK computes the pot (`potAt`): a claimed round
+    // pays the pot at its seed block minus this amount. The pot of a round without a payout stays for
+    // the next winner.
+    uint256 public potPaid;
 
     // Share of the pot paid to whoever submits a valid settlement, in basis points.
     uint16 public proverFeeBps = 100;
@@ -307,13 +291,6 @@ contract Settlement is AccessControl, Pausable {
     event RevealForced(uint64 indexed round, bytes32 indexed overlay, uint8 depth, bytes32 hash, bytes32 nonce);
     event ClaimForced(uint64 indexed round, address indexed sender, bytes witness);
     event RoundUnclaimed(uint64 indexed round, address winner, bytes32 truthHash);
-    event PostageSettled(
-        uint64 indexed round,
-        uint64 eventIndex,
-        uint64 cutBlock,
-        uint256 potAmount,
-        uint256 accruedPot
-    );
     event RoundSettled(
         uint64 indexed round,
         bool hasTruth,
@@ -329,14 +306,12 @@ contract Settlement is AccessControl, Pausable {
     event VerifierChanged(
         uint8 slot,
         address gameVerifier,
-        address postageVerifier,
         uint16 capacity,
         uint16 forcedCapacity
     );
     event VerifierProposed(
         uint8 slot,
         address gameVerifier,
-        address postageVerifier,
         uint16 capacity,
         uint16 forcedCapacity,
         uint64 eta
@@ -383,7 +358,6 @@ contract Settlement is AccessControl, Pausable {
         address gameKeys,
         address claimVerifier,
         address _gameVerifier,
-        address _postageVerifier,
         uint16 _capacity,
         uint16 _forcedCapacity,
         uint64 _verifierDelay
@@ -397,21 +371,11 @@ contract Settlement is AccessControl, Pausable {
         for (uint256 i = 0; i < 8; ++i) z = gk.compress(z, z);
         EMPTY_LIST_ROOT = bytes32(z);
 
-        // The postage state before the first event: an empty batch tree of depth 24 (leaf 0 is the head
-        // of the expiry list), nextFree = 1, everything else zero.
-        uint256[] memory x = new uint256[](6);
-        z = gk.mimc(x);
-        for (uint256 i = 0; i < 24; ++i) z = gk.compress(z, z);
-        x = new uint256[](7);
-        x[0] = z;
-        x[1] = 1;
-        postageStateHash = bytes32(gk.mimc(x));
 
         verifierDelay = _verifierDelay;
         Stakes = ISettlementStakes(staking);
         PostageContract = ISettlementPostage(postageContract);
         OracleContract = ISettlementOracle(oracleContract);
-        postageVerifier = IPostageVerifier(_postageVerifier);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(ANCHOR_ROLE, msg.sender);
     }
@@ -451,6 +415,8 @@ contract Settlement is AccessControl, Pausable {
         ri.commitCount = uint16(_commitCount);
         ri.prevAnchored = lastAnchoredRound;
         lastAnchoredRound = _round;
+        // The pot at the seed block of the round before: each round gets its own cut.
+        PostageContract.checkpoint();
         // An empty list leaves the hash slot as it is (it does not count with a zero count).
         if (_commitCount != 0) ri.commitsHash = _commitsHash;
 
@@ -473,6 +439,8 @@ contract Settlement is AccessControl, Pausable {
         ri.anchored = true;
         ri.prevAnchored = lastAnchoredRound;
         lastAnchoredRound = _round;
+        // The pot at the seed block of the round before: each round gets its own cut.
+        PostageContract.checkpoint();
 
         emit RoundAnchored(_round, anchorBlockHash(_round), bytes32(0), 0, bytes32(0));
     }
@@ -600,7 +568,7 @@ contract Settlement is AccessControl, Pausable {
      * @notice Settle a round with a Groth16 proof of the settlement circuit. Permissionless: the proof is
      * the authorisation. Pays `out.feeRecipient` the prover fee.
      *
-     * The proof covers the game (commits, reveals, truth, winner, freezes) and the postage accounting.
+     * The proof covers the game (commits, reveals, truth, winner, freezes). PostageStampZK computes the pot.
      * This contract checks the rest on chain: the two block headers that give the randomness, and the
      * claim witness (chunk inclusion proofs, postage stamps, single-owner chunk signatures).
      * @param out The outcome that the proof commits to.
@@ -690,7 +658,7 @@ contract Settlement is AccessControl, Pausable {
             emit PriceAdjustmentSkipped(out.redundancy);
         }
 
-        (uint256 payout, uint256 fee) = _payout(out.winner, out.feeRecipient);
+        (uint256 payout, uint256 fee) = _payout(out.round, out.winner, out.feeRecipient);
 
         emit RoundSettled(
             out.round,
@@ -705,26 +673,6 @@ contract Settlement is AccessControl, Pausable {
         );
     }
 
-    /**
-     * @notice The postage accounting of a round as its own transaction: any node can send it, so the node
-     * that proves the game does not need to make the larger postage proof. Allowed only for the round
-     * that can settle next. `settleRound` of that round then needs only the game proof.
-     */
-    function settlePostage(
-        uint64 _round,
-        bytes32 newStateHash,
-        uint256 potAmount,
-        uint256 _validChunkCount,
-        bytes calldata proof
-    ) external whenNotPaused {
-        RoundSlot storage ri = ring[_round % RING_SIZE];
-        if (ri.round != _round || !ri.anchored) revert NotAnchored();
-        if (ri.settled) revert AlreadySettled();
-        if (_round <= lastSettledRound) revert RoundOutOfOrder();
-        _checkNoPendingRound(_round);
-        _settlePostage(_round, newStateHash, potAmount, _validChunkCount, proof);
-    }
-
     // ----------------------------- Admin ------------------------------
 
     /**
@@ -736,14 +684,13 @@ contract Settlement is AccessControl, Pausable {
     function proposeVerifier(
         uint8 _slot,
         address _gameVerifier,
-        address _postageVerifier,
         uint16 _capacity,
         uint16 _forcedCapacity
     ) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         uint64 eta = uint64(block.timestamp) + verifierDelay;
-        pendingVerifier = PendingVerifier(_slot, _gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
-        emit VerifierProposed(_slot, _gameVerifier, _postageVerifier, _capacity, _forcedCapacity, eta);
+        pendingVerifier = PendingVerifier(_slot, _gameVerifier, _capacity, _forcedCapacity, eta);
+        emit VerifierProposed(_slot, _gameVerifier, _capacity, _forcedCapacity, eta);
     }
 
     /// @notice Make the pending verifier change take effect, once its delay has passed. Anybody can call it.
@@ -753,14 +700,13 @@ contract Settlement is AccessControl, Pausable {
         if (block.timestamp < p.eta) revert VerifierDelayNotOver();
         delete pendingVerifier;
         _setGameCircuit(p.slot, p.gameVerifier, p.capacity, p.forcedCapacity);
-        postageVerifier = IPostageVerifier(p.postageVerifier);
-        emit VerifierChanged(p.slot, p.gameVerifier, p.postageVerifier, p.capacity, p.forcedCapacity);
+        emit VerifierChanged(p.slot, p.gameVerifier, p.capacity, p.forcedCapacity);
     }
 
     function cancelVerifier() external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         delete pendingVerifier;
-        emit VerifierProposed(0, address(0), address(0), 0, 0, 0);
+        emit VerifierProposed(0, address(0), 0, 0, 0);
     }
 
     function setStakeAgeRounds(uint8 _rounds) external {
@@ -930,48 +876,9 @@ contract Settlement is AccessControl, Pausable {
         Evidence calldata ev
     ) internal returns (bytes32 roundAnchor, bytes32 seed) {
         (roundAnchor, seed) = randomness(out.round, ev.anchorHeader, ev.seedHeader);
-        // The postage accounting up to this round's cut: in this transaction, or already done by
-        // `settlePostage`.
-        if (lastPostageRound != out.round) {
-            _settlePostage(out.round, out.newStateHash, out.potAmount, out.validChunkCount, ev.postageProof);
-        }
         _verifyGame(ev.proof, _gameInputs(out, ri, roundAnchor, seed, ev.gameCircuit), ev.gameCircuit);
         ri.settled = true;
         lastSettledRound = out.round;
-    }
-
-    /**
-     * @dev The postage proof replays the event log of PostageStampZK from where the last settlement
-     * stopped to the round's seed block (the cut), so the pot of a round does not depend on when it
-     * settles. The public inputs are those of `PostageCircuit` (prover/snark/circuit/postage.go).
-     */
-    function _settlePostage(
-        uint64 _round,
-        bytes32 newStateHash,
-        uint256 potAmount,
-        uint256 _validChunkCount,
-        bytes calldata proof
-    ) internal {
-        if (_round <= lastPostageRound) revert RoundOutOfOrder();
-        (uint64 eventIndex, bytes32 eventHash) = PostageContract.cutOf(_round);
-        if (eventIndex < postageEventIndex) revert InputMismatch(11);
-        uint256[7] memory input;
-        input[0] = uint256(postageStateHash);
-        input[1] = uint256(newStateHash);
-        input[2] = (uint256(postageEventIndex) << 128) | (uint256(eventIndex) << 64) | seedBlock(_round);
-        input[3] = uint256(postageEventHash);
-        input[4] = uint256(eventHash);
-        input[5] = potAmount;
-        input[6] = _validChunkCount;
-        postageVerifier.verifyProof(proof, input);
-
-        lastPostageRound = _round;
-        postageStateHash = newStateHash;
-        postageEventIndex = eventIndex;
-        postageEventHash = eventHash;
-        accruedPot += potAmount;
-        validChunkCount = _validChunkCount;
-        emit PostageSettled(_round, eventIndex, uint64(seedBlock(_round)), potAmount, accruedPot);
     }
 
     /**
@@ -1122,17 +1029,22 @@ contract Settlement is AccessControl, Pausable {
         revert RoundPending(p);
     }
 
-    /// Pays out everything accrued since the last payout: the proven pot of this and earlier settlements.
-    function _payout(address winner, address feeRecipient) internal returns (uint256 payout, uint256 fee) {
-        uint256 amount = accruedPot;
+    /// Pays the pot at the round's seed block, minus what earlier rounds were paid: this round's
+    /// payments, and those of earlier rounds without a payout.
+    function _payout(
+        uint64 _round,
+        address winner,
+        address feeRecipient
+    ) internal returns (uint256 payout, uint256 fee) {
+        uint256 pot = PostageContract.potAt(_round);
+        uint256 amount = pot - potPaid;
         if (amount == 0) return (0, 0);
-        accruedPot = 0;
+        potPaid = pot;
 
         fee = feeRecipient == address(0) ? 0 : (amount * proverFeeBps) / 10000;
         payout = amount - fee;
 
-        // PostageStampZK pays both directly: a transfer through Settlement writes its balance slot from 0 to
-        // the pot and back to 0 in each settlement, which costs about 110k gas more on Sepolia.
+        // PostageStampZK pays both directly.
         if (fee > 0) PostageContract.withdraw(feeRecipient, fee);
         if (payout > 0) PostageContract.withdraw(winner, payout);
     }

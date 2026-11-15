@@ -9,15 +9,12 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const waitConfirmations = networkConfig[network.name]?.blockConfirmations || 1;
 
   // ZK_VERIFIER=mock deploys Groth16MockVerifier, which accepts every proof (contract tests only).
-  // Otherwise the script deploys the two verifiers that `snarkd setup` wrote (src/settlement/groth16/):
-  // GameVerifier<P> for each game circuit size (SNARK_P/SNARK_F and SNARK_P2/SNARK_F2) and
-  // PostageVerifier.
+  // Otherwise the script deploys the verifiers that `snarkd setup` wrote (src/settlement/groth16/):
+  // GameVerifier<P> for each game circuit size (SNARK_P/SNARK_F and SNARK_P2/SNARK_F2).
   const mode = process.env.ZK_VERIFIER || 'groth16';
   let gameVerifier: string;
-  let postageVerifier: string;
   if (mode === 'mock') {
     gameVerifier = (await deploy('Groth16MockVerifier', { from: deployer, log: true, waitConfirmations })).address;
-    postageVerifier = gameVerifier;
   } else {
     const verifier = async (name: string) =>
       (
@@ -29,7 +26,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
         })
       ).address;
     gameVerifier = await verifier(`GameVerifier${process.env.SNARK_P ?? 16}`);
-    postageVerifier = await verifier('PostageVerifier');
   }
   const capacity = Number(process.env.SNARK_P ?? 16);
   const forcedCapacity = Number(process.env.SNARK_F ?? 4);
@@ -39,7 +35,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const gameKeys = await deploy('GameKeyRegistry', { from: deployer, args: [staking], log: true, waitConfirmations });
   const claims = await deploy('ClaimVerifier', { from: deployer, log: true, waitConfirmations });
 
-  log(`Verifiers ${gameVerifier} (game), ${postageVerifier} (postage), game circuit size ${capacity}/${forcedCapacity}`);
+  log(`Game verifier ${gameVerifier}, circuit size ${capacity}/${forcedCapacity}`);
   const settlement = await deploy('Settlement', {
     from: deployer,
     args: [
@@ -49,7 +45,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       gameKeys.address,
       claims.address,
       gameVerifier,
-      postageVerifier,
       capacity,
       forcedCapacity,
       // VERIFIER_DELAY seconds between proposeVerifier and applyVerifier: 0 on test networks, for
@@ -71,7 +66,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       waitConfirmations,
     });
     const f2 = Number(process.env.SNARK_F2 ?? 2);
-    await deployments.execute('Settlement', { from: deployer, log: true }, 'proposeVerifier', 1, small.address, postageVerifier, p2, f2);
+    await deployments.execute('Settlement', { from: deployer, log: true }, 'proposeVerifier', 1, small.address, p2, f2);
     await deployments.execute('Settlement', { from: deployer, log: true }, 'applyVerifier');
   }
 };

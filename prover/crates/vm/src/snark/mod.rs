@@ -6,7 +6,6 @@
 //! so that the circuit, this code and the contracts compute the same values.
 
 pub mod game;
-pub mod postage;
 pub mod synth;
 
 use alloy_primitives::{keccak256, Address, B256, U256};

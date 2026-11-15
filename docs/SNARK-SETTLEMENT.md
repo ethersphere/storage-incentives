@@ -39,7 +39,9 @@ few constraints. Both come from the gnark library (`gnark-crypto`, curve BN254).
 
 Thus:
 
-- The circuit proves the game (commits, reveals, truth, winner, freezes) and the postage accounting.
+- The circuit proves the game (commits, reveals, truth, winner, freezes).
+- `PostageStampZK` computes the pot on chain, with sums for each bucket of the balance scale (section 6).
+  It has no batch tree and no expiry loop, and it needs no proof.
 - The contract checks the claim witness (the chunk inclusion proofs, the postage stamp signatures and
   the single-owner chunk signatures). These checks use keccak256 and `ecrecover`. They are the same
   checks that `Redistribution.claim` does now.
@@ -63,13 +65,13 @@ Chunk addresses, postage stamps, batch ids and the reserve sample do not change.
 
 | Contract | Change |
 | --- | --- |
-| `Settlement` | Groth16 verifiers for the game circuit and for the postage circuit (section 5). The contract holds two sizes of the game circuit (`gameCircuits`): a prover uses the smallest one that holds the round. |
+| `Settlement` | Groth16 verifiers for the game circuit (section 5), in two sizes (`gameCircuits`): a prover uses the smallest one that holds the round. It pays a winner the pot that `PostageStampZK.potAt(round)` gives, minus what it paid before. |
 | | `settleRound` takes the two block headers. It checks their hashes and reads `prevrandao`. |
 | | `settleRound` takes the claim witness and checks it on chain (`ClaimVerifier`). A round with reveals and without a valid witness is "unclaimed", as before. |
 | | The forced-entry hash chains (`forceCommit`, `forceReveal`) use MiMC. A forced entry costs about 16k to 60k gas more. The circuit then has room for many forced entries at a low cost. |
 | | The stake records enter through `GameKeyRegistry.commitmentOf(owner)`. |
 | `GameKeyRegistry` (new) | Holds the game key of each node. Holds a MiMC commitment of each stake record with its game key, and computes it again only when the record changes. |
-| `PostageStampZK` | The event log hash chain uses MiMC: `MiMC(MiMC(prev, kind << 200 \| depth << 192 \| block << 128 \| value), batchId)`. A batch change costs about 16,000 gas more. The functions and the events do not change. |
+| `PostageStampZK` | Computes the pot on chain with bucket sums (section 6). No event log for a proof. The batch functions and events do not change. |
 | `Staking.sol`, `PriceOracleZK` | No change. |
 
 ### 3.3 Prover
@@ -90,21 +92,18 @@ Chunk addresses, postage stamps, batch ids and the reserve sample do not change.
 | Stake amounts | uint256 | less than 2^96 | Same reason. The BZZ supply is less than 2^80 |
 | `depth - height` of a reveal | 0..255 | 0..64 | Same reason |
 | Batch balance, outpayment | uint256 | less than 2^128 | Same reason |
-| Batch tree | two lists (by id, by expiry) | one list (by expiry). Key: (balance, leaf index) | The id list was for claim lookups, which are now on chain |
+| Postage accounting | In the proof: a batch tree, the event log replay, the pot | On chain: bucket sums in `PostageStampZK` (section 6) | A second proof costs more gas and memory than the accounting itself |
+| Pot timing | Exact at each cut | Each batch pays exactly its balance; the last part (less than one bucket) arrives late | The contract does not know the batches in expiry order |
 | Claim batch check | Alive at the seed block, in the proof | Alive at the settlement, on chain (`isBatchAlive`) | The contract has the batch records |
-| Capacity | No limit | Fixed: P participants, F forced entries, E postage events, X expiries for each proof | A circuit has a fixed size |
+| Capacity | No limit | Fixed: P commits and F forced entries for each proof. No limit for postage changes | A circuit has a fixed size |
 
-## 5. Two circuits and their public inputs
+## 5. The game circuit and its public inputs
 
-There are two circuits, so that a node with little memory can prove the game:
+The game circuit proves the commits, the reveals, the truth, the winner and the freezes. It has no
+sha256. A node in the round can make this proof. The circuit exists in two sizes.
 
-- The **game circuit** proves the commits, the reveals, the truth, the winner and the freezes. It has
-  no sha256. A node in the round can make this proof. It exists in two sizes.
-- The **postage circuit** proves the replay of the postage event log, the pot and the batches that
-  expired. It is larger. Any node can make this proof, and it does not depend on who plays.
-
-`settleRound` takes both proofs. A node can also send the postage proof alone with `settlePostage`,
-for the round that can settle next. Then `settleRound` of that round needs only the game proof.
+(An earlier version had a second circuit for the postage accounting. Section 8 has its numbers. The
+accounting is now on chain, section 6.)
 
 The public inputs are field elements that `Settlement` builds from its own state and from the outcome
 (`_gameInputs`, `_settlePostage`). Small values are packed into one element.
@@ -124,15 +123,6 @@ Game circuit, 12 + P + F inputs:
 9   truthHash, high half      10  truthHash, low half
 11  freeze codes: 2 bits for each entry, entry k at bit 2k
 12+ the stake commitment of each entry: P anchored commits, then F forced commits (zero if unused)
-```
-
-Postage circuit, 7 inputs:
-
-```
-0  prevStateHash      1  newStateHash
-2  prevEventIndex << 128 | eventIndex << 64 | cutBlock
-3  prevEventHash      4  eventHash      (the MiMC hash chain of the event log)
-5  potAmount          6  validChunkCount
 ```
 
 A freeze code is 0 (no freeze), 1 (disagreement) or 2 (no reveal, or the stake changed in the round).
@@ -156,15 +146,39 @@ MiMC( owner,  overlay_hi,  overlay_lo,  key.x,  key.y,  committedStake << 96 | p
 A freeze changes only `lastUpdated`, which is in the last element. The registry keeps the hash of the
 first 6 elements, so after a freeze it computes one compression only.
 
-## 6. Postage state
+## 6. Postage accounting on chain
 
-The live batches are leaves of a MiMC Merkle tree with depth 24. A leaf is
-`(id_hi, id_lo, depth, balance, nextIndex, nextBalance)`. The leaves form one linked list in expiry
-order: the key is (balance, leaf index). Leaf 0 is the head of the list. `nextIndex = 0` is the end.
+On master, `PostageStamp` keeps a sorted tree of all batches, so that it can remove the expired
+batches before it pays the pot. A stamp buyer pays for the tree and for the expiry of the batches of
+other users. On `feat/zk-settlement` the tree is in the proof.
 
-The carried state is `MiMC(root, nextFree, liveChunks, lastCutBlock, priceBlock, priceOutpayment, price)`.
+Here the contract does not need the batches in expiry order. It needs only the number of chunks that
+stop to pay at each balance level:
 
-Each event slot of the circuit does at most 3 leaf writes. Each expiry slot does 2 leaf writes.
+- The balance scale (`normalisedBalance`) is split into buckets of `BUCKET` = 2^21 units.
+- For each bucket, the contract stores the chunks of the batches whose balance is in the bucket, and
+  what these batches pay in their own bucket (the sum of chunks x (balance - start of the bucket)).
+- `liveSize` is the chunks of the batches in the buckets after the current one. They pay the pot for
+  each unit of outpayment.
+- When the outpayment passes the end of a bucket, the batches of that bucket pay the rest of their
+  balance, and the batches of the next bucket in use leave `liveSize`. A bitmap finds the next bucket
+  in use.
+- A purchase, a top-up or a depth increase changes one or two buckets.
+
+Properties:
+
+- Each batch pays exactly its balance, as on master. The test runs random batch histories on master's
+  `PostageStamp` and on `PostageStampZK` in the same blocks: the pot of `PostageStampZK` is never more
+  than master's pot, and it is equal when all batches are expired.
+- A batch stops to pay at the start of its bucket and pays the rest at the end of its bucket. So the
+  last part of its balance (less than one bucket) arrives late, never early.
+- A new balance must be in a later bucket than the current one. The minimum balance of a batch
+  (`minimumValidityBlocks` x price) is more than one bucket, so this is always true.
+- The pot of a game round is fixed at the round's seed block (`potAt(round)`). The first accounting
+  after a seed block stores the pot at that block. `anchorRound` calls `checkpoint()`, so each round
+  with an anchor gets its own cut. Rounds without any transaction between their seed blocks share
+  one cut.
+- A stamp is valid when `normalisedBalance > currentTotalOutPayment()`, as before. Nothing is removed.
 
 ## 7. How to run it locally
 
@@ -181,10 +195,9 @@ You need Go, Rust, Foundry (`anvil`, `cast`) and the Node.js packages of this re
    ceremony with more than one party.
 
    ```bash
-   ./snark/snarkd setup -kind game -p 8 -f 2 -out keys-game8
-   ./snark/snarkd setup -kind game -p 16 -f 4 -out keys-game16
-   ./snark/snarkd setup -kind postage -e 8 -x 4 -out keys-postage
-   cp keys-game8/GameVerifier8.sol keys-game16/GameVerifier16.sol keys-postage/PostageVerifier.sol ../src/settlement/groth16/
+   ./snark/snarkd setup -p 8 -f 2 -out keys-game8
+   ./snark/snarkd setup -p 16 -f 4 -out keys-game16
+   cp keys-game8/GameVerifier8.sol keys-game16/GameVerifier16.sol ../src/settlement/groth16/
    ```
 
 3. Start a local chain, deploy the contracts and stake the nodes (repository root):
@@ -199,17 +212,16 @@ You need Go, Rust, Foundry (`anvil`, `cast`) and the Node.js packages of this re
 4. Start the proof daemon, the prover and the node simulator (`prover/`):
 
    ```bash
-   ./snark/snarkd serve -game keys-game8,keys-game16 -postage keys-postage
+   ./snark/snarkd serve -game keys-game8,keys-game16
    export RPC_URL=http://127.0.0.1:8545
    export SETTLEMENT_ADDRESS=$(jq -r .address ../deployments/zklocal/Settlement.json)
    PROVER_PRIVATE_KEY=<key of anvil account 0> ./target/release/swarm-prover serve
    BATCH_OWNER_KEY=<key of anvil account 0> ./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2 --rounds 6
    ```
 
-`snarkd` has more commands: `size -kind game -p 16 -f 4` prints the number of constraints of a
-circuit, and `check -witness w.json` solves a circuit for one witness without a proof (the fast test
-loop). `snark_synth` (in `prover/crates/vm`) writes the witnesses of a synthetic round: line 1 for the
-game circuit, line 2 for the postage circuit.
+`snarkd` has more commands: `size -p 16 -f 4` prints the number of constraints of a circuit, and
+`check -witness w.json` solves the circuit for one witness without a proof (the fast test loop).
+`snark_synth NODES FORCED P F` (in `prover/crates/vm`) writes the witness of a synthetic round.
 
 ## 8. Results
 
@@ -217,7 +229,8 @@ All numbers are from one machine: Apple M4 Max, 14 cores, 36 GB, on 2026-11-14.
 
 Sections 8.1 to 8.3 are the first version: one circuit for the game and the postage accounting, with a
 sha256 hash of all public values as the only public input. Section 8.4 is the version with two
-circuits. Section 8.5 is the current version.
+circuits. Section 8.5 adds the MiMC postage log. Section 8.6 is the current version: the postage
+accounting is on chain and there is one proof.
 
 ### 8.1 Circuit size
 
@@ -359,7 +372,7 @@ Ways to decrease the gas: a game circuit with 8 commits has 22 inputs (about 65,
 postage proof for several rounds together; one MiMC hash of the stake commitments in place of one
 input for each entry.
 
-### 8.5 Current version: MiMC postage log, two game circuit sizes, cheaper MiMC on chain
+### 8.5 MiMC postage log, two game circuit sizes, cheaper MiMC on chain
 
 Changes after section 8.4:
 
@@ -437,16 +450,97 @@ Not done from the list of possible optimizations, with the reason:
   game circuit has the same purpose: it removes the unused inputs.
 - **Memory-lean prover.** This is new prover software (some weeks of work).
 
+### 8.6 Current version: postage accounting on chain, one proof
+
+The postage circuit, the prover's batch tree and the postage log are removed. `settleRound` checks one
+proof (the game) and pays from the pot that `PostageStampZK` computes.
+
+The game proof (unchanged from section 8.5):
+
+| Circuit | Constraints | 4 cores | 1 core | Peak memory |
+| --- | --- | --- | --- | --- |
+| Game, 8 commits and 2 forced entries | 193,197 | 0.8 s | 2.9 s | 0.36 to 0.38 GB |
+| Game, 16 commits and 4 forced entries | 389,668 | 1.4 s | 5.3 s | 0.67 to 0.72 GB |
+
+Local test, the same five scenarios as in section 8.5:
+
+| Scenario | Rounds settled | Claimed rounds | `settleRound` gas, claimed | Forced transactions |
+| --- | --- | --- | --- | --- |
+| honest | 5 of 5 | 3 | 964,010 and 986,523 (first round: 1,736,279) | 0 |
+| faults | 7 of 7 | 3 | 1,002,305 to 1,045,213 | 8 |
+| censor | 6 of 6 | 3 | 968,436 to 1,012,011 | 6 |
+| noanchor (game circuit 16/4) | 2 of 2 | 2 | 1,008,001 and 1,012,324 | 16 |
+| withhold | 5 of 5 | 2 | 971,706 and 972,902 | 0 |
+
+25 rounds settled, with no failed transaction and no error in the prover logs. A round without commits
+costs about 555,000 gas. The first claimed round costs more, because the contract computes each stake
+commitment for the first time. A game proof took 0.3 to 0.35 s.
+
+After the run, `Settlement.potPaid` (5.46e13) is less than `PostageStampZK.cumulativePot` (5.71e13),
+and the token balance of `PostageStampZK` (1.68e15) covers the pot.
+
+Parts of one claimed round (964,010 gas):
+
+| Part | Gas |
+| --- | --- |
+| Game verifier (22 public inputs) | 446,521 |
+| Stake commitments (5, from the cache) | 113,115 |
+| Claim checks | 94,394 |
+| Price change, with the pot accounting | 84,851 |
+| Payouts | 34,744 |
+| Other (calldata, block headers, storage) | about 190,000 |
+
+Gas of the stamp operations, on master's `PostageStamp` and on `PostageStampZK` (30 batches, measured
+with a script on the hardhat network):
+
+| Operation | Master | `PostageStampZK` |
+| --- | --- | --- |
+| `createBatch`, median | 365,179 | 217,469 |
+| `topUp` | 445,594 | 169,212 |
+| `increaseDepth` | 454,770 | 83,075 |
+| `setPrice` | 52,686 | 66,495 |
+
+Other transactions: `forceCommit` 77,844 to 129,376 gas, `forceReveal` 131,694 to 165,878 gas,
+`anchorReveals` 57,443 gas.
+
+### 8.7 Cost of a round: this design and the game on chain
+
+The game on chain (master, `Redistribution` on Gnosis), measured from the transactions of the last
+3,000 blocks before 2026-11-15 (20 rounds):
+
+| Transaction | Count | Median gas |
+| --- | --- | --- |
+| `commit` | 76 | 155,598 |
+| `reveal` | 72 | 199,877 |
+| `claim` | 20 | 451,800 |
+
+So a round on master costs about 355,000 gas for each node that plays, and about 452,000 gas for the
+claim. About 3.8 nodes played in each round.
+
+| Nodes in the round | Master, all transactions | This design: `settleRound` and the two anchors |
+| --- | --- | --- |
+| 4 | about 1,870,000 | about 1,100,000 |
+| 10 | about 4,000,000 | about 1,300,000 (game circuit 16/4) |
+| 16 | about 6,100,000 | about 1,450,000 |
+
+The numbers for this design are estimates from the measured parts: 964,000 gas for 5 nodes, 22,000
+gas more for each node, 65,000 gas more for the larger game circuit, and about 130,000 gas for the two
+anchor transactions. In this design the nodes send no transaction in a normal round.
+
 ## 9. Open items
 
 - **Trusted setup.** Groth16 needs a setup ceremony for each circuit version. The keys in this
   prototype come from a local setup, which is not safe for a real network.
 - **Circuit review.** Nobody has audited the circuit. The only test is that the circuit and the Rust
   reference give the same hash of the public values, on synthetic rounds and on the local run.
-- **Gas.** `settleRound` with two proofs costs about 1.36M to 1.44M gas for a claimed round (section 8.5). The two verifiers are about 800,000 gas of that.
-- **Fixed size.** A round with more entries than the circuit size cannot settle. The same applies to a
-  round with more than E postage events or X expiries since the last settlement. Possible solutions:
-  several circuit sizes with one verifier each, and a proof that only moves the postage state forward.
+- **Gas.** `settleRound` costs about 1.0M gas for a claimed round (section 8.6). The verifier is about 450,000 gas of that.
+- **Fixed size.** A round with more entries than the largest game circuit holds cannot settle. The
+  contract holds two sizes now; a real network needs a size for the largest neighbourhood.
+- **Bucket width.** `BUCKET` is a constant. If the price falls so far that the minimum balance of a
+  batch is less than one bucket, a purchase with a small balance reverts. The width can become a
+  parameter.
+- **Pot accounting loop.** The accounting visits each bucket in use that the outpayment passed. After
+  a long time without any transaction, one call does all of that work.
 - **Game key.** A node can set its key one time. A rule for a key change is necessary. A node that
   registers its first key during a round can decide late whether its commit counts.
 - **Batch check time.** The claim checks read the batch at the settlement, not at the seed block.
