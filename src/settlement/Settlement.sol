@@ -219,9 +219,10 @@ contract Settlement is AccessControl, Pausable {
     // anchored commits and reveals, and forced commits and reveals, that one proof can hold.
     struct GameCircuit {
         address verifier;
-        uint16 capacity; // anchored commits and reveals
-        uint16 forcedCapacity; // forced commits and reveals
-        bytes4 selector; // of verifyProof(bytes,uint256[12 + capacity + forcedCapacity])
+        // Slots for commits (and as many for reveals). Anchored entries come first, then forced entries:
+        // any mix fits as long as anchored + forced <= capacity.
+        uint16 capacity;
+        bytes4 selector; // of verifyProof(bytes,uint256[12 + capacity])
     }
     // Two sizes of the game circuit: a prover uses the smallest one that holds the round, because each
     // public input of a verifier costs gas. An entry with a zero verifier is not in use.
@@ -234,7 +235,6 @@ contract Settlement is AccessControl, Pausable {
         uint8 slot;
         address gameVerifier;
         uint16 capacity;
-        uint16 forcedCapacity;
         uint64 eta;
     }
     PendingVerifier public pendingVerifier;
@@ -312,14 +312,12 @@ contract Settlement is AccessControl, Pausable {
     event VerifierChanged(
         uint8 slot,
         address gameVerifier,
-        uint16 capacity,
-        uint16 forcedCapacity
+        uint16 capacity
     );
     event VerifierProposed(
         uint8 slot,
         address gameVerifier,
         uint16 capacity,
-        uint16 forcedCapacity,
         uint64 eta
     );
 
@@ -365,13 +363,12 @@ contract Settlement is AccessControl, Pausable {
         address claimVerifier,
         address _gameVerifier,
         uint16 _capacity,
-        uint16 _forcedCapacity,
         uint64 _verifierDelay
     ) {
         IGameKeys gk = IGameKeys(gameKeys);
         GameKeys = gk;
         Claims = ClaimVerifier(claimVerifier);
-        _setGameCircuit(0, _gameVerifier, _capacity, _forcedCapacity);
+        _setGameCircuit(0, _gameVerifier, _capacity);
 
         uint256 z;
         for (uint256 i = 0; i < 8; ++i) z = gk.compress(z, z);
@@ -693,13 +690,12 @@ contract Settlement is AccessControl, Pausable {
     function proposeVerifier(
         uint8 _slot,
         address _gameVerifier,
-        uint16 _capacity,
-        uint16 _forcedCapacity
+        uint16 _capacity
     ) external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         uint64 eta = uint64(block.timestamp) + verifierDelay;
-        pendingVerifier = PendingVerifier(_slot, _gameVerifier, _capacity, _forcedCapacity, eta);
-        emit VerifierProposed(_slot, _gameVerifier, _capacity, _forcedCapacity, eta);
+        pendingVerifier = PendingVerifier(_slot, _gameVerifier, _capacity, eta);
+        emit VerifierProposed(_slot, _gameVerifier, _capacity, eta);
     }
 
     /// @notice Make the pending verifier change take effect, once its delay has passed. Anybody can call it.
@@ -708,14 +704,14 @@ contract Settlement is AccessControl, Pausable {
         if (p.eta == 0) revert NoPendingVerifier();
         if (block.timestamp < p.eta) revert VerifierDelayNotOver();
         delete pendingVerifier;
-        _setGameCircuit(p.slot, p.gameVerifier, p.capacity, p.forcedCapacity);
-        emit VerifierChanged(p.slot, p.gameVerifier, p.capacity, p.forcedCapacity);
+        _setGameCircuit(p.slot, p.gameVerifier, p.capacity);
+        emit VerifierChanged(p.slot, p.gameVerifier, p.capacity);
     }
 
     function cancelVerifier() external {
         if (!hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) revert NotAdmin();
         delete pendingVerifier;
-        emit VerifierProposed(0, address(0), 0, 0, 0);
+        emit VerifierProposed(0, address(0), 0, 0);
     }
 
     function setStakeAgeRounds(uint8 _rounds) external {
@@ -906,9 +902,9 @@ contract Settlement is AccessControl, Pausable {
     ) internal returns (uint256[] memory input) {
         RoundInfo memory ri = _info(out.round, s);
         GameCircuit memory gc = gameCircuits[circuit];
-        if (ri.revealCount > gc.capacity || ri.forcedRevealCount > gc.forcedCapacity) revert InputMismatch(8);
+        if (uint256(ri.revealCount) + ri.forcedRevealCount > gc.capacity) revert InputMismatch(8);
 
-        input = new uint256[](12 + uint256(gc.capacity) + gc.forcedCapacity);
+        input = new uint256[](12 + uint256(gc.capacity));
         input[0] = (block.chainid << 160) | uint256(uint160(address(this)));
         input[1] = _packCounts(out.round, ri);
         input[2] = _packParams() | _packOutcome(out);
@@ -920,7 +916,7 @@ contract Settlement is AccessControl, Pausable {
         input[8] = uint256(ri.forcedRevealsHash);
         input[9] = uint256(out.truthHash) >> 128;
         input[10] = uint256(uint128(uint256(out.truthHash)));
-        input[11] = _stakeInputs(input, out, ri.commitCount, ri.forcedCommitCount, gc.capacity, gc.forcedCapacity);
+        input[11] = _stakeInputs(input, out, ri.commitCount, ri.forcedCommitCount, gc.capacity);
     }
 
     function _packCounts(uint64 _round, RoundInfo memory ri) internal view returns (uint256) {
@@ -942,21 +938,21 @@ contract Settlement is AccessControl, Pausable {
         Outcome calldata out,
         uint256 nc,
         uint256 nf,
-        uint256 cap,
-        uint256 fcap
+        uint256 cap
     ) internal returns (uint256 freeze) {
-        if (out.owners.length != nc + nf || out.freeze.length != nc + nf || nc > cap || nf > fcap) {
+        if (out.owners.length != nc + nf || out.freeze.length != nc + nf || nc + nf > cap) {
             revert InputMismatch(8);
         }
-        for (uint256 k = 0; k < nc + nf; ) {
-            uint256 slot = k < nc ? k : cap + (k - nc);
+        // Slot k holds entry k: the anchored commits, then the forced commits.
+        for (uint256 slot = 0; slot < nc + nf; ) {
+            uint256 k = slot;
             (uint256 commitment, uint256 lastUpdated) = GameKeys.commitmentOf(out.owners[k]);
             input[12 + slot] = commitment;
             freeze |= uint256(uint8(out.freeze[k])) << (2 * slot);
             // Bit 128 + slot: the stake record was last changed by a freeze of this contract.
             if (lastUpdated != 0 && lastUpdated == frozenUntil[out.owners[k]]) freeze |= uint256(1) << (128 + slot);
             unchecked {
-                ++k;
+                ++slot;
             }
         }
     }
@@ -995,13 +991,8 @@ contract Settlement is AccessControl, Pausable {
         if (!ok || gc.verifier == address(0)) revert ProofInvalid();
     }
 
-    function _setGameCircuit(uint8 slot, address _verifier, uint16 _capacity, uint16 _forcedCapacity) internal {
-        gameCircuits[slot] = GameCircuit(
-            _verifier,
-            _capacity,
-            _forcedCapacity,
-            _selector(12 + uint256(_capacity) + _forcedCapacity)
-        );
+    function _setGameCircuit(uint8 slot, address _verifier, uint16 _capacity) internal {
+        gameCircuits[slot] = GameCircuit(_verifier, _capacity, _selector(12 + uint256(_capacity)));
     }
 
     /// @dev The selector of `verifyProof(bytes,uint256[n])`.

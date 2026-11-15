@@ -111,7 +111,7 @@ alloy::sol! {
         function GameKeys() external view returns (address);
         function frozenUntil(address) external view returns (uint256);
         error ProofInvalid();
-        function gameCircuits(uint256) external view returns (address verifier, uint16 capacity, uint16 forcedCapacity, bytes4 selector);
+        function gameCircuits(uint256) external view returns (address verifier, uint16 capacity, bytes4 selector);
 
         function rounds(uint64) external view returns (
             bytes32 anchorBlockHash,

@@ -11,19 +11,17 @@ import (
 type WitnessJSON struct {
 	Kind string `json:"kind"`
 	Caps struct {
-		P, F int
+		P int
 	} `json:"caps"`
 	Public []string `json:"public"`
 
-	G             []string   `json:"g"`
-	Seed          string     `json:"seed"`
-	Anchor64      string     `json:"anchor64"`
-	Commits       [][]string `json:"commits"`
-	ForcedCommits [][]string `json:"forcedCommits"`
-	Stakes        [][]string `json:"stakes"`
-	Frozen        []string   `json:"frozen"`
-	Reveals       [][]string `json:"reveals"`
-	ForcedReveals [][]string `json:"forcedReveals"`
+	G        []string   `json:"g"`
+	Seed     string     `json:"seed"`
+	Anchor64 string     `json:"anchor64"`
+	Commits  [][]string `json:"commits"`
+	Stakes   [][]string `json:"stakes"`
+	Frozen   []string   `json:"frozen"`
+	Reveals  [][]string `json:"reveals"`
 }
 
 func num(s string) V {
@@ -44,10 +42,9 @@ func Assignment(data []byte) (*GameCircuit, Caps, error) {
 	if err := json.Unmarshal(data, &w); err != nil {
 		return nil, Caps{}, err
 	}
-	caps := Caps{w.Caps.P, w.Caps.F}
-	if len(w.G) != gLen || len(w.Commits) != caps.P || len(w.ForcedCommits) != caps.F ||
-		len(w.Stakes) != caps.P+caps.F || len(w.Frozen) != caps.P+caps.F || len(w.Reveals) != caps.P || len(w.ForcedReveals) != caps.F ||
-		len(w.Public) != GamePublic+caps.P+caps.F {
+	caps := Caps{w.Caps.P}
+	if len(w.G) != gLen || len(w.Commits) != caps.P || len(w.Stakes) != caps.P || len(w.Frozen) != caps.P ||
+		len(w.Reveals) != caps.P || len(w.Public) != GamePublic+caps.P {
 		return nil, caps, fmt.Errorf("witness does not match its capacity")
 	}
 	c := NewGame(caps)
@@ -61,9 +58,6 @@ func Assignment(data []byte) (*GameCircuit, Caps, error) {
 	for i, a := range w.Commits {
 		c.Commits[i] = Commit{num(a[0]), num(a[1]), num(a[2]), num(a[3]), num(a[4])}
 	}
-	for i, a := range w.ForcedCommits {
-		c.Forced[i] = FCommit{num(a[0]), num(a[1])}
-	}
 	for i, a := range w.Stakes {
 		c.Stakes[i] = Stake{num(a[0]), num(a[1]), num(a[2]), num(a[3]), num(a[4]), num(a[5]), num(a[6]), num(a[7])}
 	}
@@ -72,9 +66,6 @@ func Assignment(data []byte) (*GameCircuit, Caps, error) {
 	}
 	for i, a := range w.Reveals {
 		c.Reveals[i] = reveal(a)
-	}
-	for i, a := range w.ForcedReveals {
-		c.ForcedReveals[i] = reveal(a)
 	}
 	return c, caps, nil
 }

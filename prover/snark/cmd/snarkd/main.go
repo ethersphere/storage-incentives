@@ -2,7 +2,7 @@
 //
 //	snarkd vectors                                   MiMC test vector for the Rust reference
 //	snarkd check   -witness w.json                   solve the circuit without a proof (debugging)
-//	snarkd setup   -p 16 -f 4 -out DIR               compile, trusted setup (local, for tests), verifier contract
+//	snarkd setup   -p 16 -out DIR                    compile, trusted setup (local, for tests), verifier contract
 //	snarkd prove   -keys DIR -witness w.json         make and verify a Groth16 proof
 //	snarkd serve   -game DIR1,DIR2                   keep the keys in memory; POST /prove with a witness
 package main
@@ -46,8 +46,8 @@ func compile(caps circuit.Caps) constraint.ConstraintSystem {
 	t := time.Now()
 	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, circuit.NewGame(caps))
 	die(err)
-	fmt.Fprintf(os.Stderr, "game circuit P=%d F=%d: %d constraints (compiled in %s)\n",
-		caps.P, caps.F, ccs.GetNbConstraints(), time.Since(t).Round(time.Millisecond))
+	fmt.Fprintf(os.Stderr, "game circuit P=%d: %d constraints (compiled in %s)\n",
+		caps.P, ccs.GetNbConstraints(), time.Since(t).Round(time.Millisecond))
 	return ccs
 }
 
@@ -64,7 +64,6 @@ func main() {
 	}
 	fs := flag.NewFlagSet(os.Args[1], flag.ExitOnError)
 	p := fs.Int("p", 32, "anchored commits and reveals")
-	f := fs.Int("f", 4, "forced commits and reveals")
 	out := fs.String("out", "keys", "output directory (setup) or file (prove)")
 	keys := fs.String("keys", "keys", "directory of setup (prove)")
 	gameKeys := fs.String("game", "", "setup directories of the game circuits, comma separated (serve)")
@@ -80,7 +79,7 @@ func main() {
 		mimcSol()
 
 	case "size":
-		compile(circuit.Caps{P: *p, F: *f})
+		compile(circuit.Caps{P: *p})
 
 	case "check":
 		data, err := os.ReadFile(*wfile)
@@ -91,7 +90,7 @@ func main() {
 		fmt.Println("ok: the witness satisfies the circuit")
 
 	case "setup":
-		ccs := compile(circuit.Caps{P: *p, F: *f})
+		ccs := compile(circuit.Caps{P: *p})
 		t := time.Now()
 		pk, vk, err := groth16.Setup(ccs)
 		die(err)
@@ -117,7 +116,7 @@ func main() {
 		name := fmt.Sprintf("GameVerifier%d", *p) // one contract for each size
 		src := strings.Replace(sol.String(), "contract Verifier {", "contract "+name+" {", 1)
 		die(os.WriteFile(filepath.Join(*out, name+".sol"), []byte(src), 0o644))
-		meta, _ := json.Marshal(map[string]any{"p": *p, "f": *f, "constraints": ccs.GetNbConstraints()})
+		meta, _ := json.Marshal(map[string]any{"p": *p, "constraints": ccs.GetNbConstraints()})
 		die(os.WriteFile(filepath.Join(*out, "caps.json"), meta, 0o644))
 
 	case "prove":
@@ -143,8 +142,8 @@ func main() {
 		}
 		for _, dir := range strings.Split(*gameKeys, ",") {
 			m := capsOf(dir)
-			games = append(games, map[string]any{"p": m["p"], "f": m["f"]})
-			provers[fmt.Sprintf("game/%v/%v", m["p"], m["f"])] = loadProver(dir)
+			games = append(games, map[string]any{"p": m["p"]})
+			provers[fmt.Sprintf("game/%v", m["p"])] = loadProver(dir)
 		}
 		http.HandleFunc("/prove", func(w http.ResponseWriter, r *http.Request) {
 			data, err := io.ReadAll(r.Body)
@@ -153,10 +152,10 @@ func main() {
 				return
 			}
 			var k struct {
-				Caps struct{ P, F int }
+				Caps struct{ P int }
 			}
 			_ = json.Unmarshal(data, &k)
-			key := fmt.Sprintf("game/%d/%d", k.Caps.P, k.Caps.F)
+			key := fmt.Sprintf("game/%d", k.Caps.P)
 			pr, ok := provers[key]
 			if !ok {
 				http.Error(w, "no keys for circuit "+key, http.StatusBadRequest)

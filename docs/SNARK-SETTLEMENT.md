@@ -96,7 +96,7 @@ Chunk addresses, postage stamps, batch ids and the reserve sample do not change.
 | Pot timing | Exact at each cut | Each batch pays exactly its balance; the last part (less than one bucket) arrives late | The contract does not know the batches in expiry order |
 | Claim batch check | Alive at the seed block, in the proof | Alive at the settlement, on chain (`isBatchAlive`) | The contract has the batch records |
 | Stake record changed in the round | Not possible: `commit` reverts for a stake younger than 2 rounds | A commit counts only for an eligible stake. If the owner changed the stake record after the round started, the node gets the no-reveal freeze. If the change was a freeze of `Settlement`, the commit only does not count | A node must not leave the round after it saw the seed. A frozen node cannot commit on master, so it must not get a second freeze here |
-| Capacity | No limit | Fixed: P commits and F forced entries for each proof. No limit for postage changes | A circuit has a fixed size |
+| Capacity | No limit | Fixed: P slots for each proof. Anchored and forced entries share them (anchored + forced <= P) | A circuit has a fixed size. With shared slots, a round in which every node forces its entry (no anchor) fits the same circuit |
 
 ## 5. The game circuit and its public inputs
 
@@ -109,7 +109,7 @@ accounting is now on chain, section 6.)
 The public inputs are field elements that `Settlement` builds from its own state and from the outcome
 (`_gameInputs`, `_settlePostage`). Small values are packed into one element.
 
-Game circuit, 12 + P + F inputs:
+Game circuit, 12 + P inputs:
 
 ```
 0   chainId << 160 | settlement
@@ -124,7 +124,7 @@ Game circuit, 12 + P + F inputs:
 9   truthHash, high half      10  truthHash, low half
 11  freeze codes: 2 bits for each entry, entry k at bit 2k; and from bit 128, one bit for each entry:
     the stake record was last changed by a freeze of Settlement (`Settlement.frozenUntil`)
-12+ the stake commitment of each entry: P anchored commits, then F forced commits (zero if unused)
+12+ the stake commitment of the entry in each slot (zero if unused)
 ```
 
 A freeze code is 0 (no freeze), 1 (disagreement) or 2 (no reveal, or the stake changed in the round).
@@ -197,8 +197,8 @@ You need Go, Rust, Foundry (`anvil`, `cast`) and the Node.js packages of this re
    ceremony with more than one party.
 
    ```bash
-   ./snark/snarkd setup -p 8 -f 2 -out keys-game8
-   ./snark/snarkd setup -p 16 -f 4 -out keys-game16
+   ./snark/snarkd setup -p 8 -out keys-game8
+   ./snark/snarkd setup -p 16 -out keys-game16
    cp keys-game8/GameVerifier8.sol keys-game16/GameVerifier16.sol ../src/settlement/groth16/
    ```
 
@@ -206,7 +206,7 @@ You need Go, Rust, Foundry (`anvil`, `cast`) and the Node.js packages of this re
 
    ```bash
    anvil --block-time 1
-   WALLET_SECRET=<key of anvil account 0, no 0x> SNARK_P=16 SNARK_F=4 SNARK_P2=8 SNARK_F2=2 npx hardhat deploy --network zklocal
+   WALLET_SECRET=<key of anvil account 0, no 0x> SNARK_P=16 SNARK_P2=8 npx hardhat deploy --network zklocal
    NODE_KEYS=<keys of anvil accounts 1-5> npx hardhat run scripts/zk/setup-nodes.ts --network zklocal
    cast rpc anvil_mine 0x190
    ```
@@ -221,9 +221,9 @@ You need Go, Rust, Foundry (`anvil`, `cast`) and the Node.js packages of this re
    BATCH_OWNER_KEY=<key of anvil account 0> ./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2 --rounds 6
    ```
 
-`snarkd` has more commands: `size -p 16 -f 4` prints the number of constraints of a circuit, and
+`snarkd` has more commands: `size -p 16` prints the number of constraints of a circuit, and
 `check -witness w.json` solves the circuit for one witness without a proof (the fast test loop).
-`snark_synth NODES FORCED P F` (in `prover/crates/vm`) writes the witness of a synthetic round.
+`snark_synth NODES FORCED SLOTS` (in `prover/crates/vm`) writes the witness of a synthetic round.
 
 ## 8. Results
 
@@ -536,9 +536,10 @@ applies when you build the circuits for a real network.
 
 ### 9.1 Words
 
-- **Circuit size.** A circuit has a fixed number of slots: P slots for anchored commits (and as many
-  for anchored reveals), and F slots for forced commits (and as many for forced reveals). In the
-  tables, "16 / 4" means P = 16 and F = 4. P must be a power of two.
+- **Circuit size.** A circuit has a fixed number of slots: P slots for commits and P for reveals.
+  Anchored entries and forced entries (from the escape hatches) share the slots: the anchored ones
+  first, then the forced ones. Any mix fits as long as their sum is at most P. P must be a power of
+  two.
 - **Proving key.** The file that a prover needs to make a proof for one circuit size. A node that
   proves keeps it in memory.
 - **Verifier contract.** The Solidity contract (`GameVerifier<P>.sol`) that checks proofs for one
@@ -552,13 +553,15 @@ applies when you build the circuits for a real network.
 
 Apple M4 Max, 2026-11-16. Peak memory is the whole proof process, with the keys.
 
-| Circuit (P / F) | Constraints | Peak memory | 4 cores | 1 core | Proving key | Local setup |
+| Circuit (P slots) | Constraints | Peak memory | 4 cores | 1 core | Proving key | Public inputs |
 | --- | --- | --- | --- | --- | --- | --- |
-| 8 / 2 | 193,227 | 0.36 GB | 0.8 s | 2.9 s | 67 MB | 4 s |
-| 16 / 4 | 389,728 | 0.67 GB | 1.4 s | 5.3 s | 135 MB | 8 s |
-| 32 / 8 | 808,423 | 1.3 to 1.45 GB | 2.8 s | 10.8 s | 276 MB | 19 s |
-| 64 / 16 | 1,746,600 | 2.5 to 2.6 GB | 5.4 s | 20.8 s | 583 MB | 39 s |
-| 128 / 16 | 3,655,147 | not measured (about 5 to 6 GB) | — | — | — | — |
+| 8 | 180,077 | 0.36 to 0.38 GB | 0.7 s | 2.7 s | 64 MB | 20 |
+| 16 | 360,626 | 0.70 GB | 1.4 s | 5.2 s | 127 MB | 28 |
+| 32 | 738,897 | about 1.4 GB (estimate) | — | — | — | 44 |
+
+The earlier circuits with separate slots for forced entries were larger for the same number of
+commits: 193,227 constraints for 8 commits and 2 forced entries, 389,728 for 16 and 4, and 808,423
+for 32 and 8 (1.3 to 1.45 GB, 10.8 s on one core).
 
 ### 9.3 What changes with the size
 
@@ -582,7 +585,6 @@ Apple M4 Max, 2026-11-16. Peak memory is the whole proof process, with the keys.
 - The anchored commit and reveal lists are MiMC trees of depth 8 (`ListDepth`, `LIST_DEPTH`). So P
   cannot be more than 256. A larger P needs a deeper list tree in the circuit, the Rust reference and
   the prover service at the same time.
-- `Settlement.MAX_FORCED_PER_ROUND` is 256. F cannot usefully be more than that.
 - A round with more entries than the largest size holds cannot settle. Its pot stays in the contract
   for the next claimed round, and the next rounds settle after `PENDING_ROUNDS`.
 
@@ -590,9 +592,9 @@ Apple M4 Max, 2026-11-16. Peak memory is the whole proof process, with the keys.
 
 1. Find the largest number of nodes that play in one round on the real network, and how often it
    happens. In the last 20 Gnosis rounds before 2026-11-15, about 3.8 nodes played in each round.
-2. Use a small size that holds almost every round, for example 8 / 2. Small rounds then cost the least
+2. Use a small size that holds almost every round, for example 8 slots. Small rounds then cost the least
    gas, and small nodes can prove them.
-3. Use a large size that holds the largest round you expect, with a margin, for example 64 / 16. It is
+3. Use a large size that holds the largest round you expect, with a margin, for example 64 slots. It is
    the safety net. At least one prover with enough memory must have its proving key.
 4. If large rounds are frequent, consider the change in section 9.7 first.
 
@@ -602,12 +604,12 @@ Apple M4 Max, 2026-11-16. Peak memory is the whole proof process, with the keys.
 
    ```bash
    cd prover
-   ./snark/snarkd setup -p 64 -f 16 -out keys-game64
+   ./snark/snarkd setup -p 64 -out keys-game64
    ```
 
    This is a local setup: use it only for tests. For a real network, make the keys in a ceremony.
 2. Copy `keys-game64/GameVerifier64.sol` to `src/settlement/groth16/` and deploy it.
-3. Register it in a slot of `Settlement.gameCircuits` (`proposeVerifier(slot, verifier, P, F)`). After
+3. Register it in a slot of `Settlement.gameCircuits` (`proposeVerifier(slot, verifier, P)`). After
    `verifierDelay` (for example 7 days on mainnet), anybody can call `applyVerifier`.
 4. Start the provers with the keys of every size: `snarkd serve -game keys-game8,keys-game64`. The
    prover service uses only the sizes that both the contract and `snarkd` have, and picks the
@@ -626,6 +628,15 @@ Apple M4 Max, 2026-11-16. Peak memory is the whole proof process, with the keys.
   node is valid. Then the constraints increase in proportion to the size, not faster. This change must
   keep the rule "the first valid reveal counts". It is not built.
 
+### 9.8 Why the slots are shared
+
+A local run with 6 nodes and no anchor showed the problem of separate slots: all 6 nodes forced their
+commits, the circuit had 4 slots for forced entries, and no proof was possible for the round. The
+round blocked the next rounds for `PENDING_ROUNDS` and then dropped out. With shared slots the same
+round settled in the 8-slot circuit (proof 0.33 s, `settleRound` 1,010,218 gas). The shared circuit is
+also smaller: anchored commits and forced commits use the same signature check and the same reveal
+comparison.
+
 ## 10. Open items
 
 - **Trusted setup.** Groth16 needs a setup ceremony for each circuit version and each size (section
@@ -635,8 +646,8 @@ Apple M4 Max, 2026-11-16. Peak memory is the whole proof process, with the keys.
   reference give the same hash of the public values, on synthetic rounds and on the local run.
 - **Gas.** `settleRound` costs about 1.0M gas for a claimed round (section 8.6). The verifier is about 450,000 gas of that.
 - **Fixed size.** A round with more entries than the largest game circuit holds cannot settle. The
-  contract holds two sizes now; a real network needs a size for the largest neighbourhood. See
-  section 9.
+  contract holds two sizes now; a real network needs a size for the largest neighbourhood. Anchored
+  and forced entries share the slots, so a round without an anchor fits the same size. See section 9.
 - **Bucket width.** `BUCKET` is a constant. If the price falls so far that the minimum balance of a
   batch is less than one bucket, a purchase with a small balance reverts. The width can become a
   parameter.

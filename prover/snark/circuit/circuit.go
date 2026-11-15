@@ -17,12 +17,11 @@ const (
 	GamePublic = 12
 )
 
-// Caps is the size of the game circuit: P anchored commits and reveals, F forced commits and reveals.
-// P must be a power of two.
-type Caps struct{ P, F int }
+// Caps is the size of the game circuit: P slots for commits and P for reveals, which anchored and
+// forced entries share. P must be a power of two.
+type Caps struct{ P int }
 
 type Commit struct{ Owner, Obf, Rx, Ry, S V }
-type FCommit struct{ Owner, Obf V }
 type Stake struct{ OvHi, OvLo, Committed, Potential, Height, LastUpdated, KeyX, KeyY V }
 type Reveal struct{ OvHi, OvLo, Depth, HHi, HLo, NHi, NLo V }
 

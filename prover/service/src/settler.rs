@@ -86,8 +86,8 @@ pub struct Ctx {
     pub settlement: Address,
     pub chain_id: U256,
     pub snarkd: String,
-    /// The game circuits in use: (slot in Settlement.gameCircuits, commits, forced entries).
-    pub games: Vec<(u8, usize, usize)>,
+    /// The game circuits in use: (slot in Settlement.gameCircuits, number of entry slots).
+    pub games: Vec<(u8, usize)>,
     /// The prover key's address, for explicit nonces.
     pub from: Address,
     pub censor_commits: Vec<Address>,
@@ -122,9 +122,8 @@ pub async fn serve(cfg: Config) -> Result<()> {
     let mut games = vec![];
     for slot in 0..2u8 {
         let g = s.gameCircuits(U256::from(slot)).call().await?;
-        let size = (g.capacity as usize, g.forcedCapacity as usize);
-        if !g.verifier.is_zero() && have.contains(&size) {
-            games.push((slot, size.0, size.1));
+        if !g.verifier.is_zero() && have.contains(&(g.capacity as usize)) {
+            games.push((slot, g.capacity as usize));
         }
     }
     games.sort_by_key(|g| g.1);
@@ -909,17 +908,13 @@ async fn settle(ctx: &Ctx, round: u64, job: Job) -> Result<()> {
     let native = job.run()?;
     // The smallest game circuit that holds the round: fewer public inputs cost less gas.
     let i = &job.input;
-    let (slot, p, f) = *ctx
+    let need = (i.commits.len() + i.forced_commits.len()).max(i.reveals.len() + i.forced_reveals.len());
+    let (slot, p) = *ctx
         .games
         .iter()
-        .find(|(_, p, f)| {
-            i.commits.len() <= *p
-                && i.reveals.len() <= *p
-                && i.forced_commits.len() <= *f
-                && i.forced_reveals.len() <= *f
-        })
-        .ok_or_else(|| anyhow!("the round has more entries than the largest game circuit holds"))?;
-    let caps = swarm_vm::Caps { p, f };
+        .find(|(_, p)| need <= *p)
+        .ok_or_else(|| anyhow!("the round has {need} entries, more than the largest game circuit holds"))?;
+    let caps = swarm_vm::Caps { p };
     // Identifies the statement that the proof is for.
     let digest = alloy::primitives::keccak256(
         native

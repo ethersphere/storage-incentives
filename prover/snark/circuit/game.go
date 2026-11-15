@@ -44,31 +44,31 @@ const (
 //	9  truthHash, high half    10  truthHash, low half
 //	11 freeze codes: 2 bits for each entry, entry k at bit 2k; and from bit 128, 1 bit for each entry:
 //	   its stake record was last changed by a freeze of Settlement (Settlement.frozenUntil)
-//	12.. the stake commitment of each entry: P anchored, then F forced (zero for unused entries)
+//	12.. the stake commitment of the entry in each slot (zero for unused slots)
+//
+// Slots: the circuit has P slots for commits and P slots for reveals. Anchored entries come first,
+// then forced entries (escape hatches). Any mix fits, as long as anchored + forced <= P. So a round in
+// which every node forces its entry (no anchor) fits the same circuit as a normal round.
 type GameCircuit struct {
 	Pub []V `gnark:",public"`
 
-	G             [gLen]V
-	Seed          V
-	Anchor64      V
-	Commits       []Commit
-	Forced        []FCommit
-	Stakes        []Stake // P for the anchored commits, then F for the forced commits
-	Frozen        []V     // for each entry: 1 if Settlement froze the stake record last (public, in Pub[11])
-	Reveals       []Reveal
-	ForcedReveals []Reveal
+	G        [gLen]V
+	Seed     V
+	Anchor64 V
+	Commits  []Commit // anchored commits, then forced commits (forced: no signature)
+	Stakes   []Stake  // the stake record and game key of the entry in each slot
+	Frozen   []V      // for each slot: 1 if Settlement froze the stake record last (public, in Pub[11])
+	Reveals  []Reveal // anchored reveals, then forced reveals
 }
 
 // NewGame returns a game circuit of this size, for compilation or as an empty assignment.
 func NewGame(c Caps) *GameCircuit {
 	return &GameCircuit{
-		Pub:           make([]V, GamePublic+c.P+c.F),
-		Commits:       make([]Commit, c.P),
-		Forced:        make([]FCommit, c.F),
-		Stakes:        make([]Stake, c.P+c.F),
-		Frozen:        make([]V, c.P+c.F),
-		Reveals:       make([]Reveal, c.P),
-		ForcedReveals: make([]Reveal, c.F),
+		Pub:     make([]V, GamePublic+c.P),
+		Commits: make([]Commit, c.P),
+		Stakes:  make([]Stake, c.P),
+		Frozen:  make([]V, c.P),
+		Reveals: make([]Reveal, c.P),
 	}
 }
 
@@ -77,8 +77,7 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 	if err != nil {
 		return err
 	}
-	P, F := len(ci.Commits), len(ci.Forced)
-	N := P + F
+	N := len(ci.Commits)
 	g := ci.G
 
 	// ---------------------------------------------------------------- globals
@@ -95,10 +94,10 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 	c.rng(g[gStakePrice], 32)
 	c.rng(g[gFeeRecipient], 160)
 	anchor64 := c.bits(ci.Anchor64, 64)
-	api.AssertIsEqual(c.less(P, g[gCommitCount], 16), 0)
-	api.AssertIsEqual(c.less(P, g[gRevealCount], 16), 0)
-	api.AssertIsEqual(c.less(F, g[gForcedCommitCount], 16), 0)
-	api.AssertIsEqual(c.less(F, g[gForcedRevealCount], 16), 0)
+	nCommits := api.Add(g[gCommitCount], g[gForcedCommitCount])
+	nReveals := api.Add(g[gRevealCount], g[gForcedRevealCount])
+	api.AssertIsEqual(c.less(N, nCommits, 17), 0)
+	api.AssertIsEqual(c.less(N, nReveals, 17), 0)
 
 	// minimum depth: skipped = min(round - lastClaimRound, 254) + 1
 	diff := api.Sub(g[gRound], g[gLastClaimRound])
@@ -128,15 +127,19 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 	active := make([]V, N)
 	commitments := make([]V, N)
 
-	leaves := make([]V, P)
-	for i := 0; i < P; i++ {
+	leaves := make([]V, N)
+	var forcedCommitsHash V = 0
+	for i := 0; i < N; i++ {
 		cm, st := ci.Commits[i], ci.Stakes[i]
 		owners[i], obfs[i] = cm.Owner, cm.Obf
 		c.rng(cm.Owner, 160)
-		used[i] = c.less(i, g[gCommitCount], 16)
+		anchored := c.less(i, g[gCommitCount], 16)
+		used[i] = c.less(i, nCommits, 17)
+		forced := api.Sub(used[i], anchored) // used and not anchored
 		if i > 0 {
-			c.trueIf(used[i], c.less(owners[i-1], owners[i], 160))
+			c.trueIf(anchored, c.less(owners[i-1], owners[i], 160))
 		}
+		// An anchored commit counts with a good signature of the owner's game key.
 		msg := c.hash(commitDomain(), g[gChainID], g[gSettlement], g[gRound], cm.Obf)
 		keyZero := api.And(api.IsZero(st.KeyX), api.IsZero(st.KeyY))
 		key := eddsa.PublicKey{A: twistededwards.Point{
@@ -149,26 +152,17 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 		if err != nil {
 			return err
 		}
-		active[i] = api.And(api.And(used[i], ok), c.not(keyZero))
-		leaves[i] = api.Mul(used[i], c.hash(cm.Owner, cm.Obf, cm.Rx, cm.Ry, cm.S))
+		leaves[i] = api.Mul(anchored, c.hash(cm.Owner, cm.Obf, cm.Rx, cm.Ry, cm.S))
+		// A forced commit counts when its owner does not play already.
+		forcedCommitsHash = api.Select(forced,
+			c.compress(forcedCommitsHash, c.compress(cm.Owner, cm.Obf)), forcedCommitsHash)
+		var present V = 0
+		for q := 0; q < i; q++ {
+			present = api.Or(present, api.And(active[q], c.eq(owners[q], cm.Owner)))
+		}
+		active[i] = api.Select(anchored, api.And(ok, c.not(keyZero)), api.And(forced, c.not(present)))
 	}
 	commitsRoot := c.listRoot(leaves)
-
-	var forcedCommitsHash V = 0
-	for j := 0; j < F; j++ {
-		k := P + j
-		fc := ci.Forced[j]
-		owners[k], obfs[k] = fc.Owner, fc.Obf
-		c.rng(fc.Owner, 160)
-		used[k] = c.less(j, g[gForcedCommitCount], 16)
-		forcedCommitsHash = api.Select(used[k],
-			c.compress(forcedCommitsHash, c.compress(fc.Owner, fc.Obf)), forcedCommitsHash)
-		var present V = 0
-		for q := 0; q < k; q++ {
-			present = api.Or(present, api.And(active[q], c.eq(owners[q], fc.Owner)))
-		}
-		active[k] = api.And(used[k], c.not(present))
-	}
 
 	// ---------------------------------------------------------------- stakes
 	type stakeInfo struct {
@@ -214,27 +208,22 @@ func (ci *GameCircuit) Define(api frontend.API) error {
 	}
 
 	// ---------------------------------------------------------------- reveals
-	R := P + F
-	reveals := make([]Reveal, 0, R)
-	reveals = append(reveals, ci.Reveals...)
-	reveals = append(reveals, ci.ForcedReveals...)
+	R := N
+	reveals := ci.Reveals
 	revHash := make([]V, R)
 	revUsed := make([]V, R)
 	revDepthOK := make([]V, R)
-	revLeaves := make([]V, P)
+	revLeaves := make([]V, R)
 	var forcedRevealsHash V = 0
 	for r := 0; r < R; r++ {
 		rv := reveals[r]
 		c.rng(rv.Depth, 8)
 		revHash[r] = c.hash(rv.OvHi, rv.OvLo, rv.Depth, rv.HHi, rv.HLo, rv.NHi, rv.NLo)
 		revDepthOK[r] = c.not(c.less(rv.Depth, minDepth, 8))
-		if r < P {
-			revUsed[r] = c.less(r, g[gRevealCount], 16)
-			revLeaves[r] = api.Mul(revUsed[r], revHash[r])
-		} else {
-			revUsed[r] = c.less(r-P, g[gForcedRevealCount], 16)
-			forcedRevealsHash = api.Select(revUsed[r], c.compress(forcedRevealsHash, revHash[r]), forcedRevealsHash)
-		}
+		anchored := c.less(r, g[gRevealCount], 16)
+		revUsed[r] = c.less(r, nReveals, 17)
+		revLeaves[r] = api.Mul(anchored, revHash[r])
+		forcedRevealsHash = api.Select(api.Sub(revUsed[r], anchored), c.compress(forcedRevealsHash, revHash[r]), forcedRevealsHash)
 	}
 	revealsRoot := c.listRoot(revLeaves)
 

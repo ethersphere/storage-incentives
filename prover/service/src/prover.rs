@@ -10,15 +10,12 @@ pub struct SettlementProof {
     pub peak_mb: u64,
 }
 
-/// The game circuit sizes that the daemon has keys for: (commits, forced entries).
-pub async fn caps(url: &str) -> Result<Vec<(usize, usize)>> {
+/// The game circuit sizes (slots) that the daemon has keys for.
+pub async fn caps(url: &str) -> Result<Vec<usize>> {
     let v: serde_json::Value = reqwest::get(format!("{url}/caps")).await?.json().await?;
-    let n = |v: &serde_json::Value, k: &str| {
-        v[k].as_u64().map(|x| x as usize).ok_or_else(|| anyhow!("caps.{k}"))
-    };
     let mut games = vec![];
     for g in v["games"].as_array().ok_or_else(|| anyhow!("caps.games"))? {
-        games.push((n(g, "p")?, n(g, "f")?));
+        games.push(g["p"].as_u64().ok_or_else(|| anyhow!("caps.games.p"))? as usize);
     }
     Ok(games)
 }

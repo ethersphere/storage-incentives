@@ -11,11 +11,11 @@ use alloy_primitives::{Address, B256, U256};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-/// The size of the game circuit: anchored commits and reveals (`p`), forced commits and reveals (`f`).
+/// The size of the game circuit: `p` slots for commits and `p` for reveals. Anchored entries come first,
+/// then forced entries, so any mix fits as long as anchored + forced <= p.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Caps {
     pub p: usize,
-    pub f: usize,
 }
 
 /// Bits of a random draw.
@@ -427,10 +427,10 @@ impl PublicValues {
         let (th, tl) = halves(&self.truth_hash);
         v.push(th);
         v.push(tl);
-        // Entry k of the circuit: anchored commit k, or forced commit k - P.
-        let slot = |k: usize| if k < caps.p { (k < nc).then_some(k) } else { (k - caps.p < nf).then_some(nc + k - caps.p) };
+        // Slot k of the circuit holds entry k: the anchored commits, then the forced commits.
+        let slot = |k: usize| (k < nc + nf).then_some(k);
         let mut freeze = U256::ZERO;
-        for k in 0..caps.p + caps.f {
+        for k in 0..caps.p {
             if let Some(i) = slot(k) {
                 freeze |= sh(u(self.freeze[i] as u64), 2 * k);
                 if self.frozen[i] {
@@ -439,7 +439,7 @@ impl PublicValues {
             }
         }
         v.push(freeze);
-        for k in 0..caps.p + caps.f {
+        for k in 0..caps.p {
             v.push(slot(k).map_or(U256::ZERO, |i| self.stake_commitments[i]));
         }
         v
@@ -469,7 +469,8 @@ fn reveal_json(r: Option<&Reveal>) -> Value {
 /// The inputs of the game circuit for this round, padded to `caps`.
 pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> Result<Value, SnarkError> {
     let (nc, nf) = (input.commits.len(), input.forced_commits.len());
-    if nc > caps.p || input.reveals.len() > caps.p || nf > caps.f || input.forced_reveals.len() > caps.f {
+    let (rc, frc) = (input.reveals.len(), input.forced_reveals.len());
+    if nc + nf > caps.p || rc + frc > caps.p {
         return Err(SnarkError::Capacity);
     }
     let g: Vec<Value> = [
@@ -493,16 +494,18 @@ pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> 
     .map(|x| d(*x))
     .collect();
 
+    // Slots: the anchored commits, then the forced commits (with the padding signature, which the
+    // circuit does not use for them), then empty slots.
+    let pad = || json!(["0", "0", d(base().x), d(base().y), "1"]);
     let commits: Vec<Value> = (0..caps.p)
-        .map(|i| match input.commits.get(i) {
-            Some(c) => json!([d(addr(&c.owner)), d(c.obf), d(c.sig.r.x), d(c.sig.r.y), d(c.sig.s)]),
-            None => json!(["0", "0", d(base().x), d(base().y), "1"]),
-        })
-        .collect();
-    let forced: Vec<Value> = (0..caps.f)
-        .map(|j| match input.forced_commits.get(j) {
-            Some(c) => json!([d(addr(&c.owner)), d(U256::from_be_bytes(c.obfuscated_hash.0))]),
-            None => json!(["0", "0"]),
+        .map(|i| {
+            if let Some(c) = input.commits.get(i) {
+                json!([d(addr(&c.owner)), d(c.obf), d(c.sig.r.x), d(c.sig.r.y), d(c.sig.s)])
+            } else if let Some(c) = i.checked_sub(nc).and_then(|j| input.forced_commits.get(j)) {
+                json!([d(addr(&c.owner)), d(U256::from_be_bytes(c.obfuscated_hash.0)), d(base().x), d(base().y), "1"])
+            } else {
+                pad()
+            }
         })
         .collect();
     let stake = |k: Option<usize>| match k {
@@ -522,33 +525,24 @@ pub fn game_witness_json(input: &RoundInput, pv: &PublicValues, caps: &Caps) -> 
         }
         None => json!(["0", "0", "0", "0", "0", "0", "0", "0"]),
     };
-    let stakes: Vec<Value> = (0..caps.p)
-        .map(|i| stake((i < nc).then_some(i)))
-        .chain((0..caps.f).map(|j| stake((j < nf).then_some(nc + j))))
-        .collect();
+    let stakes: Vec<Value> = (0..caps.p).map(|i| stake((i < nc + nf).then_some(i))).collect();
     let frozen_of = |k: Option<usize>| d(u(k.is_some_and(|k| input.stakes[k].frozen) as u64));
-    let frozen: Vec<Value> = (0..caps.p)
-        .map(|i| frozen_of((i < nc).then_some(i)))
-        .chain((0..caps.f).map(|j| frozen_of((j < nf).then_some(nc + j))))
-        .collect();
-    let reveals: Vec<Value> = (0..caps.p).map(|i| reveal_json(input.reveals.get(i))).collect();
-    let forced_reveals: Vec<Value> = (0..caps.f)
-        .map(|i| reveal_json(input.forced_reveals.get(i)))
+    let frozen: Vec<Value> = (0..caps.p).map(|i| frozen_of((i < nc + nf).then_some(i))).collect();
+    let reveals: Vec<Value> = (0..caps.p)
+        .map(|i| reveal_json(input.reveals.get(i).or_else(|| i.checked_sub(rc).and_then(|j| input.forced_reveals.get(j)))))
         .collect();
 
     Ok(json!({
         "kind": "game",
-        "caps": {"p": caps.p, "f": caps.f},
+        "caps": {"p": caps.p},
         "public": pv.game_inputs(caps).iter().map(|x| d(*x)).collect::<Vec<_>>(),
         "g": g,
         "seed": d(seed_field(&input.selection_seed)),
         "anchor64": d(anchor64(&input.round_anchor)),
         "commits": commits,
-        "forcedCommits": forced,
         "stakes": stakes,
         "frozen": frozen,
         "reveals": reveals,
-        "forcedReveals": forced_reveals,
     }))
 }
 

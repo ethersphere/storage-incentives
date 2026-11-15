@@ -10,7 +10,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 
   // ZK_VERIFIER=mock deploys Groth16MockVerifier, which accepts every proof (contract tests only).
   // Otherwise the script deploys the verifiers that `snarkd setup` wrote (src/settlement/groth16/):
-  // GameVerifier<P> for each game circuit size (SNARK_P/SNARK_F and SNARK_P2/SNARK_F2).
+  // GameVerifier<P> for each game circuit size (SNARK_P and SNARK_P2: the number of slots).
   const mode = process.env.ZK_VERIFIER || 'groth16';
   let gameVerifier: string;
   if (mode === 'mock') {
@@ -28,14 +28,13 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     gameVerifier = await verifier(`GameVerifier${process.env.SNARK_P ?? 16}`);
   }
   const capacity = Number(process.env.SNARK_P ?? 16);
-  const forcedCapacity = Number(process.env.SNARK_F ?? 4);
 
   const staking = (await get('StakeRegistry')).address;
   const postage = (await get('PostageStamp')).address;
   const gameKeys = await deploy('GameKeyRegistry', { from: deployer, args: [staking], log: true, waitConfirmations });
   const claims = await deploy('ClaimVerifier', { from: deployer, log: true, waitConfirmations });
 
-  log(`Game verifier ${gameVerifier}, circuit size ${capacity}/${forcedCapacity}`);
+  log(`Game verifier ${gameVerifier}, circuit size ${capacity} slots`);
   const settlement = await deploy('Settlement', {
     from: deployer,
     args: [
@@ -46,7 +45,6 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       claims.address,
       gameVerifier,
       capacity,
-      forcedCapacity,
       // VERIFIER_DELAY seconds between proposeVerifier and applyVerifier: 0 on test networks, for
       // example 604800 (7 days) on mainnet.
       Number(process.env.VERIFIER_DELAY ?? 0),
@@ -55,7 +53,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations,
   });
 
-  // A second, smaller game circuit (SNARK_P2, SNARK_F2): a small round then uses a verifier with fewer
+  // A second, smaller game circuit (SNARK_P2): a small round then uses a verifier with fewer
   // public inputs. With VERIFIER_DELAY = 0 the change applies at once.
   const p2 = Number(process.env.SNARK_P2 ?? 8);
   if (mode !== 'mock' && p2 > 0 && settlement.newlyDeployed) {
@@ -65,8 +63,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
       log: true,
       waitConfirmations,
     });
-    const f2 = Number(process.env.SNARK_F2 ?? 2);
-    await deployments.execute('Settlement', { from: deployer, log: true }, 'proposeVerifier', 1, small.address, p2, f2);
+    await deployments.execute('Settlement', { from: deployer, log: true }, 'proposeVerifier', 1, small.address, p2);
     await deployments.execute('Settlement', { from: deployer, log: true }, 'applyVerifier');
   }
 };

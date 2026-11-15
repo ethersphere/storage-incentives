@@ -124,10 +124,10 @@ mod tests {
         assert_eq!(pv.redundancy, 16);
         assert_eq!(pv.freeze.iter().filter(|f| **f == 2).count(), 2);
         assert_eq!(pv.freeze.iter().filter(|f| **f == 1).count(), 2);
-        let caps = Caps { p: 32, f: 4 };
+        let caps = Caps { p: 32 };
         let w = game::game_witness_json(&input, &pv, &caps).unwrap();
         assert_eq!(w["commits"].as_array().unwrap().len(), 32);
-        assert_eq!(w["public"].as_array().unwrap().len(), 12 + 36);
+        assert_eq!(w["public"].as_array().unwrap().len(), 12 + 32);
     }
 
     /// A node whose stake record changed after the round started gets the no-reveal freeze, unless the
