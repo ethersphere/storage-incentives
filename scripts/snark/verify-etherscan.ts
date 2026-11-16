@@ -1,6 +1,6 @@
-// Verify the ZK settlement contracts of a network on Etherscan, with the Etherscan v2 API.
+// Verify the SNARK settlement contracts of a network on Etherscan, with the Etherscan v2 API.
 //
-//   npx hardhat run scripts/zk/verify-etherscan.ts --network sepoliazk
+//   npx hardhat run scripts/snark/verify-etherscan.ts --network sepoliasnark
 //
 // Uses the exact compiler input that hardhat-deploy stored at deployment (deployments/<net>/solcInputs),
 // so the verified source always matches the deployed bytecode. Reads the key from TESTNET_ETHERSCAN_KEY

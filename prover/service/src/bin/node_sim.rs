@@ -25,7 +25,7 @@
 //! The reserve must be large enough that the 16th smallest transformed address passes Redistribution's
 //! reserve size estimate (sampleMaxValue): about 1.5M chunks at depth 0, twice that for each extra depth.
 //!
-//! Staking itself is done once, with scripts/zk/setup-nodes.ts.
+//! Staking itself is done once, with scripts/snark/setup-nodes.ts.
 
 use alloy::{
     eips::BlockNumberOrTag,
@@ -79,10 +79,10 @@ struct Args {
     /// Chunks in the shared simulated reserve.
     #[arg(long, default_value_t = 3_000_000)]
     reserve: u64,
-    /// Owner key of the postage batch that stamps the reserve (the deployer on zklocal).
+    /// Owner key of the postage batch that stamps the reserve (the deployer on snarklocal).
     #[arg(long, env = "BATCH_OWNER_KEY")]
     batch_owner_key: String,
-    /// Batch id. Defaults to the batch deploy/zk/002_roles_and_pot.ts creates.
+    /// Batch id. Defaults to the batch deploy/snark/002_roles_and_pot.ts creates.
     #[arg(long, env = "BATCH_ID")]
     batch_id: Option<B256>,
     /// Do not call forceClaim when the round is not settled by block 58 (to test a withholding prover).
@@ -331,7 +331,7 @@ async fn main() -> Result<()> {
         let owner = signer.address();
         let overlay = staking.overlayOfAddress(owner).call().await?;
         if overlay.is_zero() {
-            bail!("node {idx} ({owner}) is not staked; run scripts/zk/setup-nodes.ts first");
+            bail!("node {idx} ({owner}) is not staked; run scripts/snark/setup-nodes.ts first");
         }
         let height = staking.heightOfAddress(owner).call().await?;
         // Escape-hatch transactions set their nonce themselves (to replace a stuck one), so the other
@@ -373,7 +373,7 @@ async fn main() -> Result<()> {
         .parse()
         .context("--batch-owner-key")?;
     let batch_id = args.batch_id.unwrap_or_else(|| {
-        let nonce = keccak256(b"zk-settlement-pot");
+        let nonce = keccak256(b"snark-settlement-pot");
         let mut buf = [0u8; 64];
         buf[12..32].copy_from_slice(owner.address().as_slice());
         buf[32..].copy_from_slice(nonce.as_slice());

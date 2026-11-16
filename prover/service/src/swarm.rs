@@ -1,4 +1,4 @@
-//! Swarm as the data layer of ZK settlement: the prover uploads each round's anchored commit and reveal
+//! Swarm as the data layer of SNARK settlement: the prover uploads each round's anchored commit and reveal
 //! lists through its own Bee node. The references go on chain as
 //! `dataRef` of `anchorCommits` and `anchorReveals`. Everything uploaded can be checked against a hash on
 //! chain (the list roots, `postageStateHash`), so a reader does not have to trust the prover.
@@ -266,7 +266,7 @@ mod tests {
             .route(
                 "/stamps/{id}",
                 get(|Path(id): Path<String>| async move {
-                    Json(json!({"batchID": id, "utilization": 3, "usable": true, "label": "zk",
+                    Json(json!({"batchID": id, "utilization": 3, "usable": true, "label": "snark",
                         "depth": 20, "amount": "1000", "bucketDepth": 16, "blockNumber": 1,
                         "immutableFlag": false, "exists": true, "batchTTL": 86400}))
                 }),
@@ -278,7 +278,7 @@ mod tests {
                      Query(q): Query<HashMap<String, String>>,
                      h: HeaderMap| async move {
                         assert_eq!(h.get("immutable").unwrap(), "false");
-                        assert_eq!(q.get("label").unwrap(), "zk-settlement");
+                        assert_eq!(q.get("label").unwrap(), "snark-settlement");
                         assert_eq!((amount.as_str(), depth), ("1713234240", 20));
                         (StatusCode::CREATED, Json(json!({"batchID": "cd".repeat(32), "txHash": "0x1"})))
                     },
@@ -338,7 +338,7 @@ mod tests {
         // 0.5 days of 5 s blocks = 8,640 blocks.
         let amount = amount_for_days(cs.current_price, 0.5, 5.0);
         assert_eq!(amount, U256::from(198291u64 * 8640));
-        let id = bee.buy(20, amount, "zk-settlement").await.unwrap();
+        let id = bee.buy(20, amount, "snark-settlement").await.unwrap();
         assert_eq!(id, "cd".repeat(32));
         bee.topup(&id, U256::from(5u8)).await.unwrap();
         let st = bee.stamp(&id).await.unwrap();

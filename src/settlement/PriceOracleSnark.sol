@@ -4,7 +4,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "../interface/IPostageStamp.sol";
 
 /**
- * PriceOracleZK: src/PriceOracle.sol with ROUND_LENGTH = 64 instead of 152, for ZK settlement on Ethereum
+ * PriceOracleSnark: src/PriceOracle.sol with ROUND_LENGTH = 64 instead of 152, for SNARK settlement on Ethereum
  * (12 s blocks). One round stays about 12.8 minutes, as on Gnosis (152 blocks x 5 s). Nothing else changes.
  */
 /**
@@ -13,7 +13,7 @@ import "../interface/IPostageStamp.sol";
  * @dev The price oracle contract emits a price feed using events.
  */
 
-contract PriceOracleZK is AccessControl {
+contract PriceOracleSnark is AccessControl {
     // ----------------------------- State variables ------------------------------
 
     // The address of the linked PostageStamp contract
@@ -213,7 +213,7 @@ contract PriceOracleZK is AccessControl {
      */
     function currentRound() public view returns (uint64) {
         // We downcasted to uint64 as uint64 has 18,446,744,073,709,551,616 places
-        // ZK settlement on Ethereum: 64 blocks x 12 s = 768 s, about the 760 s of the Gnosis round (152 x 5 s)
+        // SNARK settlement on Ethereum: 64 blocks x 12 s = 768 s, about the 760 s of the Gnosis round (152 x 5 s)
         // it results 4.4724801e+14 years to run this game
         return uint64(block.number / uint256(ROUND_LENGTH));
     }

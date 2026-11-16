@@ -1,5 +1,5 @@
 //! Reserve sample and claim witness builders, the node side of `claim.rs`. node-sim and the tests use
-//! these; the zkVM program does not. Content-addressed chunks (CAC) only; single-owner chunks are
+//! these; the game circuit does not. Content-addressed chunks (CAC) only; single-owner chunks are
 //! covered by the Bee-generated test vectors.
 
 use crate::bmt::{self, Tree};

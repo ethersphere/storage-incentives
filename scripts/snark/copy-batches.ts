@@ -1,7 +1,7 @@
-// Migration rehearsal: copy postage batches into PostageStampZK with copyBatchBulk, and fund the contract
+// Migration rehearsal: copy postage batches into PostageStampSnark with copyBatchBulk, and fund the contract
 // with their remaining balance (copyBatch moves no tokens).
 //
-//   BATCHES=prover/data/gnosis/batches.json npx hardhat run scripts/zk/copy-batches.ts --network zklocal
+//   BATCHES=prover/data/gnosis/batches.json npx hardhat run scripts/snark/copy-batches.ts --network snarklocal
 //
 // BATCHES is the output of `gnosis-postage --export-batches`. CHUNK batches go in each transaction (default
 // 100). Prints the gas of each transaction, the batches that failed (CopyBatchFailed), and the total.
@@ -22,7 +22,7 @@ async function main() {
     remainingBalance: ethers.BigNumber.from(b.remainingBalance),
   }));
   const [deployer] = await ethers.getSigners();
-  const stamp = await ethers.getContractAt('PostageStampZK', (await deployments.get('PostageStamp')).address, deployer);
+  const stamp = await ethers.getContractAt('PostageStampSnark', (await deployments.get('PostageStamp')).address, deployer);
   const token = await ethers.getContractAt('TestToken', (await deployments.get('TestToken')).address, deployer);
 
   // The tokens the copied batches will pay into the pot.

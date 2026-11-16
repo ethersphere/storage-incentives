@@ -63,7 +63,7 @@ enum StampCmd {
         depth: u8,
         #[arg(long, default_value_t = 30.0)]
         days: f64,
-        #[arg(long, default_value = "zk-settlement")]
+        #[arg(long, default_value = "snark-settlement")]
         label: String,
         /// Print the cost and do nothing.
         #[arg(long)]
@@ -91,7 +91,7 @@ async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,sp1_core_executor=warn,sp1_prover=warn".into()),
+                .unwrap_or_else(|_| "info".into()),
         )
         .init();
 

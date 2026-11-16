@@ -1,6 +1,6 @@
-// Fund and stake the simulated nodes for ZK settlement.
+// Fund and stake the simulated nodes for SNARK settlement.
 //
-//   NODE_KEYS=0xabc,0xdef npx hardhat run scripts/zk/setup-nodes.ts --network zklocal
+//   NODE_KEYS=0xabc,0xdef npx hardhat run scripts/snark/setup-nodes.ts --network snarklocal
 //
 // For each key: top up ETH from the deployer (NODE_ETH, default 0.02), send sBZZ, approve and call
 // StakeRegistry.manageStake. Skips nodes that are already staked. Nodes can play when their stake is
@@ -27,7 +27,7 @@ async function main() {
     const stake = ethers.BigNumber.from('100000000000000000').mul(i + 1);
     await (await token.transfer(node.address, stake)).wait();
     await (await token.connect(node).approve(staking.address, stake)).wait();
-    const nonce = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(`zk-node-${i}`));
+    const nonce = ethers.utils.keccak256(ethers.utils.toUtf8Bytes(`snark-node-${i}`));
     await (await staking.connect(node).manageStake(nonce, stake, 0)).wait();
     console.log(`node ${i} ${node.address} staked ${stake}, overlay ${await staking.overlayOfAddress(node.address)}`);
   }

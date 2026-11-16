@@ -2,7 +2,7 @@
 //!
 //! Verification functions are ports of `src/Util/ChunkProof.sol` (BMTChunk) and
 //! `src/Util/TransformedChunkProof.sol` (TransformedBMTChunk). The builders below them make chunk
-//! addresses and inclusion proofs; node-sim and the tests use them, the zkVM program does not.
+//! addresses and inclusion proofs; node-sim and the tests use them, the game circuit does not.
 
 use alloy_primitives::{keccak256, B256};
 
@@ -80,7 +80,7 @@ pub fn transformed_address_from_proof(
 }
 
 // ----------------------------------------------------------------------------------------------
-// Builders (not used in the zkVM program)
+// Builders (not used in the game circuit)
 // ----------------------------------------------------------------------------------------------
 
 /// A chunk's full BMT: `levels[0]` are the 128 leaf segments, `levels[DEPTH]` is the root.

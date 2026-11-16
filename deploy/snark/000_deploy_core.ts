@@ -1,8 +1,8 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
-// ZK settlement deployment (docs/ZK-SETTLEMENT.md): TestToken, PriceOracle and StakeRegistry from master,
-// unchanged, and PostageStampZK in place of PostageStamp. Redistribution is not deployed; Settlement takes
+// SNARK settlement deployment (docs/SNARK-SETTLEMENT.md): TestToken, PriceOracle and StakeRegistry from master,
+// unchanged, and PostageStampSnark in place of PostageStamp. Redistribution is not deployed; Settlement takes
 // its roles.
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
   const { deploy, get, log } = deployments;
@@ -17,20 +17,20 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations,
   });
   const token = await get('TestToken');
-  // PostageStampZK: PostageStamp without the batch tree; expiry and the pot are computed in the settlement
+  // PostageStampSnark: PostageStamp without the batch tree; expiry and the pot are computed in the settlement
   // proof. Deployed under the name 'PostageStamp' so the other scripts and tools find it.
   await deploy('PostageStamp', {
     from: deployer,
-    contract: 'PostageStampZK',
+    contract: 'PostageStampSnark',
     args: [token.address, 16],
     log: true,
     waitConfirmations,
   });
   const postage = await get('PostageStamp');
-  // PriceOracleZK: PriceOracle with 64-block rounds (12 s blocks), as Settlement.
+  // PriceOracleSnark: PriceOracle with 64-block rounds (12 s blocks), as Settlement.
   await deploy('PriceOracle', {
     from: deployer,
-    contract: 'PriceOracleZK',
+    contract: 'PriceOracleSnark',
     args: [postage.address],
     log: true,
     waitConfirmations,
@@ -45,4 +45,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['zk', 'core'];
+func.tags = ['snark', 'core'];

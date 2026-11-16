@@ -3,7 +3,7 @@ name = "swarm-prover"
 version = "0.1.0"
 edition = "2021"
 default-run = "swarm-prover"
-description = "Off-chain side of ZK settlement: message collector, prover, settler, and a node simulator"
+description = "Off-chain side of SNARK settlement: message collector, prover, settler, and a node simulator"
 
 [[bin]]
 name = "swarm-prover"

@@ -1,8 +1,8 @@
-// Point Settlement at a new program key (after a change to the zkVM program), without a new deployment.
+// Point Settlement at a new program key (after a change to the game circuit), without a new deployment.
 //
-//   PROGRAM_VKEY=0x00... npx hardhat run scripts/zk/set-verifier.ts --network sepoliazk
+//   PROGRAM_VKEY=0x00... npx hardhat run scripts/snark/set-verifier.ts --network sepoliasnark
 //
-// The verifier stays the same unless ZK_VERIFIER=<address> is set. Admin only. The change takes effect after
+// The verifier stays the same unless SNARK_VERIFIER=<address> is set. Admin only. The change takes effect after
 // Settlement.verifierDelay (0 on test networks): the script proposes it, and applies it once the delay is over.
 import { deployments, ethers } from 'hardhat';
 
@@ -11,7 +11,7 @@ async function main() {
   if (!/^0x[0-9a-fA-F]{64}$/.test(vkey)) throw new Error('set PROGRAM_VKEY (prover/target/release/swarm-prover vkey)');
   const [admin] = await ethers.getSigners();
   const s = await ethers.getContractAt('Settlement', (await deployments.get('Settlement')).address, admin);
-  const verifier = process.env.ZK_VERIFIER || (await s.verifier());
+  const verifier = process.env.SNARK_VERIFIER || (await s.verifier());
   const current = await s.programVKey();
   if (current.toLowerCase() === vkey.toLowerCase() && verifier.toLowerCase() === (await s.verifier()).toLowerCase()) {
     console.log(`Settlement ${s.address} already uses verifier ${verifier} and program key ${vkey}`);

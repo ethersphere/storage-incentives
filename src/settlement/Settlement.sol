@@ -57,12 +57,11 @@ interface ISettlementOracle {
  * @title Settlement
  * @author The Swarm Authors
  * @notice Replaces Redistribution. The Schelling game (commit, reveal, truth and winner selection, freezes,
- * redundancy count for the price oracle), the claim's storage evidence (chunk inclusion proofs, postage
- * stamps, SOC signatures, reserve size estimate) and the postage accounting (batch expiry and the pot,
- * which PostageStamp.expireLimited did on chain) run off chain in the Redistribution VM (prover/crates/vm).
- * A prover proves the VM run with SP1 and this contract checks the proof and applies the result: pays the
- * winner the proven pot from PostageStampZK, freezes stakes and adjusts the price. See
- * docs/ZK-SETTLEMENT.md.
+ * redundancy count for the price oracle) runs off chain in the game circuit (prover/snark). A prover proves
+ * the round with Groth16, and this contract checks the proof against the chain. The claim checks (chunk
+ * inclusion proofs, postage stamps, single-owner chunk signatures) stay on chain in ClaimVerifier. The
+ * contract pays the winner the pot from PostageStampSnark, freezes stakes and adjusts the price. See
+ * docs/SNARK-SETTLEMENT.md.
  *
  * Round layout, in blocks relative to the round start. ROUND_LENGTH = 64: with 12 s blocks a round is about
  * 12.8 minutes, the same time as the Gnosis round of Redistribution (152 blocks x 5 s).
@@ -260,7 +259,7 @@ contract Settlement is AccessControl, Pausable {
     // Redistribution's reserve size estimate bound (alpha=0.097612 beta=0.0716570 k=16).
     uint256 public sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
-    // What was paid out of the pot so far. PostageStampZK computes the pot (`potAt`): a claimed round
+    // What was paid out of the pot so far. PostageStampSnark computes the pot (`potAt`): a claimed round
     // pays the pot at its seed block minus this amount. The pot of a round without a payout stays for
     // the next winner.
     uint256 public potPaid;
@@ -571,7 +570,7 @@ contract Settlement is AccessControl, Pausable {
      * @notice Settle a round with a Groth16 proof of the settlement circuit. Permissionless: the proof is
      * the authorisation. Pays `out.feeRecipient` the prover fee.
      *
-     * The proof covers the game (commits, reveals, truth, winner, freezes). PostageStampZK computes the pot.
+     * The proof covers the game (commits, reveals, truth, winner, freezes). PostageStampSnark computes the pot.
      * This contract checks the rest on chain: the two block headers that give the randomness, and the
      * claim witness (chunk inclusion proofs, postage stamps, single-owner chunk signatures).
      * @param out The outcome that the proof commits to.
@@ -1049,7 +1048,7 @@ contract Settlement is AccessControl, Pausable {
         fee = feeRecipient == address(0) ? 0 : (amount * proverFeeBps) / 10000;
         payout = amount - fee;
 
-        // PostageStampZK pays both directly.
+        // PostageStampSnark pays both directly.
         if (fee > 0) PostageContract.withdraw(feeRecipient, fee);
         if (payout > 0) PostageContract.withdraw(winner, payout);
     }

@@ -52,7 +52,7 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
   if ((await read('PostageStamp', 'lastPrice')).eq(0)) {
     await execute('PriceOracle', from, 'setPrice', 24000);
   }
-  const nonce = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('zk-settlement-pot'));
+  const nonce = ethers.utils.keccak256(ethers.utils.toUtf8Bytes('snark-settlement-pot'));
   const batchId = ethers.utils.keccak256(
     ethers.utils.defaultAbiCoder.encode(['address', 'bytes32'], [deployer, nonce])
   );
@@ -64,4 +64,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, et
 };
 
 export default func;
-func.tags = ['zk', 'roles'];
+func.tags = ['snark', 'roles'];

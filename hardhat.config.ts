@@ -41,14 +41,6 @@ const config: HardhatUserConfig = {
         },
       },
     ],
-    // The vendored SP1 verifier (tests only) needs 0.8.20.
-    overrides: Object.fromEntries(
-      [
-        'src/settlement/sp1/ISP1Verifier.sol',
-        'src/settlement/sp1/v6.1.0/SP1VerifierGroth16.sol',
-        'src/settlement/sp1/v6.1.0/Groth16Verifier.sol',
-      ].map((f) => [f, { version: '0.8.20', settings: { optimizer: { enabled: true, runs: 1000 } } }])
-    ),
   },
   mocha: {
     timeout: Number.MAX_SAFE_INTEGER,
@@ -187,18 +179,18 @@ const config: HardhatUserConfig = {
       chainId: 11155111,
       deploy: ['deploy/test/'],
     },
-    // ZK settlement (docs/ZK-SETTLEMENT.md). zklocal is anvil with its default mnemonic.
-    zklocal: {
-      url: process.env.ZK_LOCAL_RPC || 'http://127.0.0.1:8545',
+    // SNARK settlement (docs/SNARK-SETTLEMENT.md). snarklocal is anvil with its default mnemonic.
+    snarklocal: {
+      url: process.env.SNARK_LOCAL_RPC || 'http://127.0.0.1:8545',
       accounts: { mnemonic: 'test test test test test test test test test test test junk' },
       chainId: 31337,
-      deploy: ['deploy/zk/'],
+      deploy: ['deploy/snark/'],
     },
-    sepoliazk: {
+    sepoliasnark: {
       url: PRIVATE_RPC_TESTNET ? PRIVATE_RPC_TESTNET : 'https://1rpc.io/sepolia',
       accounts,
       chainId: 11155111,
-      deploy: ['deploy/zk/'],
+      deploy: ['deploy/snark/'],
     },
     tenderly: {
       url: 'https://rpc.tenderly.co/fork/7ccb24d3-e1fa-43fd-8b71-02da55c9170e',

@@ -8,10 +8,10 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
   const { deployer } = await getNamedAccounts();
   const waitConfirmations = networkConfig[network.name]?.blockConfirmations || 1;
 
-  // ZK_VERIFIER=mock deploys Groth16MockVerifier, which accepts every proof (contract tests only).
+  // SNARK_VERIFIER=mock deploys Groth16MockVerifier, which accepts every proof (contract tests only).
   // Otherwise the script deploys the verifiers that `snarkd setup` wrote (src/settlement/groth16/):
   // GameVerifier<P> for each game circuit size (SNARK_P and SNARK_P2: the number of slots).
-  const mode = process.env.ZK_VERIFIER || 'groth16';
+  const mode = process.env.SNARK_VERIFIER || 'groth16';
   let gameVerifier: string;
   if (mode === 'mock') {
     gameVerifier = (await deploy('Groth16MockVerifier', { from: deployer, log: true, waitConfirmations })).address;
@@ -69,4 +69,4 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
 };
 
 export default func;
-func.tags = ['zk', 'settlement'];
+func.tags = ['snark', 'settlement'];

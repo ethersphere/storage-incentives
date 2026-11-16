@@ -23,7 +23,7 @@ node_modules/
 deployments/hardhat
 deployments/localhost
 deployments/localcluster
-deployments/zklocal
+deployments/snarklocal
 deployedContracts.sh
 
 # deployment files for mainnet and testnet and an example file

@@ -1,12 +1,12 @@
-// After a redeploy that keeps PostageStampZK: take the roles on PostageStampZK from the previous Settlement
-// and PriceOracleZK, so that the old Settlement can no longer withdraw from the pot.
+// After a redeploy that keeps PostageStampSnark: take the roles on PostageStampSnark from the previous Settlement
+// and PriceOracleSnark, so that the old Settlement can no longer withdraw from the pot.
 //
-//   OLD_SETTLEMENT=0x... OLD_ORACLE=0x... npx hardhat run scripts/zk/revoke-old.ts --network sepoliazk
+//   OLD_SETTLEMENT=0x... OLD_ORACLE=0x... npx hardhat run scripts/snark/revoke-old.ts --network sepoliasnark
 import { deployments, ethers } from 'hardhat';
 
 async function main() {
   const [admin] = await ethers.getSigners();
-  const p = await ethers.getContractAt('PostageStampZK', (await deployments.get('PostageStamp')).address, admin);
+  const p = await ethers.getContractAt('PostageStampSnark', (await deployments.get('PostageStamp')).address, admin);
   const olds: [string, string | undefined][] = [
     ['REDISTRIBUTOR_ROLE', process.env.OLD_SETTLEMENT],
     ['PRICE_ORACLE_ROLE', process.env.OLD_ORACLE],
@@ -24,7 +24,7 @@ async function main() {
   const s = (await deployments.get('Settlement')).address;
   const o = (await deployments.get('PriceOracle')).address;
   console.log(`current Settlement ${s} has REDISTRIBUTOR_ROLE: ${await p.hasRole(await p.REDISTRIBUTOR_ROLE(), s)}`);
-  console.log(`current PriceOracleZK ${o} has PRICE_ORACLE_ROLE: ${await p.hasRole(await p.PRICE_ORACLE_ROLE(), o)}`);
+  console.log(`current PriceOracleSnark ${o} has PRICE_ORACLE_ROLE: ${await p.hasRole(await p.PRICE_ORACLE_ROLE(), o)}`);
 }
 
 main().catch((e) => {

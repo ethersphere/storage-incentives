@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
- * @title PostageStampZK
+ * @title PostageStampSnark
  * @author The Swarm Authors
  * @notice PostageStamp for the SNARK settlement. Batch purchase, top-up and depth increase work as in
  * src/PostageStamp.sol, with the same events and views. The difference: no batch tree and no expiry
@@ -25,7 +25,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
  *
  * Buyers pay only for their own batch: no tree insert, no sweep of other batches.
  */
-contract PostageStampZK is AccessControl, Pausable {
+contract PostageStampSnark is AccessControl, Pausable {
     // ----------------------------- State variables ------------------------------
 
     address public bzzToken;

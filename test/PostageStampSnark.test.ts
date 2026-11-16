@@ -2,11 +2,11 @@ import { expect } from './util/chai';
 import { ethers, network } from 'hardhat';
 import { BigNumber, Contract, Signer } from 'ethers';
 
-// PostageStampZK: PostageStamp without the batch tree and without the expiry loop. The pot is computed
+// PostageStampSnark: PostageStamp without the batch tree and without the expiry loop. The pot is computed
 // on chain from sums for each bucket of the balance scale (docs/SNARK-SETTLEMENT.md, section 6).
 //
 // The last tests compare the pot with master's PostageStamp. They run random batch histories on both
-// contracts, in the same blocks. The pot of PostageStampZK is never more than master's pot, it is behind
+// contracts, in the same blocks. The pot of PostageStampSnark is never more than master's pot, it is behind
 // by less than one bucket for each live chunk, and it is equal when all batches are expired.
 
 const { keccak256, solidityPack, defaultAbiCoder } = ethers.utils;
@@ -16,14 +16,14 @@ async function mine(n: number) {
   if (n > 0) await network.provider.send('hardhat_mine', ['0x' + n.toString(16)]);
 }
 
-describe('PostageStampZK', function () {
+describe('PostageStampSnark', function () {
   let deployer: Signer, other: Signer;
   let token: Contract, stamp: Contract;
 
   beforeEach(async function () {
     [deployer, , other] = await ethers.getSigners();
     token = await (await ethers.getContractFactory('TestToken')).deploy('sBZZ', 'sBZZ', '1' + '0'.repeat(30));
-    stamp = await (await ethers.getContractFactory('PostageStampZK')).deploy(token.address, 16);
+    stamp = await (await ethers.getContractFactory('PostageStampSnark')).deploy(token.address, 16);
     await stamp.grantRole(await stamp.PRICE_ORACLE_ROLE(), await deployer.getAddress());
     await token.approve(stamp.address, ethers.constants.MaxUint256);
     await stamp.setPrice(100);
@@ -156,10 +156,10 @@ describe('PostageStampZK', function () {
       await master.createBatch(await deployer.getAddress(), perChunk.add(i), 18, 16, nonce, false);
     }
     const nonce = keccak256('0x99');
-    const zk = await (await stamp.createBatch(await deployer.getAddress(), perChunk, 18, 16, nonce, false)).wait();
+    const snark = await (await stamp.createBatch(await deployer.getAddress(), perChunk, 18, 16, nonce, false)).wait();
     const ms = await (await master.createBatch(await deployer.getAddress(), perChunk, 18, 16, nonce, false)).wait();
-    console.log(`      createBatch gas with 50 batches: PostageStamp ${ms.gasUsed}, PostageStampZK ${zk.gasUsed}`);
-    expect(zk.gasUsed.lt(ms.gasUsed)).to.be.true;
+    console.log(`      createBatch gas with 50 batches: PostageStamp ${ms.gasUsed}, PostageStampSnark ${snark.gasUsed}`);
+    expect(snark.gasUsed.lt(ms.gasUsed)).to.be.true;
   });
 
   describe('accounting matches PostageStamp', function () {
@@ -177,10 +177,10 @@ describe('PostageStampZK', function () {
     for (const seed of [1, 2, 3]) {
       it(`random history ${seed}`, async function () {
         const master = await (await ethers.getContractFactory('PostageStamp')).deploy(token.address, 16);
-        const zk = await (await ethers.getContractFactory('PostageStampZK')).deploy(token.address, 16);
+        const snark = await (await ethers.getContractFactory('PostageStampSnark')).deploy(token.address, 16);
         const me = await deployer.getAddress();
-        const BUCKET = await zk.BUCKET();
-        for (const c of [master, zk]) {
+        const BUCKET = await snark.BUCKET();
+        for (const c of [master, snark]) {
           await c.grantRole(await c.PRICE_ORACLE_ROLE(), me);
           // The minimum balance (100 blocks of the price) is more than one bucket.
           await c.setMinimumValidityBlocks(100);
@@ -191,7 +191,7 @@ describe('PostageStampZK', function () {
         const both = async (fn: (c: Contract) => Promise<unknown>) => {
           await network.provider.send('evm_setAutomine', [false]);
           await fn(master);
-          await fn(zk);
+          await fn(snark);
           await network.provider.send('evm_mine', []);
           await network.provider.send('evm_setAutomine', [true]);
         };
@@ -200,10 +200,10 @@ describe('PostageStampZK', function () {
         const pots = async () => {
           await network.provider.send('evm_setAutomine', [false]);
           await master.expireLimited(ethers.constants.MaxUint256, opts);
-          await zk.checkpoint(opts);
+          await snark.checkpoint(opts);
           await network.provider.send('evm_mine', []);
           await network.provider.send('evm_setAutomine', [true]);
-          return { master: await master.pot(), zk: await zk.cumulativePot(), live: await master.validChunkCount() };
+          return { master: await master.pot(), snark: await snark.cumulativePot(), live: await master.validChunkCount() };
         };
 
         const r = rng(seed * 7919);
@@ -224,13 +224,13 @@ describe('PostageStampZK', function () {
             ids.push({ id: keccak256(defaultAbiCoder.encode(['address', 'bytes32'], [me, nonce])), depth });
           } else if (op < 6) {
             const b = ids[r(ids.length)];
-            if ((await zk.remainingBalance(b.id)).gt(0)) {
+            if ((await snark.remainingBalance(b.id)).gt(0)) {
               const amount = price * (100 + r(1000));
               await both((c) => c.topUp(b.id, amount, opts));
             }
           } else if (op < 7) {
             const b = ids[r(ids.length)];
-            const rem = await zk.remainingBalance(b.id);
+            const rem = await snark.remainingBalance(b.id);
             if (b.depth < 22 && rem.gt(price * 100 * 2 + 1)) {
               await both((c) => c.increaseDepth(b.id, b.depth + 1, opts));
               b.depth += 1;
@@ -246,8 +246,8 @@ describe('PostageStampZK', function () {
             const p = await pots();
             // Never more than master, and behind by less than one bucket for each chunk that is alive
             // or expired in the current bucket.
-            expect(p.zk.lte(p.master), `step ${step}: zk ${p.zk} > master ${p.master}`).to.eq(true);
-            const lag = p.master.sub(p.zk);
+            expect(p.snark.lte(p.master), `step ${step}: snark ${p.snark} > master ${p.master}`).to.eq(true);
+            const lag = p.master.sub(p.snark);
             const bound = BUCKET.mul(BigNumber.from(1).shl(23)); // more than all chunks of the test
             expect(lag.lte(bound), `step ${step}: lag ${lag}`).to.eq(true);
             if (lag.gt(maxLag)) maxLag = lag;
@@ -260,8 +260,8 @@ describe('PostageStampZK', function () {
         await mine(4000);
         const end = await pots();
         expect(end.live).to.eq(0);
-        expect(end.zk).to.eq(end.master);
-        expect(await zk.liveSize()).to.eq(0);
+        expect(end.snark).to.eq(end.master);
+        expect(await snark.liveSize()).to.eq(0);
         expect(maxLag.gt(0)).to.eq(true);
       });
     }
