@@ -1,227 +1,137 @@
-# prover/: off-chain side of ZK settlement
+# prover/: the off-chain side of SNARK settlement
 
-Rust workspace for running the storage incentives game off chain and settling it on chain with an SP1
-proof. The design is in [docs/ZK-SETTLEMENT.md](../docs/ZK-SETTLEMENT.md); the contract is
-[src/settlement/Settlement.sol](../src/settlement/Settlement.sol).
+In SNARK settlement, the storage incentives game of `Redistribution.sol` runs off chain. The nodes send
+their commits, reveals and claim witnesses to a prover. A claim witness is the storage evidence of the
+winner: three chunks of its reserve sample (a set of chunks that the node stores), with their proofs. The
+prover proves the result of each round with a SNARK: a short proof that a contract can check for a fixed
+gas cost. Gas is the unit of the cost of a transaction. The proof system is Groth16. The contract
+[src/settlement/Settlement.sol](../src/settlement/Settlement.sol) checks the proof and pays the winner. The design is in [docs/SNARK-SETTLEMENT.md](../docs/SNARK-SETTLEMENT.md).
 
-| Crate | What it is |
+This directory holds the circuit, the Rust reference of the game, and the prover service. A circuit is a
+fixed set of equations (constraints) that describes one computation.
+
+| Part | What it is |
 | --- | --- |
-| `crates/vm` (`swarm-vm`) | The Redistribution VM as a pure function `run(RoundInput) -> PublicValues`: the game of `Redistribution.sol` (`lib.rs`), the storage evidence of `claim` (`claim.rs`, `bmt.rs`), and the postage accounting that `PostageStamp.expireLimited` did on chain (`postage.rs`). No chain, no zkVM dependency. Unit tested, and checked against the real contracts with test vectors. |
-| `program` | The SP1 program. Reads a `RoundInput`, runs the VM, commits the ABI-encoded `PublicValues`. About 10 lines. |
-| `service` (`swarm-prover`) | The prover node: HTTP collector for commits, reveals and claim witnesses; anchors each round on chain; builds the round input from chain state (including the PostageStampZK event log); proves; calls `settleRound`. |
-| `service` (`node-sim`) | Simulated Bee nodes: a shared simulated reserve, commit, reveal, claim proofs; optionally lie, stay silent, withhold the claim, or use the on-chain escape hatches. |
+| `snark/` (Go module `swarm-snark`) | The game circuit, written with the gnark library (`circuit/`), and the tool `snarkd` (`cmd/snarkd`). `snarkd` makes the keys of a circuit size, makes Groth16 proofs, and runs as a proof daemon for the prover service. |
+| `crates/vm` (`swarm-vm`) | The Rust reference of the game. `src/snark` computes the result of a round and the witness of the circuit (the private inputs of the proof). `claim.rs` and `bmt.rs` do the same claim checks as `ClaimVerifier.sol`: the prover runs them to know if a claim witness will pass on chain. `sample.rs` makes a reserve sample and a claim witness for `node-sim`. The binary `snark_synth` writes the witness of a synthetic round. |
+| `service` (`swarm-prover`) | The prover service. `swarm-prover serve` collects commits, reveals and claim witnesses over HTTP, anchors the commit and reveal lists on chain, builds the round input from the chain state, gets a proof from `snarkd serve`, and calls `settleRound`. `swarm-prover stamp` shows, buys or tops up the postage batch (prepaid storage on Swarm) for the uploads. |
+| `service` (`node-sim`) | Simulated Bee nodes. They share one simulated reserve, register a game key (an EdDSA key with which a node signs its commits; EdDSA is a signature scheme that the circuit checks at a low cost), commit, reveal and send claim witnesses. Chosen nodes do not reveal, reveal another hash, use the escape hatches, or do not send the claim. |
 
-The zkVM is SP1. A comparison with RISC Zero and ZisK, and a port plan for each, is in
-[zkvms/README.md](zkvms/README.md).
+An anchor is a transaction that writes the root of an off-chain list on chain. The root is one hash of
+the full list. An escape hatch is a
+transaction with which a node puts its own entry on chain when the prover leaves it out
+(`forceCommit`, `forceReveal`, `forceClaim`). Section 3 of the design document describes both.
 
-## Toolchain
+## Build and test
 
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh   # Rust
-curl -L https://sp1up.succinct.xyz | bash && sp1up               # SP1 (cargo prove + succinct toolchain)
-brew install protobuf                                            # protoc, needed by sp1-sdk
-```
-
-Build, which also compiles the SP1 program through `service/build.rs`:
+You need Rust (stable), Go (the version in `snark/go.mod`), Foundry (`anvil`, `cast`) and the Node.js
+packages of the repository.
 
 ```bash
-cd prover && cargo build --release
-```
-
-Run the tests:
-
-```bash
+cd prover/snark && go build -o snarkd ./cmd/snarkd
+cd .. && cargo build --release
 cargo test -p swarm-vm
 ```
 
-The tests include two cross-checks with the real contracts. The vectors are in
-`crates/vm/tests/vectors/`. To make them again (repository root):
+The Rust tests include a cross-check with the real `Redistribution.claim`. The test vectors are in
+`crates/vm/tests/vectors/`. To make them again, run this command from the repository root:
 
 ```bash
 DUMP_CLAIM_VECTORS=1 npx hardhat test test/Redistribution.test.ts --grep "should claim pot by"
-DUMP_POSTAGE_VECTORS=1 npx hardhat test test/PostageStampZK.test.ts
 ```
 
-Measure the zkVM cycles of a synthetic round (no proof):
+Commands of `snarkd` (run from `prover/`):
 
-```bash
-./target/release/swarm-prover synth --nodes 10 --batches 1000 --out /tmp/round.json
-SP1_PROVER=mock ./target/release/swarm-prover execute /tmp/round.json
-```
+| Command | What it does |
+| --- | --- |
+| `snarkd setup -p 16 -out DIR` | Compiles the circuit with 16 slots, makes a local trusted setup (the step that makes the keys; this one is for tests only), and writes the proving key (the file that a prover needs for this size) and the verifier contract `GameVerifier16.sol` |
+| `snarkd prove -keys DIR -witness w.json` | Makes and checks one proof |
+| `snarkd serve -game DIR1,DIR2` | Keeps the keys in memory. Answers `POST /prove` with a witness and `GET /caps` with the sizes it has. Listens on `-listen` (default `127.0.0.1:8099`) |
+| `snarkd size -p 16` | Prints the number of constraints of a circuit size |
+| `snarkd check -witness w.json` | Solves the circuit for one witness without a proof (the fast test loop) |
+| `snarkd vectors` | Prints test vectors of MiMC (the hash function of the circuit) for the Rust reference |
 
-Print the program verification key, which Settlement must be deployed with when it uses a real verifier:
+To make a witness for `snarkd check`: `./target/release/snark_synth NODES FORCED SLOTS > w.json`.
 
-```bash
-./target/release/swarm-prover vkey
-```
+## Run it locally
 
-## Proving modes
+Section 7 of [docs/SNARK-SETTLEMENT.md](../docs/SNARK-SETTLEMENT.md) has the steps for a local chain
+(anvil) with real proofs.
 
-`SP1_PROVER` selects where proofs come from:
+## Configuration of `swarm-prover serve`
 
-| Value | What happens | Use with |
+Each option is a flag or an environment variable. The service also reads `prover/.env`.
+
+| Variable | Default | What it is |
 | --- | --- | --- |
-| `mock` | The zkVM still executes and the output is checked, but the proof is empty | `SP1MockVerifier` (`ZK_VERIFIER=mock`) |
-| `cpu` | Real Groth16 proof on this machine. Slow, needs a lot of RAM | SP1 verifier gateway |
-| `network` | Succinct Prover Network; needs `NETWORK_PRIVATE_KEY` and a PROVE balance | SP1 verifier gateway |
-| `cuda` | Local NVIDIA GPU | SP1 verifier gateway |
+| `RPC_URL` | — | RPC endpoint of the settlement chain |
+| `PROVER_PRIVATE_KEY` | — | Key with `ANCHOR_ROLE`. It pays the gas of the anchors and of `settleRound`, and receives the prover fee |
+| `SETTLEMENT_ADDRESS` | — | Address of `Settlement` |
+| `SNARKD_URL` | `http://127.0.0.1:8099` | Address of `snarkd serve` |
+| `LISTEN` | `0.0.0.0:8080` | Address of the HTTP API for the nodes |
+| `DATA_DIR` | `data` | Directory for the messages, inputs and proofs of each round |
+| `POLL_SECS` | `3` | Seconds between two reads of the chain |
+| `SWARM_API` | — | Bee API of the prover's Swarm node. Without it, the prover uploads nothing |
+| `SWARM_BATCH_ID` | — | Mutable postage batch for the uploads (`swarm-prover stamp buy`). Without it, the prover uploads nothing |
+| `SWARM_MIN_TTL_DAYS` | `7` | Warn (or top up) when the batch has less time left |
+| `SWARM_TOPUP_DAYS` | `0` | Days to add when the batch runs low. `0`: warn only |
+| `SWARM_BLOCK_SECONDS` | `5` | Block time of the chain of the Swarm postage contract (5 on Gnosis, 12 on Ethereum) |
 
-## Use the Succinct Prover Network
+Without the uploads, the `dataRef` of each anchor is the keccak256 hash of the list document.
 
-Measured on 2026-11-03: a 10-participant round with a claim and 100 live batches was proved in 42 s for at
-most about 0.40 PROVE (docs/ZK-SETTLEMENT.md, section 5).
+These options make a prover that attacks the nodes. Use them for tests only:
 
-1. Make a requester key in a terminal outside the chat: `cast wallet new`. Do not use a wallet that holds
-   other funds; the key is stored in a plain text file.
-2. Buy PROVE with any wallet. In the Succinct Explorer (explorer.succinct.xyz), connect that wallet,
-   deposit the PROVE (Account, Deposit), and use Transfer to move the balance to the requester address.
-3. Write `prover/.env` (git ignores it):
+| Variable | Attack |
+| --- | --- |
+| `CENSOR_COMMITS` | Leaves the commits of these staked addresses out of the anchored commit list |
+| `CENSOR_REVEALS` | Leaves the reveals of these staked addresses out of the anchored reveal list |
+| `NO_ANCHOR` | Does not anchor. The prover still settles rounds that another party anchored |
+| `WITHHOLD_CLAIMS` | Accepts claim witnesses and throws them away |
 
-   ```
-   SP1_PROVER=network
-   NETWORK_PRIVATE_KEY=0x...
-   NETWORK_RPC_URL=https://rpc.mainnet.succinct.xyz
-   ```
+`node-sim` finds each attack and uses the escape hatch. For example, with `CENSOR_COMMITS=<node 0 address>`
+node 0 calls `forceCommit`, and the round counts it.
 
-   Use `rpc.mainnet.succinct.xyz`. SP1 SDK 6.x sends PROVE-paid requests there. The older URL
-   `rpc.production.succinct.xyz` accepts the program registration but then fails with `Unimplemented`.
-   You can also remove the line: the SDK uses the mainnet URL by default.
-4. Run from `prover/`, so the program finds `.env`:
+## Configuration of `node-sim`
 
-   ```bash
-   ./target/release/swarm-prover execute --prove input.json
-   ```
-
-   The log shows the request id and an Explorer link.
-5. Check the balance of the requester key at any time: `./target/release/swarm-prover balance`. A proof
-   costs about 0.40 PROVE.
-
-## Run the prover on a rented GPU
-
-A laptop CPU is too slow for real proofs (section 5 of docs/ZK-SETTLEMENT.md). Use a rented NVIDIA GPU
-machine, or the Succinct Prover Network. These steps prove a saved round input. They do not need a chain.
-
-1. Rent a Linux machine with an NVIDIA GPU with 24 GB memory or more (for example RTX 4090, L40S, A100 or
-   H100), at least 64 GB RAM and 100 GB disk. Use Ubuntu 22.04 or 24.04.
-2. Install the NVIDIA driver and the CUDA toolkit. Check the CUDA version that SP1 6.x needs in the SP1
-   documentation ("Hardware acceleration" / "CUDA"). Check with `nvidia-smi`.
-3. Install Docker and the NVIDIA container toolkit if the SP1 documentation for your SP1 version says
-   that the CUDA prover runs in a container.
-4. Install the toolchain:
-
-   ```bash
-   sudo apt-get install -y build-essential pkg-config libssl-dev protobuf-compiler git jq
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-   curl -L https://sp1up.succinct.xyz | bash && ~/.sp1/bin/sp1up
-   ```
-
-5. Get the code and build:
-
-   ```bash
-   git clone -b feat/zk-settlement https://github.com/ethersphere/storage-incentives.git
-   cd storage-incentives/prover && cargo build --release
-   ```
-
-6. Copy a round input to the machine, for example `data/zklocal/rounds/6/input.json` from a local run,
-   or make one with `synth`.
-7. Prove it:
-
-   ```bash
-   SP1_PROVER=cuda RUST_LOG=info ./target/release/swarm-prover execute --prove input.json
-   ```
-
-   The first Groth16 proof downloads the SP1 circuit files (about 3.5 GB compressed, 7.8 GB on disk) to
-   `~/.sp1/circuits`. Later proofs use them again.
-8. The result is `input.proof.json`: public values, proof bytes, cycles and proof time. Verify it against
-   the SP1 Groth16 verifier, for example on anvil:
-
-   ```bash
-   cast call <SP1VerifierGroth16> "verifyProof(bytes32,bytes,bytes)" \
-     $(jq -r .vkey input.proof.json) $(jq -r .publicValues input.proof.json) $(jq -r .proof input.proof.json)
-   ```
-
-To prove for a live Settlement, run `swarm-prover serve` on the GPU machine with `SP1_PROVER=cuda`, or
-run it anywhere with `SP1_PROVER=network` and `NETWORK_PRIVATE_KEY`.
-
-The GPU instructions are not yet tested on a real machine. Record the actual steps and times when you
-do the first run, and correct this section.
-
-## Shadow mode: replay Gnosis rounds
-
-`gnosis-shadow` replays real Gnosis Chain Redistribution rounds through the VM and compares truth, winner
-and freezes with what Redistribution did (docs/ZK-SETTLEMENT.md, section 5, "Robustness tests"):
-
-```bash
-GNOSIS_RPC_URL=https://rpc.gnosischain.com ./target/release/gnosis-shadow --rounds 3000
-```
-
-It exits with an error when a round differs. `--wrong-seed` is a negative control: rounds must then
-differ.
-
-## Run it locally (anvil, mock proofs)
-
-```bash
-anvil --block-time 1                       # one round = 64 s
-
-# repo root: deploy token, postage, oracle, staking, mock verifier, Settlement, roles, one batch
-WALLET_SECRET=<any 64-hex> npx hardhat deploy --network zklocal
-
-# stake 5 nodes (anvil accounts 1-5), then skip ahead so they are older than two rounds
-export NODE_KEYS=0x59c6...690d,0x5de4...365a,0x7c85...07a6,0x47e1...926a,0x8b3a...ffba
-npx hardhat run scripts/zk/setup-nodes.ts --network zklocal
-cast rpc anvil_mine 0x190
-
-cd prover
-export RPC_URL=http://127.0.0.1:8545
-export SETTLEMENT_ADDRESS=$(jq -r .address ../deployments/zklocal/Settlement.json)
-SP1_PROVER=mock PROVER_PRIVATE_KEY=0xac09...ff80 DATA_DIR=data/zklocal ./target/release/swarm-prover serve
-./target/release/node-sim --depth 0 --silent 3 --liar 4 --forced 2 --rounds 3
-```
-
-The full anvil keys are the standard `test test ... junk` mnemonic accounts.
-
-To test the censorship escape hatches, start the prover as a censoring prover. It leaves the commits of
-`CENSOR_COMMITS` out of the anchored commit list, and the reveals of `CENSOR_REVEALS` out of the anchored
-reveal list. Use these options for tests only.
-
-```bash
-CENSOR_COMMITS=<node 0 address> CENSOR_REVEALS=<node 1 address> SP1_PROVER=mock ... ./target/release/swarm-prover serve
-./target/release/node-sim --depth 0 --rounds 3
-```
-
-node-sim finds that it is missing from the anchored lists. Node 0 then calls `forceCommit`, and node 1
-calls `forceReveal`. No node gets a freeze.
-
-## Run it on Sepolia
-
-See [docs/ZK-SETTLEMENT.md, "Sepolia runbook"](../docs/ZK-SETTLEMENT.md#6-sepolia-runbook).
+| Option | What it is |
+| --- | --- |
+| `RPC_URL`, `SETTLEMENT_ADDRESS` | As for the prover |
+| `PROVER_URL` | HTTP API of the prover (default `http://127.0.0.1:8080`) |
+| `NODE_KEYS` | Staking keys of the nodes, comma separated |
+| `BATCH_OWNER_KEY` | Owner key of the postage batch that stamps the simulated reserve |
+| `BATCH_ID` | The batch. Default: the batch that `deploy/snark/002_roles_and_pot.ts` makes |
+| `--depth` | Storage depth that each node reports (default 1) |
+| `--silent`, `--liar`, `--forced`, `--no-claim` | Node indexes that do not reveal, reveal another hash, use only the escape hatches, or do not send the claim witness |
+| `--no-claim-backstop` | Do not call `forceClaim` when nobody settled the round by block 58 |
+| `--reserve` | Chunks in the simulated reserve (default 3,000,000) |
+| `--rounds` | Stop after this number of rounds (default 0: run all the time) |
 
 ## What the prover writes
 
 `$DATA_DIR/rounds/<round>/`:
 
-- `messages.json`: every commit and reveal received, plus the list exactly as anchored. This is the
-  stand-in for publishing the list to Swarm.
-- `input.json`: the full `RoundInput` the VM ran on. Replay it with
-  `./target/release/swarm-prover execute data/.../input.json` to get cycle counts, or add `--prove`.
-- `proof.json`: public values, proof bytes, cycles, proving time.
-
-`$DATA_DIR/postage/<hash>.json`: the postage state after each settlement: the header (tree root, live
-chunks, last cut, last price change) and every leaf of the batch tree. Settlement stores only the
-header's hash. The next settlement starts from this file, and the prover builds the zkVM witness (Merkle
-proofs of the touched leaves) from it. Do not delete it. Set `POSTAGE_FROM_BLOCK` to the PostageStampZK deployment block, so the first settlement does
-not search the log from block 0.
+- `messages.json`: each commit and reveal that the prover received, the lists as anchored, the claim
+  witness and the settlement transaction. A restarted prover reads it, so it can settle the rounds that
+  it anchored.
+- `commits-data.json`, `reveals-data.json`: the list documents that the `dataRef` of each anchor refers to.
+- `input.json`: the round input of the proof.
+- `proof.json`: the proof. If a `settleRound` transaction fails, the prover sends the stored proof again.
 
 ## HTTP API
 
+The overlay is the Swarm address of a node. A Merkle proof is the list of sibling hashes that links one
+entry of a list to the root of the list.
+
 | Method | Path | Body | Accepted |
 | --- | --- | --- | --- |
-| `POST` | `/v1/commit` | `{round, owner, obfuscatedHash, signature}` | blocks 0-15 of the round; the signature must recover to `owner` |
-| `POST` | `/v1/reveal` | `{round, overlay, depth, hash, nonce}` | blocks 24-47; must open an anchored commit |
-| `POST` | `/v1/claim` | `{round, witness}` | after the seed block, until the round settles; the prover runs the VM with the witness and accepts it only if the claim is valid |
-| `GET` | `/v1/rounds/{round}` | | The anchored list (so a node can check it is in it), reveal count, settle tx |
-| `GET` | `/v1/rounds/{round}/outcome` | | After the seed block: truth, winner, anchor, seed, and whether a valid claim is known |
-| `GET` | `/v1/status` | | Block, round, phase offset |
+| `POST` | `/v1/commit` | `{round, owner, obfuscatedHash, signature}` | Blocks 0-15 of the round. The signature must be a valid EdDSA signature of the owner's game key in `GameKeyRegistry` |
+| `POST` | `/v1/reveal` | `{round, overlay, depth, hash, nonce}` | Blocks 24-39 |
+| `POST` | `/v1/claim` | `{round, witness}` | After the seed block (block 48 of the round, which gives the random seed), until the round settles. The prover runs the game with the witness and accepts it only if the claim is valid |
+| `GET` | `/v1/rounds/{round}` | | The anchored lists, the number of reveals, the settlement transaction |
+| `GET` | `/v1/rounds/{round}/commit-proof/{owner}` | | Merkle proof of the commit of `owner` in the anchored commit list |
+| `GET` | `/v1/rounds/{round}/reveal-proof/{overlay}` | | Merkle proof of the reveal of `overlay` in the anchored reveal list |
+| `GET` | `/v1/rounds/{round}/outcome` | | After the seed block: the truth (the reserve sample hash that the round selects), the winner, and whether a valid claim is known |
+| `GET` | `/v1/status` | | Block, round, block offset in the round, chain id, `Settlement` address |
 
-`signature` is an EIP-191 `personal_sign` over `Settlement.commitDigest(round, obfuscatedHash)`, made
-with the node's staking key.
+A node checks its Merkle proof against the root and the count that `Settlement.rounds(round)` gives. If
+the proof is missing or wrong, the node uses the escape hatch.
