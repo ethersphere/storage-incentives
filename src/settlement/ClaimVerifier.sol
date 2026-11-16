@@ -20,7 +20,7 @@ interface IClaimPostage {
             uint256 lastUpdatedBlockNumber
         );
 
-    function isBatchAlive(bytes32 batchId) external view returns (bool);
+    function currentTotalOutPayment() external view returns (uint256);
 }
 
 /**
@@ -175,8 +175,8 @@ contract ClaimVerifier {
     /// `stampFunction`. A batch is alive when it has balance left at the time of the settlement.
     function _stamp(ChunkInclusionProof memory p, IClaimPostage postage) internal view {
         bytes32 id = p.postageProof.postageId;
-        (address owner, uint8 depth, uint8 bucketDepth, , , ) = postage.batches(id);
-        if (owner == address(0) || !postage.isBatchAlive(id)) revert BatchNotAlive(id);
+        (address owner, uint8 depth, uint8 bucketDepth, , uint256 balance, ) = postage.batches(id);
+        if (owner == address(0) || balance <= postage.currentTotalOutPayment()) revert BatchNotAlive(id);
 
         uint32 postageIndex = uint32(p.postageProof.index);
         if (postageIndex >= (uint256(1) << (depth - bucketDepth))) revert IndexOutsideSet(id);

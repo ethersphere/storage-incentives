@@ -1,4 +1,4 @@
-// Migration rehearsal: copy postage batches into PostageStampSnark with copyBatchBulk, and fund the contract
+// Migration rehearsal: copy postage batches into PostageStamp with copyBatchBulk, and fund the contract
 // with their remaining balance (copyBatch moves no tokens).
 //
 //   BATCHES=prover/data/gnosis/batches.json npx hardhat run scripts/snark/copy-batches.ts --network snarklocal
@@ -22,7 +22,7 @@ async function main() {
     remainingBalance: ethers.BigNumber.from(b.remainingBalance),
   }));
   const [deployer] = await ethers.getSigners();
-  const stamp = await ethers.getContractAt('PostageStampSnark', (await deployments.get('PostageStamp')).address, deployer);
+  const stamp = await ethers.getContractAt('PostageStamp', (await deployments.get('PostageStamp')).address, deployer);
   const token = await ethers.getContractAt('TestToken', (await deployments.get('TestToken')).address, deployer);
 
   // The tokens the copied batches will pay into the pot.
@@ -35,7 +35,6 @@ async function main() {
   if (have.lt(total)) await (await token.mint(deployer.address, total.sub(have))).wait();
   await (await token.transfer(stamp.address, total)).wait();
 
-  const before = (await stamp.eventCount()).toNumber();
   let gas = ethers.BigNumber.from(0);
   let failed = 0;
   const failedTopic = stamp.interface.getEventTopic('CopyBatchFailed');
@@ -49,13 +48,11 @@ async function main() {
       `batches ${i}-${i + part.length - 1}: gas ${rc.gasUsed} (${rc.gasUsed.div(part.length)} each), failed ${f}`
     );
   }
-  const after = (await stamp.eventCount()).toNumber();
   console.log(
-    `network ${network.name}: copied ${batches.length - failed} of ${batches.length} batches, ${
-      after - before
-    } log entries, ` + `gas ${gas} (${gas.div(batches.length)} each), funded ${ethers.utils.formatUnits(total, 16)} BZZ`
+    `network ${network.name}: copied ${batches.length - failed} of ${batches.length} batches, ` +
+      `gas ${gas} (${gas.div(batches.length)} each), funded ${ethers.utils.formatUnits(total, 16)} BZZ`
   );
-  console.log(`expected validChunkCount after the next settlement: ${data.validChunkCount}`);
+  console.log(`validChunkCount: ${await stamp.validChunkCount()} (expected ${data.validChunkCount})`);
 }
 
 main().catch((e) => {

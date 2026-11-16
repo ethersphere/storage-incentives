@@ -173,7 +173,7 @@ alloy::sol! {
 
     #[sol(rpc)]
     contract PostageStamp {
-        function isBatchAlive(bytes32 _batchId) external view returns (bool);
+        function currentTotalOutPayment() external view returns (uint256);
         function batches(bytes32 _batchId) external view returns (
             address owner,
             uint8 depth,

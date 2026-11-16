@@ -34,15 +34,18 @@ interface ISettlementStakes {
         );
 }
 
+/// PostageStamp of master, unchanged.
 interface ISettlementPostage {
-    function withdraw(address beneficiary, uint256 amount) external;
+    /// Expires the batches that ran out, and transfers the whole pot to `beneficiary`.
+    function withdraw(address beneficiary) external;
 
+    function bzzToken() external view returns (address);
+}
 
-    /// The pot at the seed block of a game round: everything the batches paid up to that block.
-    function potAt(uint64 round) external returns (uint256);
+interface ISettlementToken {
+    function transfer(address to, uint256 amount) external returns (bool);
 
-    /// Bring the pot accounting up to this block (stores the cut of the last round).
-    function checkpoint() external;
+    function balanceOf(address owner) external view returns (uint256);
 }
 
 interface ISettlementOracle {
@@ -60,7 +63,7 @@ interface ISettlementOracle {
  * redundancy count for the price oracle) runs off chain in the game circuit (prover/snark). A prover proves
  * the round with Groth16, and this contract checks the proof against the chain. The claim checks (chunk
  * inclusion proofs, postage stamps, single-owner chunk signatures) stay on chain in ClaimVerifier. The
- * contract pays the winner the pot from PostageStampSnark, freezes stakes and adjusts the price. See
+ * contract pays the winner the pot of the unchanged PostageStamp, freezes stakes and adjusts the price. See
  * docs/SNARK-SETTLEMENT.md.
  *
  * Round layout, in blocks relative to the round start. ROUND_LENGTH = 64: with 12 s blocks a round is about
@@ -207,6 +210,7 @@ contract Settlement is AccessControl, Pausable {
 
     ISettlementStakes public immutable Stakes;
     ISettlementPostage public immutable PostageContract;
+    ISettlementToken public immutable Token;
     ISettlementOracle public immutable OracleContract;
 
     IGameKeys public immutable GameKeys;
@@ -259,9 +263,19 @@ contract Settlement is AccessControl, Pausable {
     // Redistribution's reserve size estimate bound (alpha=0.097612 beta=0.0716570 k=16).
     uint256 public sampleMaxValue = 1284401000000000000000000000000000000000000000000000000000000000000000000;
 
-    // What was paid out of the pot so far. PostageStampSnark computes the pot (`potAt`): a claimed round
-    // pays the pot at its seed block minus this amount. The pot of a round without a payout stays for
-    // the next winner.
+    // The pot of each round. At the first checkpoint after the seed block of a round (in practice the
+    // commit anchor of the next round), this contract takes the whole pot out of PostageStamp and stores
+    // the running total as the cut of that round. A cut covers the rounds since the last cut. A claimed
+    // round pays its cut minus `potPaid`; the pot of a round without a payout stays for the next winner.
+    struct Cut {
+        uint64 fromRound;
+        uint64 toRound;
+        uint128 pot;
+    }
+    Cut[256] internal cuts;
+    uint64 public lastCutRound;
+    // Everything taken out of PostageStamp so far, and everything paid out of it.
+    uint256 public potCollected;
     uint256 public potPaid;
 
     // The lastUpdatedBlockNumber that the last freeze of this contract gave each node. A stake record with
@@ -351,6 +365,8 @@ contract Settlement is AccessControl, Pausable {
     error ProofInvalid();
     error NotAdmin();
     error FeeTooHigh();
+    error CutNotFound();
+    error TransferFailed();
 
     // ----------------------------- Constructor ------------------------------
 
@@ -377,6 +393,7 @@ contract Settlement is AccessControl, Pausable {
         verifierDelay = _verifierDelay;
         Stakes = ISettlementStakes(staking);
         PostageContract = ISettlementPostage(postageContract);
+        Token = ISettlementToken(ISettlementPostage(postageContract).bzzToken());
         OracleContract = ISettlementOracle(oracleContract);
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(ANCHOR_ROLE, msg.sender);
@@ -417,8 +434,8 @@ contract Settlement is AccessControl, Pausable {
         ri.commitCount = uint16(_commitCount);
         ri.prevAnchored = lastAnchoredRound;
         lastAnchoredRound = _round;
-        // The pot at the seed block of the round before: each round gets its own cut.
-        PostageContract.checkpoint();
+        // Take the pot of the round before (its seed block passed): each round gets its own cut.
+        _checkpoint();
         // An empty list leaves the hash slot as it is (it does not count with a zero count).
         if (_commitCount != 0) ri.commitsHash = _commitsHash;
 
@@ -441,8 +458,8 @@ contract Settlement is AccessControl, Pausable {
         ri.anchored = true;
         ri.prevAnchored = lastAnchoredRound;
         lastAnchoredRound = _round;
-        // The pot at the seed block of the round before: each round gets its own cut.
-        PostageContract.checkpoint();
+        // Take the pot of the round before (its seed block passed): each round gets its own cut.
+        _checkpoint();
 
         emit CommitsAnchored(_round, anchorBlockHash(_round), bytes32(0), 0, bytes32(0));
     }
@@ -570,7 +587,7 @@ contract Settlement is AccessControl, Pausable {
      * @notice Settle a round with a Groth16 proof of the settlement circuit. Permissionless: the proof is
      * the authorisation. Pays `out.feeRecipient` the prover fee.
      *
-     * The proof covers the game (commits, reveals, truth, winner, freezes). PostageStampSnark computes the pot.
+     * The proof covers the game (commits, reveals, truth, winner, freezes). The pot comes from the unchanged PostageStamp.
      * This contract checks the rest on chain: the two block headers that give the randomness, and the
      * claim witness (chunk inclusion proofs, postage stamps, single-owner chunk signatures).
      * @param out The outcome that the proof commits to.
@@ -1033,14 +1050,15 @@ contract Settlement is AccessControl, Pausable {
         revert RoundPending(p);
     }
 
-    /// Pays the pot at the round's seed block, minus what earlier rounds were paid: this round's
-    /// payments, and those of earlier rounds without a payout.
+    /// Pays the cut of the round, minus what earlier rounds were paid: this round's payments, and those
+    /// of earlier rounds without a payout.
     function _payout(
         uint64 _round,
         address winner,
         address feeRecipient
     ) internal returns (uint256 payout, uint256 fee) {
-        uint256 pot = PostageContract.potAt(_round);
+        _checkpoint();
+        uint256 pot = _potAt(_round);
         uint256 amount = pot - potPaid;
         if (amount == 0) return (0, 0);
         potPaid = pot;
@@ -1048,9 +1066,35 @@ contract Settlement is AccessControl, Pausable {
         fee = feeRecipient == address(0) ? 0 : (amount * proverFeeBps) / 10000;
         payout = amount - fee;
 
-        // PostageStampSnark pays both directly.
-        if (fee > 0) PostageContract.withdraw(feeRecipient, fee);
-        if (payout > 0) PostageContract.withdraw(winner, payout);
+        if (fee > 0 && !Token.transfer(feeRecipient, fee)) revert TransferFailed();
+        if (payout > 0 && !Token.transfer(winner, payout)) revert TransferFailed();
+    }
+
+    /// If a seed block passed since the last cut, take the pot out of PostageStamp and store the cut of
+    /// the last round whose seed block passed.
+    function _checkpoint() internal {
+        if (block.number <= SEED_OFFSET) return;
+        uint64 round = uint64((block.number - SEED_OFFSET - 1) / ROUND_LENGTH);
+        uint64 last = lastCutRound;
+        if (round <= last) return;
+        uint256 before = Token.balanceOf(address(this));
+        PostageContract.withdraw(address(this));
+        uint256 pot = potCollected + (Token.balanceOf(address(this)) - before);
+        potCollected = pot;
+        cuts[round % RING_SIZE] = Cut({fromRound: last + 1, toRound: round, pot: uint128(pot)});
+        lastCutRound = round;
+    }
+
+    /// The cut that covers `round`. Reverts when it is no longer kept.
+    function _potAt(uint64 round) internal view returns (uint256) {
+        for (uint64 r = round; r <= lastCutRound && r < round + RING_SIZE; r++) {
+            Cut storage c = cuts[r % RING_SIZE];
+            if (c.toRound == r) {
+                if (c.fromRound > round) break; // the cut that covered `round` was overwritten
+                return c.pot;
+            }
+        }
+        revert CutNotFound();
     }
 
     function _blockHash(uint256 n) internal view returns (bytes32 bh) {

@@ -57,8 +57,8 @@ few constraints. Both come from the gnark library (`gnark-crypto`, curve BN254).
 Thus:
 
 - The circuit proves the game (commits, reveals, truth, winner, freezes).
-- `PostageStampSnark` computes the pot on chain, with sums for each bucket of the balance scale (section 6).
-  It has no batch tree and no expiry loop, and it needs no proof.
+- `PostageStamp` is the contract of master, with no change. `Settlement` takes the pot out of it once
+  in each round (section 6). The postage needs no proof.
 - The contract checks the claim witness (the chunk inclusion proofs, the postage stamp signatures and
   the single-owner chunk signatures). These checks use keccak256 and `ecrecover`. They are the same
   checks that `Redistribution.claim` does now.
@@ -240,7 +240,7 @@ call `applyVerifier`. The admin can call `cancelVerifier` before that. The deplo
 | `forceCommit`, `forceReveal`, `forceClaim` | Node | Only if the prover leaves it out | Node | No |
 | `anchorCommits`, `anchorReveals` | Prover with `ANCHOR_ROLE` | Blocks 16-19 and 40-43 | Prover (about 130k gas together) | No |
 | Proof | Prover, on its own CPU (`snarkd`) | After block 48 | Prover | Through the fee |
-| `settleRound` | Anybody with a valid proof; in practice the prover | From block 49 (unclaimed: from block 64) | Caller (about 1.0M gas for a claimed round, section 8.6) | `proverFeeBps` of the payout, only in rounds with a payout |
+| `settleRound` | Anybody with a valid proof; in practice the prover | From block 49 (unclaimed: from block 64) | Caller (about 1.0M gas for a claimed round, section 8.7) | `proverFeeBps` of the payout, only in rounds with a payout |
 
 The first valid `settleRound` wins. A second one reverts with `AlreadySettled`. If nobody settles, the
 pot stays, and a later claimed round pays it.
@@ -276,7 +276,7 @@ in the Bee node that uploads.
 balance limits the loss if an attacker gets the key.
 
 - Prover key: there are about 112.5 rounds each day. A claimed round costs about 1.0M gas for
-  `settleRound` and about 130k gas for the two anchors (sections 8.6 and 8.7). Thus a day costs at most
+  `settleRound` and about 125k gas for the two anchors (sections 8.7 and 8.8). Thus a day costs at most
   about 130M gas, which is 0.13 ETH at a gas price of 1 gwei (10^-9 ETH). This is an estimate from the local measurements.
 - Bee node wallet: the batch, and gas for some top-ups. `swarm-prover stamp buy --dry-run` prints the
   price of a batch.
@@ -323,7 +323,7 @@ get the anchored lists.
 | Contract | Change |
 | --- | --- |
 | `Redistribution` | Not deployed. `Settlement` takes its roles: `REDISTRIBUTOR_ROLE` on `StakeRegistry` and on the postage contract, and `PRICE_UPDATER_ROLE` on the price oracle. |
-| `Settlement` (new) | Runs the rounds of section 3. Groth16 verifiers for the game circuit (section 5), in two sizes (`gameCircuits`): a prover uses the smallest one that holds the round. It pays a winner the pot that `PostageStampSnark.potAt(round)` gives, minus what it paid before. |
+| `Settlement` (new) | Runs the rounds of section 3. Groth16 verifiers for the game circuit (section 5), in two sizes (`gameCircuits`): a prover uses the smallest one that holds the round. It takes the pot out of `PostageStamp` once in each round, and pays a winner the cut of the round, minus what it paid before (section 6). |
 | | `settleRound` takes the two block headers. It checks their hashes and reads `prevrandao`. |
 | | `settleRound` takes the claim witness and checks it on chain (`ClaimVerifier`). A round with reveals and without a valid witness is "unclaimed". |
 | | The forced-entry hash chains (`forceCommit`, `forceReveal`) use MiMC. A forced entry costs about 16k to 60k gas more than with keccak256. The circuit then has room for many forced entries at a low cost. |
@@ -331,7 +331,7 @@ get the anchored lists.
 | `ClaimVerifier` (new) | The claim checks of `Redistribution.claim`: chunk inclusion proofs, postage stamp signatures, single-owner chunk signatures, the order of the witnesses and the reserve size estimate. |
 | `GameKeyRegistry` (new) | Holds the game key of each node. Holds a MiMC commitment of each stake record with its game key, and computes it again only when the record changes. |
 | `MiMC`, `GameVerifier8`, `GameVerifier16` (new) | MiMC on chain, and the Groth16 verifiers that `snarkd setup` writes. |
-| `PostageStampSnark` | Replaces `PostageStamp`. Computes the pot on chain with bucket sums (section 6). The batch functions and events do not change. |
+| `PostageStamp` | No change. `Settlement` holds `REDISTRIBUTOR_ROLE` and calls `withdraw` (section 6). |
 | `PriceOracleSnark` | `PriceOracle` with 64-block rounds, and `adjustPriceForRound`. |
 | `Staking.sol` (`StakeRegistry`) | No change. |
 
@@ -359,9 +359,8 @@ get the anchored lists.
 | Stake amounts | uint256 | less than 2^96 | Products must fit in the field. The BZZ supply is less than 2^80 |
 | `depth - height` of a reveal | 0..255 | 0..64 | Same reason |
 | Batch balance, outpayment | uint256 | less than 2^128 | Same reason |
-| Postage accounting | `expireLimited` removes expired batches from a sorted tree and adds to the pot. Stamp buyers and claims pay for it | Bucket sums in `PostageStampSnark` (section 6) | Stamp buyers pay only for their own batch |
-| When the pot increases | Exact when `expireLimited` runs | Each batch pays exactly its balance; the last part (less than one bucket) arrives late | The contract does not know the batches in expiry order |
-| Claim batch check | The batch exists: `expireLimited` did not remove it yet | The batch is alive at the settlement (`isBatchAlive`) | The contract has the batch records |
+| Pot payment | The claim takes the whole pot (`withdraw`) | `Settlement` takes the whole pot once in each round and pays each claimed round its cut (section 6) | The settlement comes after the round, so the pot of a round must be fixed earlier |
+| Claim batch check | The batch exists: `expireLimited` did not remove it yet | The batch exists and has balance left at the settlement (`normalisedBalance > currentTotalOutPayment()`) | The settlement comes after the round; a batch can run out in that time |
 | Claim | Anybody calls `claim` in the claim phase | Anybody sends the witness to a prover, or calls `forceClaim` (blocks 49-63). The payout always goes to the selected winner | The same, off chain |
 | Capacity | No limit | Fixed: P slots for each proof. Anchored and forced entries share them (anchored + forced <= P) | A circuit has a fixed size. With shared slots, a round in which every node forces its entry (no anchor) fits the same circuit |
 
@@ -416,39 +415,35 @@ MiMC( owner,  overlay_hi,  overlay_lo,  key.x,  key.y,  committedStake << 96 | p
 A freeze changes only `lastUpdated`, which is in the last element. The registry keeps the hash of the
 first 6 elements, so after a freeze it computes one compression only.
 
-## 6. Postage accounting on chain
+## 6. Postage: the contract of master, with no change
 
-On master, `PostageStamp` keeps a sorted tree of all batches, so that it can remove the expired
-batches before it pays the pot. A stamp buyer pays for the tree and for the expiry of the batches of
-other users.
+`PostageStamp` does not change. Stamp buyers, Bee and the expiry work as on master. `expireLimited`
+removes the expired batches and adds to the pot, as before.
 
-Here the contract does not need the batches in expiry order. It needs only the number of chunks that
-stop to pay at each balance level:
+The difference is how the pot reaches a winner. On master, the claim calls `withdraw` and takes the
+whole pot. Here the settlement of a round comes after the round, at most `PENDING_ROUNDS` rounds later.
+If the settlement took the pot at that time, a late settlement can give one winner the pot of later
+rounds. So `Settlement` fixes the pot of each round early:
 
-- The balance scale (`normalisedBalance`) is split into buckets of `BUCKET` = 2^21 units.
-- For each bucket, the contract stores the chunks of the batches whose balance is in the bucket, and
-  what these batches pay in their own bucket (the sum of chunks x (balance - start of the bucket)).
-- `liveSize` is the chunks of the batches in the buckets after the current one. They pay the pot for
-  each unit of outpayment.
-- When the outpayment passes the end of a bucket, the batches of that bucket pay the rest of their
-  balance, and the batches of the next bucket in use leave `liveSize`. A bitmap finds the next bucket
-  in use.
-- A purchase, a top-up or a depth increase changes one or two buckets.
+1. The first checkpoint after the seed block of a round calls `PostageStamp.withdraw(Settlement)`. The
+   pot moves to `Settlement`.
+2. `Settlement` adds the amount to `potCollected` and stores the total as the cut of that round.
+3. `anchorCommits` and `anchorEmptyCommits` make a checkpoint. So the cut of a round is the pot at the
+   commit anchor of the next round, 32 to 40 blocks after the seed block.
+4. `settleRound` makes a checkpoint too, for a round without a later anchor.
+5. A claimed round gets its cut minus `potPaid`, and `potPaid` becomes the cut. The pot of a round
+   without a payout stays for the next winner, as on master.
 
-Properties:
+A cut covers each round since the last cut. Rounds without a checkpoint between their seed blocks
+share one cut. `Settlement` keeps the cuts of the last 256 rounds. The fee and the payout go from the
+token balance of `Settlement`.
 
-- Each batch pays exactly its balance, as on master. The test runs random batch histories on master's
-  `PostageStamp` and on `PostageStampSnark` in the same blocks: the pot of `PostageStampSnark` is never more
-  than master's pot, and it is equal when all batches are expired.
-- A batch stops to pay at the start of its bucket and pays the rest at the end of its bucket. So the
-  last part of its balance (less than one bucket) arrives late, never early.
-- A new balance must be in a later bucket than the current one. The minimum balance of a batch
-  (`minimumValidityBlocks` x price) is more than one bucket, so this is always true.
-- The pot of a game round is fixed at the round's seed block (`potAt(round)`). The first accounting
-  after a seed block stores the pot at that block. `anchorCommits` calls `checkpoint()`, so each round
-  with an anchor gets its own cut. Rounds without any transaction between their seed blocks share
-  one cut.
-- A stamp is valid when `normalisedBalance > currentTotalOutPayment()`, as before. Nothing is removed.
+The cost: `withdraw` runs `expireLimited` for all batches that ran out, so the anchor transaction
+pays for their expiry. A stamp buyer also pays for the expiry of other batches, as on master.
+
+A version with less gas for the postage is on the branch `feat/snark-postage-buckets`. There the
+postage contract computes the pot with sums for each balance range ("bucket"), without the batch tree
+and without the expiry loop. It is a separate change, because it changes the postage contract.
 
 ## 7. How to run it locally
 
@@ -720,10 +715,11 @@ Not done from the list of possible optimizations, with the reason:
   game circuit has the same purpose: it removes the unused inputs.
 - **Memory-lean prover.** This is new prover software (some weeks of work).
 
-### 8.6 Current version: postage accounting on chain, one proof
+### 8.6 Postage accounting with bucket sums, one proof (now on `feat/snark-postage-buckets`)
 
 The postage circuit, the prover's batch tree and the postage log are removed. `settleRound` checks one
-proof (the game) and pays from the pot that `PostageStampSnark` computes.
+proof (the game) and pays from the pot that `PostageStampSnark` computes. This postage contract is now
+on the branch `feat/snark-postage-buckets` (section 6). The game numbers are the same on this branch.
 
 The game proof (unchanged from section 8.5):
 
@@ -773,7 +769,23 @@ with a script on the hardhat network):
 Other transactions: `forceCommit` 77,844 to 129,376 gas, `forceReveal` 131,694 to 165,878 gas,
 `anchorReveals` 57,443 gas.
 
-### 8.7 Cost of a round: this design and the game on chain
+### 8.7 Unchanged `PostageStamp`
+
+The same local test as section 7, with master's `PostageStamp` and the pot cuts of section 6: 5 nodes,
+6 rounds (one round without commits, five rounds with 4 commits, one silent node, one forced reveal).
+
+| Transaction | Gas |
+| --- | --- |
+| `anchorCommits`, with the pot `withdraw` (one batch, no expiry) | 65,770 |
+| `anchorReveals` | 57,465 |
+| `settleRound`, round without commits | 541,830 |
+| `settleRound`, claimed (first round: 1,796,695) | 981,678 to 1,015,080 |
+
+All 6 rounds settled, with no error in the prover log. After the run, `potCollected` and `potPaid`
+are equal, and `Settlement` holds no tokens: each cut went to a winner and the prover fee.
+The anchor pays more when batches expire, because `withdraw` runs `expireLimited` (section 6).
+
+### 8.8 Cost of a round: this design and the game on chain
 
 The game on chain (master, `Redistribution` on Gnosis), measured from the transactions of the last
 3,000 blocks before 2026-11-15 (20 rounds):
@@ -911,15 +923,13 @@ comparison.
   prototype come from a local setup, which is not safe for a real network.
 - **Circuit review.** Nobody has audited the circuit. The only test is that the circuit and the Rust
   reference give the same hash of the public values, on synthetic rounds and on the local run.
-- **Gas.** `settleRound` costs about 1.0M gas for a claimed round (section 8.6). The verifier is about 450,000 gas of that.
+- **Gas.** `settleRound` costs about 1.0M gas for a claimed round (section 8.7). The verifier is about 450,000 gas of that.
 - **Fixed size.** A round with more entries than the largest game circuit holds cannot settle. The
   contract holds two sizes now; a real network needs a size for the largest neighbourhood. Anchored
   and forced entries share the slots, so a round without an anchor fits the same size. See section 9.
-- **Bucket width.** `BUCKET` is a constant. If the price falls so far that the minimum balance of a
-  batch is less than one bucket, a purchase with a small balance reverts. The width can become a
-  parameter.
-- **Pot accounting loop.** The accounting visits each bucket in use that the outpayment passed. After
-  a long time without any transaction, one call does all of that work.
+- **Expiry cost in the anchor.** `withdraw` runs `expireLimited` for all batches that ran out since the
+  last checkpoint. Many batches that run out at the same time make one anchor transaction expensive.
+  The bucket version (section 6) removes this loop.
 - **Game key.** A node can set its key one time. A rule for a key change is necessary. A node that
   registers its first key during a round can decide late whether its commit counts.
 - **Batch check time.** The claim checks read the batch at the settlement, not at the seed block.

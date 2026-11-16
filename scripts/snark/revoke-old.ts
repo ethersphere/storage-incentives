@@ -1,4 +1,4 @@
-// After a redeploy that keeps PostageStampSnark: take the roles on PostageStampSnark from the previous Settlement
+// After a redeploy that keeps PostageStamp: take the roles on PostageStamp from the previous Settlement
 // and PriceOracleSnark, so that the old Settlement can no longer withdraw from the pot.
 //
 //   OLD_SETTLEMENT=0x... OLD_ORACLE=0x... npx hardhat run scripts/snark/revoke-old.ts --network sepoliasnark
@@ -6,7 +6,7 @@ import { deployments, ethers } from 'hardhat';
 
 async function main() {
   const [admin] = await ethers.getSigners();
-  const p = await ethers.getContractAt('PostageStampSnark', (await deployments.get('PostageStamp')).address, admin);
+  const p = await ethers.getContractAt('PostageStamp', (await deployments.get('PostageStamp')).address, admin);
   const olds: [string, string | undefined][] = [
     ['REDISTRIBUTOR_ROLE', process.env.OLD_SETTLEMENT],
     ['PRICE_ORACLE_ROLE', process.env.OLD_ORACLE],

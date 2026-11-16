@@ -1,9 +1,9 @@
 import { DeployFunction } from 'hardhat-deploy/types';
 import { networkConfig } from '../../helper-hardhat-config';
 
-// SNARK settlement deployment (docs/SNARK-SETTLEMENT.md): TestToken, PriceOracle and StakeRegistry from master,
-// unchanged, and PostageStampSnark in place of PostageStamp. Redistribution is not deployed; Settlement takes
-// its roles.
+// SNARK settlement deployment (docs/SNARK-SETTLEMENT.md): TestToken, PostageStamp and StakeRegistry from
+// master, unchanged, and PriceOracleSnark (64-block rounds) in place of PriceOracle. Redistribution is not
+// deployed; Settlement takes its roles.
 const func: DeployFunction = async function ({ deployments, getNamedAccounts, network }) {
   const { deploy, get, log } = deployments;
   const { deployer } = await getNamedAccounts();
@@ -17,11 +17,9 @@ const func: DeployFunction = async function ({ deployments, getNamedAccounts, ne
     waitConfirmations,
   });
   const token = await get('TestToken');
-  // PostageStampSnark: PostageStamp without the batch tree; expiry and the pot are computed in the settlement
-  // proof. Deployed under the name 'PostageStamp' so the other scripts and tools find it.
+  // PostageStamp of master, unchanged. Settlement takes the pot out of it once a round (withdraw).
   await deploy('PostageStamp', {
     from: deployer,
-    contract: 'PostageStampSnark',
     args: [token.address, 16],
     log: true,
     waitConfirmations,

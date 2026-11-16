@@ -694,6 +694,7 @@ pub async fn build_input(
     // The batches of the candidate witnesses, as ClaimVerifier reads them on chain.
     let claim = claim.or(stored_claim);
     let stamps = PostageStamp::new(s.PostageContract().call().await?, &ctx.provider);
+    let out_payment = stamps.currentTotalOutPayment().call().await?;
     let mut batches: Vec<swarm_vm::claim::BatchRecord> = vec![];
     for w in claim
         .iter()
@@ -705,7 +706,7 @@ pub async fn build_input(
                 continue;
             }
             let b = stamps.batches(id).call().await?;
-            let alive = stamps.isBatchAlive(id).call().await?;
+            let alive = b.owner != Address::ZERO && b.normalisedBalance > out_payment;
             batches.push(swarm_vm::claim::BatchRecord {
                 batch_id: id,
                 owner: if alive { b.owner } else { Address::ZERO },
