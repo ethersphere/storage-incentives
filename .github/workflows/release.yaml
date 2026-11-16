@@ -10,6 +10,8 @@ on:
 jobs:
   docker_release:
     runs-on: ubuntu-latest
+    # Docker Hub credentials are scoped to this environment (default branch / release tags only).
+    environment: release-ci
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
