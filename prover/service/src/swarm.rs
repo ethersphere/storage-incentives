@@ -1,11 +1,11 @@
 //! Swarm as the data layer of SNARK settlement: the prover uploads each round's anchored commit and reveal
 //! lists through its own Bee node. The references go on chain as
-//! `dataRef` of `anchorCommits` and `anchorReveals`. Everything uploaded can be checked against a hash on
-//! chain (the list roots, `postageStateHash`), so a reader does not have to trust the prover.
+//! `dataRef` of `anchorCommits` and `anchorReveals`. Each uploaded list can be checked against its root on
+//! chain (`commitsHash`, `revealsHash`), so a reader does not have to trust the prover.
 //!
 //! Uploads use one mutable postage batch of the prover's Bee node: when a bucket is full, the newest chunk
-//! replaces the oldest, so old anchored lists and snapshots drop out by itself. Only the last day or two are of use (a round
-//! can settle for at most 128 rounds, about 27 hours; only the newest snapshot is needed).
+//! replaces the oldest, so old anchored lists drop out by themselves. Only the last day or two are of use
+//! (a round can settle for at most 128 rounds, about 27 hours).
 //!
 //! Bee API endpoints used (Bee 2.x): POST /bytes, GET /bytes/{ref}, GET /chainstate, GET /stamps/{id},
 //! POST /stamps/{amount}/{depth}, PATCH /stamps/topup/{id}/{amount}.

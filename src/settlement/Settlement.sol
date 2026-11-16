@@ -407,9 +407,11 @@ contract Settlement is AccessControl, Pausable {
      * @notice Fix the set of off-chain commits for the current round, before any reveal and before the seed
      * exists. Called once per round by a prover during the anchor phase.
      * @param _round The current round.
-     * @param _commitsHash Merkle root of the signed commits, sorted by owner: leaves keccak256(owner,
-     * obfuscatedHash), padded with zero to a power of two, nodes keccak256(left, right). A node checks its own
-     * commit with a Merkle proof against this root and `_commitCount` (prover/crates/vm, `list_verify`).
+     * @param _commitsHash Merkle root of the signed commits, sorted by owner. The tree has a fixed depth of 8
+     * (256 leaves), unused leaves are zero, and each node is the MiMC compression of its two children. A leaf
+     * is MiMC(owner, obfuscatedHash, signature R.x, R.y, S) of the game-key signature. A node checks its own
+     * commit with a Merkle proof against this root and `_commitCount` (prover/crates/vm/src/snark,
+     * `commit_leaf`, `list_root`, `list_verify`). The game circuit computes the same root.
      * @param _commitCount Number of commits in that list.
      * @param _dataRef Swarm reference of the round document with the full commit list (or its keccak256 if
      * the prover does not upload). Only emitted.
@@ -468,8 +470,9 @@ contract Settlement is AccessControl, Pausable {
      * @notice Fix the set of off-chain reveals for the current round, so a node can check that its reveal is
      * in it and call forceReveal before the reveal phase ends if not. Called once per round, after
      * anchorCommits, by a prover. A round settles without it; then only forced reveals count.
-     * @param _revealsHash Merkle root of the reveals in the published order (leaves keccak256(overlay, depth,
-     * hash, nonce), built as for `_commitsHash`). bytes32(0) for an empty list, and only for an empty list.
+     * @param _revealsHash Merkle root of the reveals in the published order (sorted by overlay), built as for
+     * `_commitsHash`. A leaf is MiMC(overlay, depth, hash, nonce), each 32-byte value as two halves (`reveal_hash`).
+     * bytes32(0) for an empty list, and only for an empty list.
      * @param _revealCount Number of reveals in that list.
      * @param _dataRef Swarm reference of the round document with the full reveal list (or its keccak256).
      * Only emitted.
