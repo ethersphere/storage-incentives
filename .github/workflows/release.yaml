@@ -19,10 +19,9 @@ jobs:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Docker Hub and Quay Login
+      - name: Docker Hub Login
         run: |
           printf ${{ secrets.DOCKERHUB_PASSWORD }} | docker login --username ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
-          printf ${{ secrets.QUAY_PASSWORD }} | docker login --username ${{ secrets.QUAY_USERNAME }} quay.io --password-stdin
 
       - name: Docker meta
         id: meta
@@ -30,7 +29,6 @@ jobs:
         with:
           images: |
             ethersphere/bee-localchain
-            quay.io/ethersphere/bee-localchain
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
