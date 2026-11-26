@@ -1,0 +1,5 @@
+* @ethersphere/smart-contracts @darkobas2 @crtahlin
+
+# Workflows, release configuration and packaging
+/.github/ @ethersphere/release-reviewers
+/docker/  @ethersphere/release-reviewers
